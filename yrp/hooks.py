@@ -5,6 +5,10 @@ app_description = "Your Resource Planning"
 app_email = "mohammedanasman123@gmail.com"
 app_license = "mit"
 
+fixtures = [
+	{"dt": "Workflow", "filters": [["name", "in", ["Item Price Workflow", "Process Cost Workflow"]]]},
+]
+
 # Apps
 # ------------------
 
@@ -26,7 +30,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/yrp/css/yrp.css"
-# app_include_js = "/assets/yrp/js/yrp.js"
+app_include_js = ["yrp.bundle.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/yrp/css/yrp.css"
@@ -143,23 +147,12 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"yrp.tasks.all"
-# 	],
-# 	"daily": [
-# 		"yrp.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"yrp.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"yrp.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"yrp.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"daily": [
+		"yrp.yrp.doctype.item_price.item_price.update_all_expired_item_price",
+		"yrp.yrp.doctype.process_cost.process_cost.update_all_expired_process_cost",
+	],
+}
 
 # Testing
 # -------

@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "autoname": "prompt",
+ "creation": "2026-03-26 18:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "labels_per_row",
+  "width",
+  "height",
+  "section_break_details",
+  "zpl_raw_print_format_details"
+ ],
+ "fields": [
+  {
+   "fieldname": "labels_per_row",
+   "fieldtype": "Int",
+   "label": "Labels Per Row"
+  },
+  {
+   "fieldname": "width",
+   "fieldtype": "Float",
+   "label": "Width (In Inches)"
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Float",
+   "label": "Height (In Inches)"
+  },
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "zpl_raw_print_format_details",
+   "fieldtype": "Table",
+   "label": "Print Format Details",
+   "options": "ZPL Raw Print Format Detail"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-26 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "ZPL Raw Print Format",
+ "naming_rule": "Set by user",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

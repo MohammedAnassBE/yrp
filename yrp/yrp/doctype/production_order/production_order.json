@@ -1,0 +1,213 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-03-26 19:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "delivery_date",
+  "production_term",
+  "column_break_1",
+  "dont_deliver_after",
+  "posting_date",
+  "lead_time_given",
+  "section_break_details",
+  "details_html",
+  "item_details",
+  "section_break_items",
+  "production_order_details",
+  "section_break_ordered",
+  "production_ordered_details",
+  "section_break_meta",
+  "submitted_by",
+  "submitted_time",
+  "column_break_meta",
+  "comments",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "default": "PPO-",
+   "fieldname": "naming_series",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Naming Series"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "delivery_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Delivery Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "production_term",
+   "fieldtype": "Link",
+   "label": "Production Term",
+   "options": "Production Term"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "dont_deliver_after",
+   "fieldtype": "Date",
+   "label": "Don't Deliver After",
+   "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "lead_time_given",
+   "fieldtype": "Int",
+   "label": "Lead Time (Days)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "details_html",
+   "fieldtype": "HTML",
+   "label": "Details"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "item_details",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Item Details"
+  },
+  {
+   "fieldname": "section_break_items",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Order Items"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "production_order_details",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Production Order Details",
+   "options": "Production Order Detail"
+  },
+  {
+   "fieldname": "section_break_ordered",
+   "fieldtype": "Section Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "production_ordered_details",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Production Ordered Details",
+   "options": "Production Ordered Detail"
+  },
+  {
+   "fieldname": "section_break_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "submitted_by",
+   "fieldtype": "Link",
+   "label": "Submitted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_time",
+   "fieldtype": "Datetime",
+   "label": "Submitted Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "comments",
+   "fieldtype": "Small Text",
+   "label": "Comments"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Production Order",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-03-26 19:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Production Order",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Production Planner",
+   "select": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

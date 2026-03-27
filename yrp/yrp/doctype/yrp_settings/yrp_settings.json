@@ -1,0 +1,119 @@
+{
+ "actions": [],
+ "creation": "2026-03-26 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "general_section",
+  "default_currency",
+  "column_break_1",
+  "default_letter_head",
+  "purchase_settings_section",
+  "enable_price_validation",
+  "grn_settings_section",
+  "grn_cancellation_in_days",
+  "allow_grn_cancellation",
+  "column_break_2",
+  "allow_excess_grn",
+  "production_order_settings_section",
+  "production_order_attributes"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_section",
+   "fieldtype": "Section Break",
+   "label": "General"
+  },
+  {
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_letter_head",
+   "fieldtype": "Link",
+   "label": "Default Letter Head",
+   "options": "Letter Head"
+  },
+  {
+   "fieldname": "purchase_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Purchase Settings"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_price_validation",
+   "fieldtype": "Check",
+   "label": "Enable Price Validation"
+  },
+  {
+   "fieldname": "grn_settings_section",
+   "fieldtype": "Section Break",
+   "label": "GRN Settings"
+  },
+  {
+   "fieldname": "grn_cancellation_in_days",
+   "fieldtype": "Int",
+   "label": "GRN Cancellation Allowed Within (Days)"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_grn_cancellation",
+   "fieldtype": "Check",
+   "label": "Allow GRN Cancellation"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_excess_grn",
+   "fieldtype": "Check",
+   "label": "Allow Excess GRN"
+  },
+  {
+   "fieldname": "production_order_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Production Order Settings"
+  },
+  {
+   "fieldname": "production_order_attributes",
+   "fieldtype": "Table",
+   "label": "Production Order Attributes",
+   "options": "Production Order Attribute Setting"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-26 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "creation": "2026-03-26 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "min_order_qty",
+  "price",
+  "attribute_value"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "min_order_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Min Order Qty",
+   "reqd": 1
+  },
+  {
+   "fieldname": "price",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Price",
+   "reqd": 1
+  },
+  {
+   "fieldname": "attribute_value",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Attribute Value",
+   "options": "Item Attribute Value",
+   "read_only_depends_on": "eval:!parent.depends_on_attribute"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-26 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Process Cost Value",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

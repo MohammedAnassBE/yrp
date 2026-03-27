@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-03-26 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "dimension_doctype",
+  "fieldname",
+  "label",
+  "column_break_1",
+  "mandatory",
+  "in_valuation",
+  "is_production_group"
+ ],
+ "fields": [
+  {
+   "fieldname": "dimension_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Dimension DocType",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "fieldname",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Fieldname",
+   "reqd": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "mandatory",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Mandatory"
+  },
+  {
+   "default": "0",
+   "fieldname": "in_valuation",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "In Valuation"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_production_group",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Production Group"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-26 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP Stock Dimension",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

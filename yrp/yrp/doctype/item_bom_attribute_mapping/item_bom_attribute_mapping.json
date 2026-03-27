@@ -1,0 +1,133 @@
+{
+ "actions": [],
+ "creation": "2021-08-23 17:32:28.112468",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item",
+  "item_attributes",
+  "column_break_kxpi6",
+  "bom_item",
+  "bom_item_attributes",
+  "section_break_wrgji",
+  "get_combination",
+  "values",
+  "attribute_mapping_html"
+ ],
+ "fields": [
+  {
+   "fieldname": "values",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Values",
+   "options": "Item BOM Attribute Mapping Value"
+  },
+  {
+   "fieldname": "item_attributes",
+   "fieldtype": "Table",
+   "label": "Item Attributes",
+   "options": "Item BOM Attribute Mapping Attribute"
+  },
+  {
+   "fieldname": "column_break_kxpi6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bom_item_attributes",
+   "fieldtype": "Table",
+   "label": "BOM Item Attributes",
+   "options": "Item BOM Attribute Mapping Attribute"
+  },
+  {
+   "fieldname": "section_break_wrgji",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bom_item",
+   "fieldtype": "Link",
+   "label": "BOM Item",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_mapping_html",
+   "fieldtype": "HTML",
+   "label": "Attribute Mapping HTML"
+  },
+  {
+   "fieldname": "get_combination",
+   "fieldtype": "Button",
+   "label": "Get Combination"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-02-16 15:19:40.352346",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Item BOM Attribute Mapping",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Item Master Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Production Planner",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Merch User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

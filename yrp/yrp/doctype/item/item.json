@@ -1,0 +1,335 @@
+{
+ "actions": [],
+ "autoname": "Item-.#####",
+ "creation": "2021-08-23 16:59:13.935404",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "brand",
+  "hsn_code",
+  "item_group",
+  "categories",
+  "column_break_4",
+  "name1",
+  "disabled",
+  "over_delivery_receipt_allowance",
+  "is_stock_item",
+  "is_purchase_item",
+  "is_sales_item",
+  "uom_section",
+  "default_unit_of_measure",
+  "uom_conversion_details",
+  "secondary_unit_of_measure",
+  "item_hash_value",
+  "attributes_section",
+  "primary_attribute",
+  "dependent_attribute",
+  "dependent_attribute_mapping",
+  "attributes",
+  "attribute_list_html",
+  "dependent_attribute_details_html",
+  "additional_parameters",
+  "tax_section",
+  "is_ineligible_for_itc"
+ ],
+ "fields": [
+  {
+   "fieldname": "name1",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Name",
+   "permlevel": 1,
+   "read_only_depends_on": "eval:!doc.__islocal",
+   "reqd": 1
+  },
+  {
+   "fieldname": "hsn_code",
+   "fieldtype": "Data",
+   "label": "HSN Code",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "categories",
+   "fieldtype": "Table MultiSelect",
+   "label": "Categories",
+   "options": "Item Item Category",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "uom_section",
+   "fieldtype": "Section Break",
+   "label": "UOM"
+  },
+  {
+   "fieldname": "default_unit_of_measure",
+   "fieldtype": "Link",
+   "label": "Default Unit of Measure",
+   "options": "UOM",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "uom_conversion_details",
+   "fieldtype": "Table",
+   "label": "UOM Conversion Details",
+   "options": "UOM Conversion Detail",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "attributes_section",
+   "fieldtype": "Section Break",
+   "label": "Attributes"
+  },
+  {
+   "fieldname": "attribute_list_html",
+   "fieldtype": "HTML",
+   "label": "Attribute List Values",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "attributes",
+   "fieldtype": "Table",
+   "label": "Attributes",
+   "options": "Item Item Attribute",
+   "permlevel": 1
+  },
+  {
+   "fetch_from": "item_group.secondary_unit_of_measure",
+   "fetch_if_empty": 1,
+   "fieldname": "secondary_unit_of_measure",
+   "fieldtype": "Link",
+   "label": "Secondary Unit of Measure",
+   "options": "UOM",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "primary_attribute",
+   "fieldtype": "Link",
+   "label": "Primary Attribute",
+   "options": "Item Attribute",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Brand",
+   "permlevel": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "over_delivery_receipt_allowance",
+   "fieldtype": "Float",
+   "label": "Over Delivery/Receipt Allowance (%)",
+   "permlevel": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_stock_item",
+   "fieldtype": "Check",
+   "label": "Is Stock Item",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "additional_parameters",
+   "fieldtype": "Table",
+   "label": "Additional Parameters",
+   "options": "Additional Parameter",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "dependent_attribute",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute",
+   "options": "Item Attribute",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "dependent_attribute_mapping",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Dependent Attribute Mapping",
+   "options": "Item Dependent Attribute Mapping",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "dependent_attribute_details_html",
+   "fieldtype": "HTML",
+   "label": "Dependent Attribute Details",
+   "permlevel": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_purchase_item",
+   "fieldtype": "Check",
+   "label": "Is Purchase Item",
+   "permlevel": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_sales_item",
+   "fieldtype": "Check",
+   "label": "Is Sales Item",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "tax_section",
+   "fieldtype": "Section Break",
+   "label": "Tax"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_ineligible_for_itc",
+   "fieldtype": "Check",
+   "label": "Is Ineligible for Input Tax Credit"
+  },
+  {
+   "fieldname": "item_hash_value",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Item Hash Value",
+   "unique": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-10 13:15:16.554247",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Item",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "permlevel": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Item Master Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "permlevel": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Item Master Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1,
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "permlevel": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1,
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Merchandiser",
+   "select": 1,
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "permlevel": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Merchandiser",
+   "select": 1,
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,144 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:process_name",
+ "creation": "2026-03-26 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "process_name",
+  "is_item_conversion",
+  "column_break_1",
+  "is_group",
+  "is_manual_entry_in_grn",
+  "section_break_uom",
+  "input_uom",
+  "default_wastage",
+  "default_lead_time_days",
+  "column_break_uom",
+  "output_uom",
+  "additional_allowance",
+  "section_break_details",
+  "process_details"
+ ],
+ "fields": [
+  {
+   "allow_in_quick_entry": 1,
+   "fieldname": "process_name",
+   "fieldtype": "Data",
+   "label": "Process Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "description": "Input item converts to a different output item (e.g., Yarn \u2192 Cloth, Slab \u2192 Coil)",
+   "fieldname": "is_item_conversion",
+   "fieldtype": "Check",
+   "label": "Is Item Conversion"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_group",
+   "fieldtype": "Check",
+   "label": "Is Group"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_manual_entry_in_grn",
+   "fieldtype": "Check",
+   "label": "Is Manual Entry In GRN"
+  },
+  {
+   "fieldname": "section_break_uom",
+   "fieldtype": "Section Break",
+   "label": "UOM & Defaults"
+  },
+  {
+   "fieldname": "input_uom",
+   "fieldtype": "Link",
+   "label": "Input UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "default_wastage",
+   "fieldtype": "Percent",
+   "label": "Default Wastage %"
+  },
+  {
+   "fieldname": "default_lead_time_days",
+   "fieldtype": "Int",
+   "label": "Default Lead Time (Days)"
+  },
+  {
+   "fieldname": "column_break_uom",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "output_uom",
+   "fieldtype": "Link",
+   "label": "Output UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "additional_allowance",
+   "fieldtype": "Percent",
+   "label": "Additional Allowance %"
+  },
+  {
+   "depends_on": "eval:doc.is_group == 1",
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Sub-Processes"
+  },
+  {
+   "depends_on": "eval:doc.is_group == 1",
+   "fieldname": "process_details",
+   "fieldtype": "Table",
+   "label": "Process Details",
+   "options": "Process Detail"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-26 16:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Process",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1,
+   "share": 1
+  }
+ ],
+ "quick_entry": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
