@@ -10,6 +10,7 @@ from frappe.utils import date_diff, flt, now, nowdate
 from yrp.yrp.doctype.item.item import (
 	get_attribute_details,
 	get_attribute_values,
+	get_or_create_variant,
 )
 
 
@@ -71,7 +72,7 @@ class ProductionOrder(frappe.model.document.Document):
 
 @frappe.whitelist()
 def get_production_order_settings():
-	"""Return active attributes and grid attribute from YRP Settings."""
+	"""Return active attributes, grid attribute, and dependent attribute config from YRP Settings."""
 	settings = frappe.get_cached_doc("YRP Settings")
 	attrs = []
 	grid_attribute = None
@@ -82,6 +83,8 @@ def get_production_order_settings():
 	return {
 		"attributes": attrs,
 		"grid_attribute": grid_attribute,
+		"dependent_attribute": settings.po_dependent_attribute or None,
+		"dependent_attribute_value": settings.po_dependent_attribute_value or None,
 	}
 
 
@@ -131,25 +134,44 @@ def get_item_production_attributes(item):
 
 
 def save_production_order_items(item_details_json):
-	"""Convert Vue grouped JSON into flat production_order_details rows."""
+	"""Convert Vue grouped JSON into flat production_order_details rows.
+
+	Creates Item Variants using the dependent attribute from settings
+	to satisfy the full attribute requirements.
+	"""
 	if isinstance(item_details_json, str):
 		item_details = json.loads(item_details_json)
 	else:
 		item_details = item_details_json
+
+	settings = get_production_order_settings()
+	dep_attr = settings.get("dependent_attribute")
+	dep_attr_value = settings.get("dependent_attribute_value")
 
 	rows = []
 	for group in item_details:
 		item_name = group.get("item")
 		if not item_name:
 			continue
+
+		item_doc = frappe.get_cached_doc("Item", item_name)
+
 		for entry in group.get("entries", []):
-			attr_args = entry.get("attributes", {})
+			attr_args = dict(entry.get("attributes", {}))
 			qty = flt(entry.get("qty", 0))
 			if qty <= 0:
 				continue
+
+			# Add dependent attribute value if the item has one and it's configured in settings
+			if item_doc.dependent_attribute and dep_attr and dep_attr_value:
+				if item_doc.dependent_attribute == dep_attr and dep_attr not in attr_args:
+					attr_args[dep_attr] = dep_attr_value
+
+			variant_name = get_or_create_variant(item_name, attr_args)
 			rows.append({
 				"item": item_name,
-				"attributes_json": json.dumps(attr_args, separators=(",", ":")),
+				"item_variant": variant_name,
+				"attributes_json": json.dumps(entry.get("attributes", {}), separators=(",", ":")),
 				"quantity": qty,
 			})
 	return rows
@@ -157,6 +179,9 @@ def save_production_order_items(item_details_json):
 
 def fetch_production_order_items(doc):
 	"""Convert flat child table rows into grouped JSON for Vue."""
+	settings = get_production_order_settings()
+	active_attrs = settings.get("attributes", [])
+
 	# Group rows by item template
 	items_grouped = {}
 	for row in doc.production_order_details:
@@ -177,7 +202,18 @@ def fetch_production_order_items(doc):
 			"entries": [],
 		}
 		for row in rows:
-			attr_map = json.loads(row.attributes_json) if row.attributes_json else {}
+			if row.attributes_json:
+				attr_map = json.loads(row.attributes_json)
+			elif row.item_variant:
+				# Fallback: read from variant attributes
+				variant = frappe.get_cached_doc("Item Variant", row.item_variant)
+				attr_map = {
+					a.attribute: a.attribute_value
+					for a in variant.attributes
+					if a.attribute in active_attrs
+				}
+			else:
+				attr_map = {}
 			group["entries"].append({
 				"attributes": attr_map,
 				"qty": row.quantity,

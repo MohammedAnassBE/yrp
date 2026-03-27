@@ -2,6 +2,13 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on("YRP Settings", {
-	refresh(frm) {
+	setup(frm) {
+		frm.set_query("po_dependent_attribute_value", function () {
+			return {
+				filters: {
+					attribute_name: frm.doc.po_dependent_attribute || "",
+				},
+			};
+		});
 	},
 });

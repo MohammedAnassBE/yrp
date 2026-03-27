@@ -16,7 +16,11 @@
   "column_break_2",
   "allow_excess_grn",
   "production_order_settings_section",
-  "production_order_attributes"
+  "production_order_attributes",
+  "po_dependent_attribute_section",
+  "po_dependent_attribute",
+  "column_break_po_dep",
+  "po_dependent_attribute_value"
  ],
  "fields": [
   {
@@ -87,6 +91,29 @@
    "fieldtype": "Table",
    "label": "Production Order Attributes",
    "options": "Production Order Attribute Setting"
+  },
+  {
+   "fieldname": "po_dependent_attribute_section",
+   "fieldtype": "Section Break",
+   "label": "Dependent Attribute for Variant Creation",
+   "description": "When items have a dependent attribute (e.g., Stage), set its value here. This determines which attributes are required to create variants."
+  },
+  {
+   "fieldname": "po_dependent_attribute",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute",
+   "options": "Item Attribute"
+  },
+  {
+   "fieldname": "column_break_po_dep",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "po_dependent_attribute",
+   "fieldname": "po_dependent_attribute_value",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute Value",
+   "options": "Item Attribute Value"
   }
  ],
  "index_web_pages_for_search": 1,
