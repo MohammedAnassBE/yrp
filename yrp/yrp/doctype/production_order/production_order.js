@@ -22,7 +22,6 @@ frappe.ui.form.on("Production Order", {
 
 		// Load existing data
 		if (frm.doc.__onload && frm.doc.__onload.item_details) {
-			frm.doc.item_details = JSON.stringify(frm.doc.__onload.item_details);
 			frm.productionTable.load_data(frm.doc.__onload.item_details);
 		}
 

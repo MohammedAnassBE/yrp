@@ -8,6 +8,8 @@
   "default_currency",
   "column_break_1",
   "default_letter_head",
+  "advanced_section",
+  "enable_tuple_attribute",
   "purchase_settings_section",
   "enable_price_validation",
   "grn_settings_section",
@@ -43,6 +45,18 @@
    "fieldtype": "Link",
    "label": "Default Letter Head",
    "options": "Letter Head"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "advanced_section",
+   "fieldtype": "Section Break",
+   "label": "Advanced"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_tuple_attribute",
+   "fieldtype": "Check",
+   "label": "Enable Tuple Attribute (Fast Variant Lookup)"
   },
   {
    "fieldname": "purchase_settings_section",

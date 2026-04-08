@@ -263,7 +263,7 @@ def create_variant(template, args, dependent_attr=None):
 
 def get_variant(template, args: dict):
 	try:
-		enable = frappe.db.get_single_value("MRP Settings", "enable_tuple_attribute")
+		enable = frappe.db.get_single_value("YRP Settings", "enable_tuple_attribute")
 	except Exception:
 		enable = False
 	if enable:
