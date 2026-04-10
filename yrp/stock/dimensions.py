@@ -41,7 +41,7 @@ def get_stock_dimensions():
 	return dims
 
 
-def clear_dimension_cache():
+def clear_dimension_cache(doc=None, method=None):
 	"""Called on YRP Stock Settings save."""
 	frappe.cache().delete_value(CACHE_KEY)
 

@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-04-08 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "column_break_1",
+  "warehouse",
+  "section_break_1",
+  "actual_qty",
+  "column_break_2",
+  "reserved_qty",
+  "section_break_2",
+  "stock_uom",
+  "valuation_rate",
+  "stock_value"
+ ],
+ "fields": [
+  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item Code", "options": "Item Variant", "reqd": 1, "search_index": 1},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse", "reqd": 1, "search_index": 1},
+  {"fieldname": "section_break_1", "fieldtype": "Section Break"},
+  {"fieldname": "actual_qty", "fieldtype": "Float", "label": "Actual Qty"},
+  {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+  {"fieldname": "reserved_qty", "fieldtype": "Float", "label": "Reserved Qty"},
+  {"fieldname": "section_break_2", "fieldtype": "Section Break"},
+  {"fieldname": "stock_uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},
+  {"fieldname": "valuation_rate", "fieldtype": "Currency", "label": "Valuation Rate"},
+  {"fieldname": "stock_value", "fieldtype": "Currency", "label": "Stock Value"}
+ ],
+ "links": [],
+ "modified": "2026-04-08 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP Stock",
+ "name": "Bin",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"export": 1, "print": 1, "read": 1, "report": 1, "role": "Stock Manager"},
+  {"export": 1, "print": 1, "read": 1, "report": 1, "role": "Stock User"}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

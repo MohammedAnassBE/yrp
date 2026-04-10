@@ -171,14 +171,64 @@ def get_attribute_details(item_name,dependent_attr_mapping=None):
 		attributes.remove(item.primary_attribute)
 		for attribute in item.attributes:
 			if attribute.attribute == item.primary_attribute:
-				doc = frappe.get_cached_doc("Item Item Attribute Mapping", attribute.mapping)
-				primary_attribute_details = [value.attribute_value for value in doc.values]
+				if attribute.mapping:
+					doc = frappe.get_cached_doc("Item Item Attribute Mapping", attribute.mapping)
+					primary_attribute_details = [value.attribute_value for value in doc.values]
+				if not primary_attribute_details:
+					# Mapping empty — fall back to all values for this attribute
+					primary_attribute_details = frappe.get_all(
+						"Item Attribute Value",
+						filters={"attribute_name": item.primary_attribute},
+						pluck="attribute_value",
+						order_by="idx asc",
+					)
 	additional_parameters = [{'additional_parameter_key': a.additional_parameter_key, 'additional_parameter_value': a.additional_parameter_value} for a in item.additional_parameters]
 	dependent_attribute_details = {}
 	if dependent_attr_mapping:
 		dependent_attribute_details = get_dependent_attribute_details(dependent_attr_mapping)
 	elif item.dependent_attribute and item.dependent_attribute_mapping:
 		dependent_attribute_details = get_dependent_attribute_details(item.dependent_attribute_mapping)
+
+	# Enrich each dependent stage with per-stage primary attribute info.
+	# For each stage, find which of its attributes has multiple values in the
+	# item's attribute mapping — that attribute becomes the stage's primary
+	# (qty matrix driver). Falls back to item-level primary_attribute.
+	if dependent_attribute_details and dependent_attribute_details.get("attr_list"):
+		attr_value_map = {}
+		for attr_row in item.attributes:
+			vals = []
+			if attr_row.mapping:
+				mapping_doc = frappe.get_cached_doc("Item Item Attribute Mapping", attr_row.mapping)
+				vals = [v.attribute_value for v in mapping_doc.values]
+			if not vals:
+				# Mapping empty — fall back to all values for this attribute
+				vals = frappe.get_all(
+					"Item Attribute Value",
+					filters={"attribute_name": attr_row.attribute},
+					pluck="attribute_value",
+					order_by="idx asc",
+				)
+			if vals:
+				attr_value_map[attr_row.attribute] = vals
+
+		for stage_key, stage_info in dependent_attribute_details["attr_list"].items():
+			stage_attrs = stage_info.get("attributes") or []
+			stage_primary = ""
+			stage_primary_values = []
+			# Check item-level primary first
+			if item.primary_attribute and item.primary_attribute in stage_attrs and item.primary_attribute in attr_value_map:
+				stage_primary = item.primary_attribute
+				stage_primary_values = attr_value_map[item.primary_attribute]
+			else:
+				# Pick the first stage attribute that has multiple mapped values
+				for sa in stage_attrs:
+					if sa in attr_value_map and len(attr_value_map[sa]) > 1:
+						stage_primary = sa
+						stage_primary_values = attr_value_map[sa]
+						break
+			stage_info["primary_attribute"] = stage_primary
+			stage_info["primary_attribute_values"] = stage_primary_values
+
 	return {
 		"item": item_name,
 		"primary_attribute": item.primary_attribute,

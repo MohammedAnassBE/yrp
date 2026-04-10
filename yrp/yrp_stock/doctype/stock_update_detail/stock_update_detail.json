@@ -1,0 +1,41 @@
+{
+ "actions": [],
+ "creation": "2026-04-08 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "item_variant",
+  "uom",
+  "available_stock",
+  "update_diff_qty",
+  "rate",
+  "table_index",
+  "row_index",
+  "stock_uom",
+  "conversion_factor",
+  "stock_qty"
+ ],
+ "fields": [
+  {"fieldname": "item_variant", "fieldtype": "Link", "in_list_view": 1, "label": "Item Variant", "options": "Item Variant"},
+  {"fieldname": "uom", "fieldtype": "Link", "in_list_view": 1, "label": "UOM", "options": "UOM"},
+  {"fieldname": "available_stock", "fieldtype": "Float", "in_list_view": 1, "label": "Available Stock"},
+  {"fieldname": "table_index", "fieldtype": "Int", "label": "Table Index"},
+  {"fieldname": "row_index", "fieldtype": "Int", "label": "Row Index"},
+  {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate"},
+  {"fieldname": "update_diff_qty", "fieldtype": "Float", "label": "Update Diff Qty"},
+  {"fieldname": "stock_uom", "fieldtype": "Link", "label": "Stock UOM", "options": "UOM"},
+  {"fieldname": "conversion_factor", "fieldtype": "Float", "label": "Conversion Factor"},
+  {"fieldname": "stock_qty", "fieldtype": "Float", "label": "Stock Qty"}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-08 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP Stock",
+ "name": "Stock Update Detail",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

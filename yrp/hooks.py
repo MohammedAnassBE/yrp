@@ -152,6 +152,15 @@ scheduler_events = {
 		"yrp.yrp.doctype.item_price.item_price.update_all_expired_item_price",
 		"yrp.yrp.doctype.process_cost.process_cost.update_all_expired_process_cost",
 	],
+	"hourly": [
+		"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost_entries",
+	],
+}
+
+doc_events = {
+	"YRP Stock Settings": {
+		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
+	},
 }
 
 # Testing
