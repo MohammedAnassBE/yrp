@@ -49,10 +49,7 @@ def execute(filters=None):
 		if filters.get("remove_zero_balance_item") and qty_dict["bal_qty"] == 0:
 			continue
 
-		row = {"item": item, "warehouse": warehouse}
-		# Add dimension values from the group key
-		for i, fn in enumerate(dim_fields):
-			row[fn] = group_key[2 + i] if (2 + i) < len(group_key) else ""
+		row = _unpack_group_key(group_key, dim_fields)
 		row.update(item_map[item])
 		row.update(qty_dict)
 
@@ -134,7 +131,6 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 		.where((sle.docstatus < 2) & (sle.is_cancelled == 0))
 		.orderby(CombineDatetime(sle.posting_date, sle.posting_time))
 		.orderby(sle.creation)
-		.orderby(sle.qty)
 	)
 
 	if filters.get("to_date"):
@@ -147,7 +143,13 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 		if filters.get(fn):
 			query = query.where(getattr(sle, fn) == filters[fn])
 
-	return query.run(as_dict=True)
+	MAX_SLE_ROWS = 500_000
+	results = query.limit(MAX_SLE_ROWS + 1).run(as_dict=True)
+	if len(results) > MAX_SLE_ROWS:
+		frappe.throw(
+			_("Too many stock ledger entries ({0}+). Please narrow your filters.").format(MAX_SLE_ROWS)
+		)
+	return results
 
 
 def get_item_warehouse_map(filters, sle, dim_fields):
@@ -158,7 +160,7 @@ def get_item_warehouse_map(filters, sle, dim_fields):
 	float_precision = cint(frappe.db.get_default("float_precision")) or 3
 
 	for d in sle:
-		group_key = (d.item, d.warehouse) + tuple(d.get(fn) or "" for fn in dim_fields)
+		group_key = _make_group_key(d, dim_fields)
 		if group_key not in iwb_map:
 			iwb_map[group_key] = frappe._dict(
 				opening_qty=0.0, opening_val=0.0,
@@ -266,3 +268,22 @@ def get_item_details(items, sle, filters):
 			item_details[a.parent][a.attribute] = a.attribute_value
 
 	return item_details
+
+
+def _make_group_key(row, dim_fields):
+	"""Build a tuple key: (item, warehouse, dim1_val, dim2_val, ...).
+
+	Single source of truth for key construction — used by both
+	get_item_warehouse_map (to group) and the main loop (to unpack).
+	"""
+	return (row.get("item") or row.item, row.get("warehouse") or row.warehouse) + tuple(
+		row.get(fn) or "" for fn in dim_fields
+	)
+
+
+def _unpack_group_key(group_key, dim_fields):
+	"""Unpack a group key tuple back into a dict with named fields."""
+	row = {"item": group_key[0], "warehouse": group_key[1]}
+	for i, fn in enumerate(dim_fields):
+		row[fn] = group_key[2 + i] if (2 + i) < len(group_key) else ""
+	return row

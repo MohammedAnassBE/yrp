@@ -20,6 +20,9 @@ class StockReservationEntry(Document):
 	def on_submit(self):
 		self.update_bin_reserved_qty()
 
+	def before_cancel(self):
+		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
+
 	def on_cancel(self):
 		self.db_set("status", "Cancelled")
 		self.update_bin_reserved_qty()

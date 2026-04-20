@@ -18,7 +18,7 @@
 <script setup>
 import EventBus from '../bus.js';
 import ItemDimensionFetcher from '../components/ItemDimensionFetch.vue';
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 
 const docstatus = ref(cur_frm.doc.docstatus);
 const items = ref([]);
@@ -34,13 +34,20 @@ const args = ref({
     item_query: function () { return { filters: { is_stock_item: 1 } }; }
 });
 
+// Store handler reference so we can clean it up on unmount
+const _purposeHandler = (purpose) => {
+    can_create.value = purpose !== "Receive at Warehouse";
+};
+
 onMounted(() => {
     if (cur_frm.doc.purpose === "Receive at Warehouse") {
         can_create.value = false;
     }
-    EventBus.$on("purpose_updated", (purpose) => {
-        can_create.value = purpose !== "Receive at Warehouse";
-    });
+    EventBus.$on("purpose_updated", _purposeHandler);
+});
+
+onUnmounted(() => {
+    EventBus.$off("purpose_updated", _purposeHandler);
 });
 
 function update_status() {

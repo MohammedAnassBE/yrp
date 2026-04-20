@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
@@ -107,7 +109,37 @@ def create_dimension_fields():
 
 	if custom_fields:
 		create_custom_fields(custom_fields, update=True)
+		_ensure_bin_unique_constraint(dimensions)
 		frappe.db.commit()
+
+
+def _ensure_bin_unique_constraint(dimensions):
+	"""Create a unique index on Bin for (item_code, warehouse, *dimension_fields).
+
+	This prevents duplicate Bins when concurrent requests call get_or_make_bin().
+	The index is idempotent — safe to call on every migrate.
+	"""
+	columns = ["item_code", "warehouse"] + [d["fieldname"] for d in dimensions]
+	index_name = "unique_bin_dimension"
+
+	# Validate column names — only lowercase alphanumeric + underscore allowed
+	for col in columns:
+		if not re.match(r"^[a-z][a-z0-9_]*$", col):
+			frappe.throw(f"Invalid dimension fieldname for index: {col}")
+
+	# Drop old index if column set changed (idempotent rebuild)
+	existing = frappe.db.sql(
+		"SHOW INDEX FROM `tabBin` WHERE Key_name = %s", index_name, as_dict=True
+	)
+	if existing:
+		existing_cols = sorted(r["Column_name"] for r in existing)
+		if existing_cols != sorted(columns):
+			frappe.db.sql(f"ALTER TABLE `tabBin` DROP INDEX `{index_name}`")
+		else:
+			return  # already correct
+
+	col_list = ", ".join(f"`{c}`" for c in columns)
+	frappe.db.sql(f"ALTER TABLE `tabBin` ADD UNIQUE INDEX `{index_name}` ({col_list})")
 
 
 def _get_insert_after(dim):

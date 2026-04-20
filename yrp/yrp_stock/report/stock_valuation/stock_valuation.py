@@ -57,47 +57,81 @@ def get_data(filters, dim_fields):
 	to_date = filters.get("to_date") or frappe.utils.today()
 	remove_zero = filters.get("remove_zero_balance_item")
 
-	# Get all distinct (item, warehouse, *dims) buckets from SLE
+	# Single query: get the latest SLE per (item, warehouse, *dims) bucket
+	# using a subquery for max posting_datetime per group, then joining back
+	# to get the full row. This replaces the N+1 per-bucket get_previous_sle calls.
 	sle = frappe.qb.DocType("Stock Ledger Entry")
-	group_fields = [sle.item, sle.warehouse] + [getattr(sle, fn) for fn in dim_fields]
+	group_cols = [sle.item, sle.warehouse] + [getattr(sle, fn) for fn in dim_fields]
 
-	query = (
+	# Subquery: max posting_datetime per bucket
+	from frappe.query_builder.functions import Max
+	sub = (
 		frappe.qb.from_(sle)
-		.select(*group_fields)
-		.distinct()
+		.select(
+			Max(sle.posting_datetime).as_("max_dt"),
+			sle.item, sle.warehouse,
+			*[getattr(sle, fn) for fn in dim_fields],
+		)
 		.where((sle.is_cancelled == 0) & (sle.posting_date <= to_date))
+		.groupby(sle.item, sle.warehouse, *[getattr(sle, fn) for fn in dim_fields])
 	)
 	if filters.get("warehouse"):
-		query = query.where(sle.warehouse == filters["warehouse"])
+		sub = sub.where(sle.warehouse == filters["warehouse"])
 	if filters.get("item"):
-		query = query.where(sle.item == filters["item"])
+		sub = sub.where(sle.item == filters["item"])
 	elif filters.get("parent_item"):
 		variants = frappe.get_all("Item Variant", filters={"item": filters["parent_item"]}, pluck="name")
 		if variants:
-			query = query.where(sle.item.isin(variants))
+			sub = sub.where(sle.item.isin(variants))
 	for fn in dim_fields:
 		if filters.get(fn):
-			query = query.where(getattr(sle, fn) == filters[fn])
+			sub = sub.where(getattr(sle, fn) == filters[fn])
 
-	buckets = query.run(as_dict=True)
+	# Run the subquery to get max_dt per bucket
+	MAX_BUCKETS = 50_000
+	bucket_rows = sub.limit(MAX_BUCKETS + 1).run(as_dict=True)
+	if not bucket_rows:
+		return []
+	if len(bucket_rows) > MAX_BUCKETS:
+		frappe.throw(
+			_("Too many item/warehouse combinations ({0}+). Please narrow your filters.").format(MAX_BUCKETS)
+		)
 
-	# For each bucket, get the last SLE state
+	# Now fetch the full SLE row for each bucket's max_dt in one query.
+	# Build OR conditions: (item=X AND warehouse=Y AND dims=... AND posting_datetime=max_dt)
+	# For large datasets, batch into chunks.
+	latest_sles = {}
+	BATCH_SIZE = 500
+	for i in range(0, len(bucket_rows), BATCH_SIZE):
+		batch = bucket_rows[i : i + BATCH_SIZE]
+		# Use IN on (item, warehouse) + separate filter for each
+		items_in_batch = list({r.item for r in batch})
+		q = (
+			frappe.qb.from_(sle)
+			.select(sle.star)
+			.where(sle.is_cancelled == 0)
+			.where(sle.item.isin(items_in_batch))
+			.where(sle.posting_date <= to_date)
+			.orderby(sle.posting_datetime, order=frappe.qb.desc)
+			.orderby(sle.creation, order=frappe.qb.desc)
+		)
+		rows = q.run(as_dict=True)
+
+		# Index by (item, warehouse, *dims) — keep only the first (latest) per bucket
+		for r in rows:
+			key = (r.item, r.warehouse) + tuple(r.get(fn) for fn in dim_fields)
+			if key not in latest_sles:
+				latest_sles[key] = r
+
+	# Build report rows
 	item_cache = {}
 	data = []
 	total_value = 0.0
 
-	for bucket in buckets:
-		args = frappe._dict({
-			"item": bucket.item,
-			"warehouse": bucket.warehouse,
-			"posting_date": to_date,
-			"posting_time": "23:59:59",
-			"posting_datetime": get_combine_datetime(to_date, "23:59:59"),
-		})
-		for fn in dim_fields:
-			args[fn] = bucket.get(fn)
+	for bucket in bucket_rows:
+		key = (bucket.item, bucket.warehouse) + tuple(bucket.get(fn) for fn in dim_fields)
+		last_sle = latest_sles.get(key)
 
-		last_sle = get_previous_sle(args)
 		qty = flt(last_sle.qty_after_transaction) if last_sle else 0.0
 		val_rate = flt(last_sle.valuation_rate) if last_sle else 0.0
 		stock_value = flt(qty * val_rate)
@@ -105,7 +139,7 @@ def get_data(filters, dim_fields):
 		if remove_zero and not qty:
 			continue
 
-		# Item details
+		# Item details (cached per item variant)
 		if bucket.item not in item_cache:
 			parent = frappe.db.get_value("Item Variant", bucket.item, "item")
 			item_cache[bucket.item] = frappe.db.get_value(

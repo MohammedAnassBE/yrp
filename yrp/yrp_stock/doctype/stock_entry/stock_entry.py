@@ -51,12 +51,12 @@ class StockEntry(Document):
 		# Build lookup: (item, dim1, dim2, ...) → [source_row_name, ...]
 		source_map = {}
 		for row in source_doc.items:
-			key = (row.item,) + tuple(row.get(fn) or "" for fn in dim_fields)
+			key = (row.item,) + tuple(row.get(fn) for fn in dim_fields)
 			source_map.setdefault(key, []).append(row.name)
 
 		for row in self.items:
 			row.against_stock_entry = self.outgoing_stock_entry
-			key = (row.item,) + tuple(row.get(fn) or "" for fn in dim_fields)
+			key = (row.item,) + tuple(row.get(fn) for fn in dim_fields)
 			matches = source_map.get(key, [])
 			if matches:
 				row.ste_detail = matches.pop(0)

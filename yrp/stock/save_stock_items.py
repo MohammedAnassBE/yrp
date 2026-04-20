@@ -13,6 +13,7 @@ import json
 from itertools import groupby
 
 import frappe
+from frappe import _
 
 from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 
@@ -35,12 +36,37 @@ PARENT_CHILD_MAP = {
 def group_items_for_ui(child_rows, parent_doctype):
 	"""Convert flat child rows into the nested grouped structure the Vue editor expects.
 
-	Follows production_api's pattern:
-	  1. Sort by row_index
-	  2. groupby row_index → each group = one logical item entry
-	  3. Resolve variant → parent item, extract attributes
-	  4. Bucket qty/rate by primary attribute value (or 'default')
-	  5. Nest item entries into attribute-groups
+	Example transformation:
+
+	Flat (from child table — 3 rows):
+	  row_index=0, item="T-Shirt-Red-S",  qty=10, lot="LOT-001"
+	  row_index=0, item="T-Shirt-Red-M",  qty=20, lot="LOT-001"   (same row_index = same logical item)
+	  row_index=1, item="Jeans-Blue-32",   qty=5,  lot="LOT-002"
+
+	Grouped (for Vue editor — 2 groups):
+	  [
+	    {
+	      primary_attribute: "Size",
+	      items: [{
+	        name: "T-Shirt",
+	        dimensions: {lot: "LOT-001"},
+	        attributes: {Colour: "Red"},
+	        values: {S: {qty: 10}, M: {qty: 20}},
+	      }],
+	    },
+	    {
+	      items: [{
+	        name: "Jeans",
+	        dimensions: {lot: "LOT-002"},
+	        attributes: {Colour: "Blue"},
+	        values: {default: {qty: 5}},
+	      }],
+	    },
+	  ]
+
+	Key concept:
+	  - row_index groups variants of the SAME logical item (all sizes of T-Shirt Red share row_index=0)
+	  - table_index positions the attribute-group in the editor
 	"""
 	if not child_rows:
 		return []
@@ -77,9 +103,11 @@ def group_items_for_ui(child_rows, parent_doctype):
 				out[row.attribute] = row.attribute_value
 		return out
 
-	# Group consecutive rows by row_index (same as production_api)
+	# Group consecutive rows by row_index (same as production_api).
+	# groupby returns (key, iterator). The iterator MUST be consumed immediately
+	# (with list()) because it becomes invalid on the next iteration.
 	for _row_idx, variants_iter in groupby(rows, lambda r: r.get("row_index") or 0):
-		variants = list(variants_iter)
+		variants = list(variants_iter)  # consume iterator immediately
 		first = variants[0]
 
 		# Resolve variant → parent item
@@ -99,7 +127,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 		first_variant_attrs = _variant_attrs(first_variant_doc, all_attrs_with_primary)
 
 		# Collect dimension values from the first row
-		dimensions = {fn: first.get(fn) or "" for fn in dim_fields}
+		dimensions = {fn: first.get(fn) for fn in dim_fields}
 
 		# Build the item entry
 		item_entry = {
@@ -180,7 +208,10 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 	to batch them back together on reload.
 	"""
 	if isinstance(item_details, str):
-		item_details = json.loads(item_details or "[]")
+		try:
+			item_details = json.loads(item_details or "[]")
+		except (ValueError, json.JSONDecodeError):
+			frappe.throw(_("Invalid item details format — please refresh and try again"))
 	if not item_details:
 		return []
 
@@ -237,7 +268,9 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 			else:
 				vals = (entry.get("values") or {}).get("default") or {}
 				qty = vals.get("qty") or 0
-				if not qty:
+				# Skip zero-qty items — except for Stock Reconciliation where
+				# qty=0 is valid (make_qty_zero or manual zero entry)
+				if not qty and parent_doctype != "Stock Reconciliation":
 					row_index += 1
 					continue
 				variant_name = _resolve_or_create_variant(parent_item, base_attrs)
@@ -262,7 +295,12 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 
 
 def _resolve_or_create_variant(parent_item, attributes):
-	"""Find an Item Variant matching parent_item + attributes; create if missing."""
+	"""Find an Item Variant matching parent_item + attributes; create if missing.
+
+	Handles concurrent requests safely: if two threads try to create the
+	same variant simultaneously, the second insert catches the duplicate error
+	and falls back to re-querying.
+	"""
 	from yrp.yrp.doctype.item.item import get_variant, create_variant
 
 	# Strip empty-value keys — dependent stages may leave inapplicable attributes blank
@@ -271,6 +309,11 @@ def _resolve_or_create_variant(parent_item, attributes):
 	name = get_variant(parent_item, attrs)
 	if name:
 		return name
-	new_doc = create_variant(parent_item, attrs)
-	new_doc.insert(ignore_permissions=True)
-	return new_doc.name
+
+	try:
+		new_doc = create_variant(parent_item, attrs)
+		new_doc.insert(ignore_permissions=True)
+		return new_doc.name
+	except frappe.DuplicateEntryError:
+		# Another thread created it between our check and insert
+		return get_variant(parent_item, attrs)

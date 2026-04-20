@@ -7,6 +7,7 @@ combination of configured stock dimensions (lot, received_type, batch, ...).
 import datetime
 
 import frappe
+from frappe import _
 from frappe.utils import flt, get_time, getdate, nowdate, nowtime
 
 from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
@@ -16,12 +17,22 @@ from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 # Date / time helpers
 # ----------------------------------------------------------------------
 def get_combine_datetime(posting_date, posting_time):
+	"""Combine date and time into a datetime object.
+
+	Handles multiple input types because Frappe returns dates/times
+	in different formats depending on context (form, query, API).
+	"""
+	# Normalize posting_date to a date object
 	if isinstance(posting_date, str):
 		posting_date = getdate(posting_date)
+
+	# Normalize posting_time to a time object
 	if isinstance(posting_time, str):
 		posting_time = get_time(posting_time)
-	if isinstance(posting_time, datetime.timedelta):
+	elif isinstance(posting_time, datetime.timedelta):
+		# MariaDB TIME columns sometimes return timedelta instead of time
 		posting_time = (datetime.datetime.min + posting_time).time()
+
 	return datetime.datetime.combine(posting_date, posting_time).replace(microsecond=0)
 
 
@@ -30,6 +41,8 @@ def get_combine_datetime(posting_date, posting_time):
 # ----------------------------------------------------------------------
 def get_conversion_factor(item_variant, uom):
 	variant_of = frappe.db.get_value("Item Variant", item_variant, "item", cache=True)
+	if not variant_of:
+		frappe.throw(_("Item Variant {0} not found").format(item_variant))
 	conv = frappe.db.get_value("UOM Conversion Detail", {"parent": variant_of, "uom": uom}, "conversion_factor")
 	return {
 		"conversion_factor": conv or 1.0,
@@ -41,21 +54,35 @@ def get_conversion_factor(item_variant, uom):
 # Bin
 # ----------------------------------------------------------------------
 def get_or_make_bin(item_code, warehouse, **dimension_filters):
-	"""Return Bin name for (item, warehouse, *dimensions); create if missing."""
+	"""Return Bin name for (item, warehouse, *dimensions); create if missing.
+
+	Handles concurrent requests safely: if two requests try to create the
+	same Bin simultaneously, the second insert will hit the unique constraint
+	and we fall back to re-querying.
+	"""
 	filters = {"item_code": item_code, "warehouse": warehouse}
 	for fn in get_dimension_fieldnames():
 		filters[fn] = dimension_filters.get(fn)
+
 	bin_name = frappe.db.get_value("Bin", filters, "name")
-	if not bin_name:
-		bin_doc = frappe.new_doc("Bin")
-		bin_doc.item_code = item_code
-		bin_doc.warehouse = warehouse
-		for fn, val in filters.items():
-			if fn not in ("item_code", "warehouse"):
-				bin_doc.set(fn, val)
+	if bin_name:
+		return bin_name
+
+	# Bin doesn't exist — create it
+	bin_doc = frappe.new_doc("Bin")
+	bin_doc.item_code = item_code
+	bin_doc.warehouse = warehouse
+	for fn, val in filters.items():
+		if fn not in ("item_code", "warehouse"):
+			bin_doc.set(fn, val)
+
+	try:
 		bin_doc.insert(ignore_permissions=True)
-		bin_name = bin_doc.name
-	return bin_name
+		return bin_doc.name
+	except frappe.DuplicateEntryError:
+		# Another request created the same Bin between our check and insert.
+		# Re-query to get the existing one.
+		return frappe.db.get_value("Bin", filters, "name")
 
 
 # ----------------------------------------------------------------------
@@ -128,8 +155,9 @@ def future_sle_exists(args):
 		"voucher_no": ["!=", args.get("voucher_no") or ""],
 	}
 	for fn in get_dimension_fieldnames():
-		if args.get(fn):
-			conds[fn] = args.get(fn)
+		val = args.get(fn)
+		if val is not None:
+			conds[fn] = val
 	return bool(frappe.db.exists("Stock Ledger Entry", conds))
 
 

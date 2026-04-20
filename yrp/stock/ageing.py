@@ -105,17 +105,28 @@ class FIFOSlots:
 				fifo_queue.append([flt(row.qty), row.posting_date])
 
 	def __compute_outgoing_stock(self, row, fifo_queue: List, transfer_key: Tuple):
+		"""Remove qty from the FIFO queue for ageing calculation.
+
+		Each FIFO slot is [qty, posting_date]. We consume from the front (oldest first).
+		Consumed slots are saved in transferred_item_details for transfer tracking.
+		"""
 		qty_to_pop = abs(row.qty)
 		while qty_to_pop:
 			slot = fifo_queue[0] if fifo_queue else [0, None]
+
 			if 0 < flt(slot[0]) <= qty_to_pop:
+				# Case 1: Entire slot consumed — remove it from queue
 				qty_to_pop -= flt(slot[0])
 				self.transferred_item_details[transfer_key].append(fifo_queue.pop(0))
+
 			elif not fifo_queue:
+				# Case 2: Queue is empty but still have qty to consume — negative stock
 				fifo_queue.append([-qty_to_pop, row.posting_date])
 				self.transferred_item_details[transfer_key].append([qty_to_pop, row.posting_date])
 				qty_to_pop = 0
+
 			else:
+				# Case 3: Partial consumption — reduce slot qty, keep it in queue
 				slot[0] = flt(slot[0]) - qty_to_pop
 				self.transferred_item_details[transfer_key].append([qty_to_pop, slot[1]])
 				qty_to_pop = 0

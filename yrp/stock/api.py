@@ -1,7 +1,8 @@
 """Whitelisted stock APIs consumed by the Vue StockItemEditor and reports."""
 
 import frappe
-from frappe.utils import flt
+from frappe import _
+from frappe.utils import cint, flt
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_conversion_factor
@@ -44,7 +45,10 @@ def get_stock_balance_for_items(items, warehouse, **dimension_filters):
 	"""Bulk balance lookup. ``items`` may be a JSON list."""
 	import json as _json
 	if isinstance(items, str):
-		items = _json.loads(items)
+		try:
+			items = _json.loads(items)
+		except (ValueError, _json.JSONDecodeError):
+			frappe.throw(_("Invalid item list format"))
 	out = {}
 	for it in items:
 		out[it] = _get_stock_balance(it, warehouse, **dimension_filters)
@@ -76,32 +80,35 @@ def get_item_uom_and_rate(item):
 
 @frappe.whitelist()
 def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Typeahead for Warehouse Link controls; honors Warehouse User restriction."""
-	user = frappe.session.user
-	conditions = ["w.disabled = 0"]
-	values = {"txt": f"%{txt}%", "start": start, "page_len": page_len}
-	if filters:
-		for k, v in (filters or {}).items():
-			conditions.append(f"w.{k} = %({k})s")
-			values[k] = v
+	"""Typeahead for Warehouse Link controls; honors Warehouse User restriction.
 
-	# If Warehouse User restrictions exist for this user, filter to those warehouses
+	Uses QueryBuilder instead of raw SQL to prevent injection via filter keys.
+	Only known Warehouse fields are accepted as filters.
+	"""
+	# Only allow filtering on known Warehouse fields
+	ALLOWED_FILTER_FIELDS = {"name", "disabled", "is_transit", "default_supplier"}
+
+	wh = frappe.qb.DocType("Warehouse")
+	q = frappe.qb.from_(wh).select(wh.name).where(wh.disabled == 0)
+
+	# Apply user-provided filters (only whitelisted fields)
+	if filters:
+		for key, value in filters.items():
+			if key not in ALLOWED_FILTER_FIELDS:
+				continue
+			q = q.where(wh[key] == value)
+
+	# Text search
+	if txt:
+		q = q.where(wh.name.like(f"%{txt}%"))
+
+	# Restrict to warehouses this user has access to
+	user = frappe.session.user
 	restricted = frappe.db.sql_list(
-		"""SELECT DISTINCT parent FROM `tabWarehouse User` WHERE user=%s""", user,
+		"SELECT DISTINCT parent FROM `tabWarehouse User` WHERE user=%s", user
 	)
 	if restricted:
-		conditions.append(f"w.name IN ({', '.join(['%s'] * len(restricted))})")
-		values_list = list(values.values())
-		query = f"""
-			SELECT w.name FROM `tabWarehouse` w
-			WHERE {' AND '.join(conditions)} AND w.name LIKE %s
-			LIMIT %s, %s
-		"""
-		return frappe.db.sql(query, restricted + [values["txt"], values["start"], values["page_len"]])
+		q = q.where(wh.name.isin(restricted))
 
-	query = f"""
-		SELECT w.name FROM `tabWarehouse` w
-		WHERE {' AND '.join(conditions)} AND w.name LIKE %(txt)s
-		LIMIT %(start)s, %(page_len)s
-	"""
-	return frappe.db.sql(query, values)
+	q = q.limit(cint(page_len)).offset(cint(start))
+	return q.run()

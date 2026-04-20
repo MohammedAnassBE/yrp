@@ -16,13 +16,13 @@
   "stock_qty"
  ],
  "fields": [
-  {"fieldname": "item_variant", "fieldtype": "Link", "in_list_view": 1, "label": "Item Variant", "options": "Item Variant"},
+  {"fieldname": "item_variant", "fieldtype": "Link", "in_list_view": 1, "label": "Item Variant", "options": "Item Variant", "reqd": 1},
   {"fieldname": "uom", "fieldtype": "Link", "in_list_view": 1, "label": "UOM", "options": "UOM"},
   {"fieldname": "available_stock", "fieldtype": "Float", "in_list_view": 1, "label": "Available Stock"},
   {"fieldname": "table_index", "fieldtype": "Int", "label": "Table Index"},
   {"fieldname": "row_index", "fieldtype": "Int", "label": "Row Index"},
   {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate"},
-  {"fieldname": "update_diff_qty", "fieldtype": "Float", "label": "Update Diff Qty"},
+  {"fieldname": "update_diff_qty", "fieldtype": "Float", "label": "Update Diff Qty", "reqd": 1},
   {"fieldname": "stock_uom", "fieldtype": "Link", "label": "Stock UOM", "options": "UOM"},
   {"fieldname": "conversion_factor", "fieldtype": "Float", "label": "Conversion Factor"},
   {"fieldname": "stock_qty", "fieldtype": "Float", "label": "Stock Qty"}

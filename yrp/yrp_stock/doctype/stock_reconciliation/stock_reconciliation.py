@@ -39,6 +39,8 @@ class StockReconciliation(Document):
 		for row in self.items:
 			if not row.warehouse:
 				row.warehouse = self.default_warehouse
+			if not row.warehouse:
+				frappe.throw(_("Row {0}: Warehouse is required").format(row.idx))
 			row.conversion_factor = row.conversion_factor or 1.0
 			row.stock_qty = (row.qty or 0) * row.conversion_factor
 			row.stock_uom_rate = (row.rate or 0) / row.conversion_factor if row.conversion_factor else 0
@@ -76,13 +78,25 @@ class StockReconciliation(Document):
 			if frappe.db.exists("Stock Ledger Entry", filters):
 				frappe.throw(_("Row {0}: prior Stock Ledger Entry exists; cannot post Opening Stock").format(row.idx))
 
-	def on_submit(self):
-		from yrp.stock.stock_ledger import make_sl_entries
+	def _build_sl_entries(self, cancel=False):
+		"""Build SLE dicts for submit or cancel — single source of truth.
+
+		On submit: qty_after_transaction = reconciled qty (snaps balance to target).
+		On cancel: qty_after_transaction = 0 (engine computes diff to undo the snap).
+		"""
 		from yrp.stock.dimensions import get_stock_dimensions
 
 		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
 		entries = []
 		for row in self.items:
+			if cancel:
+				# Cancel: set qty_after_transaction to 0 so the engine reverses
+				# the reconciliation effect by computing diff = 0 - current_balance
+				qty_after = 0
+			else:
+				# Submit: snap balance to reconciled qty
+				qty_after = 0 if row.make_qty_zero else row.stock_qty
+
 			base = {
 				"item": row.item,
 				"warehouse": row.warehouse,
@@ -93,14 +107,19 @@ class StockReconciliation(Document):
 				"posting_date": self.posting_date,
 				"posting_time": self.posting_time,
 				"qty": 0,
-				"qty_after_transaction": 0 if row.make_qty_zero else row.stock_qty,
+				"qty_after_transaction": qty_after,
 				"rate": row.rate or 0,
 				"is_reconciliation": 1,
 			}
 			for fn in dim_fields:
 				base[fn] = row.get(fn)
 			entries.append(base)
-		make_sl_entries(entries)
+		return entries
+
+	def on_submit(self):
+		from yrp.stock.stock_ledger import make_sl_entries
+
+		make_sl_entries(self._build_sl_entries())
 
 	def before_cancel(self):
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
@@ -108,23 +127,4 @@ class StockReconciliation(Document):
 	def on_cancel(self):
 		from yrp.stock.stock_ledger import make_sl_entries
 
-		entries = []
-		from yrp.stock.dimensions import get_stock_dimensions
-
-		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
-		for row in self.items:
-			base = {
-				"item": row.item,
-				"warehouse": row.warehouse,
-				"voucher_type": "Stock Reconciliation",
-				"voucher_no": self.name,
-				"voucher_detail_no": row.name,
-				"posting_date": self.posting_date,
-				"posting_time": self.posting_time,
-				"qty": 0,
-				"is_cancelled": 1,
-			}
-			for fn in dim_fields:
-				base[fn] = row.get(fn)
-			entries.append(base)
-		make_sl_entries(entries, cancel=True)
+		make_sl_entries(self._build_sl_entries(cancel=True), cancel=True)

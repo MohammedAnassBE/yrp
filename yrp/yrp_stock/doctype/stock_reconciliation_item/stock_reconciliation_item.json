@@ -28,7 +28,7 @@
  ],
  "fields": [
   {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item Variant", "reqd": 1},
-  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse"},
+  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse", "reqd": 1},
   {"fieldname": "qty", "fieldtype": "Float", "label": "Qty"},
   {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate"},
   {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},

@@ -10,6 +10,7 @@ class YRPStockSettings(Document):
 		self.validate_production_group()
 		self.validate_unique_fieldnames()
 		self.validate_unique_doctypes()
+		self.validate_dimension_doctypes_exist()
 
 	def on_update(self):
 		from yrp.stock.dimensions import clear_dimension_cache
@@ -36,3 +37,10 @@ class YRPStockSettings(Document):
 			if d.dimension_doctype in doctypes:
 				frappe.throw(f"Duplicate DocType '{d.dimension_doctype}' in Stock Dimensions.")
 			doctypes.append(d.dimension_doctype)
+
+	def validate_dimension_doctypes_exist(self):
+		"""Ensure each configured dimension DocType actually exists."""
+		for d in self.stock_dimensions:
+			if not frappe.db.exists("DocType", d.dimension_doctype):
+				frappe.throw(f"DocType '{d.dimension_doctype}' does not exist. "
+					"Create the DocType before adding it as a stock dimension.")

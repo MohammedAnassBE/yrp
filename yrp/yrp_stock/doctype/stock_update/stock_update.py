@@ -1,4 +1,8 @@
-"""Stock Update — simple add/reduce adjustment."""
+"""Stock Update — simple add/reduce stock adjustment.
+
+Add: increases stock qty at the given warehouse (incoming stock)
+Reduce: decreases stock qty at the given warehouse (outgoing stock)
+"""
 
 import frappe
 from frappe import _
@@ -23,6 +27,7 @@ class StockUpdate(Document):
 			self.set_rate_from_last_sle()
 
 	def set_rate_from_last_sle(self):
+		"""Auto-fill rate from last uncancelled SLE for each item."""
 		from frappe.utils import flt
 
 		for row in self.stock_update_details:
@@ -44,59 +49,69 @@ class StockUpdate(Document):
 		for row in self.stock_update_details:
 			if not row.update_diff_qty or row.update_diff_qty <= 0:
 				frappe.throw(_("Row {0}: qty must be > 0").format(row.idx))
+
+			# Auto-fill UOM from Item Variant if not set
+			if not row.uom:
+				parent = frappe.db.get_value("Item Variant", row.item_variant, "item")
+				row.uom = frappe.db.get_value("Item", parent, "default_unit_of_measure") if parent else None
+			if not row.uom:
+				frappe.throw(_("Row {0}: UOM is required").format(row.idx))
+
 			row.conversion_factor = row.conversion_factor or 1.0
 			row.stock_qty = row.update_diff_qty * row.conversion_factor
+
+			# For Reduce: check available stock
 			if self.update_type == "Reduce":
 				dim_filters = {fn: row.get(fn) for fn in dim_fields}
 				avail = get_stock_balance(row.item_variant, self.warehouse, **dim_filters)
 				row.available_stock = avail
 				if row.stock_qty > avail:
-					frappe.throw(_("Row {0}: cannot reduce {1}, only {2} available").format(row.idx, row.stock_qty, avail))
+					frappe.throw(_("Row {0}: cannot reduce {1}, only {2} available").format(
+						row.idx, row.stock_qty, avail
+					))
 
+	# ------------------------------------------------------------------
+	# Submit and Cancel — both use _build_sl_entries to avoid duplication
+	# ------------------------------------------------------------------
 	def on_submit(self):
 		from yrp.stock.stock_ledger import make_sl_entries
-		from yrp.stock.dimensions import get_stock_dimensions
-
-		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
-		sign = 1 if self.update_type == "Add" else -1
-		entries = []
-		for row in self.stock_update_details:
-			base = {
-				"item": row.item_variant,
-				"warehouse": self.warehouse,
-				"uom": row.uom,
-				"voucher_type": "Stock Update",
-				"voucher_no": self.name,
-				"voucher_detail_no": row.name,
-				"posting_date": self.posting_date,
-				"posting_time": self.posting_time,
-				"qty": sign * row.stock_qty,
-				"rate": row.rate or 0 if self.update_type == "Add" else 0,
-				"outgoing_rate": row.rate or 0 if self.update_type == "Reduce" else 0,
-			}
-			for fn in dim_fields:
-				base[fn] = row.get(fn)
-			entries.append(base)
-		make_sl_entries(entries)
+		make_sl_entries(self._build_sl_entries())
 
 	def before_cancel(self):
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
 
 	def on_cancel(self):
 		from yrp.stock.stock_ledger import make_sl_entries
+		make_sl_entries(self._build_sl_entries(cancel=True), cancel=True)
 
-		entries = self.on_submit_entries_for_cancel()
-		make_sl_entries(entries, cancel=True)
+	def _build_sl_entries(self, cancel=False):
+		"""Build SLE dicts for submit or cancel — single source of truth.
 
-	def on_submit_entries_for_cancel(self):
-		"""Reuse the submit-time entry layout but flip qty signs."""
+		Submit (Add):    qty = +stock_qty, rate = rate,  outgoing_rate = 0
+		Submit (Reduce): qty = -stock_qty, rate = 0,     outgoing_rate = rate
+
+		Cancel reverses the direction:
+		Cancel (Add):    qty = -stock_qty, rate = 0,     outgoing_rate = rate  (was incoming, now outgoing)
+		Cancel (Reduce): qty = +stock_qty, rate = rate,  outgoing_rate = 0     (was outgoing, now incoming)
+		"""
 		from yrp.stock.dimensions import get_stock_dimensions
 
 		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
-		sign = -1 if self.update_type == "Add" else 1
+		is_add = self.update_type == "Add"
+
+		# On submit: Add is positive, Reduce is negative
+		# On cancel: flip the sign
+		if cancel:
+			is_incoming = not is_add  # cancel of Add = outgoing, cancel of Reduce = incoming
+			sign = -1 if is_add else 1
+		else:
+			is_incoming = is_add
+			sign = 1 if is_add else -1
+
 		entries = []
 		for row in self.stock_update_details:
-			base = {
+			rate = row.rate or 0
+			entry = {
 				"item": row.item_variant,
 				"warehouse": self.warehouse,
 				"uom": row.uom,
@@ -106,10 +121,18 @@ class StockUpdate(Document):
 				"posting_date": self.posting_date,
 				"posting_time": self.posting_time,
 				"qty": sign * row.stock_qty,
-				"rate": row.rate or 0,
-				"is_cancelled": 1,
+				# Incoming stock needs "rate" for valuation (add to FIFO queue)
+				# Outgoing stock needs "outgoing_rate" for FIFO consumption
+				"rate": rate if is_incoming else 0,
+				"outgoing_rate": rate if not is_incoming else 0,
 			}
+			if cancel:
+				entry["is_cancelled"] = 1
+
+			# Add dimension values
 			for fn in dim_fields:
-				base[fn] = row.get(fn)
-			entries.append(base)
+				entry[fn] = row.get(fn)
+
+			entries.append(entry)
+
 		return entries

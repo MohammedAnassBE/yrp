@@ -2,7 +2,15 @@ frappe.provide("frappe.yrp.stock");
 
 frappe.ui.form.on("Stock Entry", {
 	refresh(frm) {
-		// Mount Vue editor
+		// Clean up previous Vue app and event listener before re-mounting
+		if (frm.itemEditor) {
+			frm.itemEditor.app.unmount();
+		}
+		if (frm._stock_updated_handler && frappe.yrp.eventBus) {
+			frappe.yrp.eventBus.$off("stock_updated", frm._stock_updated_handler);
+		}
+
+		// Mount fresh Vue editor
 		$(frm.fields_dict["item_html"].wrapper).html("");
 		frm.itemEditor = new frappe.yrp.stock.StockEntryItem(frm.fields_dict["item_html"].wrapper);
 
@@ -15,7 +23,11 @@ frappe.ui.form.on("Stock Entry", {
 		}
 		frm.itemEditor.update_status();
 
-		frappe.yrp.eventBus.$on("stock_updated", () => frm.dirty());
+		// Register event listener (store reference for cleanup)
+		if (frappe.yrp.eventBus) {
+			frm._stock_updated_handler = () => frm.dirty();
+			frappe.yrp.eventBus.$on("stock_updated", frm._stock_updated_handler);
+		}
 
 		// Purpose-based field toggles
 		toggle_related_fields(frm);
