@@ -80,6 +80,43 @@ class Item(Document):
 		self._duplicate_mappings_on_create()
 		self._ensure_attribute_mappings_exist()
 		self._validate_dependent_attribute()
+		self._validate_allow_negative_stock_toggle()
+
+	def _validate_allow_negative_stock_toggle(self):
+		"""Block unchecking allow_negative_stock while any variant has negative actual qty.
+
+		If a user disables negative stock without first replenishing, future
+		issues would unexpectedly throw — and the existing negative balance
+		would never settle through the two-phase logic. Force them to settle
+		first.
+		"""
+		if self.is_new():
+			return
+		if self.allow_negative_stock:
+			return
+		previous = frappe.db.get_value(
+			"Item", self.name, "allow_negative_stock"
+		)
+		if not previous:
+			# Was already off; nothing to do.
+			return
+
+		negative_exists = frappe.db.sql(
+			"""
+			SELECT 1 FROM `tabBin` b
+			INNER JOIN `tabItem Variant` iv ON iv.name = b.item_code
+			WHERE iv.item = %s AND b.actual_qty < 0
+			LIMIT 1
+			""",
+			self.name,
+		)
+		if negative_exists:
+			frappe.throw(
+				_(
+					"Cannot disable Allow Negative Stock — one or more variants "
+					"of {0} currently have negative balance. Replenish first."
+				).format(self.name)
+			)
 
 	def _validate_default_uom(self):
 		"""Ensure default UOM is not a secondary-only UOM."""

@@ -56,6 +56,52 @@ def get_stock_balance_for_items(items, warehouse, **dimension_filters):
 
 
 @frappe.whitelist()
+def get_total_stock(item_code, filters=None):
+	"""Aggregate Bin.actual_qty and stock_value for an item across the
+	provided filters (warehouse and any configured dimension fieldname).
+
+	B.2: live SUM aggregator.
+	"""
+	import json as _json
+
+	if isinstance(filters, str):
+		try:
+			filters = _json.loads(filters)
+		except (ValueError, _json.JSONDecodeError):
+			frappe.throw(_("Invalid filters JSON"))
+	filters = filters or {}
+
+	from yrp.stock.dimensions import assert_safe_fieldname
+
+	allowed = {"warehouse"}
+	allowed.update(d["fieldname"] for d in get_stock_dimensions())
+
+	conds = ["item_code = %s"]
+	values = [item_code]
+	for key, val in filters.items():
+		if key not in allowed or val is None:
+			continue
+		assert_safe_fieldname(key)
+		conds.append(f"`{key}` = %s")
+		values.append(val)
+
+	row = frappe.db.sql(
+		f"""
+		SELECT COALESCE(SUM(actual_qty), 0) AS actual_qty,
+		       COALESCE(SUM(stock_value), 0) AS stock_value
+		FROM `tabBin`
+		WHERE {' AND '.join(conds)}
+		""",
+		tuple(values),
+		as_dict=True,
+	)
+	return {
+		"actual_qty": flt(row[0]["actual_qty"]) if row else 0.0,
+		"stock_value": flt(row[0]["stock_value"]) if row else 0.0,
+	}
+
+
+@frappe.whitelist()
 def get_item_uom_and_rate(item):
 	"""UOM, conversion factors, and last incoming rate for an item variant."""
 	parent = frappe.db.get_value("Item Variant", item, "item")

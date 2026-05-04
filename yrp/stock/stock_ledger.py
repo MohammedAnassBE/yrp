@@ -39,6 +39,52 @@ class NegativeStockError(frappe.ValidationError):
 	pass
 
 
+def _should_queue_repost(args):
+	from yrp.stock.utils import future_sle_count
+
+	threshold = (
+		frappe.db.get_single_value("YRP Stock Settings", "backdated_repost_threshold") or 0
+	)
+	if threshold <= 0:
+		return False
+	return future_sle_count(args) > int(threshold)
+
+
+def _enqueue_backdated_repost(args):
+	"""Create a Repost Item Valuation doc and submit it; the queue worker
+	picks it up. Inline path is skipped — the new SLE is already inserted,
+	so the bucket is in a consistent (if temporarily stale) state."""
+	dim_fields = get_dimension_fieldnames()
+	values = {
+		"doctype": "Repost Item Valuation",
+		"based_on": "Item and Warehouse",
+		"item": args.get("item"),
+		"warehouse": args.get("warehouse"),
+		"posting_date": args.get("posting_date"),
+		"posting_time": args.get("posting_time") or "00:00:00",
+		"voucher_type": args.get("voucher_type"),
+		"voucher_no": args.get("voucher_no"),
+		"allow_negative_stock": 1,
+		"allow_zero_rate": args.get("allow_zero_rate", 0),
+	}
+	for fn in dim_fields:
+		values[fn] = args.get(fn)
+	doc = frappe.get_doc(values)
+	doc.flags.ignore_permissions = True
+	doc.insert()
+	doc.submit()
+
+
+def _item_allows_negative_stock(item_variant):
+	"""Per-Item negative-stock flag (D-009). Resolves Item Variant -> parent Item."""
+	if not item_variant:
+		return False
+	parent = frappe.get_cached_value("Item Variant", item_variant, "item")
+	if not parent:
+		return False
+	return bool(frappe.get_cached_value("Item", parent, "allow_negative_stock"))
+
+
 # ======================================================================
 # make_sl_entries — called by Stock Entry, Stock Update, Stock
 # Reconciliation controllers on submit and cancel
@@ -90,10 +136,28 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 		# Step 2: Get or create Bin for this item + warehouse + dimensions
 		dimension_values = {fn: args.get(fn) for fn in dim_fields}
 		bin_name = get_or_make_bin(args["item"], args["warehouse"], **dimension_values)
-		args["reserved_stock"] = flt(frappe.db.get_value("Bin", bin_name, "reserved_qty"))
 
-		# Step 3: Recompute valuation from this SLE forward
-		repost_current_voucher(args, allow_negative_stock=allow_negative_stock)
+		# Lock the Bin row for the duration of this transaction. This serializes
+		# concurrent SLE inserts to the same bucket so the valuation engine
+		# always sees a consistent view of qty_by_dims and FIFO state (Gap #9).
+		frappe.db.sql("SELECT name FROM `tabBin` WHERE name=%s FOR UPDATE", bin_name)
+
+		# Reservation no longer mutates Bin in the new design (D-008).
+		# Compute reserved-stock fresh from active SREs.
+		from yrp.stock.utils import get_sre_reserved_qty
+		args["reserved_stock"] = get_sre_reserved_qty(
+			item_code=args["item"], warehouse=args["warehouse"], **dimension_values
+		)
+
+		# Step 3: Recompute valuation from this SLE forward.
+		# D.1 (Gap #18): if more than `backdated_repost_threshold` future SLEs
+		# exist in this bucket, queue a background repost instead of running
+		# the engine inline. Inline path is preferred for the common case
+		# (no/few future SLEs) because it commits the new state atomically.
+		if _should_queue_repost(args):
+			_enqueue_backdated_repost(args)
+		else:
+			repost_current_voucher(args, allow_negative_stock=allow_negative_stock)
 
 		# Step 4: Refresh the Bin with updated qty and rate
 		from yrp.yrp_stock.doctype.bin.bin import update_qty as update_bin_qty
@@ -227,8 +291,10 @@ class UpdateEntriesAfter:
 		self.valuation_method = (
 			frappe.db.get_single_value("YRP Stock Settings", "default_valuation_method") or "FIFO"
 		)
-		self.allow_negative_stock = allow_negative_stock or frappe.db.get_single_value(
-			"YRP Stock Settings", "allow_negative_stock"
+		# D-009: negative stock is per-Item now. The legacy
+		# YRP Stock Settings.allow_negative_stock flag is ignored.
+		self.allow_negative_stock = allow_negative_stock or _item_allows_negative_stock(
+			self.args.get("item")
 		)
 		self.allow_zero_rate = self.args.get("allow_zero_rate", False)
 
@@ -413,43 +479,67 @@ class UpdateEntriesAfter:
 		self._update_valuation_and_write(sle, valuator, dim_key)
 
 	def _handle_reconciliation(self, sle, valuator, current_dim_qty):
-		"""Handle Stock Reconciliation — snaps qty to the target value.
+		"""Handle Stock Reconciliation — snaps the per-dimension qty to target.
 
-		Reconciliation works by setting qty_after_transaction directly.
-		The diff between target and current qty is added/removed from the FIFO queue.
+		Diff-based: the difference between target and current qty is added or
+		removed from the shared FIFO queue. This preserves consistency
+		between the queue total and the sum of qty_by_dims when sibling dims
+		(e.g., another received_type within the same valuation bucket) hold
+		non-zero balances.
+
+		I.7 (D-009) — recon while bucket is negative: the diff-based add still
+		correctly absorbs the negative entry (FIFOValuation.add_stock handles
+		negative absorption when the last bin has negative qty). MA's
+		add_stock handles it via the weighted-average formula. So no special
+		"wipe" branch is needed — and a wipe would corrupt sibling-dim qty
+		invariants.
 		"""
 		target_qty = flt(sle.qty_after_transaction)
-		diff = target_qty - current_dim_qty
+		rate = flt(sle.rate)
 
+		diff = target_qty - current_dim_qty
 		if diff > 0:
-			# Need more stock — add the difference at the reconciled rate
-			valuator.add_stock(diff, flt(sle.rate))
+			valuator.add_stock(diff, rate)
 		elif diff < 0:
-			# Have excess stock — remove the difference
 			valuator.remove_stock(abs(diff), flt(sle.outgoing_rate))
 		else:
-			# Qty is correct but rate may need correction
-			# Reset the queue to the reconciled rate
-			if flt(sle.rate) and target_qty > 0:
+			# Qty is correct but rate may need correction. Only safe to
+			# rebuild the queue when no sibling dims have a stake — i.e.,
+			# when this dim's qty equals the entire queue total.
+			if (
+				rate
+				and target_qty > 0
+				and isinstance(valuator, FIFOValuation)
+				and abs(valuator.get_total_stock_and_value()[0] - target_qty) < 0.001
+			):
 				valuator.queue.clear()
-				valuator.queue.append([target_qty, flt(sle.rate)])
+				valuator.queue.append([target_qty, rate])
 
 		return target_qty
 
 	def _handle_incoming(self, sle, valuator, current_dim_qty):
-		"""Handle incoming stock (qty > 0) — add to FIFO queue."""
+		"""Handle incoming stock (qty > 0) — add to FIFO queue.
+
+		I.8: zero-rate is surfaced as a form warning, not a hard block.
+		"""
 		if not self.allow_zero_rate and not flt(sle.rate):
-			frappe.throw(
-				_("Valuation rate is zero for incoming stock of {0} at {1}").format(
+			frappe.msgprint(
+				_("Warning: incoming stock of {0} at {1} has zero valuation rate.").format(
 					sle.item, sle.warehouse
-				)
+				),
+				indicator="orange",
+				alert=True,
 			)
 
 		valuator.add_stock(flt(sle.qty), flt(sle.rate))
 		return current_dim_qty + flt(sle.qty)
 
 	def _handle_outgoing(self, sle, valuator, current_dim_qty):
-		"""Handle outgoing stock (qty < 0) — remove from FIFO queue."""
+		"""Handle outgoing stock (qty < 0) — remove from FIFO queue.
+
+		I.6: negative stock is allowed only when the per-Item flag is set.
+		Reservation check is enforced separately at the voucher layer (H.2).
+		"""
 		new_qty = current_dim_qty + flt(sle.qty)  # sle.qty is negative
 
 		if not self.allow_negative_stock and new_qty < 0:

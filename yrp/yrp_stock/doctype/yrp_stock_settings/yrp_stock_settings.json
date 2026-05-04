@@ -8,6 +8,8 @@
   "stock_dimensions",
   "stock_settings_section",
   "transit_warehouse",
+  "transit_aging_threshold_days",
+  "default_received_type",
   "column_break_stock_1",
   "default_valuation_method",
   "allow_negative_stock",
@@ -19,6 +21,7 @@
   "column_break_repost_1",
   "item_based_reposting",
   "do_reposting_for_each_stock_transaction",
+  "backdated_repost_threshold",
   "notify_reposting_error_to_role"
  ],
  "fields": [
@@ -45,6 +48,20 @@
    "options": "Warehouse"
   },
   {
+   "default": "7",
+   "fieldname": "transit_aging_threshold_days",
+   "fieldtype": "Int",
+   "label": "Transit Aging Threshold (Days)",
+   "description": "Stock Entries older than this many days that are still in transit are flagged in the Pending Transit report."
+  },
+  {
+   "fieldname": "default_received_type",
+   "fieldtype": "Link",
+   "label": "Default Received Type",
+   "options": "Received Type",
+   "description": "Used as the default value when a Received Type is not explicitly set on a stock transaction line."
+  },
+  {
    "fieldname": "column_break_stock_1",
    "fieldtype": "Column Break"
   },
@@ -59,7 +76,8 @@
    "default": "0",
    "fieldname": "allow_negative_stock",
    "fieldtype": "Check",
-   "label": "Allow Negative Stock"
+   "label": "Allow Negative Stock (Legacy)",
+   "description": "Legacy global toggle. Negative stock is now controlled per-Item via Item.allow_negative_stock. This field is kept for backwards compatibility and is ignored by the engine."
   },
   {
    "fieldname": "reposting_section",
@@ -106,6 +124,13 @@
    "fieldname": "do_reposting_for_each_stock_transaction",
    "fieldtype": "Check",
    "label": "Do Reposting For Each Stock Transaction"
+  },
+  {
+   "default": "50",
+   "fieldname": "backdated_repost_threshold",
+   "fieldtype": "Int",
+   "label": "Backdated Repost Threshold",
+   "description": "If a backdated transaction is followed by more than this many SLEs in the same bucket, the repost is queued as a background job instead of running inline."
   },
   {
    "fieldname": "notify_reposting_error_to_role",

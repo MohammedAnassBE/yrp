@@ -3,6 +3,7 @@ import AttributeList from "./components/AttributeList.vue";
 import DependentAttributeTemplate from "./components/DependentAttribute.vue";
 import { EditBOMAttributeMappingWrapper, BOMAttributeMappingWrapper } from "./ItemBOM";
 import { ProductionOrderTableWrapper } from "./ProductionOrder";
+import { EditProcessMatrixWrapper } from "./ProcessMatrix";
 
 import { createApp } from 'vue';
 
@@ -50,4 +51,5 @@ frappe.production.ui.ItemDependentAttributeDetail = class {
 
 frappe.production.ui.BomItemAttributeMapping = BOMAttributeMappingWrapper;
 frappe.production.ui.EditBOMAttributeMapping = EditBOMAttributeMappingWrapper;
+frappe.production.ui.EditProcessMatrix = EditProcessMatrixWrapper;
 frappe.production.ui.ProductionOrderTable = ProductionOrderTableWrapper;

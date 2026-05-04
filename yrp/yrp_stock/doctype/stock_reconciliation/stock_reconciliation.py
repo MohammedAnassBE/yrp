@@ -19,6 +19,7 @@ class StockReconciliation(Document):
 
 	def before_validate(self):
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
+		from yrp.stock.dimensions import apply_dimension_defaults
 
 		if self.get("item_details") and self._action != "submit":
 			rows = ungroup_items_from_ui(self.item_details, "Stock Reconciliation")
@@ -27,6 +28,7 @@ class StockReconciliation(Document):
 				# Reconciliation rows need a warehouse — auto-fill from header
 				r.setdefault("warehouse", self.default_warehouse)
 				self.append("items", r)
+		apply_dimension_defaults(self.get("items") or [])
 
 	def validate(self):
 		if not self.items:
@@ -51,16 +53,22 @@ class StockReconciliation(Document):
 
 	def set_rate_from_last_sle(self):
 		"""Auto-fill rate from last uncancelled SLE if the user didn't enter one.
-		If no SLE exists (new item) and allow_zero_valuation_rate is not checked, throw."""
+		Scoped to (warehouse, valuation_dims) bucket (Gap #17). If no SLE
+		exists in the bucket, fall back to last SLE of the item across
+		any warehouse. If still nothing and allow_zero_valuation_rate is
+		not checked, throw."""
+		from yrp.stock.utils import get_last_sle_rate
+		from yrp.stock.dimensions import get_dimension_fieldnames
+
+		dim_fields = get_dimension_fieldnames()
 		for row in self.items:
 			if flt(row.rate) > 0:
 				continue
-			last_rate = frappe.db.get_value(
-				"Stock Ledger Entry",
-				{"item": row.item, "is_cancelled": 0},
-				"valuation_rate",
-				order_by="posting_datetime desc, creation desc",
-			) or 0.0
+			warehouse = row.warehouse or self.default_warehouse
+			dim_filters = {fn: row.get(fn) for fn in dim_fields}
+			last_rate, _matched = get_last_sle_rate(
+				row.item, warehouse=warehouse, **dim_filters
+			)
 			if flt(last_rate) > 0:
 				row.rate = flt(last_rate)
 			elif not row.allow_zero_valuation_rate:

@@ -24,22 +24,6 @@ class Bin(Document):
 			if parent:
 				self.stock_uom = frappe.db.get_value("Item", parent, "default_unit_of_measure")
 
-	def update_reserved_stock(self):
-		"""Recalculate reserved_qty from Stock Reservation Entries."""
-		from yrp.stock.utils import get_sre_reserved_qty
-
-		filters = {"item_code": self.item_code, "warehouse": self.warehouse}
-		for dim in get_stock_dimensions():
-			filters[dim["fieldname"]] = self.get(dim["fieldname"])
-
-		self.reserved_qty = get_sre_reserved_qty(filters)
-		if self.reserved_qty > self.actual_qty:
-			frappe.throw(
-				_("Reserved qty {0} exceeds actual qty {1}").format(self.reserved_qty, self.actual_qty)
-			)
-		self.db_set("reserved_qty", self.reserved_qty, update_modified=False)
-
-
 def update_qty(bin_name, args):
 	"""Refresh Bin values from the Stock Ledger.
 

@@ -63,9 +63,30 @@ MAX_PER_RUN = 100  # Prevent runaway iteration if thousands are queued
 def repost_entries():
 	"""Hourly scheduler — picks up Queued and retryable Failed repost docs.
 
+	Bug C (r-010 Critical #6): before picking up new work, reset any
+	'In Progress' row whose worker hasn't touched it for >2 hours. Workers
+	have a 1-hour timeout, so 2 hours is a safe staleness threshold. We
+	reset to 'Queued' (not 'Failed') so the retry counter is preserved —
+	infrastructure crashes shouldn't burn retry budget.
+
 	Processes oldest first (by posting_date). Limited to MAX_PER_RUN per hour
 	to prevent the scheduler from running indefinitely.
 	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	stale_threshold = add_to_date(now_datetime(), hours=-2)
+	frappe.db.sql(
+		"""
+		UPDATE `tabRepost Item Valuation`
+		SET status = 'Queued'
+		WHERE status = 'In Progress'
+		  AND modified < %s
+		  AND docstatus = 1
+		""",
+		stale_threshold,
+	)
+	frappe.db.commit()
+
 	riv = frappe.qb.DocType("Repost Item Valuation")
 	names = (
 		frappe.qb.from_(riv)

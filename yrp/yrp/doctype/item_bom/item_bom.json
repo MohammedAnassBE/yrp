@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "creation": "2026-05-02 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item",
+  "qty_of_product",
+  "qty_of_bom_item",
+  "uom",
+  "process_name",
+  "dependent_attribute_value",
+  "based_on_attribute_mapping",
+  "attribute_mapping",
+  "wastage_pct"
+ ],
+ "fields": [
+  {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "Item", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "qty_of_product", "fieldtype": "Float", "label": "Qty of Product", "default": 1, "reqd": 1},
+  {"fieldname": "qty_of_bom_item", "fieldtype": "Float", "label": "Qty of BOM Item", "default": 1, "reqd": 1},
+  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM", "reqd": 1},
+  {"fieldname": "process_name", "fieldtype": "Link", "label": "Process", "options": "Process", "in_list_view": 1},
+  {"fieldname": "dependent_attribute_value", "fieldtype": "Link", "label": "Dependent Attribute Value", "options": "Item Attribute Value"},
+  {"fieldname": "based_on_attribute_mapping", "fieldtype": "Check", "label": "Based on Attribute Mapping"},
+  {"fieldname": "attribute_mapping", "fieldtype": "Link", "label": "Attribute Mapping", "options": "Item BOM Attribute Mapping", "depends_on": "based_on_attribute_mapping"},
+  {"fieldname": "wastage_pct", "fieldtype": "Float", "label": "Wastage %"}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-02 00:00:00",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Item BOM",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

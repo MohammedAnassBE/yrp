@@ -1,0 +1,43 @@
+{
+ "actions": [],
+ "creation": "2026-04-27 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "warehouse",
+  "dimensions_json",
+  "category",
+  "sle_qty",
+  "bin_qty",
+  "diff",
+  "fixed",
+  "fixed_by",
+  "fixed_at"
+ ],
+ "fields": [
+  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item Variant"},
+  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse"},
+  {"fieldname": "dimensions_json", "fieldtype": "Small Text", "label": "Dimensions"},
+  {"fieldname": "category", "fieldtype": "Select", "in_list_view": 1, "label": "Category", "options": "qty_mismatch\nmissing_bin\nrequires_backfill"},
+  {"fieldname": "sle_qty", "fieldtype": "Float", "label": "SLE Qty"},
+  {"fieldname": "bin_qty", "fieldtype": "Float", "label": "Bin Qty"},
+  {"fieldname": "diff", "fieldtype": "Float", "label": "Diff"},
+  {"default": "0", "fieldname": "fixed", "fieldtype": "Check", "label": "Fixed"},
+  {"fieldname": "fixed_by", "fieldtype": "Link", "label": "Fixed By", "options": "User", "read_only": 1},
+  {"fieldname": "fixed_at", "fieldtype": "Datetime", "label": "Fixed At", "read_only": 1}
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-27 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP Stock",
+ "name": "Stock Integrity Check Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

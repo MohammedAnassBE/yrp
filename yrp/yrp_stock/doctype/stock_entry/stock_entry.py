@@ -18,6 +18,7 @@ class StockEntry(Document):
 
 	def before_validate(self):
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
+		from yrp.stock.dimensions import apply_dimension_defaults
 
 		if self.get("item_details") and self._action != "submit":
 			rows = ungroup_items_from_ui(self.item_details, "Stock Entry")
@@ -26,16 +27,19 @@ class StockEntry(Document):
 				self.append("items", r)
 			self.set_rate_from_last_sle()
 			self.set_receive_links()
+		apply_dimension_defaults(self.get("items") or [])
 
 	def set_rate_from_last_sle(self):
+		from yrp.stock.utils import get_last_sle_rate
+		from yrp.stock.dimensions import get_dimension_fieldnames
+
+		dim_fields = get_dimension_fieldnames()
+		# Source warehouse for outgoing purposes; target for incoming receipts.
+		warehouse = self.from_warehouse or self.to_warehouse
 		for row in self.items:
-			last_rate = frappe.db.get_value(
-				"Stock Ledger Entry",
-				{"item": row.item, "is_cancelled": 0},
-				"valuation_rate",
-				order_by="posting_datetime desc, creation desc",
-			) or 0.0
-			row.rate = flt(last_rate)
+			dim_filters = {fn: row.get(fn) for fn in dim_fields}
+			rate, _matched = get_last_sle_rate(row.item, warehouse=warehouse, **dim_filters)
+			row.rate = flt(rate)
 
 	def set_receive_links(self):
 		"""For Receive at Warehouse, re-establish against_stock_entry and ste_detail
@@ -65,6 +69,35 @@ class StockEntry(Document):
 		self.validate_warehouses()
 		self.validate_items()
 		self.calculate_totals()
+		self.validate_production_consumption_received_type()
+
+	def validate_production_consumption_received_type(self):
+		"""G.5 (partial, Gap #7): when a Stock Entry consumes for production
+		(purpose='Material Consumed'), source lines must use the default
+		Received Type. Quality-rejected stock cannot enter production.
+
+		This rail is no-op until Received Type is registered as a dimension.
+		"""
+		if self.purpose != "Material Consumed":
+			return
+		default_rt = frappe.db.get_single_value(
+			"YRP Stock Settings", "default_received_type"
+		)
+		if not default_rt:
+			return
+		from yrp.stock.dimensions import get_dimension_fieldnames
+
+		if "received_type" not in get_dimension_fieldnames():
+			return
+		for row in self.items:
+			rt = row.get("received_type")
+			if rt and rt != default_rt:
+				frappe.throw(
+					_(
+						"Row {0}: production consumption requires Received Type = {1}; "
+						"got {2}. Reclassify the stock first via Inspection Entry."
+					).format(row.idx, default_rt, rt)
+				)
 
 	def on_submit(self):
 		from yrp.stock.stock_ledger import make_sl_entries

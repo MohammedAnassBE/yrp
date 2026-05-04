@@ -3,6 +3,16 @@
 Pure functions, no DB access, no dimensions. Ported from
 production_api/mrp_stock/valuation.py with a Moving Average implementation
 added.
+
+GL attribution scope (Gap #10):
+-------------------------------
+Valuation in this engine is scoped to (item, warehouse, *in_valuation
+dimensions). When the engine derives stock_value_difference from FIFO/MA
+state changes, it attributes that delta to the *valuation bucket*, not to
+any finer non-valuation dimension. Reports/GL postings that need to split
+value across non-valuation dimensions (e.g., Received Type) must allocate
+proportionally on the report side; the engine itself does not maintain a
+sub-bucket value breakdown.
 """
 
 from abc import ABC, abstractmethod
@@ -164,7 +174,38 @@ class MovingAverageValuation(BinWiseValuation):
 		return self.queue
 
 	def add_stock(self, qty: float, rate: float) -> None:
+		"""Bug E (r-010 High #10): when current qty is negative, settle in two
+		phases instead of doing a weighted average. Otherwise the negative
+		debt would contaminate the new positive stock's MA rate.
+
+		Phase A: clear the negative at its frozen rate (state goes to [0, 0],
+		         the cost gap is intentionally lost — D-009 design).
+		Phase B: add the remaining qty at the actual receipt rate; MA rate
+		         becomes the receipt rate.
+
+		For non-negative current state, fall back to standard weighted avg.
+		"""
 		curr_qty, curr_rate = self.queue[0]
+		if curr_qty < 0:
+			absorb_qty = min(qty, -curr_qty)
+			remaining_qty = qty - absorb_qty
+			# Phase A: clear negative
+			intermediate_qty = curr_qty + absorb_qty  # may still be negative
+			if intermediate_qty == 0:
+				# Phase B: fresh receipt at receipt rate
+				self.queue[0] = [
+					round_off_if_near_zero(remaining_qty),
+					round_off_if_near_zero(rate),
+				]
+			else:
+				# Receipt didn't fully clear the negative — stays negative at
+				# frozen rate; no Phase B.
+				self.queue[0] = [
+					round_off_if_near_zero(intermediate_qty),
+					round_off_if_near_zero(curr_rate),
+				]
+			return
+
 		new_qty = curr_qty + qty
 		if new_qty > 0:
 			new_rate = ((curr_qty * curr_rate) + (qty * rate)) / new_qty

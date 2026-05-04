@@ -1,0 +1,24 @@
+{
+ "actions": [],
+ "creation": "2026-05-02 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["process_name", "in_stage", "out_stage"],
+ "fields": [
+  {"fieldname": "process_name", "fieldtype": "Link", "label": "Process", "options": "Process", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "in_stage", "fieldtype": "Link", "label": "In Stage", "options": "Item Attribute Value", "in_list_view": 1},
+  {"fieldname": "out_stage", "fieldtype": "Link", "label": "Out Stage", "options": "Item Attribute Value", "in_list_view": 1}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-04 00:00:00",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "IPD Process",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
