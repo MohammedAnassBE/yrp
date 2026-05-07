@@ -1,6 +1,8 @@
 import frappe
 from frappe.model.document import Document
 
+from yrp.yrp.utils import ipd_engine
+
 
 class ItemProductionDetail(Document):
 	def validate(self):
@@ -17,8 +19,8 @@ class ItemProductionDetail(Document):
 
 	def validate_attribute_references(self):
 		listed = {row.attribute for row in self.item_attributes}
-		if self.primary_attribute and self.primary_attribute not in listed:
-			frappe.throw(f"Primary attribute {self.primary_attribute} must appear in Item Attributes table.")
+		if self.primary_item_attribute and self.primary_item_attribute not in listed:
+			frappe.throw(f"Primary attribute {self.primary_item_attribute} must appear in Item Attributes table.")
 		if self.dependent_attribute and self.dependent_attribute not in listed:
 			frappe.throw(f"Dependent attribute {self.dependent_attribute} must appear in Item Attributes table.")
 		if self.dependent_attribute and not self.dependent_attribute_mapping:
@@ -34,6 +36,71 @@ class ItemProductionDetail(Document):
 					f"!= {b.process_name} in_stage ({b.in_stage})"
 				)
 
-	def on_submit(self):
-		if self.approval_status == "Approved" and not self.approved_by:
-			self.db_set("approved_by", frappe.session.user)
+
+@frappe.whitelist()
+def calculate_process_io(ipd_name, process_name, output_demand):
+	output_demand = frappe.parse_json(output_demand)
+	return ipd_engine.get_process_io(ipd_name, process_name, output_demand)
+
+
+@frappe.whitelist()
+def calculate_consumables(ipd_name, total_output_qty, variants=None, process_name=None):
+	total_output_qty = float(total_output_qty)
+	variants = frappe.parse_json(variants) if variants else None
+	return ipd_engine.get_consumables(
+		ipd_name,
+		total_output_qty,
+		variants=variants,
+		process_name=process_name,
+	)
+
+
+def calculate_major_deliverables(ipd_name, variant_demands, process_names=None, include_outputs=False):
+	return ipd_engine.calculate_major_deliverables(
+		ipd_name,
+		variant_demands,
+		process_names=process_names,
+		include_outputs=frappe.utils.cint(include_outputs),
+	)
+
+
+def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
+	return ipd_engine.calculate_accessory_bom(
+		ipd_name,
+		variant_demands,
+		process_name=process_name,
+	)
+
+
+def calculate_lot_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
+	return ipd_engine.calculate_lot_bom(
+		ipd_name,
+		variant_demands,
+		process_names=process_names,
+		include_outputs=frappe.utils.cint(include_outputs),
+	)
+
+
+@frappe.whitelist()
+def calculate_matrix_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
+	return calculate_major_deliverables(
+		ipd_name,
+		variant_demands,
+		process_names=process_names,
+		include_outputs=include_outputs,
+	)
+
+
+@frappe.whitelist()
+def calculate_accessories(ipd_name, variant_demands, process_name=None):
+	return calculate_accessory_bom(ipd_name, variant_demands, process_name=process_name)
+
+
+@frappe.whitelist()
+def calculate_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
+	return calculate_lot_bom(
+		ipd_name,
+		variant_demands,
+		process_names=process_names,
+		include_outputs=include_outputs,
+	)

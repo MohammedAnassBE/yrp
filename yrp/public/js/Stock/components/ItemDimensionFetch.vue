@@ -97,9 +97,9 @@
                             <label class="small text-muted">{{ item.default_uom || '' }}</label>
                             <input class="form-control" :id="'qty_control_'+index" :ref="'qty_control_'+index" type="number" min="0" v-model.number="item.values[attr]['qty']">
                         </div>
-                        <div v-if="has_qty_field('rate')">
-                            <label class="small text-muted">Rate</label>
-                            <input class="form-control" type="number" min="0.000" step="0.001" v-model.number="item.values[attr]['rate']">
+                        <div v-for="field in editable_qty_fields" :key="field.name">
+                            <label class="small text-muted">{{ field.label }}</label>
+                            <input class="form-control" type="number" min="0.000" step="0.001" v-model.number="item.values[attr][field.name]">
                         </div>
                     </div>
                 </div>
@@ -108,9 +108,9 @@
                         <label class="small">{{ item.default_uom || 'Qty' }}</label>
                         <input class="form-control" id="qty_control" ref="qty_control" type="number" min="0.000" step="0.001" v-model.number="item.values['default']['qty']" required>
                     </div>
-                    <div v-if="has_qty_field('rate')" class="col">
-                        <label class="small text-muted">Rate</label>
-                        <input class="form-control" type="number" min="0.000" step="0.001" v-model.number="item.values['default']['rate']">
+                    <div v-for="field in editable_qty_fields" :key="field.name" class="col">
+                        <label class="small text-muted">{{ field.label }}</label>
+                        <input class="form-control" type="number" min="0.000" step="0.001" v-model.number="item.values['default'][field.name]">
                     </div>
                 </div>
             </div>
@@ -134,7 +134,7 @@ const root = ref(null);
 
 const props = defineProps([
     'items', 'edit', 'otherInputs', 'tableFields', 'qtyFields',
-    'args', 'validateQty', 'validate'
+    'args', 'validateQty', 'validate', 'showDimensions', 'lockDimensionsOnEdit'
 ]);
 const emit = defineEmits(['itemupdated', 'itemadded', 'itemremoved']);
 
@@ -181,6 +181,11 @@ onMounted(async () => {
 });
 
 async function load_dimensions() {
+    if (props.showDimensions === false) {
+        dimensions.value = [];
+        dimensions_loaded.value = true;
+        return;
+    }
     return new Promise((resolve) => {
         frappe.call({
             method: 'yrp.stock.api.get_stock_dimensions_for_ui',
@@ -259,6 +264,17 @@ const other_fields_class = computed(() => {
 function has_qty_field(field) {
     return props.qtyFields && props.qtyFields.includes(field);
 }
+
+const editable_qty_fields = computed(() => {
+    const fields = [];
+    if (!props.qtyFields || !props.tableFields) return fields;
+    for (const tf of props.tableFields) {
+        if (tf.uses_primary_attribute && props.qtyFields.includes(tf.name)) {
+            fields.push(tf);
+        }
+    }
+    return fields;
+});
 
 // ---------- dimension + item input creation ----------
 function create_dimension_item_inputs() {
@@ -390,10 +406,12 @@ function set_item_details(item_details, item1) {
         }
         if (item_details.primary_attribute && item_details.primary_attribute_values && item_details.primary_attribute_values.length) {
             for (let i = 0; i < item_details.primary_attribute_values.length; i++) {
-                item.value.values[item_details.primary_attribute_values[i]] = { qty: 0, rate: 0 };
-            }
-        } else {
-            item.value.values['default'] = { qty: 0, rate: 0 };
+            item.value.values[item_details.primary_attribute_values[i]] = { qty: 0 };
+            for (const field of editable_qty_fields.value) item.value.values[item_details.primary_attribute_values[i]][field.name] = 0;
+        }
+    } else {
+            item.value.values['default'] = { qty: 0 };
+            for (const field of editable_qty_fields.value) item.value.values['default'][field.name] = 0;
         }
         if (item_details.dependent_attribute) {
             item.value.attributes[item_details.dependent_attribute] = "";
@@ -462,14 +480,18 @@ function _apply_stage(value, preserveValues = false) {
         item.value.primary_attribute = stage_primary;
         if (!preserveValues) {
             item.value.values = {};
-            for (const pv of stage_primary_values) item.value.values[pv] = { qty: 0, rate: 0 };
+            for (const pv of stage_primary_values) {
+                item.value.values[pv] = { qty: 0 };
+                for (const field of editable_qty_fields.value) item.value.values[pv][field.name] = 0;
+            }
         }
     } else {
         cur_item.value.primary_attribute = "";
         cur_item.value.primary_attribute_values = [];
         item.value.primary_attribute = "";
         if (!preserveValues) {
-            item.value.values = { default: { qty: 0, rate: 0 } };
+            item.value.values = { default: { qty: 0 } };
+            for (const field of editable_qty_fields.value) item.value.values.default[field.name] = 0;
         }
     }
 
@@ -675,10 +697,12 @@ function clear_item_values() {
     const has_primary = cur_item.value.primary_attribute && cur_item.value.primary_attribute_values && cur_item.value.primary_attribute_values.length;
     if (has_primary) {
         for (let i = 0; i < cur_item.value.primary_attribute_values.length; i++) {
-            item.value.values[cur_item.value.primary_attribute_values[i]] = { qty: 0, rate: 0 };
+            item.value.values[cur_item.value.primary_attribute_values[i]] = { qty: 0 };
+            for (const field of editable_qty_fields.value) item.value.values[cur_item.value.primary_attribute_values[i]][field.name] = 0;
         }
     } else {
-        item.value.values['default'] = { qty: 0, rate: 0 };
+        item.value.values['default'] = { qty: 0 };
+        for (const field of editable_qty_fields.value) item.value.values['default'][field.name] = 0;
     }
 }
 function clear_inputs(force) {
@@ -803,9 +827,11 @@ function edit_item(index, index1) {
 
     set_item_details(cur_item.value, row);
 
-    for (const dim of dimensions.value) {
-        dimension_inputs[dim.fieldname].df.read_only = 1;
-        dimension_inputs[dim.fieldname].refresh();
+    if (props.lockDimensionsOnEdit !== false) {
+        for (const dim of dimensions.value) {
+            dimension_inputs[dim.fieldname].df.read_only = 1;
+            dimension_inputs[dim.fieldname].refresh();
+        }
     }
     item_input.df.read_only = 1;
     item_input.refresh();

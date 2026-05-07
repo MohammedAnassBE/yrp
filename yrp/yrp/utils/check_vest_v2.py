@@ -7,7 +7,7 @@ def run():
 	print(f"IPD: {ipd.name}")
 	print(f"  item: {ipd.item}  ({frappe.db.get_value('Item', ipd.item, 'name1')})")
 	print(f"  version: {ipd.version}  status: {ipd.approval_status}")
-	print(f"  primary attr: {ipd.primary_attribute}  dependent: {ipd.dependent_attribute}")
+	print(f"  primary attr: {ipd.primary_item_attribute}  dependent: {ipd.dependent_attribute}")
 	print(f"  attributes: {[r.attribute for r in ipd.item_attributes]}")
 	print(f"  processes ({len(ipd.ipd_processes)}):")
 	for p in ipd.ipd_processes:

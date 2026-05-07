@@ -161,7 +161,7 @@ def _create_ipd(item_name, src):
 	ipd.item = item_name
 	ipd.version = IPD_VERSION
 	ipd.approval_status = "Approved"
-	ipd.primary_attribute = "Size"
+	ipd.primary_item_attribute = "Size"
 	# dependent_attribute left None to avoid Item Dependent Attribute Mapping setup
 	for a in ["Stage", "Panel", "Colour", "Size"]:
 		ipd.append("item_attributes", {"attribute": a})

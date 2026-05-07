@@ -20,13 +20,111 @@ from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 
 # ---------------------------------------------------------------------------
 # Per-doctype field map
-#   (child_table_field_on_parent, item_link_fieldname_on_child, qty_fieldname)
+#   child_table_field: child table field on parent
+#   child_doctype: child table DocType
+#   item_field: item variant fieldname on child row
+#   qty_field: quantity fieldname on child row
+#   value_fields: fields stored per primary-attribute value in the Vue editor
+#   entry_fields: fields stored once per logical item row in the Vue editor
 # ---------------------------------------------------------------------------
 PARENT_CHILD_MAP = {
-	"Stock Entry": ("items", "item", "qty"),
-	"Stock Update": ("stock_update_details", "item_variant", "update_diff_qty"),
-	"Stock Reconciliation": ("items", "item", "qty"),
+	"Stock Entry": {
+		"child_table_field": "items",
+		"child_doctype": "Stock Entry Detail",
+		"item_field": "item",
+		"qty_field": "qty",
+		"value_fields": ["rate"],
+		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
+	},
+	"Stock Update": {
+		"child_table_field": "stock_update_details",
+		"child_doctype": "Stock Update Detail",
+		"item_field": "item_variant",
+		"qty_field": "update_diff_qty",
+		"value_fields": ["rate"],
+		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
+	},
+	"Stock Reconciliation": {
+		"child_table_field": "items",
+		"child_doctype": "Stock Reconciliation Item",
+		"item_field": "item",
+		"qty_field": "qty",
+		"value_fields": ["rate"],
+		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
+	},
+	"Work Order Deliverables": {
+		"child_table_field": "deliverables",
+		"child_doctype": "Work Order Deliverables",
+		"item_field": "item_variant",
+		"qty_field": "qty",
+		"value_fields": ["rate", "pending_quantity", "stock_update", "valuation_rate"],
+		"entry_fields": [
+			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
+			"additional_parameters", "set_combination", "grn_detail_no", "item_type",
+			"is_calculated",
+		],
+	},
+	"Work Order Receivables": {
+		"child_table_field": "receivables",
+		"child_doctype": "Work Order Receivables",
+		"item_field": "item_variant",
+		"qty_field": "qty",
+		"value_fields": ["cost", "pending_quantity", "total_cost"],
+		"entry_fields": [
+			"comments", "secondary_qty", "secondary_uom", "process_cost",
+			"additional_parameters", "set_combination",
+		],
+	},
+	"Delivery Challan": {
+		"child_table_field": "items",
+		"child_doctype": "Delivery Challan Item",
+		"item_field": "item_variant",
+		"qty_field": "qty",
+		"value_fields": [
+			"rate", "valuation_rate", "pending_quantity", "delivered_quantity",
+			"received_quantity", "stock_qty", "amount",
+		],
+		"entry_fields": [
+			"stock_uom", "conversion_factor", "ref_doctype", "ref_docname",
+			"table_index", "row_index", "set_combination", "comments",
+		],
+	},
+	"Goods Received Note": {
+		"child_table_field": "items",
+		"child_doctype": "Goods Received Note Item",
+		"item_field": "item_variant",
+		"qty_field": "quantity",
+		"value_fields": ["rate", "pending_quantity", "stock_qty", "amount"],
+		"entry_fields": [
+			"stock_uom", "conversion_factor", "ref_doctype", "ref_docname",
+			"delivery_challan_item", "table_index", "row_index", "set_combination",
+			"comments",
+		],
+	},
 }
+
+
+def _get_map_config(parent_doctype):
+	if parent_doctype not in PARENT_CHILD_MAP:
+		frappe.throw(f"Unsupported item editor parent doctype {parent_doctype}")
+	return PARENT_CHILD_MAP[parent_doctype]
+
+
+def _child_has_field(child_doctype, fieldname):
+	if not child_doctype or not fieldname:
+		return False
+	meta = frappe.get_meta(child_doctype)
+	return bool(meta.get_field(fieldname))
+
+
+def _copy_supported_fields(source, fieldnames, child_doctype=None):
+	out = {}
+	for fn in fieldnames:
+		if child_doctype and not _child_has_field(child_doctype, fn):
+			continue
+		if source.get(fn) is not None:
+			out[fn] = source.get(fn)
+	return out
 
 
 # ====================================================================
@@ -71,9 +169,12 @@ def group_items_for_ui(child_rows, parent_doctype):
 	if not child_rows:
 		return []
 
-	if parent_doctype not in PARENT_CHILD_MAP:
-		frappe.throw(f"group_items_for_ui: unsupported parent doctype {parent_doctype}")
-	_, item_field, qty_field = PARENT_CHILD_MAP[parent_doctype]
+	config = _get_map_config(parent_doctype)
+	item_field = config["item_field"]
+	qty_field = config["qty_field"]
+	child_doctype = config.get("child_doctype")
+	value_fields = config.get("value_fields") or []
+	entry_fields = config.get("entry_fields") or []
 
 	# Normalise to dicts
 	rows = []
@@ -127,7 +228,11 @@ def group_items_for_ui(child_rows, parent_doctype):
 		first_variant_attrs = _variant_attrs(first_variant_doc, all_attrs_with_primary)
 
 		# Collect dimension values from the first row
-		dimensions = {fn: first.get(fn) for fn in dim_fields}
+		dimensions = {
+			fn: first.get(fn)
+			for fn in dim_fields
+			if _child_has_field(child_doctype, fn)
+		}
 
 		# Build the item entry
 		item_entry = {
@@ -138,32 +243,27 @@ def group_items_for_ui(child_rows, parent_doctype):
 			"values": {},
 			"default_uom": first.get("uom") or attr_details.get("default_uom") or "",
 		}
-		# Carry per-item flags (otherInputs) from child rows
-		for key in ("allow_zero_valuation_rate", "make_qty_zero"):
-			if first.get(key):
-				item_entry[key] = first.get(key)
+		item_entry.update(_copy_supported_fields(first, entry_fields, child_doctype))
 
 		# Populate values
 		if attr_details.get("primary_attribute") and attr_details.get("primary_attribute_values"):
 			primary = attr_details["primary_attribute"]
 			# Init all primary values with 0
 			for pv in attr_details["primary_attribute_values"]:
-				item_entry["values"][pv] = {"qty": 0, "rate": 0}
+				item_entry["values"][pv] = {"qty": 0, **{fn: 0 for fn in value_fields}}
 			# Fill actual values from variants (multiple rows share same row_index)
 			for variant_row in variants:
 				variant_doc = frappe.get_doc("Item Variant", variant_row[item_field])
 				v_attrs = _variant_attrs(variant_doc, [primary])
 				pv = v_attrs.get(primary, "")
 				if pv and pv in item_entry["values"]:
-					item_entry["values"][pv] = {
-						"qty": variant_row.get(qty_field) or 0,
-						"rate": variant_row.get("rate") or 0,
-					}
+					value_detail = {"qty": variant_row.get(qty_field) or 0}
+					value_detail.update(_copy_supported_fields(variant_row, value_fields, child_doctype))
+					item_entry["values"][pv] = value_detail
 		else:
-			item_entry["values"]["default"] = {
-				"qty": first.get(qty_field) or 0,
-				"rate": first.get("rate") or 0,
-			}
+			value_detail = {"qty": first.get(qty_field) or 0}
+			value_detail.update(_copy_supported_fields(first, value_fields, child_doctype))
+			item_entry["values"]["default"] = value_detail
 
 		# Find or create a matching attribute-group
 		grp_index = _get_item_group_index(item_details, attr_details)
@@ -215,9 +315,12 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 	if not item_details:
 		return []
 
-	if parent_doctype not in PARENT_CHILD_MAP:
-		frappe.throw(f"ungroup_items_from_ui: unsupported parent doctype {parent_doctype}")
-	_, item_field, qty_field = PARENT_CHILD_MAP[parent_doctype]
+	config = _get_map_config(parent_doctype)
+	item_field = config["item_field"]
+	qty_field = config["qty_field"]
+	child_doctype = config.get("child_doctype")
+	value_fields = config.get("value_fields") or []
+	entry_fields = config.get("entry_fields") or []
 
 	dim_fields = get_dimension_fieldnames()
 
@@ -230,11 +333,7 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 			dimensions = entry.get("dimensions") or {}
 			default_uom = entry.get("default_uom")
 
-			# Per-item flags from otherInputs (e.g. allow_zero_valuation_rate, make_qty_zero)
-			extra_fields = {}
-			for key in ("allow_zero_valuation_rate", "make_qty_zero"):
-				if entry.get(key) is not None:
-					extra_fields[key] = entry[key]
+			extra_fields = _copy_supported_fields(entry, entry_fields, child_doctype)
 
 			values_dict = entry.get("values") or {}
 			has_primary = (
@@ -255,14 +354,14 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 					row = {
 						item_field: variant_name,
 						qty_field: qty,
-						"rate": (vals or {}).get("rate") or 0,
 						"uom": default_uom,
 						"table_index": table_index,
 						"row_index": row_index,  # SAME for all variants of this item
 						**extra_fields,
 					}
+					row.update(_copy_supported_fields(vals or {}, value_fields, child_doctype))
 					for fn in dim_fields:
-						if dimensions.get(fn):
+						if dimensions.get(fn) and _child_has_field(child_doctype, fn):
 							row[fn] = dimensions[fn]
 					out.append(row)
 			else:
@@ -277,14 +376,14 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 				row = {
 					item_field: variant_name,
 					qty_field: qty,
-					"rate": vals.get("rate") or 0,
 					"uom": default_uom,
 					"table_index": table_index,
 					"row_index": row_index,
 					**extra_fields,
 				}
+				row.update(_copy_supported_fields(vals, value_fields, child_doctype))
 				for fn in dim_fields:
-					if dimensions.get(fn):
+					if dimensions.get(fn) and _child_has_field(child_doctype, fn):
 						row[fn] = dimensions[fn]
 				out.append(row)
 

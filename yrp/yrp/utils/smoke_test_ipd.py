@@ -130,7 +130,7 @@ def _seed_ipd(item, process):
 	ipd.item = item
 	ipd.version = "smoke"
 	ipd.approval_status = "Approved"
-	ipd.primary_attribute = "_SMOKE_Size"
+	ipd.primary_item_attribute = "_SMOKE_Size"
 	ipd.dependent_attribute = "_SMOKE_Stage"
 	for attr_name in ATTRS:
 		ipd.append("item_attributes", {"attribute": attr_name})

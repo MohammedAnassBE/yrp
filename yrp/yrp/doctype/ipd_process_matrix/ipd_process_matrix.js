@@ -1,6 +1,19 @@
 // Common IPD - Process Matrix UI (Vue-driven)
 
 frappe.ui.form.on("IPD Process Matrix", {
+	setup(frm) {
+		frm.set_query("reference_item_variant", (doc) => {
+			if (!doc.ipd) {
+				return {};
+			}
+			return {
+				query: "yrp.yrp.doctype.ipd_process_matrix.ipd_process_matrix.get_reference_variant_query",
+				filters: {
+					ipd: doc.ipd,
+				},
+			};
+		});
+	},
 	refresh(frm) {
 		if (frm.doc.docstatus !== 1) {
 			frm.add_custom_button("Generate Combinations", () => generate_combinations(frm));

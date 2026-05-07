@@ -8,3 +8,5 @@ yrp.patches.create_stock_dimension_fields
 yrp.patches.register_received_type_dimension
 yrp.patches.drop_bin_reserved_qty
 yrp.patches.add_sle_composite_index
+yrp.patches.rename_ipd_primary_attribute
+yrp.patches.backfill_ipd_item_attribute_mapping

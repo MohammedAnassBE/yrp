@@ -8,6 +8,7 @@
  "field_order": [
   "ipd",
   "process_name",
+  "reference_item_variant",
   "input_item",
   "output_item",
   "column_break_main",
@@ -37,6 +38,15 @@
    "label": "Process",
    "options": "Process",
    "reqd": 1
+  },
+  {
+   "description": "Optional final/context variant this matrix applies to. Leave blank for generic matrices.",
+   "fieldname": "reference_item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference Item Variant",
+   "options": "Item Variant"
   },
   {
    "description": "Source item being consumed (e.g. fabric for Cutting). Leave blank if input item = the IPD's main item.",
@@ -86,14 +96,12 @@
   {
    "fieldname": "combinations",
    "fieldtype": "Table",
-   "hidden": 1,
    "label": "Combinations",
    "options": "IPD Matrix Combination"
   },
   {
    "fieldname": "combination_attributes",
    "fieldtype": "Table",
-   "hidden": 1,
    "label": "Combination Attributes",
    "options": "IPD Matrix Combination Attribute"
   },
@@ -109,9 +117,8 @@
   }
  ],
  "index_web_pages_for_search": 1,
- "is_submittable": 1,
  "links": [],
- "modified": "2026-05-04 11:09:31.696347",
+ "modified": "2026-05-05 15:03:26.220457",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "IPD Process Matrix",
@@ -119,8 +126,6 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "amend": 1,
-   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -130,7 +135,6 @@
    "report": 1,
    "role": "System Manager",
    "share": 1,
-   "submit": 1,
    "write": 1
   }
  ],

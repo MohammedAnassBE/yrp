@@ -234,9 +234,21 @@ def _create_ipd(src, id_map):
 	doc.item = parent_item_id
 	doc.version = str(src.get("version") or "1")
 	doc.approval_status = "Approved"
-	doc.primary_attribute = src.get("primary_item_attribute")
+	doc.primary_item_attribute = src.get("primary_item_attribute")
 	doc.dependent_attribute = "Stage"
 	doc.dependent_attribute_mapping = idam
+	# Populate yrp_essdee Custom Fields used by Lot
+	doc.pack_in_stage = "Piece"
+	doc.pack_out_stage = "Pack"
+	doc.packing_uom = _ensure_uom("Box")
+	doc.packing_combo = int(src.get("packing_combo") or 5)
+	doc.packing_attribute = src.get("packing_attribute") or "Colour"
+	doc.stiching_in_stage = "Cut"
+	doc.stiching_out_stage = "Piece"
+	doc.cutting_process = src.get("cutting_process") or "Cutting"
+	doc.stiching_process = src.get("stiching_process") or "Stitching"
+	doc.packing_process = "Ironing and Packing"
+	doc.is_set_item = int(src.get("is_set_item") or 0)
 	for a in src["item_attributes"]:
 		doc.append("item_attributes", {"attribute": a["attribute"]})
 	processes = [
