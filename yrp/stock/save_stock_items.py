@@ -94,7 +94,10 @@ PARENT_CHILD_MAP = {
 		"child_doctype": "Goods Received Note Item",
 		"item_field": "item_variant",
 		"qty_field": "quantity",
-		"value_fields": ["rate", "pending_quantity", "stock_qty", "amount"],
+		"value_fields": [
+			"rate", "pending_quantity", "stock_qty", "amount",
+			"ref_doctype", "ref_docname", "delivery_challan_item",
+		],
 		"entry_fields": [
 			"stock_uom", "conversion_factor", "ref_doctype", "ref_docname",
 			"delivery_challan_item", "table_index", "row_index", "set_combination",
@@ -119,11 +122,23 @@ def _child_has_field(child_doctype, fieldname):
 
 def _copy_supported_fields(source, fieldnames, child_doctype=None):
 	out = {}
+	meta = frappe.get_meta(child_doctype) if child_doctype else None
 	for fn in fieldnames:
-		if child_doctype and not _child_has_field(child_doctype, fn):
+		df = meta.get_field(fn) if meta else None
+		if child_doctype and not df:
 			continue
-		if source.get(fn) is not None:
-			out[fn] = source.get(fn)
+		value = source.get(fn)
+		if value is None:
+			continue
+		if isinstance(value, list):
+			if not value:
+				continue
+			value = json.dumps(value)
+		elif isinstance(value, dict) and df and df.fieldtype != "JSON":
+			if not value:
+				continue
+			value = json.dumps(value)
+		out[fn] = value
 	return out
 
 
@@ -179,11 +194,18 @@ def group_items_for_ui(child_rows, parent_doctype):
 	# Normalise to dicts
 	rows = []
 	for idx, r in enumerate(child_rows):
-		d = r if isinstance(r, dict) else r.as_dict()
+		d = dict(r) if isinstance(r, dict) else r.as_dict()
 		d.setdefault("row_index", idx)
+		d["_original_order"] = idx
 		rows.append(d)
 
-	rows.sort(key=lambda r: r.get("row_index") or 0)
+	def _row_group_key(row):
+		value = row.get("row_index")
+		if value is None or value == "":
+			return ""
+		return str(value)
+
+	rows.sort(key=lambda r: (_row_group_key(r), r.get("_original_order") or 0))
 	dim_fields = get_dimension_fieldnames()
 
 	item_details = []  # final output — list of groups
@@ -207,7 +229,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 	# Group consecutive rows by row_index (same as production_api).
 	# groupby returns (key, iterator). The iterator MUST be consumed immediately
 	# (with list()) because it becomes invalid on the next iteration.
-	for _row_idx, variants_iter in groupby(rows, lambda r: r.get("row_index") or 0):
+	for _row_idx, variants_iter in groupby(rows, _row_group_key):
 		variants = list(variants_iter)  # consume iterator immediately
 		first = variants[0]
 

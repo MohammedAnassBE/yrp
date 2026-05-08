@@ -1,11 +1,20 @@
 <template>
     <div>
         <div v-if="title" class="text-muted mb-2">{{ title }}</div>
+        <goods-received-note-editor
+            v-if="editorType === 'goods_received_note'"
+            :items="items"
+            :edit="docstatus === 0"
+            @itemupdated="updated">
+        </goods-received-note-editor>
         <item-dimension-fetcher
+            v-else
             :items="items"
             :other-inputs="otherInputs"
             :table-fields="tableFields"
             :qty-fields="qtyFields"
+            :inline-qty-edit="inlineQtyEdit"
+            :inline-qty-max-field="inlineQtyMaxField"
             :args="args"
             :edit="docstatus === 0"
             :validate-qty="true"
@@ -22,6 +31,7 @@
 import { computed, ref } from 'vue';
 import EventBus from '../Stock/bus.js';
 import ItemDimensionFetcher from '../Stock/components/ItemDimensionFetch.vue';
+import GoodsReceivedNoteEditor from './GoodsReceivedNoteEditor.vue';
 
 const props = defineProps({
     title: { type: String, default: '' },
@@ -64,9 +74,13 @@ const tableFields = computed(() => {
 
 const qtyFields = computed(() => {
     if (props.editorType === 'work_order_receivables') return ['cost'];
-    if (props.editorType === 'delivery_challan' || props.editorType === 'goods_received_note') return ['rate'];
+    if (props.editorType === 'delivery_challan') return [];
+    if (props.editorType === 'goods_received_note') return [];
     return ['rate'];
 });
+
+const inlineQtyEdit = computed(() => props.editorType === 'delivery_challan');
+const inlineQtyMaxField = computed(() => props.editorType === 'delivery_challan' ? 'pending_quantity' : '');
 
 const otherInputs = computed(() => {
     return [

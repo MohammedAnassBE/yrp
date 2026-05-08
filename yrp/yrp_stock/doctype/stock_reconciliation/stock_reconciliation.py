@@ -1,7 +1,7 @@
 """Stock Reconciliation — physical count / opening stock.
 
-Creates SLEs with qty=0 and qty_after_transaction set absolutely so the ledger
-balance snaps to the reconciled quantity.
+Creates SLEs where qty is the movement needed to reach the counted balance
+and qty_after_transaction is the final reconciled balance.
 """
 
 import frappe
@@ -89,21 +89,30 @@ class StockReconciliation(Document):
 	def _build_sl_entries(self, cancel=False):
 		"""Build SLE dicts for submit or cancel — single source of truth.
 
-		On submit: qty_after_transaction = reconciled qty (snaps balance to target).
-		On cancel: qty_after_transaction = 0 (engine computes diff to undo the snap).
+		On submit: qty = target - previous balance, qty_after_transaction = target.
+		On cancel: qty_after_transaction = 0; the active original SLE is marked
+		cancelled before the Bin is refreshed.
 		"""
-		from yrp.stock.dimensions import get_stock_dimensions
+		from yrp.stock.dimensions import get_dimension_fieldnames
+		from yrp.stock.utils import get_stock_balance
 
-		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
+		dim_fields = get_dimension_fieldnames()
 		entries = []
 		for row in self.items:
+			dim_values = {fn: row.get(fn) for fn in dim_fields}
 			if cancel:
-				# Cancel: set qty_after_transaction to 0 so the engine reverses
-				# the reconciliation effect by computing diff = 0 - current_balance
+				movement_qty = 0
 				qty_after = 0
 			else:
-				# Submit: snap balance to reconciled qty
 				qty_after = 0 if row.make_qty_zero else row.stock_qty
+				previous_qty = get_stock_balance(
+					row.item,
+					row.warehouse,
+					posting_date=self.posting_date,
+					posting_time=self.posting_time,
+					**dim_values,
+				)
+				movement_qty = flt(qty_after) - flt(previous_qty)
 
 			base = {
 				"item": row.item,
@@ -114,13 +123,13 @@ class StockReconciliation(Document):
 				"voucher_detail_no": row.name,
 				"posting_date": self.posting_date,
 				"posting_time": self.posting_time,
-				"qty": 0,
+				"qty": movement_qty,
 				"qty_after_transaction": qty_after,
+				"reconciled_qty": qty_after,
 				"rate": row.rate or 0,
 				"is_reconciliation": 1,
 			}
-			for fn in dim_fields:
-				base[fn] = row.get(fn)
+			base.update(dim_values)
 			entries.append(base)
 		return entries
 

@@ -22,6 +22,7 @@ Coverage map (vs IMPLEMENTATION_PLAN.md):
   - I.1 : negative stock allowed only when Item flag set
   - I.2 : Item.allow_negative_stock cannot uncheck while negative
   - I.7 : Stock Reconciliation while negative wipes-and-resets
+  - I.8 : Delivery Challan cannot over-dispatch against timestamp stock
   - G.5 : Material Consumed Stock Entry blocks non-Accepted source rows
   - M   : Stock Integrity Check daily job runs cleanly
   - K   : Pending Transit report executes
@@ -42,7 +43,30 @@ from yrp.stock.utils import (
 	get_stock_balance,
 )
 
-ITEM_VARIANT = "Item-00005-45 cm-Blue"
+ITEM_VARIANT_CANDIDATES = (
+	"Item-00005-45 cm-Blue",
+	"Mens Sports Vest - 11222-Cut-Top Front-Peach-S",
+)
+
+
+def _test_item_variant():
+	for item_variant in ITEM_VARIANT_CANDIDATES:
+		if frappe.db.exists("Item Variant", item_variant):
+			return item_variant
+	frappe.throw("No test Item Variant found for stock engine verification.")
+
+
+ITEM_VARIANT = _test_item_variant()
+ITEM_UOM = (
+	frappe.db.get_value(
+		"Item",
+		frappe.db.get_value("Item Variant", ITEM_VARIANT, "item"),
+		"default_unit_of_measure",
+	)
+	or "Piece"
+)
+TEST_LOT = frappe.db.get_value("Lot", {}, "name")
+ACCEPTED_DIMS = {"lot": TEST_LOT, "received_type": "Accepted"} if TEST_LOT else {"received_type": "Accepted"}
 
 
 def _wh(suffix):
@@ -68,10 +92,10 @@ def _seed(qty, rate, warehouse):
 					"item": ITEM_VARIANT,
 					"qty": qty,
 					"rate": rate,
-					"uom": "Piece",
+					"uom": ITEM_UOM,
 					"row_index": 0,
 					"table_index": 0,
-					"received_type": "Accepted",
+					**ACCEPTED_DIMS,
 				}
 			],
 		}
@@ -492,13 +516,13 @@ class TestEngineVerification(FrappeTestCase):
 						{
 							"item_variant": ITEM_VARIANT,
 							"update_diff_qty": 10,
-							"received_type": "Accepted",
+							**ACCEPTED_DIMS,
 						}
 					],
 				}
 			).submit()
 			self.assertLess(
-				get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted"), 0
+				get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS), 0
 			)
 
 			# Reconcile to 50 at rate 60 → wipe and reset.
@@ -515,7 +539,7 @@ class TestEngineVerification(FrappeTestCase):
 							"warehouse": wh,
 							"qty": 50,
 							"rate": 60,
-							"received_type": "Accepted",
+							**ACCEPTED_DIMS,
 						}
 					],
 				}
@@ -524,8 +548,64 @@ class TestEngineVerification(FrappeTestCase):
 			recon.insert(ignore_permissions=True)
 			recon.submit()
 
-			final = get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted")
+			sle_qty = frappe.db.get_value(
+				"Stock Ledger Entry",
+				{"voucher_type": "Stock Reconciliation", "voucher_no": recon.name},
+				"qty",
+			)
+			self.assertAlmostEqual(sle_qty, 58.0)
+			reconciled_qty = frappe.db.get_value(
+				"Stock Ledger Entry",
+				{"voucher_type": "Stock Reconciliation", "voucher_no": recon.name},
+				"reconciled_qty",
+			)
+			self.assertAlmostEqual(reconciled_qty, 50.0)
+
+			final = get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 			self.assertAlmostEqual(final, 50.0)
+
+			frappe.get_doc(
+				{
+					"doctype": "Stock Update",
+					"posting_date": nowdate(),
+					"posting_time": nowtime(),
+					"warehouse": wh,
+					"update_type": "Reduce",
+					"stock_update_details": [
+						{
+							"item_variant": ITEM_VARIANT,
+							"update_diff_qty": 2,
+							**ACCEPTED_DIMS,
+						}
+					],
+				}
+			).submit()
+			self.assertAlmostEqual(
+				get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS), 48.0
+			)
+
+			dc = frappe.get_doc(
+				{
+					"doctype": "Delivery Challan",
+					"posting_date": nowdate(),
+					"posting_time": nowtime(),
+					"from_warehouse": wh,
+					"items": [
+						{
+							"item_variant": ITEM_VARIANT,
+							"qty": 49,
+							"delivered_quantity": 49,
+							"stock_qty": 49,
+							"uom": ITEM_UOM,
+							"stock_uom": ITEM_UOM,
+							"conversion_factor": 1,
+							**ACCEPTED_DIMS,
+						}
+					],
+				}
+			)
+			with self.assertRaises(frappe.ValidationError):
+				dc.validate_stock_available()
 		finally:
 			item.reload()
 			item.allow_negative_stock = original
@@ -663,7 +743,7 @@ class TestEngineVerification(FrappeTestCase):
 						"item": ITEM_VARIANT,
 						"qty": 5,
 						"rate": 50,
-						"uom": "Piece",
+						"uom": ITEM_UOM,
 						"row_index": 0,
 						"table_index": 0,
 						"received_type": "_Verify_Rejected",

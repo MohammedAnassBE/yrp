@@ -1,10 +1,15 @@
+from collections import defaultdict
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, nowdate, nowtime
 
 from yrp.yrp.doctype.delivery_challan.delivery_challan import (
+	_apply_dimension_values_to_rows,
 	_copy_header_dimensions_to_items,
+	_copy_production_group_dimensions_from_source,
+	_get_production_group_dimensions,
 	_get_warehouse_for_supplier,
 	_normal_json,
 	_sle_base,
@@ -16,9 +21,18 @@ class GoodsReceivedNote(Document):
 	def onload(self):
 		from yrp.stock.save_stock_items import group_items_for_ui
 
+		rows = self.get("items") or []
+		if self.docstatus == 0 and self.against == "Work Order" and self.against_id and rows:
+			from yrp.stock.dimensions import apply_dimension_defaults
+
+			wo = frappe.get_doc("Work Order", self.against_id)
+			rows = _pending_receivable_rows(wo, existing_rows=rows)
+			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(wo))
+			apply_dimension_defaults(rows)
+
 		self.set_onload(
 			"item_details",
-			group_items_for_ui(self.get("items") or [], "Goods Received Note"),
+			group_items_for_ui(rows, "Goods Received Note"),
 		)
 
 	def before_validate(self):
@@ -63,6 +77,7 @@ class GoodsReceivedNote(Document):
 		self.delivery_location = self.delivery_location or wo.delivery_location
 		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(wo.supplier)
 		self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.delivery_location)
+		_copy_production_group_dimensions_from_source(self, wo)
 
 	def sync_vue_item_details(self):
 		if self.docstatus != 0 or not self.get("item_details"):
@@ -130,6 +145,8 @@ class GoodsReceivedNote(Document):
 
 	def validate_against_work_order_pending(self):
 		wo = frappe.get_doc("Work Order", self.against_id)
+		totals_by_receivable = defaultdict(float)
+		receivable_by_name = {}
 		for row in self.items:
 			target = _find_matching_receivable(wo.receivables, row)
 			if not target:
@@ -138,15 +155,20 @@ class GoodsReceivedNote(Document):
 						row.idx, row.item_variant
 					)
 				)
-			if flt(target.pending_quantity) + 0.0001 < flt(row.quantity):
-				frappe.throw(
-					_("Row {0}: received qty {1} exceeds pending qty {2} for {3}.").format(
-						row.idx, flt(row.quantity), flt(target.pending_quantity), row.item_variant
-					)
-				)
+			totals_by_receivable[target.name] += flt(row.quantity)
+			receivable_by_name[target.name] = target
 			row.ref_doctype = "Work Order Receivables"
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
+
+		for receivable_name, total_qty in totals_by_receivable.items():
+			target = receivable_by_name[receivable_name]
+			if flt(target.pending_quantity) + 0.0001 < total_qty:
+				frappe.throw(
+					_("Received qty {0} exceeds pending qty {1} for {2}.").format(
+						flt(total_qty), flt(target.pending_quantity), target.item_variant
+					)
+				)
 
 	def update_work_order_receivables(self, cancel=False):
 		wo = frappe.get_doc("Work Order", self.against_id)
@@ -237,12 +259,12 @@ def _default_dimension_values(dim_values):
 
 
 def _find_matching_receivable(rows, source_row):
-	if source_row.ref_doctype == "Work Order Receivables" and source_row.ref_docname:
+	if source_row.get("ref_doctype") == "Work Order Receivables" and source_row.get("ref_docname"):
 		for row in rows:
-			if row.name == source_row.ref_docname:
+			if row.name == source_row.get("ref_docname"):
 				return row
 	for row in rows:
-		if row.item_variant != source_row.item_variant:
+		if row.item_variant != source_row.get("item_variant"):
 			continue
 		if _normal_json(row.get("set_combination")) == _normal_json(source_row.get("set_combination")):
 			return row
@@ -256,8 +278,10 @@ def get_work_order_defaults(work_order):
 
 	wo = frappe.get_doc("Work Order", work_order)
 	items = _pending_receivable_rows(wo)
+	dimensions = _get_production_group_dimensions(wo)
+	_apply_dimension_values_to_rows(items, dimensions)
 	apply_dimension_defaults(items)
-	return {
+	defaults = {
 		"process_name": wo.process_name,
 		"item": wo.item,
 		"production_detail": wo.production_detail,
@@ -268,24 +292,96 @@ def get_work_order_defaults(work_order):
 		"items": items,
 		"item_details": group_items_for_ui(items, "Goods Received Note"),
 	}
+	defaults.update(dimensions)
+	return defaults
 
 
-def _pending_receivable_rows(wo):
+def _pending_receivable_rows(wo, existing_rows=None):
+	received_types, default_received_type = _get_received_type_options(existing_rows)
+	existing_quantities = (
+		_existing_receipt_quantities(wo, existing_rows, default_received_type)
+		if existing_rows is not None
+		else {}
+	)
 	rows = []
 	for row in wo.get("receivables") or []:
 		pending = flt(row.pending_quantity)
 		if pending <= 0:
 			continue
-		rows.append({
-			"item_variant": row.item_variant,
-			"quantity": pending,
-			"uom": row.uom,
-			"pending_quantity": pending,
-			"ref_doctype": "Work Order Receivables",
-			"ref_docname": row.name,
-			"table_index": row.table_index,
-			"row_index": row.row_index,
-			"set_combination": row.set_combination,
-			"rate": row.cost,
-		})
+		base_row_index = row.row_index if row.row_index not in (None, "") else row.idx - 1
+		for received_type in received_types:
+			key = _receipt_split_key(row.name, row.item_variant, received_type)
+			if existing_rows is None:
+				quantity = pending if not received_type or received_type == default_received_type else 0
+			else:
+				quantity = existing_quantities.get(key, 0)
+			out = {
+				"item_variant": row.item_variant,
+				"quantity": quantity,
+				"uom": row.uom,
+				"pending_quantity": pending,
+				"ref_doctype": "Work Order Receivables",
+				"ref_docname": row.name,
+				"table_index": row.table_index,
+				"row_index": (
+					f"{base_row_index}::{received_type}"
+					if received_type else base_row_index
+				),
+				"set_combination": row.set_combination,
+				"rate": row.cost,
+			}
+			if received_type:
+				out["received_type"] = received_type
+			rows.append(out)
 	return rows
+
+
+def _get_received_type_options(existing_rows=None):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	if "received_type" not in get_dimension_fieldnames():
+		return [None], None
+
+	default_received_type = frappe.db.get_single_value(
+		"YRP Stock Settings", "default_received_type"
+	)
+	received_type_rows = frappe.get_all(
+		"Received Type",
+		fields=["name", "is_default"],
+		order_by="is_default desc, name asc",
+	)
+	received_types = [row.name for row in received_type_rows]
+	if not default_received_type:
+		default_received_type = next(
+			(row.name for row in received_type_rows if row.is_default),
+			None,
+		)
+	if default_received_type and default_received_type not in received_types:
+		received_types.insert(0, default_received_type)
+
+	for row in existing_rows or []:
+		received_type = row.get("received_type")
+		if received_type and received_type not in received_types:
+			received_types.append(received_type)
+
+	if not received_types:
+		return [None], None
+	if not default_received_type and len(received_types) == 1:
+		default_received_type = received_types[0]
+	return received_types, default_received_type
+
+
+def _existing_receipt_quantities(wo, existing_rows, default_received_type):
+	quantities = defaultdict(float)
+	for row in existing_rows or []:
+		target = _find_matching_receivable(wo.receivables, row)
+		if not target:
+			continue
+		received_type = row.get("received_type") or default_received_type
+		key = _receipt_split_key(target.name, row.get("item_variant"), received_type)
+		quantities[key] += flt(row.get("quantity"))
+	return quantities
+
+
+def _receipt_split_key(receivable_name, item_variant, received_type):
+	return (receivable_name, item_variant, received_type or "")

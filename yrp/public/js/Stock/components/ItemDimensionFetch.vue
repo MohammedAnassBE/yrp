@@ -11,7 +11,7 @@
                             <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
                             <th v-for="attr in i.primary_attribute_values" :key="attr">{{ attr }}</th>
                             <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
-                            <th v-if="edit"></th>
+                            <th v-if="show_row_actions"></th>
                         </tr>
                         <tr v-for="(j, item1_index) in i.items" :key="item1_index">
                             <td>{{ item1_index + 1 }}</td>
@@ -19,8 +19,19 @@
                             <td v-for="dim in dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
                             <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
                             <td v-for="(attr, key) in j.values" :key="key">
-                                <div v-if="attr && attr.qty">
-                                    {{ attr.qty }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
+                                <div v-if="attr">
+                                    <input v-if="inline_qty_edit && edit"
+                                           class="form-control form-control-sm"
+                                           type="number"
+                                           min="0"
+                                           step="0.001"
+                                           :max="get_inline_qty_max(attr)"
+                                           v-model.number="attr.qty"
+                                           @input="on_inline_qty_change(attr)">
+                                    <span v-else-if="attr.qty">
+                                        {{ attr.qty }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
+                                    </span>
+                                    <span v-else>0<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span></span>
                                     <span v-for="a in table_qty_fields" :key="a.name">
                                         <br>
                                         <span>{{ a.label }}: {{ a.format ? a.format(attr[a.name]) : attr[a.name] }}</span>
@@ -29,7 +40,7 @@
                                 <div v-else class="text-center">---</div>
                             </td>
                             <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
-                            <td v-if="edit">
+                            <td v-if="show_row_actions">
                                 <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
                                 <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
                             </td>
@@ -46,7 +57,7 @@
                             <th>Quantity</th>
                             <th v-for="a in table_qty_fields" :key="a.name">{{ a.label }}</th>
                             <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
-                            <th v-if="edit"></th>
+                            <th v-if="show_row_actions"></th>
                         </tr>
                         <tr v-for="(j, item1_index) in i.items" :key="item1_index">
                             <td>{{ item1_index + 1 }}</td>
@@ -54,13 +65,23 @@
                             <td v-for="dim in dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
                             <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
                             <td>
-                                {{ (j.values && j.values['default'] && j.values['default'].qty) || 0 }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
+                                <input v-if="inline_qty_edit && edit && j.values && j.values['default']"
+                                       class="form-control form-control-sm"
+                                       type="number"
+                                       min="0"
+                                       step="0.001"
+                                       :max="get_inline_qty_max(j.values['default'])"
+                                       v-model.number="j.values['default'].qty"
+                                       @input="on_inline_qty_change(j.values['default'])">
+                                <span v-else>
+                                    {{ (j.values && j.values['default'] && j.values['default'].qty) || 0 }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
+                                </span>
                             </td>
                             <td v-for="a in table_qty_fields" :key="a.name">
                                 <span>{{ (j.values && j.values['default']) ? (a.format ? a.format(j.values['default'][a.name]) : j.values['default'][a.name]) : '' }}</span>
                             </td>
                             <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
-                            <td v-if="edit">
+                            <td v-if="show_row_actions">
                                 <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
                                 <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
                             </td>
@@ -134,7 +155,8 @@ const root = ref(null);
 
 const props = defineProps([
     'items', 'edit', 'otherInputs', 'tableFields', 'qtyFields',
-    'args', 'validateQty', 'validate', 'showDimensions', 'lockDimensionsOnEdit'
+    'args', 'validateQty', 'validate', 'showDimensions', 'lockDimensionsOnEdit',
+    'inlineQtyEdit', 'inlineQtyMaxField'
 ]);
 const emit = defineEmits(['itemupdated', 'itemadded', 'itemremoved']);
 
@@ -201,6 +223,9 @@ async function load_dimensions() {
 const can_create = computed(() => _resolve_arg('can_create', true));
 const can_edit = computed(() => _resolve_arg('can_edit', true));
 const can_remove = computed(() => _resolve_arg('can_remove', true));
+const inline_qty_edit = computed(() => Boolean(props.inlineQtyEdit));
+const inline_qty_max_field = computed(() => props.inlineQtyMaxField || '');
+const show_row_actions = computed(() => props.edit && (can_edit.value || can_remove.value));
 
 function _resolve_arg(key, def) {
     if (props.args && Object.prototype.hasOwnProperty.call(props.args, key)) {
@@ -213,6 +238,27 @@ function _resolve_arg(key, def) {
 function show_qty_fields() {
     if (!cur_item.value.dependent_attribute) return true;
     return Boolean(cur_dependent_attribute_value.value);
+}
+
+function get_inline_qty_max(value_detail) {
+    if (!inline_qty_max_field.value || !value_detail) return null;
+    const max_value = value_detail[inline_qty_max_field.value];
+    return max_value === undefined || max_value === null ? null : max_value;
+}
+
+function on_inline_qty_change(value_detail) {
+    if (!value_detail) return;
+    let qty = Number(value_detail.qty || 0);
+    const max_value = get_inline_qty_max(value_detail);
+    if (qty < 0) qty = 0;
+    if (max_value !== null && max_value !== '' && qty > Number(max_value)) {
+        qty = Number(max_value);
+    }
+    value_detail.qty = qty;
+    if (Object.prototype.hasOwnProperty.call(value_detail, 'delivered_quantity')) {
+        value_detail.delivered_quantity = qty;
+    }
+    emit("itemupdated", true);
 }
 
 const other_inputs_keys = computed(() => {
@@ -406,10 +452,10 @@ function set_item_details(item_details, item1) {
         }
         if (item_details.primary_attribute && item_details.primary_attribute_values && item_details.primary_attribute_values.length) {
             for (let i = 0; i < item_details.primary_attribute_values.length; i++) {
-            item.value.values[item_details.primary_attribute_values[i]] = { qty: 0 };
-            for (const field of editable_qty_fields.value) item.value.values[item_details.primary_attribute_values[i]][field.name] = 0;
-        }
-    } else {
+                item.value.values[item_details.primary_attribute_values[i]] = { qty: 0 };
+                for (const field of editable_qty_fields.value) item.value.values[item_details.primary_attribute_values[i]][field.name] = 0;
+            }
+        } else {
             item.value.values['default'] = { qty: 0 };
             for (const field of editable_qty_fields.value) item.value.values['default'][field.name] = 0;
         }

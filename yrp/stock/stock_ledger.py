@@ -25,7 +25,11 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, nowdate
 
-from yrp.stock.dimensions import get_dimension_fieldnames, get_valuation_dimensions
+from yrp.stock.dimensions import (
+	assert_safe_fieldname,
+	get_dimension_fieldnames,
+	get_valuation_dimensions,
+)
 from yrp.stock.utils import (
 	future_sle_exists,
 	get_combine_datetime,
@@ -365,58 +369,54 @@ class UpdateEntriesAfter:
 		self._load_prior_dim_qtys()
 
 	def _load_prior_dim_qtys(self):
-		"""Load the running qty for each (lot, received_type) combination
-		from SLEs that occurred BEFORE our processing window.
+		"""Load the latest running qty for each full dimension combination.
 
-		This tells us: "Before we start reprocessing, how much stock exists
-		per each full-dimension combination?"
-
-		Example result in self.qty_by_dims:
-		  {("LOT-001", "Fresh"): 100.0, ("LOT-001", "Used"): 50.0}
+		Stock Reconciliation rows are absolute balance snaps. The source of
+		truth before a processing window is therefore the latest prior
+		qty_after_transaction, not SUM(qty).
 		"""
-		if not self.dim_fields:
-			return
-
-		sle = frappe.qb.DocType("Stock Ledger Entry")
-		from frappe.query_builder.functions import Sum
-
 		posting_dt = get_combine_datetime(self.args.posting_date, self.args.posting_time)
+		dim_fields = list(self.dim_fields)
+		for fn in dim_fields + list(self.valuation_dim_fields):
+			assert_safe_fieldname(fn)
 
-		# We need: SUM(qty) grouped by each dimension combination
-		# SELECT lot, received_type, SUM(qty) as total_qty
-		# FROM `tabStock Ledger Entry`
-		# WHERE item=X AND warehouse=Y AND lot=L1 AND posting_datetime < start
-		# GROUP BY lot, received_type
-
-		select_fields = [Sum(sle.qty).as_("total_qty")]
-		group_fields = []
-		for fn in self.dim_fields:
-			select_fields.append(sle[fn])
-			group_fields.append(sle[fn])
-
-		query = (
-			frappe.qb.from_(sle)
-			.where(sle.item == self.args.item)
-			.where(sle.warehouse == self.args.warehouse)
-			.where(sle.is_cancelled == 0)
-			.where(sle.posting_datetime < posting_dt)
-		)
-
-		# Stay within our valuation bucket (filter by lot, not received_type)
+		conditions = [
+			"item = %s",
+			"warehouse = %s",
+			"is_cancelled = 0",
+			"posting_datetime < %s",
+		]
+		values = [self.args.item, self.args.warehouse, posting_dt]
 		for fn in self.valuation_dim_fields:
 			val = self.args.get(fn)
 			if val is not None:
-				query = query.where(sle[fn] == val)
+				conditions.append(f"`{fn}` = %s")
+				values.append(val)
 
-		for field in select_fields:
-			query = query.select(field)
-		for field in group_fields:
-			query = query.groupby(field)
-
-		rows = query.run(as_dict=True)
+		dim_select = ", ".join(f"`{fn}`" for fn in dim_fields)
+		partition_by = ", ".join(f"`{fn}`" for fn in dim_fields) or "item, warehouse"
+		select_prefix = f"{dim_select}, " if dim_select else ""
+		rows = frappe.db.sql(
+			f"""
+			SELECT {select_prefix}qty_after_transaction
+			FROM (
+				SELECT
+					{select_prefix}qty_after_transaction,
+					ROW_NUMBER() OVER (
+						PARTITION BY {partition_by}
+						ORDER BY posting_datetime DESC, creation DESC
+					) AS rn
+				FROM `tabStock Ledger Entry`
+				WHERE {" AND ".join(conditions)}
+			) latest
+			WHERE rn = 1
+			""",
+			values,
+			as_dict=True,
+		)
 		for row in rows:
 			key = self._dim_key(row)
-			self.qty_by_dims[key] = flt(row.total_qty)
+			self.qty_by_dims[key] = flt(row.qty_after_transaction)
 
 	# ------------------------------------------------------------------
 	# Fetch SLEs to process

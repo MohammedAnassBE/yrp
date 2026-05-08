@@ -44,6 +44,15 @@ OPERATIONAL_DOCTYPES = [
 	"Goods Received Note",
 ]
 
+# These child tables belong to operational documents that already carry the
+# production-group dimension on the header. The child row still may keep the
+# field for traceability/back-compat, but it must not block save when the
+# header controls the production group.
+OPERATIONAL_CHILD_DOCTYPES = {
+	"Delivery Challan Item",
+	"Goods Received Note Item",
+}
+
 
 def get_stock_dimensions():
 	"""Return list of active stock dimensions from cache or DB."""
@@ -141,11 +150,6 @@ def create_dimension_fields():
 	custom_fields = {}
 
 	for dim in dimensions:
-		# Bug B (r-010 Critical #5): all stock dimensions are mandatory by
-		# design. SLE/Bin queries assume non-NULL dim values, so allowing a
-		# dim with reqd=0 would let NULL leak into the engine and produce
-		# silent miscalculations. The `mandatory` field on YRP Stock
-		# Dimension is kept only for back-compat — it is ignored here.
 		field_def = {
 			"fieldname": dim["fieldname"],
 			"fieldtype": "Link",
@@ -159,7 +163,10 @@ def create_dimension_fields():
 		for dt in STOCK_DOCTYPES:
 			if not frappe.db.exists("DocType", dt):
 				continue
-			custom_fields.setdefault(dt, []).append(field_def.copy())
+			doc_field_def = field_def.copy()
+			if dim["is_production_group"] and dt in OPERATIONAL_CHILD_DOCTYPES:
+				doc_field_def["reqd"] = 0
+			custom_fields.setdefault(dt, []).append(doc_field_def)
 
 		# Production group → also operational DocTypes (headers)
 		if dim["is_production_group"]:

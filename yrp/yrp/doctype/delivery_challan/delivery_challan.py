@@ -27,6 +27,7 @@ class DeliveryChallan(Document):
 	def before_submit(self):
 		self.validate_work_order()
 		self.validate_against_work_order_pending()
+		self.validate_stock_available()
 
 	def on_submit(self):
 		self.update_work_order_deliverables()
@@ -55,6 +56,7 @@ class DeliveryChallan(Document):
 		self.from_location = self.from_location or wo.delivery_location
 		self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.supplier)
 		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(wo.delivery_location)
+		_copy_production_group_dimensions_from_source(self, wo)
 
 	def sync_vue_item_details(self):
 		if self.docstatus != 0 or not self.get("item_details"):
@@ -77,14 +79,19 @@ class DeliveryChallan(Document):
 		from yrp.stock.utils import get_last_sle_rate
 
 		dim_fields = get_dimension_fieldnames()
+		wo = frappe.get_doc("Work Order", self.work_order) if self.work_order else None
 		for row in self.get("items") or []:
-			row.delivered_quantity = flt(row.delivered_quantity or row.qty)
+			row.delivered_quantity = flt(row.qty)
 			row.conversion_factor = flt(row.conversion_factor) or 1
 			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
 			default_uom = frappe.get_cached_value("Item", parent_item, "default_unit_of_measure") if parent_item else None
 			row.uom = row.uom or default_uom
 			row.stock_uom = row.stock_uom or row.uom or default_uom
 			row.stock_qty = flt(row.delivered_quantity) * flt(row.conversion_factor)
+			if wo:
+				target = _find_matching_row(wo.deliverables, row, "Work Order Deliverables")
+				if target and not flt(row.rate):
+					row.rate = flt(target.rate)
 
 			dim_filters = {fn: row.get(fn) for fn in dim_fields if row.meta.get_field(fn)}
 			rate, _matched = get_last_sle_rate(
@@ -92,7 +99,7 @@ class DeliveryChallan(Document):
 			)
 			if not flt(row.rate):
 				row.rate = flt(rate)
-			row.valuation_rate = flt(rate or row.rate)
+			row.valuation_rate = flt(row.valuation_rate or rate or row.rate)
 			row.amount = flt(row.delivered_quantity) * flt(row.rate)
 
 	def validate_work_order(self):
@@ -144,6 +151,52 @@ class DeliveryChallan(Document):
 			row.ref_doctype = "Work Order Deliverables"
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
+
+	def validate_stock_available(self):
+		from yrp.stock.dimensions import get_dimension_fieldnames
+		from yrp.stock.utils import get_stock_balance
+
+		if not self.from_warehouse:
+			frappe.throw(_("From Warehouse is required."))
+
+		dim_fields = get_dimension_fieldnames()
+		required_by_bucket = {}
+		for row in self.items:
+			qty = flt(row.stock_qty) or flt(row.delivered_quantity or row.qty)
+			if qty <= 0:
+				continue
+			base = _sle_base(self, row)
+			dim_values = tuple(base.get(fn) for fn in dim_fields)
+			key = (row.item_variant, self.from_warehouse, dim_values)
+			required_by_bucket.setdefault(
+				key,
+				{"item": row.item_variant, "qty": 0.0, "dims": dict(zip(dim_fields, dim_values))},
+			)
+			required_by_bucket[key]["qty"] += qty
+
+		for bucket in required_by_bucket.values():
+			available = get_stock_balance(
+				bucket["item"],
+				self.from_warehouse,
+				posting_date=self.posting_date,
+				posting_time=self.posting_time,
+				**bucket["dims"],
+			)
+			required = flt(bucket["qty"])
+			if flt(available) + 0.0001 < required:
+				frappe.throw(
+					_(
+						"Insufficient stock for {0} at {1} as of {2} {3}: "
+						"available {4}, required {5}."
+					).format(
+						bucket["item"],
+						self.from_warehouse,
+						self.posting_date,
+						self.posting_time,
+						flt(available),
+						required,
+					)
+				)
 
 	def update_work_order_deliverables(self, cancel=False):
 		wo = frappe.get_doc("Work Order", self.work_order)
@@ -204,6 +257,34 @@ def _copy_header_dimensions_to_items(doc):
 				row.set(fn, doc.get(fn))
 
 
+def _copy_production_group_dimensions_from_source(target, source):
+	for fn, value in _get_production_group_dimensions(source).items():
+		if target.meta.get_field(fn) and not target.get(fn):
+			target.set(fn, value)
+
+
+def _get_production_group_dimensions(doc):
+	from yrp.stock.dimensions import get_stock_dimensions
+
+	values = {}
+	for dim in get_stock_dimensions():
+		if not dim.get("is_production_group"):
+			continue
+		fn = dim["fieldname"]
+		if doc.meta.get_field(fn) and doc.get(fn):
+			values[fn] = doc.get(fn)
+	return values
+
+
+def _apply_dimension_values_to_rows(rows, values):
+	if not values:
+		return
+	for row in rows:
+		for fn, value in values.items():
+			if not row.get(fn):
+				row[fn] = value
+
+
 def _sle_base(doc, row):
 	from yrp.stock.dimensions import get_dimension_fieldnames
 
@@ -218,12 +299,9 @@ def _sle_base(doc, row):
 		"is_cancelled": 0,
 	}
 	for fn in get_dimension_fieldnames():
-		if row.meta.get_field(fn):
-			base[fn] = row.get(fn)
-		elif doc.meta.get_field(fn):
-			base[fn] = doc.get(fn)
-		else:
-			base[fn] = None
+		row_value = row.get(fn) if row.meta.get_field(fn) else None
+		doc_value = doc.get(fn) if doc.meta.get_field(fn) else None
+		base[fn] = row_value or doc_value
 	if "received_type" in base and not base.get("received_type"):
 		base["received_type"] = frappe.db.get_single_value(
 			"YRP Stock Settings", "default_received_type"
@@ -264,8 +342,10 @@ def get_work_order_defaults(work_order):
 
 	wo = frappe.get_doc("Work Order", work_order)
 	items = _pending_deliverable_rows(wo)
+	dimensions = _get_production_group_dimensions(wo)
+	_apply_dimension_values_to_rows(items, dimensions)
 	apply_dimension_defaults(items)
-	return {
+	defaults = {
 		"process_name": wo.process_name,
 		"item": wo.item,
 		"production_detail": wo.production_detail,
@@ -276,6 +356,8 @@ def get_work_order_defaults(work_order):
 		"items": items,
 		"item_details": group_items_for_ui(items, "Delivery Challan"),
 	}
+	defaults.update(dimensions)
+	return defaults
 
 
 def _pending_deliverable_rows(wo):
@@ -289,6 +371,8 @@ def _pending_deliverable_rows(wo):
 			"qty": pending,
 			"delivered_quantity": pending,
 			"uom": row.uom,
+			"rate": row.rate,
+			"valuation_rate": row.valuation_rate,
 			"pending_quantity": pending,
 			"ref_doctype": "Work Order Deliverables",
 			"ref_docname": row.name,

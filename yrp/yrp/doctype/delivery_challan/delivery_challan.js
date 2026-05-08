@@ -25,7 +25,7 @@ frappe.ui.form.on("Delivery Challan", {
 				if (!r.message) {
 					return;
 				}
-				for (const field of [
+				apply_response_values(frm, r.message, [
 					"process_name",
 					"item",
 					"production_detail",
@@ -33,11 +33,7 @@ frappe.ui.form.on("Delivery Challan", {
 					"from_location",
 					"from_warehouse",
 					"to_warehouse",
-				]) {
-					if (r.message[field]) {
-						frm.set_value(field, r.message[field]);
-					}
-				}
+				]);
 				frm.clear_table("items");
 				for (const row of r.message.items || []) {
 					const child = frm.add_child("items");
@@ -57,12 +53,27 @@ frappe.ui.form.on("Delivery Challan", {
 			return;
 		}
 		const items = frm.itemEditor.get_items();
-		if (!items || !items.length) {
-			frappe.throw(__("Add Items to continue"));
+		if (!has_delivery_qty(items)) {
+			frappe.throw(__("Enter Delivery Qty to continue"));
 		}
 		frm.doc.item_details = JSON.stringify(items);
 	},
 });
+
+function apply_response_values(frm, message, base_fields) {
+	const ignore = new Set(["items", "item_details"]);
+	const fields = new Set(base_fields);
+	for (const field of Object.keys(message || {})) {
+		if (!ignore.has(field) && frm.fields_dict[field]) {
+			fields.add(field);
+		}
+	}
+	for (const field of fields) {
+		if (message[field]) {
+			frm.set_value(field, message[field]);
+		}
+	}
+}
 
 function mount_dc_editor(frm) {
 	if (!frappe.yrp.work_order || !frappe.yrp.work_order.ItemEditor || !frm.fields_dict.item_html) {
@@ -79,8 +90,8 @@ function mount_dc_editor(frm) {
 		editorType: "delivery_challan",
 		showDimensions: true,
 		allowCreate: false,
-		allowEdit: true,
-		allowRemove: true,
+		allowEdit: false,
+		allowRemove: false,
 	});
 	const data = get_item_details(frm);
 	frm.itemEditor.load_data(data);
@@ -106,4 +117,17 @@ function bind_dc_dirty_handler(frm) {
 	if (!frappe.yrp.eventBus || frm._dc_editor_dirty_handler) return;
 	frm._dc_editor_dirty_handler = () => frm.dirty();
 	frappe.yrp.eventBus.$on("work_order_items_updated", frm._dc_editor_dirty_handler);
+}
+
+function has_delivery_qty(item_details) {
+	for (const group of item_details || []) {
+		for (const item of group.items || []) {
+			for (const value of Object.values(item.values || {})) {
+				if (flt(value.qty) > 0) {
+					return true;
+				}
+			}
+		}
+	}
+	return false;
 }
