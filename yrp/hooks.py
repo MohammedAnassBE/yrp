@@ -29,7 +29,7 @@ fixtures = [
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/yrp/css/yrp.css"
+app_include_css = ["/assets/yrp/css/form_overrides.css"]
 app_include_js = ["yrp.bundle.js"]
 
 # include js, css files in header of web template

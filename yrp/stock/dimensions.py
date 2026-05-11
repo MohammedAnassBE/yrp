@@ -40,6 +40,7 @@ STOCK_DOCTYPES = [
 # DocTypes that receive dimension Link fields ONLY for the production group dimension
 OPERATIONAL_DOCTYPES = [
 	"Work Order",
+	"Purchase Order",
 	"Delivery Challan",
 	"Goods Received Note",
 ]
@@ -155,7 +156,6 @@ def create_dimension_fields():
 			"fieldtype": "Link",
 			"options": dim["dimension_doctype"],
 			"label": dim["label"],
-			"insert_after": _get_insert_after(dim),
 			"reqd": 1,
 		}
 
@@ -164,6 +164,7 @@ def create_dimension_fields():
 			if not frappe.db.exists("DocType", dt):
 				continue
 			doc_field_def = field_def.copy()
+			doc_field_def["insert_after"] = _get_insert_after(dim, dt)
 			if dim["is_production_group"] and dt in OPERATIONAL_CHILD_DOCTYPES:
 				doc_field_def["reqd"] = 0
 			custom_fields.setdefault(dt, []).append(doc_field_def)
@@ -173,7 +174,9 @@ def create_dimension_fields():
 			for dt in OPERATIONAL_DOCTYPES:
 				if not frappe.db.exists("DocType", dt):
 					continue
-				custom_fields.setdefault(dt, []).append(field_def.copy())
+				doc_field_def = field_def.copy()
+				doc_field_def["insert_after"] = _get_insert_after(dim, dt)
+				custom_fields.setdefault(dt, []).append(doc_field_def)
 
 	if custom_fields:
 		create_custom_fields(custom_fields, update=True)
@@ -257,6 +260,8 @@ def _ensure_bin_unique_constraint(dimensions):
 	frappe.db.sql(f"ALTER TABLE `tabBin` ADD UNIQUE INDEX `{index_name}` ({col_list})")
 
 
-def _get_insert_after(dim):
+def _get_insert_after(dim, doctype=None):
 	"""Determine where to insert the custom field. Default: after 'item' or at the end."""
+	if doctype == "Purchase Order":
+		return "expected_delivery_date"
 	return "item"

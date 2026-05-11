@@ -104,6 +104,21 @@ PARENT_CHILD_MAP = {
 			"comments",
 		],
 	},
+	"Purchase Order": {
+		"child_table_field": "items",
+		"child_doctype": "Purchase Order Item",
+		"item_field": "item_variant",
+		"qty_field": "qty",
+		"value_fields": [
+			"rate", "pending_quantity", "received_quantity", "cancelled_quantity",
+			"stock_qty", "amount", "discount_amount", "tax_amount", "total_amount",
+		],
+		"entry_fields": [
+			"stock_uom", "conversion_factor", "delivery_date", "tax",
+			"discount_percentage", "table_index", "row_index", "set_combination",
+			"comments",
+		],
+	},
 }
 
 

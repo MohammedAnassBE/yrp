@@ -2,7 +2,7 @@
     <div>
         <div v-if="title" class="text-muted mb-2">{{ title }}</div>
         <goods-received-note-editor
-            v-if="editorType === 'goods_received_note'"
+            v-if="useReceivedTypeGrnEditor"
             :items="items"
             :edit="docstatus === 0"
             @itemupdated="updated">
@@ -16,6 +16,7 @@
             :inline-qty-edit="inlineQtyEdit"
             :inline-qty-max-field="inlineQtyMaxField"
             :args="args"
+            :validate="validateItem"
             :edit="docstatus === 0"
             :validate-qty="true"
             :show-dimensions="showDimensions"
@@ -41,6 +42,7 @@ const props = defineProps({
     allowEdit: { type: Boolean, default: true },
     allowRemove: { type: Boolean, default: true },
     lockDimensionsOnEdit: { type: Boolean, default: false },
+    sourceType: { type: String, default: '' },
 });
 
 const docstatus = ref(cur_frm.doc.docstatus || 0);
@@ -66,6 +68,13 @@ const tableFields = computed(() => {
             { name: 'rate', label: 'Rate', uses_primary_attribute: 1 },
         ];
     }
+    if (props.editorType === 'purchase_order') {
+        return [
+            { name: 'rate', label: 'Rate', uses_primary_attribute: 1 },
+            { name: 'pending_quantity', label: 'Pending', uses_primary_attribute: 1 },
+            { name: 'total_amount', label: 'Amount', uses_primary_attribute: 1 },
+        ];
+    }
     return [
         { name: 'rate', label: 'Rate', uses_primary_attribute: 1 },
         { name: 'pending_quantity', label: 'Pending', uses_primary_attribute: 1 },
@@ -76,11 +85,29 @@ const qtyFields = computed(() => {
     if (props.editorType === 'work_order_receivables') return ['cost'];
     if (props.editorType === 'delivery_challan') return [];
     if (props.editorType === 'goods_received_note') return [];
+    if (props.editorType === 'purchase_order') return [];
     return ['rate'];
 });
 
-const inlineQtyEdit = computed(() => props.editorType === 'delivery_challan');
-const inlineQtyMaxField = computed(() => props.editorType === 'delivery_challan' ? 'pending_quantity' : '');
+const grnSourceType = computed(() => {
+    if (props.sourceType) return props.sourceType;
+    if (typeof cur_frm !== 'undefined' && cur_frm.doc) return cur_frm.doc.against || '';
+    return '';
+});
+const useReceivedTypeGrnEditor = computed(() => (
+    props.editorType === 'goods_received_note' && grnSourceType.value === 'Work Order'
+));
+const useInlineReceiveEditor = computed(() => (
+    props.editorType === 'goods_received_note' && grnSourceType.value === 'Purchase Order'
+));
+const inlineQtyEdit = computed(() => (
+    props.editorType === 'delivery_challan' || useInlineReceiveEditor.value
+));
+const inlineQtyMaxField = computed(() => (
+    props.editorType === 'delivery_challan' || useInlineReceiveEditor.value
+        ? 'pending_quantity'
+        : ''
+));
 
 const otherInputs = computed(() => {
     return [
@@ -102,6 +129,9 @@ const args = computed(() => ({
     can_edit: () => docstatus.value === 0 && props.allowEdit,
     can_remove: () => docstatus.value === 0 && props.allowRemove,
     item_query: () => {
+        if (props.editorType === 'purchase_order') {
+            return { filters: { disabled: 0 } };
+        }
         if (!allowedItems.value.length) {
             return { filters: { disabled: 0 } };
         }
@@ -131,6 +161,62 @@ function load_data(data) {
 
 function get_items() {
     return items.value || [];
+}
+
+async function validateItem(row) {
+    if (props.editorType !== 'purchase_order') return true;
+    if (!cur_frm.doc.supplier) {
+        frappe.msgprint(__('Select Supplier before adding PO items.'));
+        return false;
+    }
+
+    const price = await getPurchaseOrderPrice(row);
+    if (!price) {
+        frappe.msgprint(__('No active Item Price found for {0} and supplier {1}.', [row.name, cur_frm.doc.supplier]));
+        return false;
+    }
+    return applyPurchaseOrderPrice(row, price);
+}
+
+function getPurchaseOrderPrice(row) {
+    return new Promise((resolve) => {
+        frappe.call({
+            method: 'yrp.yrp.doctype.purchase_order.purchase_order.get_item_price_for_ui',
+            args: {
+                item_detail: JSON.stringify(row),
+                supplier: cur_frm.doc.supplier,
+            },
+            callback: (r) => resolve(r.message || null),
+            error: () => resolve(null),
+        });
+    });
+}
+
+function applyPurchaseOrderPrice(row, price) {
+    const values = row.values || {};
+    const taxRate = flt(price.tax_rate || 0);
+    const missing = [];
+
+    row.tax = price.tax || '';
+    for (const [key, value] of Object.entries(values)) {
+        const qty = flt(value.qty || 0);
+        const rate = price.rates ? price.rates[key] : price.rate;
+        if (qty > 0 && (rate === undefined || rate === null || rate === '')) {
+            missing.push(key);
+            continue;
+        }
+        value.rate = flt(rate || 0);
+        value.amount = qty * value.rate;
+        value.discount_amount = value.amount * flt(row.discount_percentage || 0) / 100;
+        value.tax_amount = (value.amount - value.discount_amount) * taxRate / 100;
+        value.total_amount = value.amount - value.discount_amount + value.tax_amount;
+    }
+
+    if (missing.length) {
+        frappe.msgprint(__('No matching Item Price slab found for {0}.', [missing.join(', ')]));
+        return false;
+    }
+    return true;
 }
 
 function updated() {

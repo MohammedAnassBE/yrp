@@ -29,6 +29,13 @@ class GoodsReceivedNote(Document):
 			rows = _pending_receivable_rows(wo, existing_rows=rows)
 			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(wo))
 			apply_dimension_defaults(rows)
+		elif self.docstatus == 0 and self.against == "Purchase Order" and self.against_id and rows:
+			from yrp.stock.dimensions import apply_dimension_defaults
+
+			po = frappe.get_doc("Purchase Order", self.against_id)
+			rows = _pending_purchase_order_rows(po, existing_rows=rows)
+			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(po))
+			apply_dimension_defaults(rows)
 
 		self.set_onload(
 			"item_details",
@@ -48,10 +55,10 @@ class GoodsReceivedNote(Document):
 
 	def before_submit(self):
 		self.validate_against()
-		self.validate_against_work_order_pending()
+		self.validate_source_pending()
 
 	def on_submit(self):
-		self.update_work_order_receivables()
+		self.update_source_pending()
 		self.make_stock_ledger_entries()
 
 	def before_cancel(self):
@@ -59,25 +66,32 @@ class GoodsReceivedNote(Document):
 
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
-		self.update_work_order_receivables(cancel=True)
+		self.update_source_pending(cancel=True)
 
 	def set_missing_values(self):
 		if not self.posting_date:
 			self.posting_date = nowdate()
 		if not self.posting_time:
 			self.posting_time = nowtime()
-		if self.against != "Work Order" or not self.against_id:
+		if not self.against_id:
 			return
 
-		wo = frappe.get_cached_doc("Work Order", self.against_id)
-		self.process_name = self.process_name or wo.process_name
-		self.item = self.item or wo.item
-		self.production_detail = self.production_detail or wo.production_detail
-		self.supplier = self.supplier or wo.supplier
-		self.delivery_location = self.delivery_location or wo.delivery_location
-		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(wo.supplier)
-		self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.delivery_location)
-		_copy_production_group_dimensions_from_source(self, wo)
+		if self.against == "Work Order":
+			wo = frappe.get_cached_doc("Work Order", self.against_id)
+			self.process_name = self.process_name or wo.process_name
+			self.item = self.item or wo.item
+			self.production_detail = self.production_detail or wo.production_detail
+			self.supplier = self.supplier or wo.supplier
+			self.delivery_location = self.delivery_location or wo.delivery_location
+			self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(wo.supplier)
+			self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.delivery_location)
+			_copy_production_group_dimensions_from_source(self, wo)
+		elif self.against == "Purchase Order":
+			po = frappe.get_cached_doc("Purchase Order", self.against_id)
+			self.supplier = self.supplier or po.supplier
+			self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(po.supplier)
+			self.to_warehouse = self.to_warehouse or po.delivery_warehouse
+			_copy_production_group_dimensions_from_source(self, po)
 
 	def sync_vue_item_details(self):
 		if self.docstatus != 0 or not self.get("item_details"):
@@ -106,17 +120,17 @@ class GoodsReceivedNote(Document):
 			row.amount = flt(row.quantity) * flt(row.rate)
 
 	def validate_against(self):
-		if self.against != "Work Order":
-			frappe.throw(_("Only Work Order GRN is available in YRP base."))
+		if self.against not in ("Work Order", "Purchase Order"):
+			frappe.throw(_("GRN against {0} is not available.").format(self.against))
 		if not self.against_id:
 			frappe.throw(_("Against ID is required."))
-		docstatus, open_status = frappe.db.get_value(
-			"Work Order", self.against_id, ["docstatus", "open_status"]
-		)
+		docstatus, open_status = frappe.db.get_value(self.against, self.against_id, ["docstatus", "open_status"])
 		if docstatus != 1:
-			frappe.throw(_("Work Order {0} must be submitted.").format(self.against_id))
+			frappe.throw(_("{0} {1} must be submitted.").format(self.against, self.against_id))
 		if open_status == "Close":
-			frappe.throw(_("Work Order {0} is closed.").format(self.against_id))
+			frappe.throw(_("{0} {1} is closed.").format(self.against, self.against_id))
+		if self.delivery_challan and self.against != "Work Order":
+			frappe.throw(_("Delivery Challan can only be used with Work Order GRN."))
 		if self.delivery_challan:
 			dc_work_order, dc_docstatus = frappe.db.get_value(
 				"Delivery Challan", self.delivery_challan, ["work_order", "docstatus"]
@@ -129,7 +143,11 @@ class GoodsReceivedNote(Document):
 	def validate_items(self):
 		if not self.get("items"):
 			frappe.throw(_("At least one item is required."))
-		if self.from_warehouse == self.to_warehouse:
+		if self.against == "Work Order" and not self.from_warehouse:
+			frappe.throw(_("From Warehouse is required."))
+		if not self.to_warehouse:
+			frappe.throw(_("To Warehouse is required."))
+		if self.from_warehouse and self.from_warehouse == self.to_warehouse:
 			frappe.throw(_("From Warehouse and To Warehouse must be different."))
 		for row in self.items:
 			if not row.item_variant:
@@ -142,6 +160,12 @@ class GoodsReceivedNote(Document):
 	def calculate_totals(self):
 		self.total_received_quantity = sum(flt(row.quantity) for row in self.items)
 		self.total = sum(flt(row.amount) for row in self.items)
+
+	def validate_source_pending(self):
+		if self.against == "Purchase Order":
+			self.validate_against_purchase_order_pending()
+			return
+		self.validate_against_work_order_pending()
 
 	def validate_against_work_order_pending(self):
 		wo = frappe.get_doc("Work Order", self.against_id)
@@ -170,6 +194,39 @@ class GoodsReceivedNote(Document):
 					)
 				)
 
+	def validate_against_purchase_order_pending(self):
+		po = frappe.get_doc("Purchase Order", self.against_id)
+		totals_by_item = defaultdict(float)
+		item_by_name = {}
+		for row in self.items:
+			target = _find_matching_purchase_order_item(po.items, row)
+			if not target:
+				frappe.throw(
+					_("Row {0}: no matching Purchase Order Item found for {1}.").format(
+						row.idx, row.item_variant
+					)
+				)
+			totals_by_item[target.name] += flt(row.quantity)
+			item_by_name[target.name] = target
+			row.ref_doctype = "Purchase Order Item"
+			row.ref_docname = target.name
+			row.pending_quantity = target.pending_quantity
+
+		for item_name, total_qty in totals_by_item.items():
+			target = item_by_name[item_name]
+			if flt(target.pending_quantity) + 0.0001 < total_qty:
+				frappe.throw(
+					_("Received qty {0} exceeds pending qty {1} for {2}.").format(
+						flt(total_qty), flt(target.pending_quantity), target.item_variant
+					)
+				)
+
+	def update_source_pending(self, cancel=False):
+		if self.against == "Purchase Order":
+			self.update_purchase_order_items(cancel=cancel)
+			return
+		self.update_work_order_receivables(cancel=cancel)
+
 	def update_work_order_receivables(self, cancel=False):
 		wo = frappe.get_doc("Work Order", self.against_id)
 		changed = False
@@ -184,6 +241,23 @@ class GoodsReceivedNote(Document):
 
 		if changed:
 			_update_work_order_status(self.against_id)
+
+	def update_purchase_order_items(self, cancel=False):
+		po = frappe.get_doc("Purchase Order", self.against_id)
+		changed = False
+		for row in self.items:
+			target = _find_matching_purchase_order_item(po.items, row)
+			if not target:
+				continue
+			qty = flt(row.quantity)
+			pending = flt(target.pending_quantity) + qty if cancel else flt(target.pending_quantity) - qty
+			received = flt(target.received_quantity) - qty if cancel else flt(target.received_quantity) + qty
+			target.db_set("pending_quantity", flt(pending), update_modified=False)
+			target.db_set("received_quantity", flt(received), update_modified=False)
+			changed = True
+
+		if changed:
+			_update_purchase_order_status(self.against_id)
 
 	def make_stock_ledger_entries(self, cancel=False):
 		from yrp.stock.stock_ledger import make_sl_entries
@@ -201,61 +275,7 @@ class GoodsReceivedNote(Document):
 				"rate": flt(row.rate),
 			})
 
-		entries.extend(self.get_consumption_entries())
 		make_sl_entries(entries, cancel=cancel)
-
-	def get_consumption_entries(self):
-		from yrp.stock.dimensions import get_dimension_fieldnames
-		from yrp.stock.utils import get_last_sle_rate
-
-		wo = frappe.get_doc("Work Order", self.against_id)
-		total_receivable = sum(flt(row.qty) for row in wo.get("receivables") or [])
-		scale = flt(self.total_received_quantity) / total_receivable if total_receivable else 0
-		if scale <= 0:
-			return []
-
-		dim_fields = get_dimension_fieldnames()
-		dim_values = {
-			fn: self.get(fn)
-			for fn in dim_fields
-			if self.meta.get_field(fn) and self.get(fn)
-		}
-		_default_dimension_values(dim_values)
-
-		entries = []
-		for row in wo.get("deliverables") or []:
-			qty = flt(row.qty) * scale
-			if qty <= 0:
-				continue
-			rate, _matched = get_last_sle_rate(row.item_variant, warehouse=self.from_warehouse, **dim_values)
-			base = {
-				"item": row.item_variant,
-				"uom": row.uom,
-				"voucher_type": self.doctype,
-				"voucher_no": self.name,
-				"voucher_detail_no": row.name,
-				"posting_date": self.posting_date,
-				"posting_time": self.posting_time,
-				"is_cancelled": 0,
-			}
-			base.update(dim_values)
-			entries.append({
-				**base,
-				"warehouse": self.from_warehouse,
-				"qty": -qty,
-				"rate": 0,
-				"outgoing_rate": flt(rate),
-			})
-		return entries
-
-
-def _default_dimension_values(dim_values):
-	default_rt = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
-	if default_rt and "received_type" not in dim_values:
-		from yrp.stock.dimensions import get_dimension_fieldnames
-
-		if "received_type" in get_dimension_fieldnames():
-			dim_values["received_type"] = default_rt
 
 
 def _find_matching_receivable(rows, source_row):
@@ -269,6 +289,26 @@ def _find_matching_receivable(rows, source_row):
 		if _normal_json(row.get("set_combination")) == _normal_json(source_row.get("set_combination")):
 			return row
 	return None
+
+
+def _find_matching_purchase_order_item(rows, source_row):
+	if source_row.get("ref_doctype") == "Purchase Order Item" and source_row.get("ref_docname"):
+		for row in rows:
+			if row.name == source_row.get("ref_docname"):
+				return row
+	for row in rows:
+		if row.item_variant != source_row.get("item_variant"):
+			continue
+		if _normal_json(row.get("set_combination")) == _normal_json(source_row.get("set_combination")):
+			return row
+	return None
+
+
+def _update_purchase_order_status(purchase_order):
+	po = frappe.get_doc("Purchase Order", purchase_order)
+	po.set_status()
+	po.db_set("status", po.status, update_modified=False)
+	po.db_set("open_status", po.open_status, update_modified=False)
 
 
 @frappe.whitelist()
@@ -289,6 +329,27 @@ def get_work_order_defaults(work_order):
 		"delivery_location": wo.delivery_location,
 		"from_warehouse": _get_warehouse_for_supplier(wo.supplier),
 		"to_warehouse": _get_warehouse_for_supplier(wo.delivery_location),
+		"items": items,
+		"item_details": group_items_for_ui(items, "Goods Received Note"),
+	}
+	defaults.update(dimensions)
+	return defaults
+
+
+@frappe.whitelist()
+def get_purchase_order_defaults(purchase_order):
+	from yrp.stock.dimensions import apply_dimension_defaults
+	from yrp.stock.save_stock_items import group_items_for_ui
+
+	po = frappe.get_doc("Purchase Order", purchase_order)
+	items = _pending_purchase_order_rows(po)
+	dimensions = _get_production_group_dimensions(po)
+	_apply_dimension_values_to_rows(items, dimensions)
+	apply_dimension_defaults(items)
+	defaults = {
+		"supplier": po.supplier,
+		"from_warehouse": _get_warehouse_for_supplier(po.supplier),
+		"to_warehouse": po.delivery_warehouse,
 		"items": items,
 		"item_details": group_items_for_ui(items, "Goods Received Note"),
 	}
@@ -334,6 +395,46 @@ def _pending_receivable_rows(wo, existing_rows=None):
 				out["received_type"] = received_type
 			rows.append(out)
 	return rows
+
+
+def _pending_purchase_order_rows(po, existing_rows=None):
+	existing_quantities = (
+		_existing_purchase_receipt_quantities(po, existing_rows)
+		if existing_rows is not None
+		else {}
+	)
+	rows = []
+	for row in po.get("items") or []:
+		pending = flt(row.pending_quantity)
+		if pending <= 0:
+			continue
+		quantity = existing_quantities.get(row.name, pending)
+		rows.append({
+			"item_variant": row.item_variant,
+			"quantity": quantity,
+			"uom": row.uom,
+			"stock_uom": row.stock_uom,
+			"conversion_factor": row.conversion_factor,
+			"stock_qty": flt(quantity) * flt(row.conversion_factor or 1),
+			"pending_quantity": pending,
+			"ref_doctype": "Purchase Order Item",
+			"ref_docname": row.name,
+			"table_index": row.table_index,
+			"row_index": row.row_index,
+			"set_combination": row.set_combination,
+			"rate": row.rate,
+		})
+	return rows
+
+
+def _existing_purchase_receipt_quantities(po, existing_rows):
+	quantities = defaultdict(float)
+	for row in existing_rows or []:
+		target = _find_matching_purchase_order_item(po.items, row)
+		if not target:
+			continue
+		quantities[target.name] += flt(row.get("quantity"))
+	return quantities
 
 
 def _get_received_type_options(existing_rows=None):
