@@ -11,3 +11,5 @@ yrp.patches.add_sle_composite_index
 yrp.patches.rename_ipd_primary_attribute
 yrp.patches.backfill_ipd_item_attribute_mapping
 yrp.patches.backfill_stock_reconciliation_sle_qty
+yrp.patches.ensure_workflow_state_fields
+yrp.patches.repair_delivery_challan_item_refs

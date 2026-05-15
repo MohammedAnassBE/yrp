@@ -43,6 +43,7 @@ OPERATIONAL_DOCTYPES = [
 	"Purchase Order",
 	"Delivery Challan",
 	"Goods Received Note",
+	"Process Cost",
 ]
 
 # These child tables belong to operational documents that already carry the
@@ -90,6 +91,20 @@ def get_production_group():
 		if d["is_production_group"]:
 			return d
 	return None
+
+
+def append_production_group_filters(filters, source_doc, target_doctype):
+	"""Append production-group filters when both docs carry the dimension field."""
+	meta = frappe.get_meta(target_doctype)
+	for dim in get_stock_dimensions():
+		if not dim.get("is_production_group"):
+			continue
+		fieldname = dim["fieldname"]
+		if not meta.get_field(fieldname):
+			continue
+		value = source_doc.get(fieldname)
+		if value:
+			filters.append([fieldname, "=", value])
 
 
 def get_mandatory_dimensions():

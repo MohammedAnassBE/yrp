@@ -20,6 +20,8 @@ frappe.ui.form.on("Delivery Challan", {
 			method: "yrp.yrp.doctype.delivery_challan.delivery_challan.get_work_order_defaults",
 			args: {
 				work_order: frm.doc.work_order,
+				posting_date: frm.doc.posting_date,
+				posting_time: frm.doc.posting_time,
 			},
 			callback(r) {
 				if (!r.message) {

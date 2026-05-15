@@ -14,14 +14,11 @@ frappe.ui.form.on("Purchase Order", {
 	},
 
 	validate(frm) {
-		if (!frm.itemEditor) {
-			return;
-		}
-		const items = frm.itemEditor.get_items();
-		if (!has_order_qty(items)) {
-			frappe.throw(__("Enter Qty to continue"));
-		}
-		frm.doc.item_details = JSON.stringify(items);
+		sync_item_editor_payload(frm);
+	},
+
+	before_save(frm) {
+		sync_item_editor_payload(frm);
 	},
 });
 
@@ -35,6 +32,7 @@ function mount_po_editor(frm) {
 	frm.set_df_property("items", "hidden", 1);
 	frm.set_df_property("item_html", "hidden", 0);
 	$(frm.fields_dict.item_html.wrapper).html("");
+	frm.set_df_property("items", "reqd", 0);
 	frm.itemEditor = new frappe.yrp.work_order.ItemEditor(frm.fields_dict.item_html.wrapper, {
 		title: "",
 		editorType: "purchase_order",
@@ -47,6 +45,25 @@ function mount_po_editor(frm) {
 	frm.itemEditor.load_data(data);
 	frm.itemEditor.update_status();
 	bind_po_dirty_handler(frm);
+}
+
+function sync_item_editor_payload(frm) {
+	remove_blank_standard_item_rows(frm);
+	if (!frm.itemEditor) {
+		return;
+	}
+	const items = frm.itemEditor.get_items();
+	if (!has_order_qty(items)) {
+		frappe.throw(__("Enter Qty to continue"));
+	}
+	frm.doc.item_details = JSON.stringify(items);
+}
+
+function remove_blank_standard_item_rows(frm) {
+	frm.doc.items = (frm.doc.items || []).filter((row) => (
+		row.item_variant || flt(row.qty) || row.uom
+	));
+	frm.refresh_field("items");
 }
 
 function get_item_details(frm) {
@@ -87,18 +104,35 @@ function add_status_actions(frm) {
 		return;
 	}
 	if (frm.doc.open_status === "Open") {
-		frm.add_custom_button(__("Close"), () => set_open_status(frm, "Close"));
+		frm.add_custom_button(__("Close"), () => close_purchase_order(frm));
 	} else {
-		frm.add_custom_button(__("Reopen"), () => set_open_status(frm, "Open"));
+		frm.add_custom_button(__("Reopen"), () => reopen_purchase_order(frm));
 	}
+	frm.page.add_menu_item(__("Refresh Status"), () => refresh_status(frm));
 }
 
-function set_open_status(frm, open_status) {
+function close_purchase_order(frm) {
+	if (frm.is_dirty()) {
+		frappe.throw(__("Please save the document before closing"));
+	}
+	frappe.confirm(__("Are you sure you want to close this Purchase Order?"), () => {
+		call_status_method(frm, "close_purchase_order");
+	});
+}
+
+function reopen_purchase_order(frm) {
+	call_status_method(frm, "reopen_purchase_order");
+}
+
+function refresh_status(frm) {
+	call_status_method(frm, "refresh_status");
+}
+
+function call_status_method(frm, method) {
 	frappe.call({
-		method: "yrp.yrp.doctype.purchase_order.purchase_order.set_open_status",
+		method: `yrp.yrp.doctype.purchase_order.purchase_order.${method}`,
 		args: {
 			purchase_order: frm.doc.name,
-			open_status,
 		},
 		callback() {
 			frm.reload_doc();

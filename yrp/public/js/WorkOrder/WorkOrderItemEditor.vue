@@ -56,6 +56,11 @@ const tableFields = computed(() => {
             { name: 'pending_quantity', label: 'Pending', uses_primary_attribute: 1 },
         ];
     }
+    if (props.editorType === 'work_order_deliverables') {
+        return [
+            { name: 'pending_quantity', label: 'Pending', uses_primary_attribute: 1 },
+        ];
+    }
     if (props.editorType === 'goods_received_note') {
         return [
             { name: 'pending_quantity', label: 'Pending', uses_primary_attribute: 1 },
@@ -83,6 +88,7 @@ const tableFields = computed(() => {
 
 const qtyFields = computed(() => {
     if (props.editorType === 'work_order_receivables') return ['cost'];
+    if (props.editorType === 'work_order_deliverables') return [];
     if (props.editorType === 'delivery_challan') return [];
     if (props.editorType === 'goods_received_note') return [];
     if (props.editorType === 'purchase_order') return [];

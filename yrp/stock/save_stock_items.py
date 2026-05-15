@@ -57,7 +57,7 @@ PARENT_CHILD_MAP = {
 		"child_doctype": "Work Order Deliverables",
 		"item_field": "item_variant",
 		"qty_field": "qty",
-		"value_fields": ["rate", "pending_quantity", "stock_update", "valuation_rate"],
+		"value_fields": ["pending_quantity", "stock_update", "valuation_rate"],
 		"entry_fields": [
 			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
 			"additional_parameters", "set_combination", "grn_detail_no", "item_type",
@@ -82,11 +82,11 @@ PARENT_CHILD_MAP = {
 		"qty_field": "qty",
 		"value_fields": [
 			"rate", "valuation_rate", "pending_quantity", "delivered_quantity",
-			"received_quantity", "stock_qty", "amount",
+			"received_quantity", "stock_qty", "amount", "ref_doctype", "ref_docname",
 		],
 		"entry_fields": [
-			"stock_uom", "conversion_factor", "ref_doctype", "ref_docname",
-			"table_index", "row_index", "set_combination", "comments",
+			"stock_uom", "conversion_factor", "table_index", "row_index",
+			"set_combination", "comments",
 		],
 	},
 	"Goods Received Note": {

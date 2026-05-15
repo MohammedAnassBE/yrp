@@ -149,13 +149,16 @@ app_include_js = ["yrp.bundle.js"]
 
 scheduler_events = {
 	"daily": [
-		"yrp.yrp.doctype.item_price.item_price.update_all_expired_item_price",
-		"yrp.yrp.doctype.process_cost.process_cost.update_all_expired_process_cost",
 		"yrp.yrp_stock.doctype.stock_integrity_check.stock_integrity_check.run_daily_check",
 	],
 	"hourly": [
 		"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost_entries",
 	],
+	"cron": {
+		"0 1 * * *": [
+			"yrp.tasks.daily",
+		],
+	},
 }
 
 doc_events = {

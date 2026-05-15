@@ -62,6 +62,7 @@ class GoodsReceivedNote(Document):
 		self.make_stock_ledger_entries()
 
 	def before_cancel(self):
+		self.validate_no_purchase_invoice()
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
 
 	def on_cancel(self):
@@ -110,6 +111,11 @@ class GoodsReceivedNote(Document):
 		apply_dimension_defaults(self.get("items") or [])
 
 	def set_item_defaults(self):
+		wo = frappe.get_doc("Work Order", self.against_id) if self.against == "Work Order" and self.against_id else None
+		delivery_challan = (
+			frappe.get_doc("Delivery Challan", self.delivery_challan)
+			if self.delivery_challan else None
+		)
 		for row in self.get("items") or []:
 			row.conversion_factor = flt(row.conversion_factor) or 1
 			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
@@ -117,7 +123,11 @@ class GoodsReceivedNote(Document):
 			row.uom = row.uom or default_uom
 			row.stock_uom = row.stock_uom or row.uom or default_uom
 			row.stock_qty = flt(row.quantity) * flt(row.conversion_factor)
-			row.amount = flt(row.quantity) * flt(row.rate)
+			if wo:
+				row.rate = get_work_order_grn_rate(wo, delivery_challan, row)
+				row.amount = flt(row.stock_qty or row.quantity) * flt(row.rate)
+			else:
+				row.amount = flt(row.quantity) * flt(row.rate)
 
 	def validate_against(self):
 		if self.against not in ("Work Order", "Purchase Order"):
@@ -166,6 +176,15 @@ class GoodsReceivedNote(Document):
 			self.validate_against_purchase_order_pending()
 			return
 		self.validate_against_work_order_pending()
+
+	def validate_no_purchase_invoice(self):
+		purchase_invoice = self.get("purchase_invoice_name")
+		if _is_active_purchase_invoice(purchase_invoice):
+			_throw_purchase_invoice_link_error(self.name, purchase_invoice)
+
+		purchase_invoice = _get_linked_purchase_invoice_from_child_table(self.name)
+		if purchase_invoice:
+			_throw_purchase_invoice_link_error(self.name, purchase_invoice)
 
 	def validate_against_work_order_pending(self):
 		wo = frappe.get_doc("Work Order", self.against_id)
@@ -304,11 +323,103 @@ def _find_matching_purchase_order_item(rows, source_row):
 	return None
 
 
+def _is_active_purchase_invoice(purchase_invoice):
+	if not purchase_invoice or not frappe.db.exists("DocType", "Purchase Invoice"):
+		return False
+	docstatus = frappe.db.get_value("Purchase Invoice", purchase_invoice, "docstatus")
+	return docstatus is not None and int(docstatus) != 2
+
+
+def _get_linked_purchase_invoice_from_child_table(grn_name):
+	if not frappe.db.exists("DocType", "Purchase Invoice GRN"):
+		return None
+
+	grn_field = _get_purchase_invoice_grn_field()
+	if not grn_field:
+		return None
+
+	for row in frappe.get_all(
+		"Purchase Invoice GRN",
+		filters={grn_field: grn_name, "parenttype": "Purchase Invoice"},
+		fields=["parent"],
+		limit=20,
+	):
+		if _is_active_purchase_invoice(row.parent):
+			return row.parent
+	return None
+
+
+def _get_purchase_invoice_grn_field():
+	meta = frappe.get_meta("Purchase Invoice GRN")
+	for fieldname in ("grn", "goods_received_note"):
+		if meta.has_field(fieldname):
+			return fieldname
+	return None
+
+
+def _throw_purchase_invoice_link_error(grn_name, purchase_invoice):
+	frappe.throw(
+		_("Cannot cancel Goods Received Note {0} because Purchase Invoice {1} exists.").format(
+			grn_name, purchase_invoice
+		)
+	)
+
+
+def get_work_order_grn_rate(wo, delivery_challan, row):
+	process_rate = 0
+	target = _find_matching_receivable(wo.receivables, row)
+	if target:
+		process_rate = flt(target.cost)
+		row.ref_doctype = "Work Order Receivables"
+		row.ref_docname = target.name
+		row.pending_quantity = target.pending_quantity
+	material_rate = get_delivery_challan_material_rate(delivery_challan, row)
+	return flt(material_rate) + flt(process_rate)
+
+
+def get_delivery_challan_material_rate(delivery_challan, row):
+	if not delivery_challan:
+		return 0
+	dc_items = delivery_challan.get("items") or []
+	matching_variant_rows = [
+		dc_row for dc_row in dc_items
+		if dc_row.item_variant == row.get("item_variant")
+		and _normal_json(dc_row.get("set_combination")) == _normal_json(row.get("set_combination"))
+	]
+	if matching_variant_rows:
+		return _weighted_delivery_rate(matching_variant_rows)
+
+	same_item_rows = [
+		dc_row for dc_row in dc_items
+		if dc_row.item_variant == row.get("item_variant")
+	]
+	if same_item_rows:
+		return _weighted_delivery_rate(same_item_rows)
+
+	return _weighted_delivery_rate(dc_items)
+
+
+def _weighted_delivery_rate(rows):
+	total_qty = 0
+	total_value = 0
+	for row in rows or []:
+		qty = flt(row.get("stock_qty")) or flt(row.get("delivered_quantity") or row.get("qty"))
+		if qty <= 0:
+			continue
+		rate = flt(row.get("valuation_rate") or row.get("rate"))
+		total_qty += qty
+		total_value += qty * rate
+	if not total_qty:
+		return 0
+	return total_value / total_qty
+
+
 def _update_purchase_order_status(purchase_order):
+	from yrp.yrp.doctype.purchase_order.purchase_order import _update_status_fields
+
 	po = frappe.get_doc("Purchase Order", purchase_order)
 	po.set_status()
-	po.db_set("status", po.status, update_modified=False)
-	po.db_set("open_status", po.open_status, update_modified=False)
+	_update_status_fields(po)
 
 
 @frappe.whitelist()

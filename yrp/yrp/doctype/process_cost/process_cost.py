@@ -27,10 +27,13 @@ class ProcessCost(Document):
 		if self.supplier:
 			filters.append(["supplier", "=", self.supplier])
 
-		# Check for workflow state if workflow exists
-		workflow_exists = frappe.db.exists("Workflow", {"document_type": "Process Cost", "is_active": 1})
-		if workflow_exists:
-			filters.append(["workflow_state", "=", "Approved"])
+		from yrp.stock.dimensions import append_production_group_filters
+
+		append_production_group_filters(filters, self, "Process Cost")
+
+		workflow_state_field = get_active_workflow_state_field("Process Cost")
+		if workflow_state_field:
+			filters.append([workflow_state_field, "=", "Approved"])
 
 		process_cost_list = frappe.db.get_list(
 			"Process Cost", filters=filters, pluck="name", order_by="from_date asc"
@@ -71,8 +74,6 @@ class ProcessCost(Document):
 
 def update_all_expired_process_cost():
 	"""Cancel all expired Process Costs. Called by daily scheduler."""
-	from frappe.utils import cint
-
 	filters = [
 		["to_date", "<", utils.nowdate()],
 		["to_date", "is", "set"],
@@ -80,7 +81,7 @@ def update_all_expired_process_cost():
 		["is_expired", "=", 0],
 	]
 	cost_list = frappe.db.get_all("Process Cost", filters=filters, pluck="name")
-	workflow_exists = frappe.db.exists("Workflow", {"document_type": "Process Cost", "is_active": 1})
+	workflow_exists = bool(get_active_workflow_state_field("Process Cost"))
 
 	for cost_name in cost_list:
 		doc = frappe.get_doc("Process Cost", cost_name)
@@ -97,13 +98,20 @@ def update_all_expired_process_cost():
 
 def _cancel_process_cost_via_workflow(doc):
 	"""Cancel a Process Cost through the active workflow."""
-	workflow_name = frappe.db.get_value("Workflow", {"document_type": "Process Cost", "is_active": 1}, "name")
+	workflow_name = frappe.db.get_value(
+		"Workflow", {"document_type": "Process Cost", "is_active": 1}, "name"
+	)
 	if not workflow_name:
 		doc.is_expired = 1
 		doc.cancel()
 		return
 
 	workflow = frappe.get_doc("Workflow", workflow_name)
+	if not frappe.get_meta("Process Cost").get_field(workflow.workflow_state_field):
+		doc.is_expired = 1
+		doc.cancel()
+		return
+
 	from frappe.utils import cint
 	cancel_states = [s.state for s in workflow.states if cint(s.doc_status) == 2]
 	if "Expired" in cancel_states:
@@ -128,6 +136,21 @@ def _cancel_process_cost_via_workflow(doc):
 
 	doc.is_expired = 1
 	doc.cancel()
+
+
+def get_active_workflow_state_field(doctype):
+	workflow_name = frappe.db.get_value(
+		"Workflow", {"document_type": doctype, "is_active": 1}, "name"
+	)
+	if not workflow_name:
+		return None
+
+	workflow_state_field = frappe.db.get_value(
+		"Workflow", workflow_name, "workflow_state_field"
+	)
+	if workflow_state_field and frappe.get_meta(doctype).get_field(workflow_state_field):
+		return workflow_state_field
+	return None
 
 
 @frappe.whitelist()

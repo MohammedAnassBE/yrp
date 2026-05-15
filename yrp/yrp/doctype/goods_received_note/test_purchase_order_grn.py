@@ -4,6 +4,11 @@ from frappe.utils import nowdate, nowtime
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_stock_balance
+from yrp.yrp.doctype.purchase_order.purchase_order import (
+	close_purchase_order,
+	refresh_status,
+	reopen_purchase_order,
+)
 
 
 ITEM_VARIANT_CANDIDATES = (
@@ -114,6 +119,35 @@ def _purchase_order_grn(po, qty):
 
 
 class TestPurchaseOrderGRN(FrappeTestCase):
+	def test_po_ignores_blank_child_rows_before_mandatory_validation(self):
+		warehouse = _warehouse("_Test_PO_BLANK_ROW_WH")
+		item_variant = _test_item_variant()
+		uom = _item_uom(item_variant)
+		po = frappe.get_doc({
+			"doctype": "Purchase Order",
+			"supplier": _supplier("_Test PO Blank Row Supplier"),
+			"delivery_warehouse": warehouse,
+			**_production_group_dimensions(),
+			"items": [
+				{},
+				{
+					"item_variant": item_variant,
+					"qty": 3,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"rate": 25,
+					"table_index": 0,
+					"row_index": 0,
+				},
+			],
+		})
+		po.insert(ignore_permissions=True)
+
+		self.assertEqual(len(po.items), 1)
+		self.assertEqual(po.items[0].item_variant, item_variant)
+		self.assertEqual(po.status, "Draft")
+
 	def test_po_grn_updates_pending_received_and_stock(self):
 		warehouse = _warehouse("_Test_PO_GRN_WH")
 		received_type = _default_received_type()
@@ -153,3 +187,25 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 
 		with self.assertRaises(frappe.ValidationError):
 			grn.submit()
+
+	def test_po_status_management_for_full_receipt(self):
+		warehouse = _warehouse("_Test_PO_GRN_STATUS_WH")
+		po = _purchase_order(qty=5, warehouse=warehouse)
+
+		grn = _purchase_order_grn(po, qty=5)
+		grn.submit()
+
+		po.reload()
+		self.assertEqual(po.status, "Received")
+		self.assertEqual(po.open_status, "Open")
+		self.assertEqual(refresh_status(po.name), "Received")
+
+		self.assertEqual(close_purchase_order(po.name), "Close")
+		po.reload()
+		self.assertEqual(po.status, "Closed")
+		self.assertEqual(po.open_status, "Close")
+
+		self.assertEqual(reopen_purchase_order(po.name), "Open")
+		po.reload()
+		self.assertEqual(po.status, "Received")
+		self.assertEqual(po.open_status, "Open")

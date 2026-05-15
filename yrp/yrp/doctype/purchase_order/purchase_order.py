@@ -4,7 +4,7 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, money_in_words, nowdate
+from frappe.utils import add_days, flt, money_in_words, nowdate, today
 
 
 class PurchaseOrder(Document):
@@ -18,6 +18,7 @@ class PurchaseOrder(Document):
 
 	def before_validate(self):
 		self.sync_vue_item_details()
+		self.remove_blank_item_rows()
 		self.set_missing_values()
 		self.set_item_defaults()
 		self.apply_item_prices(strict=False)
@@ -64,6 +65,11 @@ class PurchaseOrder(Document):
 		self.db_set("status", "Cancelled", update_modified=False)
 		self.db_set("open_status", "Close", update_modified=False)
 
+	def on_update_after_submit(self):
+		self.set_status()
+		self.db_set("status", self.status, update_modified=False)
+		self.db_set("open_status", self.open_status, update_modified=False)
+
 	def sync_vue_item_details(self):
 		if self.docstatus != 0 or not self.get("item_details"):
 			return
@@ -73,6 +79,18 @@ class PurchaseOrder(Document):
 		self.set("items", [])
 		for row in rows:
 			self.append("items", row)
+
+	def remove_blank_item_rows(self):
+		if self.docstatus != 0:
+			return
+		self.set(
+			"items",
+			[
+				row
+				for row in self.get("items") or []
+				if row.item_variant or flt(row.qty) or row.uom
+			],
+		)
 
 	def set_missing_values(self):
 		if not self.po_date:
@@ -164,6 +182,8 @@ class PurchaseOrder(Document):
 			self.status = "Cancelled"
 			self.open_status = "Close"
 			return
+		if self.open_status == "Closed":
+			self.open_status = "Close"
 		if self.open_status == "Close":
 			self.status = "Closed"
 			return
@@ -171,23 +191,32 @@ class PurchaseOrder(Document):
 			self.status = "Draft"
 			return
 
+		self.status = self.get_fulfillment_status()
+
+	def get_fulfillment_status(self):
 		total_qty = sum(flt(row.qty) for row in self.get("items") or [])
 		received_qty = sum(flt(row.received_quantity) for row in self.get("items") or [])
 		cancelled_qty = sum(flt(row.cancelled_quantity) for row in self.get("items") or [])
 		pending_qty = sum(flt(row.pending_quantity) for row in self.get("items") or [])
 
-		if total_qty and received_qty >= total_qty - 0.0001:
-			self.status = "Received"
-			self.open_status = "Close"
-		elif received_qty > 0:
-			self.status = "Partially Received"
-		elif cancelled_qty > 0:
-			self.status = "Partially Cancelled"
-		else:
-			self.status = "Ordered"
+		if self.get("items") and all(
+			flt(row.cancelled_quantity) >= flt(row.qty) - 0.0001
+			for row in self.get("items") or []
+		):
+			return "Cancelled"
+		if cancelled_qty > 0:
+			return "Partially Cancelled"
+		if total_qty and (pending_qty <= 0.0001 or received_qty >= total_qty - 0.0001):
+			return "Received"
+		if received_qty > 0 or (total_qty and pending_qty < total_qty - 0.0001):
+			return "Partially Received"
+		return "Ordered"
 
-		if pending_qty <= 0 and self.status not in ("Received", "Cancelled"):
-			self.open_status = "Close"
+	def set_open_status(self, close=True):
+		if self.docstatus == 2:
+			frappe.throw(_("Cannot close a cancelled Purchase Order."))
+		self.open_status = "Close" if close else "Open"
+		self.set_status()
 
 
 def validate_price_details(rows, supplier=None, strict=True):
@@ -272,18 +301,87 @@ def _get_variant_attribute_value(item_variant, attribute):
 @frappe.whitelist()
 def set_open_status(purchase_order, open_status):
 	frappe.only_for(("Purchase Manager", "System Manager"))
-	if open_status not in ("Open", "Close"):
-		frappe.throw(_("Invalid open status {0}.").format(open_status))
+	requested_open_status = open_status
+	open_status = _normalize_open_status(open_status)
+	if not open_status:
+		frappe.throw(_("Invalid open status {0}.").format(requested_open_status))
 
 	doc = frappe.get_doc("Purchase Order", purchase_order)
 	if doc.docstatus != 1:
 		frappe.throw(_("Only submitted Purchase Orders can be closed or reopened."))
 
-	doc.open_status = open_status
-	doc.set_status()
-	doc.db_set("open_status", doc.open_status, update_modified=False)
-	doc.db_set("status", doc.status, update_modified=False)
+	doc.set_open_status(close=open_status == "Close")
+	_update_status_fields(doc)
 	return {"open_status": doc.open_status, "status": doc.status}
+
+
+@frappe.whitelist()
+def refresh_status(purchase_order):
+	doc = frappe.get_doc("Purchase Order", purchase_order)
+	doc.set_status()
+	_update_status_fields(doc)
+	return doc.status
+
+
+@frappe.whitelist()
+def close_purchase_order(purchase_order):
+	return set_open_status(purchase_order, "Close")["open_status"]
+
+
+@frappe.whitelist()
+def reopen_purchase_order(purchase_order):
+	return set_open_status(purchase_order, "Open")["open_status"]
+
+
+@frappe.whitelist()
+def close_or_open_purchase_orders(names, close):
+	if not frappe.has_permission("Purchase Order", "write"):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	if isinstance(names, str):
+		names = json.loads(names)
+	if isinstance(close, str):
+		close = close.lower() == "true"
+
+	for name in names:
+		if close:
+			close_purchase_order(name)
+		else:
+			reopen_purchase_order(name)
+
+
+def close_received_po():
+	purchase_orders = frappe.get_all(
+		"Purchase Order",
+		filters=[
+			["status", "=", "Received"],
+			["open_status", "=", "Open"],
+			["docstatus", "=", 1],
+			["modified", "<", add_days(today(), -8)],
+		],
+		pluck="name",
+	)
+	for name in purchase_orders:
+		doc = frappe.get_doc("Purchase Order", name)
+		doc.set_open_status(close=True)
+		_update_status_fields(doc)
+
+
+def _normalize_open_status(open_status):
+	if open_status == "Closed":
+		return "Close"
+	if open_status in ("Open", "Close"):
+		return open_status
+	return None
+
+
+def _update_status_fields(doc):
+	update_modified = False
+	if doc.open_status != doc.get_db_value("open_status"):
+		doc.db_set("open_status", doc.open_status, update_modified=True)
+		update_modified = True
+	if doc.status != doc.get_db_value("status"):
+		doc.db_set("status", doc.status, update_modified=not update_modified)
 
 
 @frappe.whitelist()
