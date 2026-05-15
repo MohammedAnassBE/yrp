@@ -4,6 +4,7 @@ from frappe.utils import nowdate, nowtime
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_stock_balance
+from yrp.yrp_stock.report.stock_availability.stock_availability import execute as stock_availability
 from yrp.yrp.doctype.purchase_order.purchase_order import (
 	close_purchase_order,
 	refresh_status,
@@ -42,6 +43,35 @@ def _warehouse(name):
 	if not frappe.db.exists("Warehouse", name):
 		frappe.get_doc({"doctype": "Warehouse", "name1": name}).insert(ignore_permissions=True)
 	return name
+
+
+def _supplier_warehouse(supplier, name):
+	if not frappe.db.exists("Warehouse", name):
+		frappe.get_doc(
+			{"doctype": "Warehouse", "name1": name, "supplier": supplier}
+		).insert(ignore_permissions=True)
+	else:
+		frappe.db.set_value("Warehouse", name, "supplier", supplier)
+	return name
+
+
+def _process(name):
+	if not frappe.db.exists("Process", name):
+		frappe.get_doc({"doctype": "Process", "process_name": name}).insert(ignore_permissions=True)
+	return name
+
+
+def _address(title):
+	if frappe.db.exists("Address", title):
+		return title
+	return frappe.get_doc({
+		"doctype": "Address",
+		"address_title": title,
+		"address_type": "Office",
+		"address_line1": "Test Address",
+		"city": "Test City",
+		"country": "India",
+	}).insert(ignore_permissions=True).name
 
 
 def _default_received_type():
@@ -116,6 +146,58 @@ def _purchase_order_grn(po, qty):
 	grn.flags.ignore_permissions = True
 	grn.insert(ignore_permissions=True)
 	return grn
+
+
+def _stock_availability_row(item_variant, warehouse, filters=None):
+	_, rows = stock_availability(
+		{
+			"item": item_variant,
+			"warehouse": warehouse,
+			**(filters or {}),
+		}
+	)
+	for row in rows:
+		if row.get("item_code") == item_variant and row.get("warehouse") == warehouse:
+			return row
+	return None
+
+
+def _work_order(qty, warehouse):
+	item_variant = _test_item_variant()
+	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
+	uom = _item_uom(item_variant)
+	delivery_location = _supplier(f"_Test WO Availability Delivery {frappe.generate_hash(length=6)}")
+	_supplier_warehouse(delivery_location, warehouse)
+	wo = frappe.get_doc({
+		"doctype": "Work Order",
+		"is_rework": 1,
+		"rework_type": "No Cost",
+		"supplier": _supplier("_Test WO Availability Supplier"),
+		"delivery_location": delivery_location,
+		"planned_end_date": nowdate(),
+		"supplier_address": _address(f"_Test WO Supplier Address {frappe.generate_hash(length=6)}"),
+		"delivery_address": _address(f"_Test WO Delivery Address {frappe.generate_hash(length=6)}"),
+		"process_name": _process("_Test WO Availability Process"),
+		"item": parent_item,
+		**_production_group_dimensions(),
+		"deliverables": [{
+			"item_variant": item_variant,
+			"qty": 1,
+			"uom": uom,
+			"table_index": 0,
+			"row_index": 0,
+		}],
+		"receivables": [{
+			"item_variant": item_variant,
+			"qty": qty,
+			"uom": uom,
+			"table_index": 0,
+			"row_index": 0,
+		}],
+	})
+	wo.insert(ignore_permissions=True)
+	wo.submit()
+	return wo
 
 
 class TestPurchaseOrderGRN(FrappeTestCase):
@@ -209,3 +291,25 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 		po.reload()
 		self.assertEqual(po.status, "Received")
 		self.assertEqual(po.open_status, "Open")
+
+	def test_stock_availability_includes_purchase_order_pending(self):
+		warehouse = _warehouse(f"_Test_PO_AVAIL_{frappe.generate_hash(length=6)}")
+		po = _purchase_order(qty=7, warehouse=warehouse)
+		item_variant = po.items[0].item_variant
+
+		row = _stock_availability_row(item_variant, warehouse)
+
+		self.assertIsNotNone(row)
+		self.assertAlmostEqual(row.get("on_order"), 7)
+		self.assertAlmostEqual(row.get("wo_expected"), 0)
+
+	def test_stock_availability_includes_work_order_receivables_pending(self):
+		warehouse = f"_Test_WO_AVAIL_{frappe.generate_hash(length=6)}"
+		wo = _work_order(qty=6, warehouse=warehouse)
+		item_variant = wo.receivables[0].item_variant
+
+		row = _stock_availability_row(item_variant, warehouse)
+
+		self.assertIsNotNone(row)
+		self.assertAlmostEqual(row.get("on_order"), 0)
+		self.assertAlmostEqual(row.get("wo_expected"), 6)

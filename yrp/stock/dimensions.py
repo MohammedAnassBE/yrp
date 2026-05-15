@@ -7,6 +7,7 @@ import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 CACHE_KEY = "yrp_stock_dimensions"
+MANAGED_DIMENSION_FIELD_MARKER = "Managed by YRP Stock Dimension"
 
 # Strict identifier whitelist for any dimension fieldname that ever reaches
 # raw SQL via f-string interpolation. Validated at save time on YRP Stock
@@ -172,6 +173,7 @@ def create_dimension_fields():
 			"options": dim["dimension_doctype"],
 			"label": dim["label"],
 			"reqd": 1,
+			"description": MANAGED_DIMENSION_FIELD_MARKER,
 		}
 
 		# All dimensions → stock DocTypes
@@ -206,45 +208,22 @@ def _delete_orphan_dimension_fields(dimensions):
 	stock transaction with 'Value missing'. Sweep them up.
 
 	Operates on STOCK_DOCTYPES + OPERATIONAL_DOCTYPES — every doctype that
-	create_dimension_fields can touch. Only fields whose name pattern
-	matches our dimension creation are considered (defensive — never delete
-	pre-existing fields).
+	create_dimension_fields can touch. Only fields explicitly marked as
+	YRP-managed are considered, so unrelated Custom Fields are never deleted.
 	"""
 	current_fieldnames = {d["fieldname"] for d in dimensions}
 	target_doctypes = STOCK_DOCTYPES + OPERATIONAL_DOCTYPES
-	# Find Custom Fields on these doctypes whose fieldname looks like a
-	# dimension (lowercase identifier, Link type to a registered dim doctype).
-	current_dim_doctypes = {d["dimension_doctype"] for d in dimensions}
 	rows = frappe.get_all(
 		"Custom Field",
 		filters={"dt": ("in", target_doctypes), "fieldtype": "Link"},
-		fields=["name", "dt", "fieldname", "options"],
+		fields=["name", "dt", "fieldname", "description"],
 	)
 	for row in rows:
-		# Only consider fields that targeted a dimension doctype.
-		if row["options"] not in current_dim_doctypes and row["fieldname"] in current_fieldnames:
-			continue
-		# Delete if its fieldname is no longer a configured dimension.
 		if row["fieldname"] in current_fieldnames:
 			continue
-		# Defensive: only auto-delete fields whose target was a dim doctype
-		# we know about (don't delete unrelated Link fields on these tables).
-		if row["options"] not in _historical_dim_doctypes() and not _looks_like_dimension_field(
-			row["fieldname"]
-		):
+		if MANAGED_DIMENSION_FIELD_MARKER not in (row.get("description") or ""):
 			continue
 		frappe.db.delete("Custom Field", {"name": row["name"]})
-
-
-def _historical_dim_doctypes():
-	"""Doctypes ever used as a dimension target. Only Custom Fields linking
-	to these are auto-managed by `create_dimension_fields`."""
-	return {"Received Type"}  # extend as new dim targets land
-
-
-def _looks_like_dimension_field(fieldname):
-	"""Heuristic: dimension fieldnames pass our strict identifier whitelist."""
-	return bool(_FIELDNAME_RE.match(fieldname or ""))
 
 
 def _ensure_bin_unique_constraint(dimensions):
