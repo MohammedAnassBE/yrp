@@ -169,7 +169,7 @@ function open_close_dialog(frm) {
 			};
 			if (values.with_debit === "With Debit") {
 				frappe.call({
-					method: "yrp.yrp.doctype.essdee_debit.essdee_debit.create_debit",
+					method: "yrp.yrp.doctype.debit.debit.create_debit",
 					args: {
 						work_order: frm.doc.name,
 						debit_no: values.debit_no,
@@ -213,7 +213,7 @@ function render_debit_list(work_order, dialog) {
 			$(dialog.fields_dict.debit_list_html.wrapper).html(html);
 			$(dialog.fields_dict.debit_list_html.wrapper).find(".yrp-approve-debit").on("click", function () {
 				frappe.call({
-					method: "yrp.yrp.doctype.essdee_debit.essdee_debit.approve_debit",
+					method: "yrp.yrp.doctype.debit.debit.approve_debit",
 					args: { name: $(this).data("name") },
 					callback() {
 						render_debit_list(work_order, dialog);

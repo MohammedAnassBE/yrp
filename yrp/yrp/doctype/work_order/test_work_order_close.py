@@ -25,7 +25,7 @@ class TestWorkOrderClose(FrappeTestCase):
 		wo = _work_order_for_invoice(qty=1)
 		_work_order_grn(wo, qty=1)
 
-		debit = frappe.get_attr("yrp.yrp.doctype.essdee_debit.essdee_debit.create_debit")(
+		debit = frappe.get_attr("yrp.yrp.doctype.debit.debit.create_debit")(
 			wo.name,
 			debit_no=f"DEBIT-{frappe.generate_hash(length=6)}",
 			debit_value=5,
@@ -37,7 +37,7 @@ class TestWorkOrderClose(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			frappe.get_attr("yrp.yrp.doctype.work_order.work_order.update_stock")(wo.name)
 
-		frappe.get_attr("yrp.yrp.doctype.essdee_debit.essdee_debit.approve_debit")(debit.name)
+		frappe.get_attr("yrp.yrp.doctype.debit.debit.approve_debit")(debit.name)
 		status = frappe.get_attr("yrp.yrp.doctype.work_order.work_order.update_stock")(
 			wo.name,
 			close_reason="Others",
