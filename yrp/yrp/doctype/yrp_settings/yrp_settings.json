@@ -17,6 +17,18 @@
   "allow_grn_cancellation",
   "column_break_2",
   "allow_excess_grn",
+  "purchase_invoice_settings_section",
+  "pi_minimum_grn_date",
+  "override_pi_approve",
+  "roles_section",
+  "debit_request_role",
+  "debit_approval_role",
+  "column_break_roles_1",
+  "work_order_closing_approver_role",
+  "column_break_roles_2",
+  "purchase_invoice_approval_initiate_role",
+  "purchase_invoice_approval_pending_role",
+  "purchase_invoice_approver_role",
   "production_order_settings_section",
   "production_order_attributes",
   "po_dependent_attribute_section",
@@ -94,6 +106,71 @@
    "fieldname": "allow_excess_grn",
    "fieldtype": "Check",
    "label": "Allow Excess GRN"
+  },
+  {
+   "fieldname": "purchase_invoice_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Purchase Invoice Settings"
+  },
+  {
+   "fieldname": "pi_minimum_grn_date",
+   "fieldtype": "Date",
+   "label": "PI Minimum GRN Date"
+  },
+  {
+   "default": "0",
+   "fieldname": "override_pi_approve",
+   "fieldtype": "Check",
+   "label": "Override PI Approve"
+  },
+  {
+   "fieldname": "roles_section",
+   "fieldtype": "Section Break",
+   "label": "Roles"
+  },
+  {
+   "fieldname": "debit_request_role",
+   "fieldtype": "Link",
+   "label": "Debit Request Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "debit_approval_role",
+   "fieldtype": "Link",
+   "label": "Debit Approval Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "column_break_roles_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "work_order_closing_approver_role",
+   "fieldtype": "Link",
+   "label": "Work Order Closing Approver Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "column_break_roles_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "purchase_invoice_approval_initiate_role",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice Approval Initiate Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "purchase_invoice_approval_pending_role",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice Approval Pending Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "purchase_invoice_approver_role",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice Approver Role",
+   "options": "Role"
   },
   {
    "fieldname": "production_order_settings_section",

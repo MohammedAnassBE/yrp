@@ -23,7 +23,7 @@
   "valuation_rate",
   "set_combination",
   "grn_detail_no",
-  "item_type"
+  "received_type"
  ],
  "fields": [
   {
@@ -136,10 +136,10 @@
    "label": "GRN Detail No"
   },
   {
-   "fieldname": "item_type",
+   "fieldname": "received_type",
    "fieldtype": "Link",
-   "label": "Item Type",
-   "options": "GRN Item Type"
+   "label": "Received Type",
+   "options": "Received Type"
   }
  ],
  "index_web_pages_for_search": 1,

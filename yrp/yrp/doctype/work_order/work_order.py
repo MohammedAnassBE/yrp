@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, getdate, nowdate
+from frappe.utils import flt, getdate, nowdate, nowtime
 
 
 class WorkOrder(Document):
@@ -183,6 +183,10 @@ class WorkOrder(Document):
 		return None
 
 	def set_total_quantity(self):
+		if self.open_status == "Close":
+			self.total_quantity = 0
+			return
+
 		calculated_qty = sum(flt(row.quantity) for row in self.get("work_order_calculated_items") or [])
 		receivable_qty = sum(flt(row.qty) for row in self.get("receivables") or [])
 		deliverable_qty = sum(flt(row.qty) for row in self.get("deliverables") or [])
@@ -221,11 +225,14 @@ class WorkOrder(Document):
 
 		if self.open_status == "Close":
 			status = "Closed"
+			self.is_delivered = 1
 		elif self.open_status == "Close Request":
 			status = "Close Request"
+			self.is_delivered = 1 if total_deliverable_qty and total_delivery_pending <= 0 else 0
+		else:
+			self.is_delivered = 1 if total_deliverable_qty and total_delivery_pending <= 0 else 0
 
 		self.status = status
-		self.is_delivered = 1 if total_deliverable_qty and total_delivery_pending <= 0 else 0
 
 	def sync_vue_item_details(self):
 		if self.docstatus != 0:
@@ -280,3 +287,139 @@ def get_variant_attributes(item_variant):
 		fields=["attribute", "attribute_value"],
 	)
 	return {row.attribute: row.attribute_value for row in rows}
+
+
+@frappe.whitelist()
+def update_stock(work_order, close_reason=None, close_other_reason=None, close_remarks=None):
+	from yrp.stock.stock_ledger import make_sl_entries
+	from yrp.stock.utils import close_voucher_reservations, get_stock_balance
+	from yrp.yrp.doctype.delivery_challan.delivery_challan import _get_warehouse_for_supplier
+
+	doc = frappe.get_doc("Work Order", work_order)
+	if doc.docstatus != 1:
+		frappe.throw(_("Only submitted Work Orders can be closed."))
+	if doc.open_status == "Close":
+		return "Close"
+
+	if not _is_wo_close_manager():
+		_apply_close_details(doc, "Close Request", close_reason, close_other_reason, close_remarks)
+		doc.save(ignore_permissions=True)
+		frappe.msgprint(_("Close Request has been submitted for approval."), alert=True)
+		return "Close Request"
+
+	_validate_wo_close(doc)
+
+	warehouse = _get_warehouse_for_supplier(doc.supplier)
+	if not warehouse:
+		frappe.throw(_("No active Warehouse found for supplier {0}.").format(doc.supplier))
+
+	entries = []
+	for row in doc.get("deliverables") or []:
+		delivered_qty = flt(row.qty) - flt(row.pending_quantity)
+		reduce_qty = delivered_qty - flt(row.stock_update)
+		if reduce_qty <= 0:
+			continue
+		dim_values = _stock_dimension_values(doc, row)
+		balance, valuation_rate = get_stock_balance(
+			row.item_variant,
+			warehouse,
+			with_valuation_rate=True,
+			**dim_values,
+		)
+		reduce_qty = min(reduce_qty, flt(balance))
+		if reduce_qty <= 0:
+			continue
+		entries.append({
+			"item": row.item_variant,
+			"warehouse": warehouse,
+			"uom": row.uom,
+			"voucher_type": doc.doctype,
+			"voucher_no": doc.name,
+			"voucher_detail_no": row.name,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"qty": -reduce_qty,
+			"rate": 0,
+			"outgoing_rate": flt(row.valuation_rate or row.rate or valuation_rate),
+			"is_cancelled": 0,
+			**dim_values,
+		})
+		row.stock_update = flt(row.stock_update) + reduce_qty
+
+	make_sl_entries(entries)
+	_apply_close_details(doc, "Close", close_reason, close_other_reason, close_remarks)
+	doc.closed_by = frappe.session.user
+	doc.is_delivered = 1
+	doc.total_quantity = 0
+	doc.save(ignore_permissions=True)
+	close_voucher_reservations("Work Order", doc.name)
+	return "Close"
+
+
+@frappe.whitelist()
+def get_debits(work_order):
+	if not frappe.db.exists("DocType", "Debit"):
+		return []
+	return frappe.get_all(
+		"Debit",
+		filters={"work_order": work_order, "docstatus": 1},
+		fields=[
+			"name",
+			"debit_type",
+			"debit_no",
+			"debit_value",
+			"inspection",
+			"status",
+			"on_close",
+			"reason",
+		],
+		order_by="creation asc",
+	)
+
+
+def _validate_wo_close(doc):
+	grn = frappe.db.get_value(
+		"Goods Received Note",
+		{"against": "Work Order", "against_id": doc.name, "docstatus": 1},
+		"name",
+	)
+	if not grn:
+		frappe.throw(_("There is no submitted Goods Received Note for this Work Order."))
+
+	unapproved_debit = frappe.db.get_value(
+		"Debit",
+		{"work_order": doc.name, "docstatus": 1, "status": ["!=", "Approved"]},
+		"name",
+	) if frappe.db.exists("DocType", "Debit") else None
+	if unapproved_debit:
+		frappe.throw(_("Debit {0} must be approved before closing.").format(unapproved_debit))
+
+
+def _apply_close_details(doc, open_status, close_reason=None, close_other_reason=None, close_remarks=None):
+	doc.open_status = open_status
+	if close_reason:
+		doc.close_reason = close_reason
+	if close_other_reason:
+		doc.close_other_reason = close_other_reason
+	if close_remarks:
+		doc.close_remarks = close_remarks
+
+
+def _stock_dimension_values(doc, row):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	values = {}
+	for fieldname in get_dimension_fieldnames():
+		row_value = row.get(fieldname) if row.meta.get_field(fieldname) else None
+		doc_value = doc.get(fieldname) if doc.meta.get_field(fieldname) else None
+		values[fieldname] = row_value or doc_value
+	if "received_type" in values and not values.get("received_type"):
+		values["received_type"] = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
+	return values
+
+
+def _is_wo_close_manager():
+	approver_role = frappe.db.get_single_value("YRP Settings", "work_order_closing_approver_role")
+	if not approver_role:
+		return False
+	return approver_role in frappe.get_roles(frappe.session.user)
