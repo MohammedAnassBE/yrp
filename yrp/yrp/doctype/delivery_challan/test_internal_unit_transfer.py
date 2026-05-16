@@ -50,11 +50,12 @@ def _non_company_supplier(prefix):
 	return sup
 
 
-def _seed_stock(item_variant, warehouse, qty, lot=None):
+def _seed_stock(item_variant, warehouse, qty, lot=None, posting_date=None):
 	ste = frappe.get_doc({
 		"doctype": "Stock Entry",
 		"purpose": "Material Receipt",
 		"to_warehouse": warehouse,
+		"posting_date": posting_date,
 		"items": [{
 			"item": item_variant,
 			"qty": qty,
@@ -405,3 +406,49 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			frappe.db.set_single_value(
 				"YRP Stock Settings", "transit_warehouse", self.transit_wh
 			)
+
+	# ---------- Tests 13-14: explicit RIV enqueue gating ----------
+
+	def test_13_normal_dc_does_not_enqueue_riv(self):
+		# Fresh DC at current time with no later SLEs in its buckets — no RIV.
+		from_loc = _company_supplier("_T_DC13_From")
+		to_sup = _company_supplier("_T_DC13_To")
+		wo, from_wh, to_wh, iv, uom = _make_wo(from_loc, to_sup, qty=10)
+		_seed_stock(iv, from_wh, 50)
+		dc = _make_dc(wo, from_wh, to_wh, iv, uom, qty=5)
+		dc.submit()
+
+		riv_count = frappe.db.count(
+			"Repost Item Valuation",
+			{"voucher_type": "Delivery Challan", "voucher_no": dc.name},
+		)
+		self.assertEqual(riv_count, 0)
+
+	def test_14_backdated_dc_enqueues_riv(self):
+		# Seed stock 2 days ago, then create a "future" SLE today, then submit a
+		# backdated DC yesterday touching the same bucket. The backdated DC should
+		# enqueue an RIV because today's SLE is strictly later than yesterday.
+		from frappe.utils import add_days
+
+		from_loc = _company_supplier("_T_DC14_From")
+		to_sup = _company_supplier("_T_DC14_To")
+		wo, from_wh, to_wh, iv, uom = _make_wo(from_loc, to_sup, qty=20)
+		# Seed at 3 days ago so stock is available on the backdated DC's date
+		_seed_stock(iv, from_wh, 100, posting_date=add_days(nowdate(), -3))
+		# Add a "future" SLE at today's date
+		_seed_stock(iv, from_wh, 0.01)  # tiny extra at today
+
+		# DC backdated to yesterday
+		dc = _make_dc(wo, from_wh, to_wh, iv, uom, qty=5)
+		dc.posting_date = add_days(nowdate(), -1)
+		dc.posting_time = "00:00:00"
+		dc.save(ignore_permissions=True)
+		dc.submit()
+
+		rivs = frappe.db.get_all(
+			"Repost Item Valuation",
+			filters={"voucher_type": "Delivery Challan", "voucher_no": dc.name},
+			fields=["name", "based_on", "status"],
+		)
+		self.assertEqual(len(rivs), 1, f"Expected 1 RIV, got {len(rivs)}: {rivs}")
+		self.assertEqual(rivs[0].based_on, "Transaction")

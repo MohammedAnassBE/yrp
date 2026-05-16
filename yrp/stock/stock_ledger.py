@@ -79,6 +79,75 @@ def _enqueue_backdated_repost(args):
 	doc.submit()
 
 
+def voucher_has_future_sles(voucher_type, voucher_no, posting_date, posting_time=None):
+	"""True if any other voucher has SLEs strictly after this voucher's posting
+	datetime in any (item, warehouse) bucket this voucher touched.
+
+	"Future" means strictly greater than this voucher's posting_datetime — SLEs
+	at the same datetime don't need repost (inline path during make_sl_entries
+	already handled them via UpdateEntriesAfter).
+	"""
+	from yrp.stock.utils import get_combine_datetime
+
+	if not posting_date:
+		return False
+	posting_dt = get_combine_datetime(posting_date, posting_time or "00:00:00")
+	touched = frappe.db.get_all(
+		"Stock Ledger Entry",
+		filters={
+			"voucher_type": voucher_type,
+			"voucher_no": voucher_no,
+			"is_cancelled": 0,
+		},
+		fields=["item", "warehouse"],
+		distinct=True,
+	)
+	for bucket in touched:
+		if frappe.db.exists(
+			"Stock Ledger Entry",
+			{
+				"item": bucket.item,
+				"warehouse": bucket.warehouse,
+				"is_cancelled": 0,
+				"posting_datetime": [">", posting_dt],
+			},
+		):
+			return True
+	return False
+
+
+def enqueue_voucher_repost(doc):
+	"""Explicit voucher-level Repost Item Valuation dispatch.
+
+	Call from a stock voucher's on_submit and on_cancel after make_sl_entries.
+	No-ops when there are no future SLEs in any touched bucket — typical
+	non-backdated submits and most cancels return without queueing.
+
+	Why this exists: make_sl_entries handles inline per-SLE repost via
+	UpdateEntriesAfter, which fixes the current voucher's own bucket. For
+	backdated submits where OTHER vouchers have later SLEs in the same
+	buckets, those neighbouring SLEs need re-walking — that's what the queued
+	RIV worker does. Stock-dimension Custom Fields on RIV are reqd=1
+	unconditionally but only apply to based_on="Item and Warehouse", so we
+	pass ignore_mandatory=True; RIV.validate() still enforces the correct
+	check (voucher_type/voucher_no) for the Transaction path.
+	"""
+	if not voucher_has_future_sles(doc.doctype, doc.name, doc.posting_date, doc.posting_time):
+		return
+	riv = frappe.get_doc({
+		"doctype": "Repost Item Valuation",
+		"based_on": "Transaction",
+		"voucher_type": doc.doctype,
+		"voucher_no": doc.name,
+		"posting_date": doc.posting_date,
+		"posting_time": doc.posting_time or "00:00:00",
+		"allow_negative_stock": 1,
+	})
+	riv.flags.ignore_permissions = True
+	riv.insert(ignore_mandatory=True)
+	riv.submit()
+
+
 def _item_allows_negative_stock(item_variant):
 	"""Per-Item negative-stock flag (D-009). Resolves Item Variant -> parent Item."""
 	if not item_variant:

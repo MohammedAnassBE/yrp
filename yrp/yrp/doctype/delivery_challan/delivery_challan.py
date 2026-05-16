@@ -33,6 +33,7 @@ class DeliveryChallan(Document):
 	def on_submit(self):
 		self.update_work_order_deliverables()
 		self.make_stock_ledger_entries()
+		self.make_repost_action()
 
 	def before_cancel(self):
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry")
@@ -57,6 +58,7 @@ class DeliveryChallan(Document):
 			self.db_set("ste_transferred", 0)
 			self.db_set("ste_transferred_percent", 0)
 			self.db_set("transfer_complete", 0)
+		self.make_repost_action()
 
 	def set_missing_values(self):
 		if not self.posting_date:
@@ -248,6 +250,11 @@ class DeliveryChallan(Document):
 			})
 
 		make_sl_entries(entries, cancel=cancel)
+
+	def make_repost_action(self):
+		from yrp.stock.stock_ledger import enqueue_voucher_repost
+
+		enqueue_voucher_repost(self)
 
 	def compute_internal_unit(self):
 		if not self.from_location or not self.supplier or self.from_location == self.supplier:
