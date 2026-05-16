@@ -19,6 +19,7 @@
   "amount",
   "pending_quantity",
   "received_quantity",
+  "ste_delivered_quantity",
   "ref_doctype",
   "ref_docname",
   "table_index",
@@ -112,6 +113,16 @@
    "fieldname": "received_quantity",
    "fieldtype": "Float",
    "label": "Received Quantity",
+   "no_copy": 1,
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "ste_delivered_quantity",
+   "fieldtype": "Float",
+   "label": "STE Delivered Quantity",
    "no_copy": 1,
    "precision": "3",
    "read_only": 1

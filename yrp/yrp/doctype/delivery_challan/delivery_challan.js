@@ -10,6 +10,7 @@ frappe.ui.form.on("Delivery Challan", {
 
 	refresh(frm) {
 		mount_dc_editor(frm);
+		add_complete_transfer_button(frm);
 	},
 
 	work_order(frm) {
@@ -119,6 +120,25 @@ function bind_dc_dirty_handler(frm) {
 	if (!frappe.yrp.eventBus || frm._dc_editor_dirty_handler) return;
 	frm._dc_editor_dirty_handler = () => frm.dirty();
 	frappe.yrp.eventBus.$on("work_order_items_updated", frm._dc_editor_dirty_handler);
+}
+
+function add_complete_transfer_button(frm) {
+	if (frm.doc.docstatus !== 1 || !frm.doc.is_internal_unit || frm.doc.transfer_complete) {
+		return;
+	}
+	frm.add_custom_button(__("Complete Transfer"), () => {
+		frappe.call({
+			method: "yrp.yrp.doctype.delivery_challan.delivery_challan.make_dc_completion",
+			args: { doc_name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Creating Stock Entry..."),
+			callback(r) {
+				if (r.message) {
+					frappe.set_route("Form", "Stock Entry", r.message);
+				}
+			},
+		});
+	});
 }
 
 function has_delivery_qty(item_details) {

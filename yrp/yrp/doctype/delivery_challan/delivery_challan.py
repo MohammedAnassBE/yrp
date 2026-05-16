@@ -18,6 +18,7 @@ class DeliveryChallan(Document):
 		self.set_missing_values()
 		self.apply_dimensions()
 		self.set_item_defaults()
+		self.compute_internal_unit()
 
 	def validate(self):
 		self.validate_work_order()
@@ -34,11 +35,28 @@ class DeliveryChallan(Document):
 		self.make_stock_ledger_entries()
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
+		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry")
+		if self.is_internal_unit:
+			ste_names = frappe.get_all(
+				"Stock Entry",
+				filters={
+					"against": "Delivery Challan",
+					"against_id": self.name,
+					"purpose": "DC Completion",
+					"docstatus": 1,
+				},
+				pluck="name",
+			)
+			for name in ste_names:
+				frappe.get_doc("Stock Entry", name).cancel()
 
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
 		self.update_work_order_deliverables(cancel=True)
+		if self.is_internal_unit:
+			self.db_set("ste_transferred", 0)
+			self.db_set("ste_transferred_percent", 0)
+			self.db_set("transfer_complete", 0)
 
 	def set_missing_values(self):
 		if not self.posting_date:
@@ -201,6 +219,14 @@ class DeliveryChallan(Document):
 	def make_stock_ledger_entries(self, cancel=False):
 		from yrp.stock.stock_ledger import make_sl_entries
 
+		destination = self.to_warehouse
+		if self.is_internal_unit:
+			destination = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
+			if not destination:
+				frappe.throw(
+					_("Transit Warehouse must be set in YRP Stock Settings for internal-unit Delivery Challan.")
+				)
+
 		entries = []
 		for row in self.items:
 			qty = flt(row.stock_qty) or flt(row.delivered_quantity or row.qty)
@@ -216,12 +242,26 @@ class DeliveryChallan(Document):
 			})
 			entries.append({
 				**base,
-				"warehouse": self.to_warehouse,
+				"warehouse": destination,
 				"qty": qty,
 				"rate": flt(row.valuation_rate or row.rate),
 			})
 
 		make_sl_entries(entries, cancel=cancel)
+
+	def compute_internal_unit(self):
+		if not self.from_location or not self.supplier or self.from_location == self.supplier:
+			self.is_internal_unit = 0
+			return
+		flags = {
+			row.name: row.is_company_location
+			for row in frappe.db.get_all(
+				"Supplier",
+				filters={"name": ["in", [self.from_location, self.supplier]]},
+				fields=["name", "is_company_location"],
+			)
+		}
+		self.is_internal_unit = 1 if (flags.get(self.from_location) and flags.get(self.supplier)) else 0
 
 
 def _get_warehouse_for_supplier(supplier):
@@ -413,3 +453,66 @@ def _row_dimension_filters(row, child_doctype=None):
 		if value:
 			filters[fn] = value
 	return filters
+
+
+@frappe.whitelist()
+def make_dc_completion(doc_name):
+	frappe.has_permission("Stock Entry", "create", throw=True)
+	dc = frappe.get_doc("Delivery Challan", doc_name)
+	if dc.docstatus != 1:
+		frappe.throw(_("Delivery Challan must be submitted."))
+	if not dc.is_internal_unit:
+		frappe.throw(_("Delivery Challan is not an internal unit transfer."))
+	if dc.transfer_complete:
+		frappe.throw(_("Transfer is already complete for this Delivery Challan."))
+	pending_draft = frappe.db.exists(
+		"Stock Entry",
+		{"against": "Delivery Challan", "against_id": doc_name, "purpose": "DC Completion", "docstatus": 0},
+	)
+	if pending_draft:
+		frappe.throw(
+			_("A draft DC Completion Stock Entry already exists ({0}). Submit or delete it before creating a new one.").format(pending_draft)
+		)
+
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dim_fields = get_dimension_fieldnames()
+	items = []
+	for item in dc.items:
+		pending = flt(item.delivered_quantity) - flt(item.ste_delivered_quantity)
+		if pending <= 0:
+			continue
+		conv = flt(item.conversion_factor) or 1
+		row_data = {
+			"item": item.item_variant,
+			"qty": pending,
+			"stock_qty": pending * conv,
+			"uom": item.uom,
+			"stock_uom": item.stock_uom or item.uom,
+			"conversion_factor": conv,
+			"rate": flt(item.valuation_rate or item.rate),
+			"table_index": item.table_index,
+			"row_index": item.row_index,
+			"against": "Delivery Challan Item",
+			"against_id_detail": item.name,
+			"remarks": item.comments,
+		}
+		for fn in dim_fields:
+			if item.meta.get_field(fn):
+				row_data[fn] = item.get(fn)
+		items.append(row_data)
+
+	if not items:
+		frappe.throw(_("Nothing left to transfer."))
+
+	ste = frappe.new_doc("Stock Entry")
+	ste.purpose = "DC Completion"
+	ste.against = "Delivery Challan"
+	ste.against_id = doc_name
+	ste.from_warehouse = dc.from_warehouse
+	ste.to_warehouse = dc.to_warehouse
+	for row_data in items:
+		ste.append("items", row_data)
+	ste.flags.allow_from_dc = True
+	ste.insert(ignore_permissions=True)
+	return ste.name

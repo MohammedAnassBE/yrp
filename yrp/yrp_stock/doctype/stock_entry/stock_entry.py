@@ -70,6 +70,26 @@ class StockEntry(Document):
 		self.validate_items()
 		self.calculate_totals()
 		self.validate_production_consumption_received_type()
+		self.validate_dc_completion_pending()
+
+	def validate_dc_completion_pending(self):
+		if self.purpose != "DC Completion" or self.against != "Delivery Challan" or not self.against_id:
+			return
+		for row in self.items:
+			if not row.against_id_detail:
+				frappe.throw(_("Row {0}: against_id_detail is required for DC Completion.").format(row.idx))
+			delivered, ste_done = frappe.db.get_value(
+				"Delivery Challan Item",
+				row.against_id_detail,
+				["delivered_quantity", "ste_delivered_quantity"],
+			) or (0, 0)
+			pending = flt(delivered) - flt(ste_done)
+			if flt(row.qty) > pending + 1e-6:
+				frappe.throw(
+					_("Row {0}: qty {1} exceeds remaining pending {2} on Delivery Challan Item {3}.").format(
+						row.idx, flt(row.qty), pending, row.against_id_detail
+					)
+				)
 
 	def validate_production_consumption_received_type(self):
 		"""G.5 (partial, Gap #7): when a Stock Entry consumes for production
@@ -105,6 +125,7 @@ class StockEntry(Document):
 		sl_entries = self.get_sl_entries()
 		make_sl_entries(sl_entries)
 		self.update_transferred_qty()
+		self.update_dc_completion(cancel=False)
 
 	def before_cancel(self):
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
@@ -115,19 +136,21 @@ class StockEntry(Document):
 		sl_entries = self.get_sl_entries(cancel=True)
 		make_sl_entries(sl_entries, cancel=True)
 		self.update_transferred_qty()
+		self.update_dc_completion(cancel=True)
 
 	# ------------------------------------------------------------------
 	def validate_warehouses(self):
-		needs_from = self.purpose in ("Material Issue", "Send to Warehouse", "Receive at Warehouse", "Material Consumed")
-		needs_to = self.purpose in ("Material Receipt", "Send to Warehouse", "Receive at Warehouse")
+		needs_from = self.purpose in ("Material Issue", "Send to Warehouse", "Receive at Warehouse", "Material Consumed", "DC Completion")
+		needs_to = self.purpose in ("Material Receipt", "Send to Warehouse", "Receive at Warehouse", "DC Completion")
 		if needs_from and not self.from_warehouse:
 			frappe.throw(_("From Warehouse is required for purpose {0}").format(self.purpose))
 		if needs_to and not self.to_warehouse:
 			frappe.throw(_("To Warehouse is required for purpose {0}").format(self.purpose))
-		if self.purpose in ("Send to Warehouse", "Receive at Warehouse") and not self.skip_transit:
-			transit = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
-			if not transit:
-				frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose {0}").format(self.purpose))
+		if self.purpose in ("Send to Warehouse", "Receive at Warehouse", "DC Completion"):
+			if self.purpose == "DC Completion" or not self.skip_transit:
+				transit = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
+				if not transit:
+					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose {0}").format(self.purpose))
 
 	def validate_items(self):
 		if not self.items:
@@ -153,6 +176,7 @@ class StockEntry(Document):
 		Send to Warehouse       : -from_warehouse, +transit
 		Receive at Warehouse    : -transit, +to_warehouse  (linked via outgoing_stock_entry)
 		Material Consumed       : -from_warehouse
+		DC Completion           : -transit, +to_warehouse  (linked via against=Delivery Challan)
 		"""
 		from yrp.stock.dimensions import get_stock_dimensions
 
@@ -189,6 +213,11 @@ class StockEntry(Document):
 				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
 			elif self.purpose == "Material Consumed":
 				entries.append({**base, "warehouse": self.from_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
+			elif self.purpose == "DC Completion":
+				if not transit_warehouse:
+					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose DC Completion."))
+				entries.append({**base, "warehouse": transit_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
+				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
 
 		if cancel:
 			# Reverse: flip qty and mark cancelled
@@ -222,6 +251,54 @@ class StockEntry(Document):
 		total_transferred = sum(flt(r.transferred_qty) for r in source_doc.items)
 		per_transferred = (total_transferred / total_qty * 100) if total_qty else 0
 		frappe.db.set_value("Stock Entry", self.outgoing_stock_entry, "per_transferred", flt(per_transferred), update_modified=False)
+
+	def update_dc_completion(self, cancel=False):
+		"""Roll completion qty back into the source Delivery Challan.
+
+		Submit:  +qty onto each DC Item's ste_delivered_quantity, +qty onto DC's
+		         ste_transferred, recompute percent, flip transfer_complete if full.
+		Cancel:  reverse all of the above; un-flip transfer_complete if it falls back.
+		"""
+		if self.purpose != "DC Completion" or self.against != "Delivery Challan" or not self.against_id:
+			return
+
+		sign = -1 if cancel else 1
+		dc_name = self.against_id
+		dc = frappe.get_doc("Delivery Challan", dc_name, for_update=True)
+
+		transferred_delta = 0.0
+		for row in self.items:
+			if not row.against_id_detail:
+				continue
+			dc_item = next((i for i in dc.items if i.name == row.against_id_detail), None)
+			if not dc_item:
+				continue
+			new_val = flt(dc_item.ste_delivered_quantity) + sign * flt(row.qty)
+			frappe.db.set_value(
+				"Delivery Challan Item",
+				dc_item.name,
+				"ste_delivered_quantity",
+				new_val,
+				update_modified=False,
+			)
+			transferred_delta += sign * flt(row.qty)
+
+		# row.qty and DC.total_delivered_qty are both in UOM (not stock-uom); they sum cleanly.
+		new_ste_transferred = flt(dc.ste_transferred) + transferred_delta
+		total = flt(dc.total_delivered_qty) or 0
+		new_percent = (new_ste_transferred / total * 100) if total else 0
+		new_complete = 1 if total and (new_ste_transferred + 1e-6) >= total else 0
+
+		frappe.db.set_value(
+			"Delivery Challan",
+			dc_name,
+			{
+				"ste_transferred": new_ste_transferred,
+				"ste_transferred_percent": new_percent,
+				"transfer_complete": new_complete,
+			},
+			update_modified=False,
+		)
 
 
 @frappe.whitelist()
