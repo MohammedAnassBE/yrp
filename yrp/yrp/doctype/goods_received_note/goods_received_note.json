@@ -34,6 +34,7 @@
   "totals_section",
   "total_received_quantity",
   "total",
+  "freight_charges",
   "purchase_invoice_name",
   "transfer_section",
   "is_internal_unit",
@@ -233,6 +234,13 @@
    "fieldtype": "Currency",
    "label": "Total",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "freight_charges",
+   "fieldtype": "Currency",
+   "label": "Freight Charges",
+   "description": "Total freight on this receipt. Allocated across items in before_submit using YRP Stock Settings.freight_allocation_method."
   },
   {
    "allow_on_submit": 1,

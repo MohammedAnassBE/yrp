@@ -57,6 +57,7 @@ class GoodsReceivedNote(Document):
 	def before_submit(self):
 		self.validate_against()
 		self.validate_source_pending()
+		self.apply_freight_allocation()
 
 	def on_submit(self):
 		self.update_source_pending()
@@ -64,6 +65,8 @@ class GoodsReceivedNote(Document):
 
 	def before_cancel(self):
 		self.validate_no_purchase_invoice()
+		self.validate_closed_purchase_order()
+		self.validate_age_limit()
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry")
 		if self.is_internal_unit:
 			ste_names = frappe.get_all(
@@ -189,6 +192,65 @@ class GoodsReceivedNote(Document):
 		self.total_received_quantity = sum(flt(row.quantity) for row in self.items)
 		self.total = sum(flt(row.amount) for row in self.items)
 
+	def apply_freight_allocation(self):
+		"""D-012: fold self.freight_charges into row.rate at submit so the SLE
+		valuation_rate is freight-inclusive from the start. No retroactive Landed
+		Cost Voucher. Allocation method comes from YRP Stock Settings:
+		  - By Quantity: share = row.stock_qty / total_stock_qty
+		  - By Value:    share = row.amount / total_amount; falls back to
+		                 By Quantity when total_amount <= 0 (Gap #11).
+
+		Guards: negative freight rejected; zero total stock_qty with non-zero
+		freight rejected (Gap #12). Allocation uses stock_qty only (Gap #21).
+		Post-allocation row.rate is per-stock-unit. (set_item_defaults stores
+		row.rate as per-form-unit for PO mode; freight allocation normalises it
+		to per-stock-unit. With conversion_factor==1 — the common case — they
+		coincide. Worth folding into set_item_defaults later for consistency.)
+
+		Idempotent within a single doc lifetime: flags.freight_allocated blocks
+		double application if before_submit fires twice.
+		"""
+		if self.flags.get("freight_allocated"):
+			return
+		freight = flt(self.freight_charges)
+		if freight < 0:
+			frappe.throw(_("Freight Charges cannot be negative."))
+		if freight == 0:
+			self.flags.freight_allocated = True
+			return
+
+		total_stock_qty = sum(flt(r.stock_qty) for r in self.items)
+		total_amount = sum(flt(r.amount) for r in self.items)
+		method = frappe.db.get_single_value(
+			"YRP Stock Settings", "freight_allocation_method"
+		) or "By Quantity"
+		if method == "By Value" and total_amount <= 0:
+			method = "By Quantity"
+		if method == "By Quantity" and total_stock_qty <= 0:
+			frappe.throw(_("Cannot allocate freight when total qty is zero."))
+
+		# Track the residual so float-rounding drift lands on the last eligible
+		# row, not in the SLE total. Shares are computed for every row except the
+		# last, which absorbs `freight - sum_so_far`.
+		eligible = [row for row in self.items if flt(row.stock_qty) > 0]
+		assigned = 0.0
+		for idx, row in enumerate(eligible):
+			stock_qty = flt(row.stock_qty)
+			is_last = idx == len(eligible) - 1
+			if is_last:
+				share = freight - assigned
+			elif method == "By Quantity":
+				share = freight * (stock_qty / total_stock_qty)
+			else:
+				share = freight * (flt(row.amount) / total_amount) if total_amount else 0
+			assigned += share
+			new_amount = flt(row.amount) + share
+			row.rate = new_amount / stock_qty
+			row.amount = new_amount
+
+		self.total = sum(flt(r.amount) for r in self.items)
+		self.flags.freight_allocated = True
+
 	def validate_source_pending(self):
 		if self.against == "Purchase Order":
 			self.validate_against_purchase_order_pending()
@@ -203,6 +265,35 @@ class GoodsReceivedNote(Document):
 		purchase_invoice = _get_linked_purchase_invoice_from_child_table(self.name)
 		if purchase_invoice:
 			_throw_purchase_invoice_link_error(self.name, purchase_invoice)
+
+	def validate_closed_purchase_order(self):
+		# Only PO closure blocks GRN cancel. Work Order closure is handled by WO's
+		# own lifecycle (open_status flip auto-closes reservations and zeroes
+		# pending), so a WO-GRN cancel is the WO controller's concern.
+		if self.against != "Purchase Order" or not self.against_id:
+			return
+		open_status = frappe.db.get_value("Purchase Order", self.against_id, "open_status")
+		if open_status == "Close":
+			frappe.throw(
+				_("Cannot cancel Goods Received Note {0} — Purchase Order {1} is closed. Reopen the Purchase Order first.").format(
+					self.name, self.against_id
+				)
+			)
+
+	def validate_age_limit(self):
+		from frappe.utils import getdate, today
+
+		window = frappe.db.get_single_value("YRP Stock Settings", "grn_cancel_window_days")
+		if not window or int(window) <= 0:
+			return
+		age_days = (getdate(today()) - getdate(self.posting_date)).days
+		if age_days > int(window):
+			frappe.throw(
+				_("Cannot cancel Goods Received Note {0} — posted {1} ({2} days ago, limit is {3}).").format(
+					self.name, self.posting_date, age_days, int(window)
+				)
+			)
+
 
 	def validate_against_work_order_pending(self):
 		wo = frappe.get_doc("Work Order", self.against_id)

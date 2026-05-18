@@ -114,3 +114,13 @@ def get_supplier_address_display(supplier):
 		return frappe.render_template(template, address_dict)
 	except TemplateSyntaxError:
 		frappe.throw(_("There is an error in your Address Template"))
+
+
+def update_supplier_department_on_vbt(supplier, dept):
+	"""Set Supplier.department if currently empty. Called from Vendor Bill Tracking
+	assignment so a supplier's bills route to a consistent department over time."""
+	existing = frappe.db.get_value("Supplier", supplier, "department")
+	if existing is None and not frappe.db.exists("Supplier", supplier):
+		frappe.throw(f"Can't find supplier -> {supplier}")
+	if not existing:
+		frappe.db.set_value("Supplier", supplier, "department", dept)

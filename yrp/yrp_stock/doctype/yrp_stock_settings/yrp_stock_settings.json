@@ -9,7 +9,9 @@
   "stock_settings_section",
   "transit_warehouse",
   "transit_aging_threshold_days",
+  "grn_cancel_window_days",
   "default_received_type",
+  "freight_allocation_method",
   "column_break_stock_1",
   "default_valuation_method",
   "allow_negative_stock",
@@ -55,11 +57,26 @@
    "description": "Stock Entries older than this many days that are still in transit are flagged in the Pending Transit report."
   },
   {
+   "default": "0",
+   "fieldname": "grn_cancel_window_days",
+   "fieldtype": "Int",
+   "label": "GRN Cancel Window (Days)",
+   "description": "Block cancelling a Goods Received Note whose posting_date is older than this many days. 0 disables the guard."
+  },
+  {
    "fieldname": "default_received_type",
    "fieldtype": "Link",
    "label": "Default Received Type",
    "options": "Received Type",
    "description": "Used as the default value when a Received Type is not explicitly set on a stock transaction line."
+  },
+  {
+   "default": "By Quantity",
+   "fieldname": "freight_allocation_method",
+   "fieldtype": "Select",
+   "label": "Freight Allocation Method",
+   "options": "By Quantity\nBy Value",
+   "description": "How GRN.freight_charges is split across receipt lines. By Quantity → freight / total stock qty. By Value → freight weighted by amount. By Value falls back to By Quantity when total amount is zero."
   },
   {
    "fieldname": "column_break_stock_1",

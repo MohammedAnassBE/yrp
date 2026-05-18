@@ -34,7 +34,11 @@
   "po_dependent_attribute_section",
   "po_dependent_attribute",
   "column_break_po_dep",
-  "po_dependent_attribute_value"
+  "po_dependent_attribute_value",
+  "vendor_bill_section",
+  "unique_vendor_bill_per_year",
+  "fiscal_year_start_date",
+  "fiscal_year_end_date"
  ],
  "fields": [
   {
@@ -205,6 +209,30 @@
    "fieldtype": "Link",
    "label": "Dependent Attribute Value",
    "options": "Item Attribute Value"
+  },
+  {
+   "fieldname": "vendor_bill_section",
+   "fieldtype": "Section Break",
+   "label": "Vendor Bill Tracking"
+  },
+  {
+   "default": "0",
+   "fieldname": "unique_vendor_bill_per_year",
+   "fieldtype": "Check",
+   "label": "Unique Vendor Bill No Per Year",
+   "description": "Reject duplicate (supplier, bill_no) combinations within the fiscal year window."
+  },
+  {
+   "depends_on": "unique_vendor_bill_per_year",
+   "fieldname": "fiscal_year_start_date",
+   "fieldtype": "Date",
+   "label": "Fiscal Year Start Date"
+  },
+  {
+   "depends_on": "unique_vendor_bill_per_year",
+   "fieldname": "fiscal_year_end_date",
+   "fieldtype": "Date",
+   "label": "Fiscal Year End Date"
   }
  ],
  "index_web_pages_for_search": 1,
