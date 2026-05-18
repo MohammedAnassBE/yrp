@@ -16,6 +16,7 @@ frappe.ui.form.on("Goods Received Note", {
 
 	refresh(frm) {
 		mount_grn_editor(frm);
+		add_complete_transfer_button(frm);
 	},
 
 	against(frm) {
@@ -174,6 +175,25 @@ function bind_grn_dirty_handler(frm) {
 	if (!frappe.yrp.eventBus || frm._grn_editor_dirty_handler) return;
 	frm._grn_editor_dirty_handler = () => frm.dirty();
 	frappe.yrp.eventBus.$on("work_order_items_updated", frm._grn_editor_dirty_handler);
+}
+
+function add_complete_transfer_button(frm) {
+	if (frm.doc.docstatus !== 1 || !frm.doc.is_internal_unit || frm.doc.transfer_complete) {
+		return;
+	}
+	frm.add_custom_button(__("Complete Transfer"), () => {
+		frappe.call({
+			method: "yrp.yrp.doctype.goods_received_note.goods_received_note.make_grn_completion",
+			args: { doc_name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Creating Stock Entry..."),
+			callback(r) {
+				if (r.message) {
+					frappe.set_route("Form", "Stock Entry", r.message);
+				}
+			},
+		});
+	});
 }
 
 function has_received_qty(item_details) {

@@ -35,7 +35,7 @@
  ],
  "fields": [
   {"fieldname": "naming_series", "fieldtype": "Select", "label": "Series", "no_copy": 1, "options": "STE-.YYYY.-", "reqd": 1, "set_only_once": 1},
-  {"fieldname": "purpose", "fieldtype": "Select", "in_list_view": 1, "label": "Purpose", "options": "Material Issue\nMaterial Receipt\nSend to Warehouse\nReceive at Warehouse\nMaterial Consumed\nDC Completion", "reqd": 1},
+  {"fieldname": "purpose", "fieldtype": "Select", "in_list_view": 1, "label": "Purpose", "options": "Material Issue\nMaterial Receipt\nSend to Warehouse\nReceive at Warehouse\nMaterial Consumed\nDC Completion\nGRN Completion", "reqd": 1},
   {"depends_on": "eval:doc.purpose == 'Receive at Warehouse'", "fieldname": "outgoing_stock_entry", "fieldtype": "Link", "label": "Outgoing Stock Entry", "options": "Stock Entry", "read_only": 1},
   {"fieldname": "column_break_1", "fieldtype": "Column Break"},
   {"default": "Today", "fieldname": "posting_date", "fieldtype": "Date", "label": "Posting Date", "no_copy": 1, "search_index": 1},

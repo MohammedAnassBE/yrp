@@ -71,6 +71,26 @@ class StockEntry(Document):
 		self.calculate_totals()
 		self.validate_production_consumption_received_type()
 		self.validate_dc_completion_pending()
+		self.validate_grn_completion_pending()
+
+	def validate_grn_completion_pending(self):
+		if self.purpose != "GRN Completion" or self.against != "Goods Received Note" or not self.against_id:
+			return
+		for row in self.items:
+			if not row.against_id_detail:
+				frappe.throw(_("Row {0}: against_id_detail is required for GRN Completion.").format(row.idx))
+			received, ste_done = frappe.db.get_value(
+				"Goods Received Note Item",
+				row.against_id_detail,
+				["quantity", "ste_received_quantity"],
+			) or (0, 0)
+			pending = flt(received) - flt(ste_done)
+			if flt(row.qty) > pending + 1e-6:
+				frappe.throw(
+					_("Row {0}: qty {1} exceeds remaining pending {2} on Goods Received Note Item {3}.").format(
+						row.idx, flt(row.qty), pending, row.against_id_detail
+					)
+				)
 
 	def validate_dc_completion_pending(self):
 		if self.purpose != "DC Completion" or self.against != "Delivery Challan" or not self.against_id:
@@ -126,6 +146,7 @@ class StockEntry(Document):
 		make_sl_entries(sl_entries)
 		self.update_transferred_qty()
 		self.update_dc_completion(cancel=False)
+		self.update_grn_completion(cancel=False)
 
 	def before_cancel(self):
 		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
@@ -137,17 +158,18 @@ class StockEntry(Document):
 		make_sl_entries(sl_entries, cancel=True)
 		self.update_transferred_qty()
 		self.update_dc_completion(cancel=True)
+		self.update_grn_completion(cancel=True)
 
 	# ------------------------------------------------------------------
 	def validate_warehouses(self):
-		needs_from = self.purpose in ("Material Issue", "Send to Warehouse", "Receive at Warehouse", "Material Consumed", "DC Completion")
-		needs_to = self.purpose in ("Material Receipt", "Send to Warehouse", "Receive at Warehouse", "DC Completion")
+		needs_from = self.purpose in ("Material Issue", "Send to Warehouse", "Receive at Warehouse", "Material Consumed", "DC Completion", "GRN Completion")
+		needs_to = self.purpose in ("Material Receipt", "Send to Warehouse", "Receive at Warehouse", "DC Completion", "GRN Completion")
 		if needs_from and not self.from_warehouse:
 			frappe.throw(_("From Warehouse is required for purpose {0}").format(self.purpose))
 		if needs_to and not self.to_warehouse:
 			frappe.throw(_("To Warehouse is required for purpose {0}").format(self.purpose))
-		if self.purpose in ("Send to Warehouse", "Receive at Warehouse", "DC Completion"):
-			if self.purpose == "DC Completion" or not self.skip_transit:
+		if self.purpose in ("Send to Warehouse", "Receive at Warehouse", "DC Completion", "GRN Completion"):
+			if self.purpose in ("DC Completion", "GRN Completion") or not self.skip_transit:
 				transit = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
 				if not transit:
 					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose {0}").format(self.purpose))
@@ -177,6 +199,7 @@ class StockEntry(Document):
 		Receive at Warehouse    : -transit, +to_warehouse  (linked via outgoing_stock_entry)
 		Material Consumed       : -from_warehouse
 		DC Completion           : -transit, +to_warehouse  (linked via against=Delivery Challan)
+		GRN Completion          : -transit, +to_warehouse  (linked via against=Goods Received Note)
 		"""
 		from yrp.stock.dimensions import get_stock_dimensions
 
@@ -216,6 +239,11 @@ class StockEntry(Document):
 			elif self.purpose == "DC Completion":
 				if not transit_warehouse:
 					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose DC Completion."))
+				entries.append({**base, "warehouse": transit_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
+				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
+			elif self.purpose == "GRN Completion":
+				if not transit_warehouse:
+					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose GRN Completion."))
 				entries.append({**base, "warehouse": transit_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
 				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
 
@@ -292,6 +320,53 @@ class StockEntry(Document):
 		frappe.db.set_value(
 			"Delivery Challan",
 			dc_name,
+			{
+				"ste_transferred": new_ste_transferred,
+				"ste_transferred_percent": new_percent,
+				"transfer_complete": new_complete,
+			},
+			update_modified=False,
+		)
+
+	def update_grn_completion(self, cancel=False):
+		"""Roll completion qty back into the source Goods Received Note.
+
+		Submit:  +qty onto each GRN Item's ste_received_quantity, +qty onto GRN's
+		         ste_transferred, recompute percent, flip transfer_complete if full.
+		Cancel:  reverse all of the above; un-flip transfer_complete if it falls back.
+		"""
+		if self.purpose != "GRN Completion" or self.against != "Goods Received Note" or not self.against_id:
+			return
+
+		sign = -1 if cancel else 1
+		grn_name = self.against_id
+		grn = frappe.get_doc("Goods Received Note", grn_name, for_update=True)
+
+		transferred_delta = 0.0
+		for row in self.items:
+			if not row.against_id_detail:
+				continue
+			grn_item = next((i for i in grn.items if i.name == row.against_id_detail), None)
+			if not grn_item:
+				continue
+			new_val = flt(grn_item.ste_received_quantity) + sign * flt(row.qty)
+			frappe.db.set_value(
+				"Goods Received Note Item",
+				grn_item.name,
+				"ste_received_quantity",
+				new_val,
+				update_modified=False,
+			)
+			transferred_delta += sign * flt(row.qty)
+
+		new_ste_transferred = flt(grn.ste_transferred) + transferred_delta
+		total = flt(grn.total_received_quantity) or 0
+		new_percent = (new_ste_transferred / total * 100) if total else 0
+		new_complete = 1 if total and (new_ste_transferred + 1e-6) >= total else 0
+
+		frappe.db.set_value(
+			"Goods Received Note",
+			grn_name,
 			{
 				"ste_transferred": new_ste_transferred,
 				"ste_transferred_percent": new_percent,

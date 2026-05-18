@@ -47,6 +47,7 @@ class GoodsReceivedNote(Document):
 		self.set_missing_values()
 		self.apply_dimensions()
 		self.set_item_defaults()
+		self.compute_internal_unit()
 
 	def validate(self):
 		self.validate_against()
@@ -63,11 +64,28 @@ class GoodsReceivedNote(Document):
 
 	def before_cancel(self):
 		self.validate_no_purchase_invoice()
-		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
+		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry")
+		if self.is_internal_unit:
+			ste_names = frappe.get_all(
+				"Stock Entry",
+				filters={
+					"against": "Goods Received Note",
+					"against_id": self.name,
+					"purpose": "GRN Completion",
+					"docstatus": 1,
+				},
+				pluck="name",
+			)
+			for name in ste_names:
+				frappe.get_doc("Stock Entry", name).cancel()
 
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
 		self.update_source_pending(cancel=True)
+		if self.is_internal_unit:
+			self.db_set("ste_transferred", 0)
+			self.db_set("ste_transferred_percent", 0)
+			self.db_set("transfer_complete", 0)
 
 	def set_missing_values(self):
 		if not self.posting_date:
@@ -281,6 +299,14 @@ class GoodsReceivedNote(Document):
 	def make_stock_ledger_entries(self, cancel=False):
 		from yrp.stock.stock_ledger import make_sl_entries
 
+		destination = self.to_warehouse
+		if self.is_internal_unit:
+			destination = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
+			if not destination:
+				frappe.throw(
+					_("Transit Warehouse must be set in YRP Stock Settings for internal-unit Goods Received Note.")
+				)
+
 		entries = []
 		for row in self.items:
 			qty = flt(row.stock_qty) or flt(row.quantity)
@@ -289,12 +315,30 @@ class GoodsReceivedNote(Document):
 			base = _sle_base(self, row)
 			entries.append({
 				**base,
-				"warehouse": self.to_warehouse,
+				"warehouse": destination,
 				"qty": qty,
 				"rate": flt(row.rate),
 			})
 
 		make_sl_entries(entries, cancel=cancel)
+
+	def compute_internal_unit(self):
+		"""Internal-unit GRN: supplier (sender) and delivery_location (receiver) are both
+		company locations. Mirrors DC's compute_internal_unit but uses (supplier,
+		delivery_location) instead of DC's (from_location, supplier). PO-only GRNs lack
+		delivery_location and stay non-internal."""
+		if not self.supplier or not self.delivery_location or self.supplier == self.delivery_location:
+			self.is_internal_unit = 0
+			return
+		flags = {
+			row.name: row.is_company_location
+			for row in frappe.db.get_all(
+				"Supplier",
+				filters={"name": ["in", [self.supplier, self.delivery_location]]},
+				fields=["name", "is_company_location"],
+			)
+		}
+		self.is_internal_unit = 1 if (flags.get(self.supplier) and flags.get(self.delivery_location)) else 0
 
 
 def _find_matching_receivable(rows, source_row):
@@ -597,3 +641,72 @@ def _existing_receipt_quantities(wo, existing_rows, default_received_type):
 
 def _receipt_split_key(receivable_name, item_variant, received_type):
 	return (receivable_name, item_variant, received_type or "")
+
+
+@frappe.whitelist()
+def make_grn_completion(doc_name):
+	frappe.has_permission("Stock Entry", "create", throw=True)
+	grn = frappe.get_doc("Goods Received Note", doc_name)
+	if grn.docstatus != 1:
+		frappe.throw(_("Goods Received Note must be submitted."))
+	if not grn.is_internal_unit:
+		frappe.throw(_("Goods Received Note is not an internal unit transfer."))
+	if grn.transfer_complete:
+		frappe.throw(_("Transfer is already complete for this Goods Received Note."))
+	pending_draft = frappe.db.exists(
+		"Stock Entry",
+		{"against": "Goods Received Note", "against_id": doc_name, "purpose": "GRN Completion", "docstatus": 0},
+	)
+	if pending_draft:
+		frappe.throw(
+			_("A draft GRN Completion Stock Entry already exists ({0}). Submit or delete it before creating a new one.").format(pending_draft)
+		)
+
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dim_fields = get_dimension_fieldnames()
+	transit_warehouse = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
+	if not transit_warehouse:
+		frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings."))
+
+	items = []
+	for item in grn.items:
+		pending = flt(item.quantity) - flt(item.ste_received_quantity)
+		if pending <= 0:
+			continue
+		conv = flt(item.conversion_factor) or 1
+		row_data = {
+			"item": item.item_variant,
+			"qty": pending,
+			"stock_qty": pending * conv,
+			"uom": item.uom,
+			"stock_uom": item.stock_uom or item.uom,
+			"conversion_factor": conv,
+			"rate": flt(item.rate),
+			"table_index": item.table_index,
+			"row_index": item.row_index,
+			"against": "Goods Received Note Item",
+			"against_id_detail": item.name,
+			"remarks": item.comments,
+		}
+		for fn in dim_fields:
+			if item.meta.get_field(fn):
+				row_data[fn] = item.get(fn)
+		items.append(row_data)
+
+	if not items:
+		frappe.throw(_("Nothing left to transfer."))
+
+	ste = frappe.new_doc("Stock Entry")
+	ste.purpose = "GRN Completion"
+	ste.against = "Goods Received Note"
+	ste.against_id = doc_name
+	ste.from_warehouse = transit_warehouse
+	ste.to_warehouse = grn.to_warehouse
+	# from_warehouse is set for display; Stock Entry.get_sl_entries reads transit
+	# directly from YRP Stock Settings for "GRN Completion" (same as "DC Completion").
+	for row_data in items:
+		ste.append("items", row_data)
+	ste.flags.allow_from_grn = True
+	ste.insert(ignore_permissions=True)
+	return ste.name
