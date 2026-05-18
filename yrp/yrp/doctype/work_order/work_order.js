@@ -33,10 +33,7 @@ frappe.ui.form.on("Work Order", {
 			},
 		});
 		if (frm.doc.docstatus === 1 && frm.doc.open_status !== "Close") {
-			frm.add_custom_button(
-				frm.doc.open_status === "Close Request" ? __("Approve Close") : __("Close"),
-				() => open_close_dialog(frm),
-			);
+			add_close_button(frm);
 		}
 	},
 
@@ -45,6 +42,28 @@ frappe.ui.form.on("Work Order", {
 		sync_editor_payload(frm, "receivableEditor", "receivable_details");
 	},
 });
+
+function add_close_button(frm) {
+	frappe.call({
+		method: "yrp.yrp.doctype.work_order.work_order.get_close_permission",
+		callback(r) {
+			const permission = r.message || {};
+			if (!permission.approver_role) {
+				frm.dashboard.add_comment(__("Configure Work Order Closing Approver Role in YRP Settings."), "orange");
+				return;
+			}
+			if (frm.doc.open_status === "Close Request" && !permission.is_close_manager) {
+				frm.dashboard.add_comment(__("Close request is waiting for a user with role {0}.", [permission.approver_role]), "orange");
+				return;
+			}
+			let label = permission.is_close_manager ? __("Close") : __("Request Close");
+			if (frm.doc.open_status === "Close Request") {
+				label = __("Approve Close");
+			}
+			frm.add_custom_button(label, () => open_close_dialog(frm));
+		},
+	});
+}
 
 function mount_work_order_editor(frm, config) {
 	if (!frappe.yrp.work_order.ItemEditor || !frm.fields_dict[config.fieldname]) {

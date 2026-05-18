@@ -81,56 +81,71 @@ function render_work_order_details(frm) {
 		method: "yrp.yrp.doctype.purchase_invoice.purchase_invoice.get_merch_roles",
 		callback(role_res) {
 			frappe.call({
-				method: "yrp.yrp.doctype.purchase_invoice.purchase_invoice.check_all_wo_closed",
-				args: { purchase_invoice: frm.doc.name },
-				callback(status_res) {
-					const role = role_res.message;
-					const status = status_res.message || {};
-					let html = `<div class="yrp-pi-wo-details"><h4>${__("Work Order Details")}</h4>`;
-					for (const item of details) {
-						html += `<div style="margin-bottom: 12px;">
-							<h5>${frappe.utils.escape_html(item.work_order || "")}</h5>
-							<table class="table table-sm table-bordered">
-								<thead><tr>
-									<th>${__("Item Variant")}</th>
-									<th>${__("Delivered")}</th>
-									<th>${__("Received")}</th>
-									<th>${__("Billed")}</th>
-									<th>${__("Invoice Qty")}</th>
-								</tr></thead><tbody>`;
-						for (const row of item.rows || []) {
-							html += `<tr>
-								<td>${frappe.utils.escape_html(row.item_variant || "")}</td>
-								<td>${flt(row.total_delivered)}</td>
-								<td>${flt(row.total_received)}</td>
-								<td>${flt(row.billed)}</td>
-								<td>${flt(row.quantity)}</td>
-							</tr>`;
-						}
-						html += `</tbody></table>`;
-						if (item.bills && item.bills.length) {
-							html += `<div class="text-muted">${__("Previous Invoices")}: ${item.bills.map((b) => frappe.utils.escape_html(b.pi_name)).join(", ")}</div>`;
-						}
-						html += `</div>`;
-					}
-					if (frm.doc.docstatus === 0 && !frm.doc.approved_by && frm.doc.against === "Work Order") {
-						const open_wos = status.open_work_orders || [];
-						const close_request_wos = status.close_request_wos || [];
-						const needs_close = open_wos.length || close_request_wos.length;
-						if (needs_close) {
-							html += `<div class="text-warning" style="margin: 8px 0;">${__("Work Orders must be closed before manager approval.")}</div>`;
-							for (const wo of open_wos) {
-								html += `<button class="btn btn-xs btn-warning yrp-close-wo" data-wo="${frappe.utils.escape_html(wo)}">${role === "merch_manager" ? __("Close") : __("Request Close")} ${frappe.utils.escape_html(wo)}</button> `;
+				method: "yrp.yrp.doctype.work_order.work_order.get_close_permission",
+				callback(permission_res) {
+					frappe.call({
+						method: "yrp.yrp.doctype.purchase_invoice.purchase_invoice.check_all_wo_closed",
+						args: { purchase_invoice: frm.doc.name },
+						callback(status_res) {
+							const close_permission = permission_res.message || {};
+							const status = status_res.message || {};
+							let html = `<div class="yrp-pi-wo-details"><h4>${__("Work Order Details")}</h4>`;
+							for (const item of details) {
+								html += `<div style="margin-bottom: 12px;">
+									<h5>${frappe.utils.escape_html(item.work_order || "")}</h5>
+									<table class="table table-sm table-bordered">
+										<thead><tr>
+											<th>${__("Item Variant")}</th>
+											<th>${__("Delivered")}</th>
+											<th>${__("Received")}</th>
+											<th>${__("Billed")}</th>
+											<th>${__("Invoice Qty")}</th>
+										</tr></thead><tbody>`;
+								for (const row of item.rows || []) {
+									html += `<tr>
+										<td>${frappe.utils.escape_html(row.item_variant || "")}</td>
+										<td>${flt(row.total_delivered)}</td>
+										<td>${flt(row.total_received)}</td>
+										<td>${flt(row.billed)}</td>
+										<td>${flt(row.quantity)}</td>
+									</tr>`;
+								}
+								html += `</tbody></table>`;
+								if (item.bills && item.bills.length) {
+									html += `<div class="text-muted">${__("Previous Invoices")}: ${item.bills.map((b) => frappe.utils.escape_html(b.pi_name)).join(", ")}</div>`;
+								}
+								html += `</div>`;
 							}
-							for (const wo of close_request_wos) {
-								html += `<button class="btn btn-xs btn-warning yrp-close-wo" data-wo="${frappe.utils.escape_html(wo)}">${__("Approve Close")} ${frappe.utils.escape_html(wo)}</button> `;
+							if (frm.doc.docstatus === 0 && !frm.doc.approved_by && frm.doc.against === "Work Order") {
+								const open_wos = status.open_work_orders || [];
+								const close_request_wos = status.close_request_wos || [];
+								const needs_close = open_wos.length || close_request_wos.length;
+								if (needs_close) {
+									html += `<div class="text-warning" style="margin: 8px 0;">${__("Work Orders must be closed before manager approval.")}</div>`;
+									if (!close_permission.approver_role) {
+										html += `<div class="text-danger" style="margin: 8px 0;">${__("Configure Work Order Closing Approver Role in YRP Settings.")}</div>`;
+									}
+									for (const wo of open_wos) {
+										if (close_permission.approver_role) {
+											const label = close_permission.is_close_manager ? __("Close") : __("Request Close");
+											html += `<button class="btn btn-xs btn-warning yrp-close-wo" data-wo="${frappe.utils.escape_html(wo)}">${label} ${frappe.utils.escape_html(wo)}</button> `;
+										}
+									}
+									for (const wo of close_request_wos) {
+										if (close_permission.is_close_manager) {
+											html += `<button class="btn btn-xs btn-warning yrp-close-wo" data-wo="${frappe.utils.escape_html(wo)}">${__("Approve Close")} ${frappe.utils.escape_html(wo)}</button> `;
+										} else if (close_permission.approver_role) {
+											html += `<span class="text-muted" style="margin-right: 8px;">${__("Close requested")}: ${frappe.utils.escape_html(wo)}</span>`;
+										}
+									}
+								}
 							}
-						}
-					}
-					html += `</div>`;
-					$(wrapper).html(html);
-					$(wrapper).find(".yrp-close-wo").on("click", function () {
-						open_close_dialog(frm, $(this).data("wo"));
+							html += `</div>`;
+							$(wrapper).html(html);
+							$(wrapper).find(".yrp-close-wo").on("click", function () {
+								open_close_dialog(frm, $(this).data("wo"));
+							});
+						},
 					});
 				},
 			});

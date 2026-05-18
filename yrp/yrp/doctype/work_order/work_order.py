@@ -301,7 +301,10 @@ def update_stock(work_order, close_reason=None, close_other_reason=None, close_r
 	if doc.open_status == "Close":
 		return "Close"
 
-	if not _is_wo_close_manager():
+	if not _is_wo_close_manager(throw_if_missing=True):
+		if doc.open_status == "Close Request":
+			approver_role = _get_wo_close_approver_role()
+			frappe.throw(_("Only users with role {0} can approve close requests.").format(approver_role))
 		_apply_close_details(doc, "Close Request", close_reason, close_other_reason, close_remarks)
 		doc.save(ignore_permissions=True)
 		frappe.msgprint(_("Close Request has been submitted for approval."), alert=True)
@@ -418,8 +421,27 @@ def _stock_dimension_values(doc, row):
 	return values
 
 
-def _is_wo_close_manager():
+@frappe.whitelist()
+def get_close_permission():
+	approver_role = frappe.db.get_single_value("YRP Settings", "work_order_closing_approver_role")
+	return {
+		"approver_role": approver_role,
+		"is_close_manager": bool(approver_role and approver_role in frappe.get_roles(frappe.session.user)),
+	}
+
+
+def _get_wo_close_approver_role():
 	approver_role = frappe.db.get_single_value("YRP Settings", "work_order_closing_approver_role")
 	if not approver_role:
-		return False
+		frappe.throw(_("Please configure Work Order Closing Approver Role in YRP Settings."))
+	return approver_role
+
+
+def _is_wo_close_manager(throw_if_missing=False):
+	if throw_if_missing:
+		approver_role = _get_wo_close_approver_role()
+	else:
+		approver_role = frappe.db.get_single_value("YRP Settings", "work_order_closing_approver_role")
+		if not approver_role:
+			return False
 	return approver_role in frappe.get_roles(frappe.session.user)

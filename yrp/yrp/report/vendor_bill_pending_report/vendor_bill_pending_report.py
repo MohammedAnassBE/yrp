@@ -8,7 +8,7 @@ def execute(filters=None):
 
 def get_columns():
 	return [
-		{"fieldname": "name", "label": "Vendor Bill Tracking Number", "fieldtype": "Link", "options": "Vendor Bill Tracking", "width": 115},
+		{"fieldname": "name", "label": "Bill Tracking Number", "fieldtype": "Link", "options": "Bill Tracking", "width": 115},
 		{"fieldname": "supplier", "label": "Supplier", "fieldtype": "Link", "options": "Supplier", "width": 115},
 		{"fieldname": "supplier_name", "label": "Supplier Name", "fieldtype": "Data", "width": 115},
 		{"fieldname": "gstin", "label": "GST", "fieldtype": "Data", "width": 115},
@@ -38,14 +38,14 @@ def get_data(filters):
 		t1.bill_no, t1.invoice_value, t1.creation, DATEDIFF(%(curr_date)s, t1.bill_date) as bill_age,
 		t3.assigned_to, t3.received, t3.assigned_on, t3.assigned_by,
 		DATEDIFF(%(curr_date)s, t3.assigned_on) AS date_diff
-		FROM `tabVendor Bill Tracking` t1
+		FROM `tabBill Tracking` t1
 		LEFT JOIN (
 			SELECT t2.*
-			FROM `tabVendor Bill Tracking Assignment Detail` t2
+			FROM `tabBill Tracking Assignment Detail` t2
 			INNER JOIN (
 				SELECT inner_child.parent, MAX(inner_child.idx) AS max_idx
-				FROM `tabVendor Bill Tracking Assignment Detail` inner_child
-				JOIN `tabVendor Bill Tracking` inner_parent ON inner_parent.assigned_to = inner_child.assigned_to
+				FROM `tabBill Tracking Assignment Detail` inner_child
+				JOIN `tabBill Tracking` inner_parent ON inner_parent.assigned_to = inner_child.assigned_to
 				GROUP BY parent
 			) latest ON t2.parent = latest.parent AND t2.idx = latest.max_idx
 		) t3 ON t1.name = t3.parent

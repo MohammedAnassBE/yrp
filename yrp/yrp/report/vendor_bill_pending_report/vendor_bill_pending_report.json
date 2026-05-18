@@ -16,7 +16,7 @@
  "name": "Vendor Bill Pending Report",
  "owner": "Administrator",
  "prepared_report": 0,
- "ref_doctype": "Vendor Bill Tracking",
+ "ref_doctype": "Bill Tracking",
  "report_name": "Vendor Bill Pending Report",
  "report_type": "Script Report",
  "roles": [

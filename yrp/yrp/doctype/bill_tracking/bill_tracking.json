@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "VBT-.#####",
+ "autoname": "BT-.#####",
  "creation": "2026-05-18 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -26,7 +26,7 @@
   "receive_comment",
   "assigned_to",
   "section_break_fwkq",
-  "vendor_bill_tracking_history",
+  "bill_tracking_history",
   "cancel_reason",
   "form_status",
   "amended_from"
@@ -106,10 +106,10 @@
   {
    "allow_on_submit": 1,
    "depends_on": "eval: doc.docstatus != 0",
-   "fieldname": "vendor_bill_tracking_history",
+   "fieldname": "bill_tracking_history",
    "fieldtype": "Table",
-   "label": "Vendor Bill Tracking History",
-   "options": "Vendor Bill Tracking Assignment Detail",
+   "label": "Bill Tracking History",
+   "options": "Bill Tracking Assignment Detail",
    "read_only": 1
   },
   {
@@ -140,7 +140,7 @@
    "fieldtype": "Link",
    "label": "Amended From",
    "no_copy": 1,
-   "options": "Vendor Bill Tracking",
+   "options": "Bill Tracking",
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
@@ -200,7 +200,7 @@
  "modified": "2026-05-18 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
- "name": "Vendor Bill Tracking",
+ "name": "Bill Tracking",
  "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [

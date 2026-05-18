@@ -13,7 +13,7 @@
   "column_break_4",
   "name1",
   "disabled",
-  "over_delivery_receipt_allowance",
+  "po_excess_allowed_percentage",
   "is_stock_item",
   "allow_negative_stock",
   "is_purchase_item",
@@ -22,6 +22,8 @@
   "default_unit_of_measure",
   "uom_conversion_details",
   "secondary_unit_of_measure",
+  "weight_per_unit",
+  "weight_uom",
   "item_hash_value",
   "attributes_section",
   "primary_attribute",
@@ -115,6 +117,20 @@
    "permlevel": 1
   },
   {
+   "default": "0",
+   "fieldname": "weight_per_unit",
+   "fieldtype": "Float",
+   "label": "Weight Per Unit",
+   "non_negative": 1,
+   "description": "Per-unit weight in `weight_uom`. Used by Goods Received Note's By Weight freight allocation."
+  },
+  {
+   "fieldname": "weight_uom",
+   "fieldtype": "Link",
+   "label": "Weight UOM",
+   "options": "UOM"
+  },
+  {
    "fieldname": "primary_attribute",
    "fieldtype": "Link",
    "label": "Primary Attribute",
@@ -130,11 +146,11 @@
   },
   {
    "default": "0",
-   "fieldname": "over_delivery_receipt_allowance",
-   "fieldtype": "Float",
-   "label": "Over Delivery/Receipt Allowance (%)",
-   "permlevel": 1,
-   "precision": "1"
+   "fieldname": "po_excess_allowed_percentage",
+   "fieldtype": "Percent",
+   "label": "PO Excess Allowed Percentage",
+   "non_negative": 1,
+   "description": "When > 0, a GRN against a Purchase Order may receive up to `ordered_qty × (1 + pct/100)` for this Item. 0 enforces strict pending."
   },
   {
    "fieldname": "item_group",

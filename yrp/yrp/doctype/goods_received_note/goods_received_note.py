@@ -199,13 +199,18 @@ class GoodsReceivedNote(Document):
 		  - By Quantity: share = row.stock_qty / total_stock_qty
 		  - By Value:    share = row.amount / total_amount; falls back to
 		                 By Quantity when total_amount <= 0 (Gap #11).
+		  - By Weight:   share = (row.stock_qty × Item.weight_per_unit) / total_weight;
+		                 falls back to By Quantity when total_weight <= 0.
+		  - Manual:      share = row.freight_amount (operator-entered). Sum of
+		                 row.freight_amount must equal freight_charges; submit is
+		                 blocked otherwise. No residual reconciliation.
 
 		Guards: negative freight rejected; zero total stock_qty with non-zero
-		freight rejected (Gap #12). Allocation uses stock_qty only (Gap #21).
-		Post-allocation row.rate is per-stock-unit. (set_item_defaults stores
-		row.rate as per-form-unit for PO mode; freight allocation normalises it
-		to per-stock-unit. With conversion_factor==1 — the common case — they
-		coincide. Worth folding into set_item_defaults later for consistency.)
+		freight rejected for the proportional methods (Gap #12). Allocation uses
+		stock_qty only (Gap #21). Post-allocation row.rate is per-stock-unit.
+		(set_item_defaults stores row.rate as per-form-unit for PO mode; freight
+		allocation normalises it to per-stock-unit. With conversion_factor==1 —
+		the common case — they coincide.)
 
 		Idempotent within a single doc lifetime: flags.freight_allocated blocks
 		double application if before_submit fires twice.
@@ -219,19 +224,35 @@ class GoodsReceivedNote(Document):
 			self.flags.freight_allocated = True
 			return
 
-		total_stock_qty = sum(flt(r.stock_qty) for r in self.items)
-		total_amount = sum(flt(r.amount) for r in self.items)
 		method = frappe.db.get_single_value(
 			"YRP Stock Settings", "freight_allocation_method"
 		) or "By Quantity"
+
+		if method == "Manual":
+			self._apply_manual_freight(freight)
+		else:
+			self._apply_proportional_freight(freight, method)
+
+		self.total = sum(flt(r.amount) for r in self.items)
+		self.flags.freight_allocated = True
+
+	def _apply_proportional_freight(self, freight, method):
+		"""Shared path for By Quantity / By Value / By Weight. Computes each
+		row's share against a total and reuses the residual-on-last-row trick
+		so the SLE total exactly equals freight_charges."""
+		total_stock_qty = sum(flt(r.stock_qty) for r in self.items)
+		total_amount = sum(flt(r.amount) for r in self.items)
+		row_weights = {row.name: self._row_weight(row) for row in self.items}
+		total_weight = sum(row_weights.values())
+
+		# Fallback chain — same shape as the existing By Value rule
 		if method == "By Value" and total_amount <= 0:
+			method = "By Quantity"
+		if method == "By Weight" and total_weight <= 0:
 			method = "By Quantity"
 		if method == "By Quantity" and total_stock_qty <= 0:
 			frappe.throw(_("Cannot allocate freight when total qty is zero."))
 
-		# Track the residual so float-rounding drift lands on the last eligible
-		# row, not in the SLE total. Shares are computed for every row except the
-		# last, which absorbs `freight - sum_so_far`.
 		eligible = [row for row in self.items if flt(row.stock_qty) > 0]
 		assigned = 0.0
 		for idx, row in enumerate(eligible):
@@ -241,6 +262,8 @@ class GoodsReceivedNote(Document):
 				share = freight - assigned
 			elif method == "By Quantity":
 				share = freight * (stock_qty / total_stock_qty)
+			elif method == "By Weight":
+				share = freight * (row_weights[row.name] / total_weight) if total_weight else 0
 			else:
 				share = freight * (flt(row.amount) / total_amount) if total_amount else 0
 			assigned += share
@@ -248,8 +271,51 @@ class GoodsReceivedNote(Document):
 			row.rate = new_amount / stock_qty
 			row.amount = new_amount
 
-		self.total = sum(flt(r.amount) for r in self.items)
-		self.flags.freight_allocated = True
+	def _apply_manual_freight(self, freight):
+		"""Manual mode: operator-specified per-row freight_amount. We trust the
+		values but enforce sum(freight_amount) == freight_charges so a typo can't
+		silently distort valuation.
+
+		Note: rows with stock_qty<=0 are skipped during assignment but still count
+		toward the sum. validate_items already rejects quantity<=0 upstream
+		(see validate_items below) so this asymmetry is unreachable; if that
+		guard ever loosens, freight on a zero-qty row would silently evaporate
+		and the sum check should be updated to mirror the assignment skip.
+		"""
+		total_manual = sum(flt(row.freight_amount) for row in self.items)
+		if abs(total_manual - freight) > 1e-2:
+			frappe.throw(
+				_("Manual freight allocation: sum of row Freight Amounts ({0}) must equal Freight Charges ({1}).").format(
+					total_manual, freight
+				)
+			)
+		for row in self.items:
+			stock_qty = flt(row.stock_qty)
+			if stock_qty <= 0:
+				continue
+			share = flt(row.freight_amount)
+			new_amount = flt(row.amount) + share
+			row.rate = new_amount / stock_qty
+			row.amount = new_amount
+
+	def _row_weight(self, row):
+		"""Resolve per-row weight as `stock_qty × Item.weight_per_unit`.
+		Returns 0 when the item has no weight configured — caller falls back.
+
+		Assumes weight_per_unit values across rows share a common UOM. The
+		Item.weight_uom field is informational; this method does not convert
+		between weight UOMs. Mixing items with weights stored in different UOMs
+		(e.g., one in kg, one in g) will allocate incorrectly — operationally,
+		standardise on one weight UOM per company.
+		"""
+		stock_qty = flt(row.stock_qty)
+		if stock_qty <= 0 or not row.item_variant:
+			return 0
+		parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
+		if not parent_item:
+			return 0
+		weight_per_unit = frappe.get_cached_value("Item", parent_item, "weight_per_unit")
+		return stock_qty * flt(weight_per_unit)
 
 	def validate_source_pending(self):
 		if self.against == "Purchase Order":
@@ -313,12 +379,19 @@ class GoodsReceivedNote(Document):
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
 
+		# Per-Process excess allowance on the source Work Order: receipt is allowed
+		# up to receivable.qty × (1 + pct/100) per line. Stored on Process, not the
+		# WO header — multiple WOs sharing a process inherit the same rule.
+		excess_pct = _wo_excess_percentage(self.against_id)
 		for receivable_name, total_qty in totals_by_receivable.items():
 			target = receivable_by_name[receivable_name]
-			if flt(target.pending_quantity) + 0.0001 < total_qty:
+			ordered = flt(target.qty)
+			received_so_far = ordered - flt(target.pending_quantity)
+			allowance = ordered * (1 + flt(excess_pct) / 100) - received_so_far
+			if total_qty > allowance + 0.0001:
 				frappe.throw(
-					_("Received qty {0} exceeds pending qty {1} for {2}.").format(
-						flt(total_qty), flt(target.pending_quantity), target.item_variant
+					_("Received qty {0} exceeds allowance {1} for {2} (ordered {3}, excess allowance {4}%).").format(
+						flt(total_qty), flt(allowance), target.item_variant, ordered, flt(excess_pct)
 					)
 				)
 
@@ -340,12 +413,18 @@ class GoodsReceivedNote(Document):
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
 
+		# Per-Item excess allowance on the source PO line. Receipt is allowed up
+		# to ordered_qty × (1 + pct/100).
 		for item_name, total_qty in totals_by_item.items():
 			target = item_by_name[item_name]
-			if flt(target.pending_quantity) + 0.0001 < total_qty:
+			ordered = flt(target.qty)
+			received_so_far = ordered - flt(target.pending_quantity)
+			excess_pct = _po_excess_percentage(target.item_variant)
+			allowance = ordered * (1 + flt(excess_pct) / 100) - received_so_far
+			if total_qty > allowance + 0.0001:
 				frappe.throw(
-					_("Received qty {0} exceeds pending qty {1} for {2}.").format(
-						flt(total_qty), flt(target.pending_quantity), target.item_variant
+					_("Received qty {0} exceeds allowance {1} for {2} (ordered {3}, excess allowance {4}%).").format(
+						flt(total_qty), flt(allowance), target.item_variant, ordered, flt(excess_pct)
 					)
 				)
 
@@ -356,6 +435,10 @@ class GoodsReceivedNote(Document):
 		self.update_work_order_receivables(cancel=cancel)
 
 	def update_work_order_receivables(self, cancel=False):
+		# Note: pending_quantity may go negative when an excess receipt is allowed
+		# (Process.wo_excess_allowed_percentage > 0). This is intentional — don't
+		# add a clamp here. The validator already gates total receipts at
+		# ordered × (1 + pct/100).
 		wo = frappe.get_doc("Work Order", self.against_id)
 		changed = False
 		for row in self.items:
@@ -371,6 +454,9 @@ class GoodsReceivedNote(Document):
 			_update_work_order_status(self.against_id)
 
 	def update_purchase_order_items(self, cancel=False):
+		# Note: pending_quantity may go negative when an excess receipt is allowed
+		# (Item.po_excess_allowed_percentage > 0). This is intentional — the
+		# validator already gates total receipts at ordered × (1 + pct/100).
 		po = frappe.get_doc("Purchase Order", self.against_id)
 		changed = False
 		for row in self.items:
@@ -430,6 +516,34 @@ class GoodsReceivedNote(Document):
 			)
 		}
 		self.is_internal_unit = 1 if (flags.get(self.supplier) and flags.get(self.delivery_location)) else 0
+
+
+def _po_excess_percentage(item_variant):
+	"""Look up Item.po_excess_allowed_percentage via the item variant's parent.
+	Returns 0 (strict pending) when the field is missing or unset."""
+	if not item_variant:
+		return 0
+	parent_item = frappe.get_cached_value("Item Variant", item_variant, "item")
+	if not parent_item:
+		return 0
+	return flt(frappe.get_cached_value("Item", parent_item, "po_excess_allowed_percentage"))
+
+
+def _wo_excess_percentage(work_order_name):
+	"""Look up Process.wo_excess_allowed_percentage for the WO's process.
+	Returns 0 when no process is set or the field is unset.
+
+	Coarser than the PO side (Item-level): one Process-level percentage applies
+	uniformly to every receivable line on the WO. Intentional per the design —
+	rework/excess at WO time is driven by process capability, not by the
+	individual items the process consumes/produces.
+	"""
+	if not work_order_name:
+		return 0
+	process = frappe.db.get_value("Work Order", work_order_name, "process_name")
+	if not process:
+		return 0
+	return flt(frappe.get_cached_value("Process", process, "wo_excess_allowed_percentage"))
 
 
 def _find_matching_receivable(rows, source_row):

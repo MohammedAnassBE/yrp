@@ -15,6 +15,7 @@
   "conversion_factor",
   "rate",
   "amount",
+  "freight_amount",
   "pending_quantity",
   "ste_received_quantity",
   "ref_doctype",
@@ -83,6 +84,14 @@
    "fieldtype": "Currency",
    "label": "Amount",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "freight_amount",
+   "fieldtype": "Currency",
+   "label": "Freight Amount",
+   "precision": "4",
+   "description": "Per-row freight share. Required and editable only when YRP Stock Settings.freight_allocation_method = Manual; ignored by the other methods. Frozen after submit — amend the GRN to change."
   },
   {
    "fieldname": "pending_quantity",

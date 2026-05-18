@@ -65,7 +65,7 @@
  "modified": "2026-05-18 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
- "name": "Vendor Bill Tracking Assignment Detail",
+ "name": "Bill Tracking Assignment Detail",
  "owner": "Administrator",
  "permissions": [],
  "row_format": "Dynamic",

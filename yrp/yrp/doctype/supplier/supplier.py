@@ -116,8 +116,8 @@ def get_supplier_address_display(supplier):
 		frappe.throw(_("There is an error in your Address Template"))
 
 
-def update_supplier_department_on_vbt(supplier, dept):
-	"""Set Supplier.department if currently empty. Called from Vendor Bill Tracking
+def update_supplier_department_on_bill_tracking(supplier, dept):
+	"""Set Supplier.department if currently empty. Called from Bill Tracking
 	assignment so a supplier's bills route to a consistent department over time."""
 	existing = frappe.db.get_value("Supplier", supplier, "department")
 	if existing is None and not frappe.db.exists("Supplier", supplier):

@@ -46,15 +46,16 @@ class PurchaseInvoice(Document):
 
 	def after_insert(self):
 		self.sync_grn_links()
-		self.link_to_vendor_bill_tracking()
+		self.link_to_bill_tracking()
 
 	def before_submit(self):
 		if not self.get("grn") or not self.get("items"):
 			frappe.throw(_("Please set at least one GRN and one item row."))
 		if self.against == "Work Order":
-			if not self.approved_by:
+			override_pi_approve = _override_pi_approve()
+			if not override_pi_approve and not self.approved_by:
 				frappe.throw(_("Invoice is not approved."))
-			if not _override_pi_approve():
+			if not override_pi_approve:
 				status = check_all_wo_closed(self.name)
 				if not status["all_closed"]:
 					frappe.throw(_("All Work Orders must be closed before submitting this invoice."))
@@ -62,58 +63,55 @@ class PurchaseInvoice(Document):
 		self.status = "Submitted"
 
 	def on_submit(self):
-		self.close_vendor_bill_tracking()
+		self.close_bill_tracking()
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ("Goods Received Note", "Vendor Bill Tracking")
+		self.ignore_linked_doctypes = ("Goods Received Note", "Bill Tracking")
 		self.unlink_grns()
 		if self.against == "Work Order":
 			update_wo_billed_qty(self, docstatus=2)
-		self.revert_vendor_bill_tracking_link(origin="PI-cancel")
+		self.revert_bill_tracking_link(origin="PI-cancel")
 		self.status = "Cancelled"
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled", update_modified=False)
 
 	def on_trash(self):
-		self.revert_vendor_bill_tracking_link(origin="PI-delete")
+		self.revert_bill_tracking_link(origin="PI-delete")
 
-	def link_to_vendor_bill_tracking(self):
-		"""Tell the linked VBT a Purchase Invoice now exists (still draft). The
-		VBT.purchase_invoice field gets the link so the operator sees the
-		in-progress invoice; form_status is *not* flipped here — closure happens
-		on PI submit via close_vendor_bill_tracking()."""
-		if not self.vendor_bill_tracking:
+	def link_to_bill_tracking(self):
+		"""Tell the linked Bill Tracking row a draft Purchase Invoice now exists."""
+		if not self.bill_tracking:
 			return
 		frappe.db.set_value(
-			"Vendor Bill Tracking",
-			self.vendor_bill_tracking,
+			"Bill Tracking",
+			self.bill_tracking,
 			"purchase_invoice",
 			self.name,
 			update_modified=False,
 		)
 
-	def close_vendor_bill_tracking(self):
-		"""Close the linked Vendor Bill Tracking on PI submit — appends a Close
+	def close_bill_tracking(self):
+		"""Close the linked Bill Tracking on PI submit — appends a Close
 		history row, flips form_status to Closed, and re-asserts the PI link."""
-		if not self.vendor_bill_tracking:
+		if not self.bill_tracking:
 			return
-		from yrp.yrp.doctype.vendor_bill_tracking.vendor_bill_tracking import close_vendor_bill
+		from yrp.yrp.doctype.bill_tracking.bill_tracking import close_vendor_bill
 
 		# close_vendor_bill rejects a second close — only call on first submit.
 		current_status = frappe.db.get_value(
-			"Vendor Bill Tracking", self.vendor_bill_tracking, "form_status"
+			"Bill Tracking", self.bill_tracking, "form_status"
 		)
 		if current_status == "Closed":
 			return
-		close_vendor_bill(self.vendor_bill_tracking, self.name)
+		close_vendor_bill(self.bill_tracking, self.name)
 
-	def revert_vendor_bill_tracking_link(self, origin=None):
-		if not self.vendor_bill_tracking:
+	def revert_bill_tracking_link(self, origin=None):
+		if not self.bill_tracking:
 			return
-		from yrp.yrp.doctype.vendor_bill_tracking.vendor_bill_tracking import revert_purchase_invoice_link
+		from yrp.yrp.doctype.bill_tracking.bill_tracking import revert_purchase_invoice_link
 
-		revert_purchase_invoice_link(self.vendor_bill_tracking, self.name, origin=origin)
+		revert_purchase_invoice_link(self.bill_tracking, self.name, origin=origin)
 
 	def set_missing_values(self):
 		if not self.posting_date:
@@ -408,16 +406,17 @@ def check_all_wo_closed(purchase_invoice):
 	work_orders = frappe.get_all(
 		"PI Work Order Billed Detail",
 		filters={"parent": purchase_invoice, "parenttype": "Purchase Invoice"},
-		fields=["distinct work_order as work_order"],
+		pluck="work_order",
 	)
+	work_orders = [work_order for work_order in dict.fromkeys(work_orders) if work_order]
 	open_wos = []
 	close_request_wos = []
-	for row in work_orders:
-		status = frappe.db.get_value("Work Order", row.work_order, "open_status")
+	for work_order in work_orders:
+		status = frappe.db.get_value("Work Order", work_order, "open_status")
 		if status == "Close Request":
-			close_request_wos.append(row.work_order)
+			close_request_wos.append(work_order)
 		elif status != "Close":
-			open_wos.append(row.work_order)
+			open_wos.append(work_order)
 	return {
 		"all_closed": len(open_wos) == 0 and len(close_request_wos) == 0,
 		"open_work_orders": open_wos,

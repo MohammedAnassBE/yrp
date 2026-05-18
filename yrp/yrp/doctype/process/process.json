@@ -17,7 +17,7 @@
   "default_lead_time_days",
   "column_break_uom",
   "output_uom",
-  "additional_allowance",
+  "wo_excess_allowed_percentage",
   "section_break_details",
   "process_details"
  ],
@@ -85,9 +85,12 @@
    "options": "UOM"
   },
   {
-   "fieldname": "additional_allowance",
+   "default": "0",
+   "fieldname": "wo_excess_allowed_percentage",
    "fieldtype": "Percent",
-   "label": "Additional Allowance %"
+   "label": "WO Excess Allowed Percentage",
+   "non_negative": 1,
+   "description": "When > 0, a GRN against a Work Order using this Process may receive up to `receivable_qty × (1 + pct/100)` per line. 0 enforces strict pending."
   },
   {
    "depends_on": "eval:doc.is_group == 1",

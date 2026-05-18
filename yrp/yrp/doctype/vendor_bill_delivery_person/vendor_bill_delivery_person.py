@@ -22,10 +22,10 @@ def get_last_ten_delivery_persons(supplier=None, search=""):
 	if not search:
 		sql = """
 			SELECT t1.delivery_person, t1.delivery_mob_no
-			FROM `tabVendor Bill Tracking` t1
+			FROM `tabBill Tracking` t1
 			INNER JOIN (
 				SELECT delivery_mob_no, MAX(creation) AS max_creation
-				FROM `tabVendor Bill Tracking`
+				FROM `tabBill Tracking`
 				WHERE supplier = %(supplier)s
 				GROUP BY delivery_mob_no
 			) t2
