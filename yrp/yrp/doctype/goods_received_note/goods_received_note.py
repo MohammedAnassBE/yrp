@@ -67,7 +67,8 @@ class GoodsReceivedNote(Document):
 		self.validate_no_purchase_invoice()
 		self.validate_closed_purchase_order()
 		self.validate_age_limit()
-		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry")
+		self.validate_no_inspection_entry()
+		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry", "Inspection Entry")
 		if self.is_internal_unit:
 			ste_names = frappe.get_all(
 				"Stock Entry",
@@ -199,8 +200,6 @@ class GoodsReceivedNote(Document):
 		  - By Quantity: share = row.stock_qty / total_stock_qty
 		  - By Value:    share = row.amount / total_amount; falls back to
 		                 By Quantity when total_amount <= 0 (Gap #11).
-		  - By Weight:   share = (row.stock_qty × Item.weight_per_unit) / total_weight;
-		                 falls back to By Quantity when total_weight <= 0.
 		  - Manual:      share = row.freight_amount (operator-entered). Sum of
 		                 row.freight_amount must equal freight_charges; submit is
 		                 blocked otherwise. No residual reconciliation.
@@ -210,7 +209,9 @@ class GoodsReceivedNote(Document):
 		stock_qty only (Gap #21). Post-allocation row.rate is per-stock-unit.
 		(set_item_defaults stores row.rate as per-form-unit for PO mode; freight
 		allocation normalises it to per-stock-unit. With conversion_factor==1 —
-		the common case — they coincide.)
+		the common case — they coincide.) Amended GRNs are re-based to source
+		PO/WO rates before freight is applied so copied freight-inclusive rates
+		do not receive freight a second time.
 
 		Idempotent within a single doc lifetime: flags.freight_allocated blocks
 		double application if before_submit fires twice.
@@ -220,13 +221,17 @@ class GoodsReceivedNote(Document):
 		freight = flt(self.freight_charges)
 		if freight < 0:
 			frappe.throw(_("Freight Charges cannot be negative."))
+		self._prepare_freight_base_amounts()
 		if freight == 0:
+			self.total = sum(flt(r.amount) for r in self.items)
 			self.flags.freight_allocated = True
 			return
 
 		method = frappe.db.get_single_value(
 			"YRP Stock Settings", "freight_allocation_method"
 		) or "By Quantity"
+		if method not in ("By Quantity", "By Value", "Manual"):
+			method = "By Quantity"
 
 		if method == "Manual":
 			self._apply_manual_freight(freight)
@@ -236,19 +241,58 @@ class GoodsReceivedNote(Document):
 		self.total = sum(flt(r.amount) for r in self.items)
 		self.flags.freight_allocated = True
 
+	def _prepare_freight_base_amounts(self):
+		"""Normalise item amounts before applying freight.
+
+		PO rows enter the form with a per-form-UOM rate, while SLE valuation uses
+		stock_qty. For amended GRNs, copied child rows may already include old
+		freight in row.rate, so source PO/WO rates are resolved again first.
+		"""
+		for row in self.items:
+			stock_qty = flt(row.stock_qty) or (flt(row.quantity) * flt(row.conversion_factor or 1))
+			if stock_qty <= 0:
+				continue
+
+			base_rate = self._get_source_base_rate(row) if self.amended_from else None
+			if base_rate is None:
+				base_rate = flt(row.rate)
+
+			if self.against == "Purchase Order":
+				base_amount = flt(row.quantity) * flt(base_rate)
+				row.rate = base_amount / stock_qty if stock_qty else flt(base_rate)
+			else:
+				base_amount = stock_qty * flt(base_rate)
+				row.rate = flt(base_rate)
+			row.amount = base_amount
+
+	def _get_source_base_rate(self, row):
+		if self.against == "Purchase Order":
+			if row.ref_docname:
+				rate = frappe.db.get_value("Purchase Order Item", row.ref_docname, "rate")
+				if rate is not None:
+					return flt(rate)
+			po = frappe.get_doc("Purchase Order", self.against_id)
+			target = _find_matching_purchase_order_item(po.items, row)
+			return flt(target.rate) if target else None
+
+		if self.against == "Work Order":
+			wo = frappe.get_doc("Work Order", self.against_id)
+			delivery_challan = (
+				frappe.get_doc("Delivery Challan", self.delivery_challan)
+				if self.delivery_challan else None
+			)
+			return get_work_order_grn_rate(wo, delivery_challan, row)
+
+		return None
+
 	def _apply_proportional_freight(self, freight, method):
-		"""Shared path for By Quantity / By Value / By Weight. Computes each
-		row's share against a total and reuses the residual-on-last-row trick
-		so the SLE total exactly equals freight_charges."""
+		"""Shared path for By Quantity / By Value. Computes each row's share
+		against a total and reuses the residual-on-last-row trick so the SLE
+		total exactly equals freight_charges."""
 		total_stock_qty = sum(flt(r.stock_qty) for r in self.items)
 		total_amount = sum(flt(r.amount) for r in self.items)
-		row_weights = {row.name: self._row_weight(row) for row in self.items}
-		total_weight = sum(row_weights.values())
 
-		# Fallback chain — same shape as the existing By Value rule
 		if method == "By Value" and total_amount <= 0:
-			method = "By Quantity"
-		if method == "By Weight" and total_weight <= 0:
 			method = "By Quantity"
 		if method == "By Quantity" and total_stock_qty <= 0:
 			frappe.throw(_("Cannot allocate freight when total qty is zero."))
@@ -262,8 +306,6 @@ class GoodsReceivedNote(Document):
 				share = freight - assigned
 			elif method == "By Quantity":
 				share = freight * (stock_qty / total_stock_qty)
-			elif method == "By Weight":
-				share = freight * (row_weights[row.name] / total_weight) if total_weight else 0
 			else:
 				share = freight * (flt(row.amount) / total_amount) if total_amount else 0
 			assigned += share
@@ -298,25 +340,6 @@ class GoodsReceivedNote(Document):
 			row.rate = new_amount / stock_qty
 			row.amount = new_amount
 
-	def _row_weight(self, row):
-		"""Resolve per-row weight as `stock_qty × Item.weight_per_unit`.
-		Returns 0 when the item has no weight configured — caller falls back.
-
-		Assumes weight_per_unit values across rows share a common UOM. The
-		Item.weight_uom field is informational; this method does not convert
-		between weight UOMs. Mixing items with weights stored in different UOMs
-		(e.g., one in kg, one in g) will allocate incorrectly — operationally,
-		standardise on one weight UOM per company.
-		"""
-		stock_qty = flt(row.stock_qty)
-		if stock_qty <= 0 or not row.item_variant:
-			return 0
-		parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
-		if not parent_item:
-			return 0
-		weight_per_unit = frappe.get_cached_value("Item", parent_item, "weight_per_unit")
-		return stock_qty * flt(weight_per_unit)
-
 	def validate_source_pending(self):
 		if self.against == "Purchase Order":
 			self.validate_against_purchase_order_pending()
@@ -343,6 +366,27 @@ class GoodsReceivedNote(Document):
 			frappe.throw(
 				_("Cannot cancel Goods Received Note {0} — Purchase Order {1} is closed. Reopen the Purchase Order first.").format(
 					self.name, self.against_id
+				)
+			)
+
+	def validate_no_inspection_entry(self):
+		"""Block GRN cancel while a submitted Inspection Entry exists for it.
+		The IE owns SLEs that depend on this GRN's stock; operator must cancel
+		the IE first."""
+		if not frappe.db.exists("DocType", "Inspection Entry"):
+			return
+		ie = frappe.db.exists(
+			"Inspection Entry",
+			{
+				"against": "Goods Received Note",
+				"against_id": self.name,
+				"docstatus": 1,
+			},
+		)
+		if ie:
+			frappe.throw(
+				_("Cannot cancel Goods Received Note {0} — Inspection Entry {1} is submitted. Cancel the Inspection Entry first.").format(
+					self.name, ie
 				)
 			)
 
@@ -386,14 +430,16 @@ class GoodsReceivedNote(Document):
 		for receivable_name, total_qty in totals_by_receivable.items():
 			target = receivable_by_name[receivable_name]
 			ordered = flt(target.qty)
-			received_so_far = ordered - flt(target.pending_quantity)
-			allowance = ordered * (1 + flt(excess_pct) / 100) - received_so_far
+			allowance = _remaining_receivable_allowance(ordered, target.pending_quantity, excess_pct)
 			if total_qty > allowance + 0.0001:
 				frappe.throw(
 					_("Received qty {0} exceeds allowance {1} for {2} (ordered {3}, excess allowance {4}%).").format(
 						flt(total_qty), flt(allowance), target.item_variant, ordered, flt(excess_pct)
 					)
 				)
+			for row in self.items:
+				if _find_matching_receivable([target], row):
+					row.max_receivable_quantity = max(flt(allowance), 0)
 
 	def validate_against_purchase_order_pending(self):
 		po = frappe.get_doc("Purchase Order", self.against_id)
@@ -418,15 +464,17 @@ class GoodsReceivedNote(Document):
 		for item_name, total_qty in totals_by_item.items():
 			target = item_by_name[item_name]
 			ordered = flt(target.qty)
-			received_so_far = ordered - flt(target.pending_quantity)
 			excess_pct = _po_excess_percentage(target.item_variant)
-			allowance = ordered * (1 + flt(excess_pct) / 100) - received_so_far
+			allowance = _remaining_receivable_allowance(ordered, target.pending_quantity, excess_pct)
 			if total_qty > allowance + 0.0001:
 				frappe.throw(
 					_("Received qty {0} exceeds allowance {1} for {2} (ordered {3}, excess allowance {4}%).").format(
 						flt(total_qty), flt(allowance), target.item_variant, ordered, flt(excess_pct)
 					)
 				)
+			for row in self.items:
+				if _find_matching_purchase_order_item([target], row):
+					row.max_receivable_quantity = max(flt(allowance), 0)
 
 	def update_source_pending(self, cancel=False):
 		if self.against == "Purchase Order":
@@ -544,6 +592,12 @@ def _wo_excess_percentage(work_order_name):
 	if not process:
 		return 0
 	return flt(frappe.get_cached_value("Process", process, "wo_excess_allowed_percentage"))
+
+
+def _remaining_receivable_allowance(ordered_qty, pending_quantity, excess_pct):
+	ordered_qty = flt(ordered_qty)
+	received_so_far = ordered_qty - flt(pending_quantity)
+	return ordered_qty * (1 + flt(excess_pct) / 100) - received_so_far
 
 
 def _find_matching_receivable(rows, source_row):
@@ -724,23 +778,33 @@ def _pending_receivable_rows(wo, existing_rows=None):
 		if existing_rows is not None
 		else {}
 	)
+	excess_pct = _wo_excess_percentage(wo.name)
 	rows = []
 	for row in wo.get("receivables") or []:
 		pending = flt(row.pending_quantity)
-		if pending <= 0:
-			continue
+		max_receivable = max(
+			flt(_remaining_receivable_allowance(row.qty, pending, excess_pct)),
+			0,
+		)
 		base_row_index = row.row_index if row.row_index not in (None, "") else row.idx - 1
 		for received_type in received_types:
 			key = _receipt_split_key(row.name, row.item_variant, received_type)
 			if existing_rows is None:
-				quantity = pending if not received_type or received_type == default_received_type else 0
+				quantity = (
+					pending
+					if pending > 0 and (not received_type or received_type == default_received_type)
+					else 0
+				)
 			else:
 				quantity = existing_quantities.get(key, 0)
+			if max_receivable <= 0 and flt(quantity) <= 0:
+				continue
 			out = {
 				"item_variant": row.item_variant,
 				"quantity": quantity,
 				"uom": row.uom,
 				"pending_quantity": pending,
+				"max_receivable_quantity": max_receivable,
 				"ref_doctype": "Work Order Receivables",
 				"ref_docname": row.name,
 				"table_index": row.table_index,
@@ -766,9 +830,17 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 	rows = []
 	for row in po.get("items") or []:
 		pending = flt(row.pending_quantity)
-		if pending <= 0:
+		excess_pct = _po_excess_percentage(row.item_variant)
+		max_receivable = max(
+			flt(_remaining_receivable_allowance(row.qty, pending, excess_pct)),
+			0,
+		)
+		if existing_rows is None:
+			quantity = pending if pending > 0 else 0
+		else:
+			quantity = existing_quantities.get(row.name, pending if pending > 0 else 0)
+		if max_receivable <= 0 and flt(quantity) <= 0:
 			continue
-		quantity = existing_quantities.get(row.name, pending)
 		rows.append({
 			"item_variant": row.item_variant,
 			"quantity": quantity,
@@ -777,6 +849,7 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			"conversion_factor": row.conversion_factor,
 			"stock_qty": flt(quantity) * flt(row.conversion_factor or 1),
 			"pending_quantity": pending,
+			"max_receivable_quantity": max_receivable,
 			"ref_doctype": "Purchase Order Item",
 			"ref_docname": row.name,
 			"table_index": row.table_index,

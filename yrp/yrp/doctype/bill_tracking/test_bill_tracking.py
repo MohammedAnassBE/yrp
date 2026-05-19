@@ -2,7 +2,7 @@
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import nowdate
+from frappe.utils import add_days, nowdate
 
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
@@ -38,7 +38,7 @@ def _build_pi_against_po(bill, link=True):
 	"""Builds a draft Purchase Invoice tied to a fresh PO+GRN and optionally
 	linked to `bill` via bill_tracking."""
 	warehouse = _warehouse(f"_T_BT_PIWH_{frappe.generate_hash(length=6)}")
-	po = _purchase_order(qty=5, warehouse=warehouse)
+	po = _purchase_order(qty=5, warehouse=warehouse, supplier=bill.supplier)
 	grn = _purchase_order_grn(po, qty=5)
 	grn.submit()
 	pi = frappe.get_doc({
@@ -233,3 +233,22 @@ class TestBillTracking(FrappeTestCase):
 		bill.reload()
 		self.assertIsNone(bill.purchase_invoice)
 		self.assertEqual(bill.form_status, "Reopen")
+
+	def test_13_linked_pi_must_match_bill_tracking_details(self):
+		bill = _bill()
+		bill.submit()
+		pi = _build_pi_against_po(bill, link=True)
+
+		pi.supplier = _supplier(f"_T_BT_Mismatch_{frappe.generate_hash(length=6)}")
+		with self.assertRaisesRegex(frappe.ValidationError, "Supplier must match"):
+			pi.save(ignore_permissions=True)
+
+		pi.reload()
+		pi.bill_no = f"{bill.bill_no}-DIFF"
+		with self.assertRaisesRegex(frappe.ValidationError, "Supplier Invoice No must match"):
+			pi.save(ignore_permissions=True)
+
+		pi.reload()
+		pi.bill_date = add_days(bill.bill_date, 1)
+		with self.assertRaisesRegex(frappe.ValidationError, "Supplier Invoice Date must match"):
+			pi.save(ignore_permissions=True)

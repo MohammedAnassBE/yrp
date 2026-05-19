@@ -53,6 +53,8 @@ frappe.ui.form.on("Stock Entry", {
 				}, __("View"));
 			}
 		}
+
+		add_create_inspection_button(frm);
 	},
 
 	purpose(frm) {
@@ -85,4 +87,32 @@ function set_mandatory_fields(frm) {
 	const p = frm.doc.purpose;
 	frm.toggle_reqd("from_warehouse", p !== "Material Receipt");
 	frm.toggle_reqd("to_warehouse", p !== "Material Issue" && p !== "Material Consumed");
+}
+
+function add_create_inspection_button(frm) {
+	// Only Material Receipt SEs can feed an Inspection Entry.
+	if (frm.doc.docstatus !== 1) return;
+	if (frm.doc.purpose !== "Material Receipt") return;
+	frappe.db.count("Inspection Entry", {
+		filters: {
+			against: "Stock Entry",
+			against_id: frm.doc.name,
+			docstatus: ["<", 2],
+		},
+	}).then((count) => {
+		if (count > 0) {
+			frm.add_custom_button(__("View Inspection Entries"), () => {
+				frappe.set_route("List", "Inspection Entry", {
+					against: "Stock Entry",
+					against_id: frm.doc.name,
+				});
+			});
+		}
+		frm.add_custom_button(__("Create Inspection Entry"), () => {
+			const ie = frappe.model.get_new_doc("Inspection Entry");
+			ie.against = "Stock Entry";
+			ie.against_id = frm.doc.name;
+			frappe.set_route("Form", "Inspection Entry", ie.name);
+		});
+	});
 }

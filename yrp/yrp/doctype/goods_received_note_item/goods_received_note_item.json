@@ -17,6 +17,7 @@
   "amount",
   "freight_amount",
   "pending_quantity",
+  "max_receivable_quantity",
   "ste_received_quantity",
   "ref_doctype",
   "ref_docname",
@@ -97,6 +98,13 @@
    "fieldname": "pending_quantity",
    "fieldtype": "Float",
    "label": "Pending Quantity",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "max_receivable_quantity",
+   "fieldtype": "Float",
+   "label": "Max Receivable Quantity",
    "precision": "3",
    "read_only": 1
   },

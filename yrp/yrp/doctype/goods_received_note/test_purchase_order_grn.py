@@ -98,12 +98,12 @@ def _production_group_dimensions():
 	return values
 
 
-def _purchase_order(qty, warehouse):
+def _purchase_order(qty, warehouse, supplier=None):
 	item_variant = _test_item_variant()
 	uom = _item_uom(item_variant)
 	po = frappe.get_doc({
 		"doctype": "Purchase Order",
-		"supplier": _supplier("_Test PO GRN Supplier"),
+		"supplier": supplier or _supplier("_Test PO GRN Supplier"),
 		"delivery_warehouse": warehouse,
 		**_production_group_dimensions(),
 		"items": [{

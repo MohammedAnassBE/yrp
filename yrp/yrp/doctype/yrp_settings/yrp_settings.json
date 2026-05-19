@@ -28,6 +28,7 @@
   "purchase_invoice_approval_initiate_role",
   "purchase_invoice_approval_pending_role",
   "purchase_invoice_approver_role",
+  "inspection_entry_approver_role",
   "production_order_settings_section",
   "production_order_attributes",
   "po_dependent_attribute_section",
@@ -168,6 +169,13 @@
    "fieldtype": "Link",
    "label": "Purchase Invoice Approver Role",
    "options": "Role"
+  },
+  {
+   "fieldname": "inspection_entry_approver_role",
+   "fieldtype": "Link",
+   "label": "Inspection Entry Approver Role",
+   "options": "Role",
+   "description": "Only users with this role see the 'Convert Stock' button on a submitted Inspection Entry, and only they can trigger the SLE conversion."
   },
   {
    "fieldname": "production_order_settings_section",

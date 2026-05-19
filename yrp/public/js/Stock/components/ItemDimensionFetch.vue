@@ -242,7 +242,13 @@ function show_qty_fields() {
 
 function get_inline_qty_max(value_detail) {
     if (!inline_qty_max_field.value || !value_detail) return null;
-    const max_value = value_detail[inline_qty_max_field.value];
+    let max_value = value_detail[inline_qty_max_field.value];
+    if (
+        inline_qty_max_field.value === 'max_receivable_quantity'
+        && (max_value === undefined || max_value === null || max_value === '')
+    ) {
+        max_value = value_detail.pending_quantity;
+    }
     return max_value === undefined || max_value === null ? null : max_value;
 }
 

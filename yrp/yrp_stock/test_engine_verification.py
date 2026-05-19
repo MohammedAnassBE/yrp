@@ -678,7 +678,7 @@ class TestEngineVerification(FrappeTestCase):
 				"based_on": "Item and Warehouse",
 				"item": ITEM_VARIANT,
 				"warehouse": wh,
-				"received_type": "Accepted",
+				**ACCEPTED_DIMS,
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 			}
@@ -712,6 +712,57 @@ class TestEngineVerification(FrappeTestCase):
 		self.assertIn("is_cancelled", cols)
 		self.assertIn("posting_datetime", cols)
 		self.assertIn("creation", cols)
+
+	# ------------------------------------------------------------------
+	# D.4 — active Repost Item Valuation requests are deduplicated
+	# ------------------------------------------------------------------
+	def test_D4_bucket_repost_dedupe_reuses_existing(self):
+		from yrp.stock.stock_ledger import _dedupe_bucket_repost
+
+		wh = _wh("D4_Bucket_Dedupe")
+		se = _seed(10, 50, wh)
+		values = {
+			"doctype": "Repost Item Valuation",
+			"based_on": "Item and Warehouse",
+			"item": ITEM_VARIANT,
+			"warehouse": wh,
+			**ACCEPTED_DIMS,
+			"posting_date": nowdate(),
+			"posting_time": "10:00:00",
+			"voucher_type": "Stock Entry",
+			"voucher_no": se.name,
+			"allow_negative_stock": 1,
+		}
+		riv = frappe.get_doc(values)
+		riv.insert(ignore_permissions=True)
+		riv.docstatus = 1
+		riv.status = "Queued"
+		riv.db_update()
+
+		duplicate_values = {**values, "posting_time": "11:00:00"}
+		self.assertEqual(_dedupe_bucket_repost(duplicate_values), riv.name)
+
+	def test_D4_transaction_repost_dedupe_reuses_existing(self):
+		from yrp.stock.stock_ledger import _dedupe_transaction_repost
+
+		wh = _wh("D4_Txn_Dedupe")
+		se = _seed(10, 50, wh)
+		values = {
+			"doctype": "Repost Item Valuation",
+			"based_on": "Transaction",
+			"voucher_type": "Stock Entry",
+			"voucher_no": se.name,
+			"posting_date": nowdate(),
+			"posting_time": "10:00:00",
+			"allow_negative_stock": 1,
+		}
+		riv = frappe.get_doc(values)
+		riv.insert(ignore_permissions=True, ignore_mandatory=True)
+		riv.docstatus = 1
+		riv.status = "Queued"
+		riv.db_update()
+
+		self.assertEqual(_dedupe_transaction_repost(values), riv.name)
 
 	# ------------------------------------------------------------------
 	# G.5 — Material Consumed blocks non-Accepted source rows
@@ -806,7 +857,7 @@ class TestEngineVerification(FrappeTestCase):
 				"based_on": "Item and Warehouse",
 				"item": ITEM_VARIANT,
 				"warehouse": wh,
-				"received_type": "Accepted",
+				**ACCEPTED_DIMS,
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 			}

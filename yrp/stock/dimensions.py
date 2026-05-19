@@ -36,6 +36,7 @@ STOCK_DOCTYPES = [
 	"Repost Item Valuation",
 	"Delivery Challan Item",
 	"Goods Received Note Item",
+	"Inspection Entry Item",
 ]
 
 # DocTypes that receive dimension Link fields ONLY for the production group dimension

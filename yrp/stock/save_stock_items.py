@@ -95,7 +95,7 @@ PARENT_CHILD_MAP = {
 		"item_field": "item_variant",
 		"qty_field": "quantity",
 		"value_fields": [
-			"rate", "pending_quantity", "stock_qty", "amount",
+			"rate", "pending_quantity", "max_receivable_quantity", "stock_qty", "amount",
 			"ref_doctype", "ref_docname", "delivery_challan_item",
 		],
 		"entry_fields": [

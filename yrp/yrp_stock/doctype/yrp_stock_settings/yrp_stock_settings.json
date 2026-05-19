@@ -75,8 +75,8 @@
    "fieldname": "freight_allocation_method",
    "fieldtype": "Select",
    "label": "Freight Allocation Method",
-   "options": "By Quantity\nBy Value\nBy Weight\nManual",
-   "description": "How GRN.freight_charges is split across receipt lines. By Quantity → share by stock_qty. By Value → share by row.amount; falls back to By Quantity when total amount is zero. By Weight → share by stock_qty × Item.weight_per_unit; falls back to By Quantity when no weight is set. Manual → sum of per-row freight_amount must equal freight_charges; submit is blocked otherwise."
+   "options": "By Quantity\nBy Value\nManual",
+   "description": "How GRN.freight_charges is split across receipt lines. By Quantity → share by stock_qty. By Value → share by row.amount; falls back to By Quantity when total amount is zero. Manual → sum of per-row freight_amount must equal freight_charges; submit is blocked otherwise."
   },
   {
    "fieldname": "column_break_stock_1",

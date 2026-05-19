@@ -12,6 +12,10 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt
 
 from yrp.yrp.doctype.delivery_challan.test_internal_unit_transfer import _make_wo
+from yrp.yrp.doctype.goods_received_note.goods_received_note import (
+	get_purchase_order_defaults,
+	get_work_order_defaults,
+)
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
 	_process,
@@ -65,6 +69,14 @@ def _set_po_excess(item_variant, pct):
 def _set_wo_excess(process_name, pct):
 	frappe.db.set_value("Process", process_name, "wo_excess_allowed_percentage", pct)
 	frappe.clear_cache(doctype="Process")
+
+
+def _first_value_detail(defaults):
+	for group in defaults.get("item_details") or []:
+		for item in group.get("items") or []:
+			for detail in (item.get("values") or {}).values():
+				return detail
+	return {}
 
 
 class TestGRNExcessAllowance(FrappeTestCase):
@@ -157,3 +169,54 @@ class TestGRNExcessAllowance(FrappeTestCase):
 		grn = _wo_grn(wo, from_wh, to_wh, iv, uom, qty=11)
 		with self.assertRaisesRegex(frappe.ValidationError, "exceeds allowance"):
 			grn.submit()
+
+	def test_08_po_defaults_expose_allowed_quantity_for_ui_max(self):
+		warehouse = _warehouse(f"_T_Excess_POUI_{frappe.generate_hash(length=6)}")
+		po = _purchase_order(qty=100, warehouse=warehouse)
+		_set_po_excess(po.items[0].item_variant, 25)
+
+		defaults = get_purchase_order_defaults(po.name)
+		row = defaults["items"][0]
+		detail = _first_value_detail(defaults)
+
+		self.assertAlmostEqual(flt(row["quantity"]), 100, places=4)
+		self.assertAlmostEqual(flt(row["pending_quantity"]), 100, places=4)
+		self.assertAlmostEqual(flt(row["max_receivable_quantity"]), 125, places=4)
+		self.assertAlmostEqual(flt(detail["qty"]), 100, places=4)
+		self.assertAlmostEqual(flt(detail["max_receivable_quantity"]), 125, places=4)
+
+	def test_09_po_defaults_keep_row_for_remaining_excess_after_pending_zero(self):
+		warehouse = _warehouse(f"_T_Excess_POUIZero_{frappe.generate_hash(length=6)}")
+		po = _purchase_order(qty=100, warehouse=warehouse)
+		_set_po_excess(po.items[0].item_variant, 25)
+		grn = _purchase_order_grn(po, qty=100)
+		grn.submit()
+
+		defaults = get_purchase_order_defaults(po.name)
+		row = defaults["items"][0]
+		detail = _first_value_detail(defaults)
+
+		self.assertAlmostEqual(flt(row["quantity"]), 0, places=4)
+		self.assertAlmostEqual(flt(row["pending_quantity"]), 0, places=4)
+		self.assertAlmostEqual(flt(row["max_receivable_quantity"]), 25, places=4)
+		self.assertAlmostEqual(flt(detail["qty"]), 0, places=4)
+		self.assertAlmostEqual(flt(detail["max_receivable_quantity"]), 25, places=4)
+
+	def test_10_wo_defaults_keep_row_for_remaining_excess_after_pending_zero(self):
+		sender = _supplier(f"_T_Excess_WO_Sup_{frappe.generate_hash(length=6)}")
+		frappe.db.set_value("Supplier", sender, "is_company_location", 0)
+		receiver = _supplier(f"_T_Excess_WO_Loc_{frappe.generate_hash(length=6)}")
+		wo, from_wh, to_wh, iv, uom = _make_wo(sender, receiver, qty=100)
+		_set_wo_excess(wo.process_name, 25)
+		grn = _wo_grn(wo, from_wh, to_wh, iv, uom, qty=100)
+		grn.submit()
+
+		defaults = get_work_order_defaults(wo.name)
+		row = defaults["items"][0]
+		detail = _first_value_detail(defaults)
+
+		self.assertAlmostEqual(flt(row["quantity"]), 0, places=4)
+		self.assertAlmostEqual(flt(row["pending_quantity"]), 0, places=4)
+		self.assertAlmostEqual(flt(row["max_receivable_quantity"]), 25, places=4)
+		self.assertAlmostEqual(flt(detail["qty"]), 0, places=4)
+		self.assertAlmostEqual(flt(detail["max_receivable_quantity"]), 25, places=4)

@@ -122,7 +122,7 @@
    "fieldtype": "Float",
    "label": "Weight Per Unit",
    "non_negative": 1,
-   "description": "Per-unit weight in `weight_uom`. Used by Goods Received Note's By Weight freight allocation."
+   "description": "Per-unit weight in `weight_uom`."
   },
   {
    "fieldname": "weight_uom",

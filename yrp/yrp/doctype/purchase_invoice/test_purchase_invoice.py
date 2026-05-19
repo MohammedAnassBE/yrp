@@ -1,10 +1,11 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import nowdate
+from frappe.utils import flt, nowdate
 
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
+	_item_uom,
 	_process,
 	_production_group_dimensions,
 	_purchase_order,
@@ -147,3 +148,60 @@ class TestPurchaseInvoice(FrappeTestCase):
 			self.assertAlmostEqual(wo.work_order_calculated_items[0].billed_qty, 0)
 		finally:
 			frappe.db.set_single_value("YRP Settings", "override_pi_approve", old_override)
+
+	def test_purchase_order_invoice_uses_form_uom_rate_after_freight(self):
+		old_method = frappe.db.get_single_value("YRP Stock Settings", "freight_allocation_method")
+		frappe.db.set_single_value("YRP Stock Settings", "freight_allocation_method", "By Quantity")
+		try:
+			item_variant = _test_item_variant()
+			uom = _item_uom(item_variant)
+			warehouse = _warehouse(f"_Test_PI_Freight_CF_{frappe.generate_hash(length=6)}")
+			po = frappe.get_doc({
+				"doctype": "Purchase Order",
+				"supplier": _supplier(f"_Test PI Freight Supplier {frappe.generate_hash(length=6)}"),
+				"delivery_warehouse": warehouse,
+				**_production_group_dimensions(),
+				"items": [{
+					"item_variant": item_variant,
+					"qty": 2,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 10,
+					"rate": 100,
+					"table_index": 0,
+					"row_index": 0,
+				}],
+			})
+			po.insert(ignore_permissions=True)
+			po.submit()
+			grn = frappe.get_doc({
+				"doctype": "Goods Received Note",
+				"against": "Purchase Order",
+				"against_id": po.name,
+				"to_warehouse": warehouse,
+				"freight_charges": 20,
+				"items": [{
+					"item_variant": item_variant,
+					"quantity": 2,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 10,
+					"rate": 100,
+					"ref_doctype": "Purchase Order Item",
+					"ref_docname": po.items[0].name,
+				}],
+			})
+			grn.insert(ignore_permissions=True)
+			grn.submit()
+			grn.reload()
+
+			self.assertAlmostEqual(flt(grn.items[0].rate), 11, places=4)
+			self.assertAlmostEqual(flt(grn.items[0].amount), 220, places=2)
+
+			data = frappe.get_attr("yrp.yrp.doctype.purchase_invoice.purchase_invoice.fetch_grn_details")(
+				[grn.name], "Purchase Order", po.supplier
+			)
+			self.assertAlmostEqual(flt(data["items"][0]["rate"]), 110, places=4)
+			self.assertAlmostEqual(flt(data["items"][0]["amount"]), 220, places=2)
+		finally:
+			frappe.db.set_single_value("YRP Stock Settings", "freight_allocation_method", old_method or "By Quantity")

@@ -169,6 +169,7 @@ doc_events = {
 
 after_migrate = [
 	"yrp.stock.dimensions.create_dimension_fields",
+	"yrp.patches.add_sle_composite_index.execute",
 ]
 
 # Testing

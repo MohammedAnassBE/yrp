@@ -3,7 +3,7 @@ import json
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, money_in_words, now_datetime, nowdate, nowtime
+from frappe.utils import flt, getdate, money_in_words, now_datetime, nowdate, nowtime
 
 
 class PurchaseInvoice(Document):
@@ -38,6 +38,7 @@ class PurchaseInvoice(Document):
 		self.set_missing_values()
 
 	def validate(self):
+		self.validate_bill_tracking()
 		self.validate_grns()
 		self.calculate_total()
 		self.validate_total_against_grn()
@@ -126,6 +127,34 @@ class PurchaseInvoice(Document):
 			self.senior_merch_approved_by = None
 			self.set("purchase_invoice_wo_approval_details", [])
 			self.set("purchase_invoice_debit_details", [])
+
+	def validate_bill_tracking(self):
+		if not self.bill_tracking:
+			return
+		bill = frappe.db.get_value(
+			"Bill Tracking",
+			self.bill_tracking,
+			["supplier", "bill_no", "bill_date"],
+			as_dict=True,
+		)
+		if not bill:
+			frappe.throw(_("Bill Tracking {0} does not exist.").format(self.bill_tracking))
+		if self.supplier != bill.supplier:
+			frappe.throw(
+				_("Supplier must match linked Bill Tracking {0}.").format(self.bill_tracking)
+			)
+		if self.bill_no != bill.bill_no:
+			frappe.throw(
+				_("Supplier Invoice No must match linked Bill Tracking {0}.").format(
+					self.bill_tracking
+				)
+			)
+		if getdate(self.bill_date) != getdate(bill.bill_date):
+			frappe.throw(
+				_("Supplier Invoice Date must match linked Bill Tracking {0}.").format(
+					self.bill_tracking
+				)
+			)
 
 	def validate_grns(self):
 		seen = set()
@@ -255,7 +284,9 @@ def fetch_grn_details(grns, against, supplier):
 
 		work_order = frappe.get_doc("Work Order", grn.against_id) if grn.against == "Work Order" else None
 		for grn_item in grn.get("items") or []:
-			rate = flt(grn_item.rate)
+			qty = flt(grn_item.quantity)
+			stock_rate = flt(grn_item.rate)
+			rate = (flt(grn_item.amount) / qty) if qty else stock_rate
 			tax = grn_item.get("tax") if grn_item.meta.get_field("tax") else None
 			set_combination = _normal_json(grn_item.get("set_combination"))
 			key = (
@@ -276,12 +307,11 @@ def fetch_grn_details(grns, against, supplier):
 					"rate": rate,
 					"amount": 0,
 					"tax": tax,
-					"actual_rate": rate,
+					"actual_rate": stock_rate,
 					"actual_qty": 0,
 					"set_combination": json.dumps(set_combination) if set_combination else None,
 				},
 			)
-			qty = flt(grn_item.quantity)
 			items[key]["qty"] += qty
 			items[key]["actual_qty"] += qty
 			items[key]["amount"] += qty * rate

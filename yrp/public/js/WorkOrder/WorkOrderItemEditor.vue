@@ -64,6 +64,7 @@ const tableFields = computed(() => {
     if (props.editorType === 'goods_received_note') {
         return [
             { name: 'pending_quantity', label: 'Pending', uses_primary_attribute: 1 },
+            { name: 'max_receivable_quantity', label: 'Allowed', uses_primary_attribute: 1 },
             { name: 'rate', label: 'Rate', uses_primary_attribute: 1 },
         ];
     }
@@ -109,11 +110,11 @@ const useInlineReceiveEditor = computed(() => (
 const inlineQtyEdit = computed(() => (
     props.editorType === 'delivery_challan' || useInlineReceiveEditor.value
 ));
-const inlineQtyMaxField = computed(() => (
-    props.editorType === 'delivery_challan' || useInlineReceiveEditor.value
-        ? 'pending_quantity'
-        : ''
-));
+const inlineQtyMaxField = computed(() => {
+    if (props.editorType === 'delivery_challan') return 'pending_quantity';
+    if (useInlineReceiveEditor.value) return 'max_receivable_quantity';
+    return '';
+});
 
 const otherInputs = computed(() => {
     return [

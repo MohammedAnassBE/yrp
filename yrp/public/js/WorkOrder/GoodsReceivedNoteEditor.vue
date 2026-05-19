@@ -13,6 +13,7 @@
                         </th>
                         <th class="grn-total">Total</th>
                         <th class="grn-total">Pending</th>
+                        <th class="grn-total">Allowed</th>
                         <th class="grn-total">Bal.</th>
                     </tr>
                 </thead>
@@ -41,6 +42,9 @@
                         <td>{{ formatQty(splitTotal(split, row.columns)) }}</td>
                         <td v-if="splitIndex === 0" :rowspan="row.splits.length">
                             {{ formatQty(rowPending(row)) }}
+                        </td>
+                        <td v-if="splitIndex === 0" :rowspan="row.splits.length">
+                            {{ formatQty(rowAllowed(row)) }}
                         </td>
                         <td v-if="splitIndex === 0"
                             :rowspan="row.splits.length"
@@ -226,6 +230,16 @@ function pendingQty(row, key) {
     return 0;
 }
 
+function allowedQty(row, key) {
+    for (const split of row.splits) {
+        const allowed = valueDetail(split.entry, key).max_receivable_quantity;
+        if (allowed !== undefined && allowed !== null && allowed !== '') {
+            return Math.max(toNumber(allowed), 0);
+        }
+    }
+    return Math.max(pendingQty(row, key), 0);
+}
+
 function otherSplitQty(row, currentSplit, key) {
     let total = 0;
     for (const split of row.splits) {
@@ -238,11 +252,7 @@ function otherSplitQty(row, currentSplit, key) {
 }
 
 function maxQty(row, split, key) {
-    const pending = pendingQty(row, key);
-    if (!pending) {
-        return null;
-    }
-    return Math.max(pending - otherSplitQty(row, split, key), 0);
+    return Math.max(allowedQty(row, key) - otherSplitQty(row, split, key), 0);
 }
 
 function onQtyInput(row, split, key, event) {
@@ -272,8 +282,12 @@ function rowPending(row) {
     return row.columns.reduce((total, col) => total + pendingQty(row, col.key), 0);
 }
 
+function rowAllowed(row) {
+    return row.columns.reduce((total, col) => total + allowedQty(row, col.key), 0);
+}
+
 function rowBalance(row) {
-    return rowPending(row) - rowReceived(row);
+    return rowAllowed(row) - rowReceived(row);
 }
 
 function formatQty(value) {

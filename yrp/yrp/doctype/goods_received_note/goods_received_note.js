@@ -17,6 +17,7 @@ frappe.ui.form.on("Goods Received Note", {
 	refresh(frm) {
 		mount_grn_editor(frm);
 		add_complete_transfer_button(frm);
+		add_create_inspection_button(frm);
 	},
 
 	against(frm) {
@@ -192,6 +193,32 @@ function add_complete_transfer_button(frm) {
 					frappe.set_route("Form", "Stock Entry", r.message);
 				}
 			},
+		});
+	});
+}
+
+function add_create_inspection_button(frm) {
+	if (frm.doc.docstatus !== 1) return;
+	frappe.db.count("Inspection Entry", {
+		filters: {
+			against: "Goods Received Note",
+			against_id: frm.doc.name,
+			docstatus: ["<", 2],
+		},
+	}).then((count) => {
+		if (count > 0) {
+			frm.add_custom_button(__("View Inspection Entries"), () => {
+				frappe.set_route("List", "Inspection Entry", {
+					against: "Goods Received Note",
+					against_id: frm.doc.name,
+				});
+			});
+		}
+		frm.add_custom_button(__("Create Inspection Entry"), () => {
+			const ie = frappe.model.get_new_doc("Inspection Entry");
+			ie.against = "Goods Received Note";
+			ie.against_id = frm.doc.name;
+			frappe.set_route("Form", "Inspection Entry", ie.name);
 		});
 	});
 }

@@ -43,6 +43,10 @@ class NegativeStockError(frappe.ValidationError):
 	pass
 
 
+ACTIVE_REPOST_STATUSES = ("Queued", "In Progress", "Failed")
+MAX_REPOST_RETRY_COUNT = 3
+
+
 def _should_queue_repost(args):
 	from yrp.stock.utils import future_sle_count
 
@@ -52,6 +56,83 @@ def _should_queue_repost(args):
 	if threshold <= 0:
 		return False
 	return future_sle_count(args) > int(threshold)
+
+
+def _is_retryable_repost(row):
+	if row.status != "Failed":
+		return True
+	return cint(row.retry_count) < MAX_REPOST_RETRY_COUNT
+
+
+def _get_matching_reposts(filters):
+	rows = frappe.get_all(
+		"Repost Item Valuation",
+		filters={
+			**filters,
+			"docstatus": 1,
+			"status": ["in", ACTIVE_REPOST_STATUSES],
+		},
+		fields=["name", "status", "retry_count", "posting_date", "posting_time"],
+		order_by="posting_date asc, posting_time asc, creation asc",
+	)
+	return [
+		frappe._dict(row)
+		for row in rows
+		if _is_retryable_repost(frappe._dict(row))
+	]
+
+
+def _dedupe_bucket_repost(values):
+	"""Return an existing active bucket repost if it can cover this request.
+
+	Queued/failed jobs for the same bucket are reused and widened to the
+	earliest posting datetime. An in-progress job is reused only when it already
+	started at or before the requested datetime.
+	"""
+	filters = {
+		"based_on": "Item and Warehouse",
+		"item": values.get("item"),
+		"warehouse": values.get("warehouse"),
+	}
+	for fn in get_dimension_fieldnames():
+		filters[fn] = values.get(fn)
+
+	matches = _get_matching_reposts(filters)
+	if not matches:
+		return None
+
+	requested_dt = get_combine_datetime(
+		values.get("posting_date"),
+		values.get("posting_time") or "00:00:00",
+	)
+	for row in matches:
+		existing_dt = get_combine_datetime(row.posting_date, row.posting_time or "00:00:00")
+		if existing_dt <= requested_dt:
+			return row.name
+		if row.status != "In Progress":
+			frappe.db.set_value(
+				"Repost Item Valuation",
+				row.name,
+				{
+					"posting_date": values.get("posting_date"),
+					"posting_time": values.get("posting_time") or "00:00:00",
+					"voucher_type": values.get("voucher_type"),
+					"voucher_no": values.get("voucher_no"),
+				},
+				update_modified=False,
+			)
+			return row.name
+	return None
+
+
+def _dedupe_transaction_repost(values):
+	filters = {
+		"based_on": "Transaction",
+		"voucher_type": values.get("voucher_type"),
+		"voucher_no": values.get("voucher_no"),
+	}
+	matches = _get_matching_reposts(filters)
+	return matches[0].name if matches else None
 
 
 def _enqueue_backdated_repost(args):
@@ -73,6 +154,8 @@ def _enqueue_backdated_repost(args):
 	}
 	for fn in dim_fields:
 		values[fn] = args.get(fn)
+	if _dedupe_bucket_repost(values):
+		return
 	doc = frappe.get_doc(values)
 	doc.flags.ignore_permissions = True
 	doc.insert()
@@ -143,6 +226,8 @@ def enqueue_voucher_repost(doc):
 		"posting_time": doc.posting_time or "00:00:00",
 		"allow_negative_stock": 1,
 	})
+	if _dedupe_transaction_repost(riv.as_dict()):
+		return
 	riv.flags.ignore_permissions = True
 	riv.insert(ignore_mandatory=True)
 	riv.submit()
