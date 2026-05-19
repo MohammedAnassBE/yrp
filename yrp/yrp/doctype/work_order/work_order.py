@@ -58,9 +58,18 @@ class WorkOrder(Document):
 
 	def before_cancel(self):
 		self.validate_no_submitted_downstream_documents()
-		self.ignore_linked_doctypes = ("Delivery Challan", "Goods Received Note")
+		# SREs against this WO are cancelled in `on_cancel`; tell Frappe's
+		# linked-docs guard to skip them so the cancel isn't blocked.
+		self.ignore_linked_doctypes = (
+			"Delivery Challan",
+			"Goods Received Note",
+			"Stock Reservation Entry",
+		)
 
 	def on_cancel(self):
+		from yrp.stock.utils import close_voucher_reservations
+
+		close_voucher_reservations("Work Order", self.name)
 		self.db_set("status", "Cancelled", update_modified=False)
 
 	def validate_no_submitted_downstream_documents(self):
