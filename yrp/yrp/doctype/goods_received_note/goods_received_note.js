@@ -37,41 +37,14 @@ frappe.ui.form.on("Goods Received Note", {
 		if (!frm.doc.against_id || frm.doc.docstatus !== 0) {
 			return;
 		}
-		const source = get_source_defaults_method(frm);
-		if (!source) {
+		load_source_defaults(frm);
+	},
+
+	delivery_challan(frm) {
+		if (frm.doc.docstatus !== 0 || frm.doc.against !== "Work Order" || !frm.doc.against_id) {
 			return;
 		}
-		frappe.call({
-			method: source.method,
-			args: source.args,
-			callback(r) {
-				if (!r.message) {
-					return;
-				}
-				apply_response_values(frm, r.message, [
-					"process_name",
-					"item",
-					"production_detail",
-					"supplier",
-					"delivery_location",
-					"from_warehouse",
-					"to_warehouse",
-				]);
-				if (frm.doc.against !== "Work Order") {
-					frm.set_value("delivery_challan", "");
-				}
-				frm.clear_table("items");
-				for (const row of r.message.items || []) {
-					const child = frm.add_child("items");
-					Object.assign(child, row);
-				}
-				frm.refresh_field("items");
-				frm.doc.item_details = JSON.stringify(r.message.item_details || []);
-				if (frm.itemEditor) {
-					frm.itemEditor.load_data(r.message.item_details || []);
-				}
-			},
-		});
+		load_source_defaults(frm);
 	},
 
 	validate(frm) {
@@ -86,11 +59,49 @@ frappe.ui.form.on("Goods Received Note", {
 	},
 });
 
+function load_source_defaults(frm) {
+	const source = get_source_defaults_method(frm);
+	if (!source) {
+		return;
+	}
+	frappe.call({
+		method: source.method,
+		args: source.args,
+		callback(r) {
+			if (!r.message) {
+				return;
+			}
+			apply_response_values(frm, r.message, [
+				"process_name",
+				"item",
+				"production_detail",
+				"supplier",
+				"delivery_location",
+				"from_warehouse",
+				"to_warehouse",
+			]);
+			if (frm.doc.against !== "Work Order") {
+				frm.set_value("delivery_challan", "");
+			}
+			frm.clear_table("items");
+			for (const row of r.message.items || []) {
+				const child = frm.add_child("items");
+				Object.assign(child, row);
+			}
+			frm.refresh_field("items");
+			frm.doc.item_details = JSON.stringify(r.message.item_details || []);
+			if (frm.itemEditor) {
+				frm.itemEditor.load_data(r.message.item_details || []);
+			}
+		},
+	});
+}
+
 function get_source_defaults_method(frm) {
 	if (frm.doc.against === "Work Order") {
 		return {
 			method: "yrp.yrp.doctype.goods_received_note.goods_received_note.get_work_order_defaults",
-			args: { work_order: frm.doc.against_id },
+			args: { work_order: frm.doc.against_id, delivery_challan: frm.doc.delivery_challan || "" },
 		};
 	}
 	if (frm.doc.against === "Purchase Order") {
@@ -126,6 +137,7 @@ function clear_source_values(frm) {
 		"delivery_location",
 		"from_warehouse",
 		"to_warehouse",
+		"is_rework",
 	]) {
 		if (frm.fields_dict[field]) {
 			frm.set_value(field, "");
@@ -199,6 +211,7 @@ function add_complete_transfer_button(frm) {
 
 function add_create_inspection_button(frm) {
 	if (frm.doc.docstatus !== 1) return;
+	if (frm.doc.is_rework) return;
 	frappe.db.count("Inspection Entry", {
 		filters: {
 			against: "Goods Received Note",

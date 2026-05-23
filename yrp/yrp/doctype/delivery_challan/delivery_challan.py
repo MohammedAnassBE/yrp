@@ -33,6 +33,7 @@ class DeliveryChallan(Document):
 	def on_submit(self):
 		self.update_work_order_deliverables()
 		self.make_stock_ledger_entries()
+		self.update_work_order_reservations()
 		self.make_repost_action()
 
 	def before_cancel(self):
@@ -54,6 +55,7 @@ class DeliveryChallan(Document):
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
 		self.update_work_order_deliverables(cancel=True)
+		self.update_work_order_reservations(cancel=True)
 		if self.is_internal_unit:
 			self.db_set("ste_transferred", 0)
 			self.db_set("ste_transferred_percent", 0)
@@ -69,6 +71,8 @@ class DeliveryChallan(Document):
 			return
 
 		wo = frappe.get_cached_doc("Work Order", self.work_order)
+		if self.meta.get_field("is_rework"):
+			self.is_rework = wo.is_rework
 		self.process_name = self.process_name or wo.process_name
 		self.item = self.item or wo.item
 		self.production_detail = self.production_detail or wo.production_detail
@@ -159,11 +163,12 @@ class DeliveryChallan(Document):
 
 	def validate_stock_available(self):
 		from yrp.stock.dimensions import get_dimension_fieldnames
-		from yrp.stock.utils import get_stock_balance
+		from yrp.stock.utils import get_available_stock, get_stock_balance
 
 		if not self.from_warehouse:
 			frappe.throw(_("From Warehouse is required."))
 
+		is_rework = _is_rework_work_order(self.work_order)
 		dim_fields = get_dimension_fieldnames()
 		required_by_bucket = {}
 		for row in self.items:
@@ -180,13 +185,22 @@ class DeliveryChallan(Document):
 			required_by_bucket[key]["qty"] += qty
 
 		for bucket in required_by_bucket.values():
-			available = get_stock_balance(
-				bucket["item"],
-				self.from_warehouse,
-				posting_date=self.posting_date,
-				posting_time=self.posting_time,
-				**bucket["dims"],
-			)
+			if is_rework:
+				available = get_available_stock(
+					bucket["item"],
+					self.from_warehouse,
+					exclude_voucher_type="Work Order",
+					exclude_voucher_name=self.work_order,
+					**bucket["dims"],
+				)
+			else:
+				available = get_stock_balance(
+					bucket["item"],
+					self.from_warehouse,
+					posting_date=self.posting_date,
+					posting_time=self.posting_time,
+					**bucket["dims"],
+				)
 			required = flt(bucket["qty"])
 			if flt(available) + 0.0001 < required:
 				frappe.throw(
@@ -217,6 +231,23 @@ class DeliveryChallan(Document):
 
 		if changed:
 			_update_work_order_status(self.work_order)
+
+	def update_work_order_reservations(self, cancel=False):
+		# Applies to ANY Work Order, not just rework. If a Stock Reservation
+		# Entry exists against the WO+deliverable (auto-created for rework,
+		# manually created for normal flow), DC submit increases delivered_qty
+		# and DC cancel decreases it. No-op if no matching SRE exists.
+		if not self.work_order:
+			return
+		for row in self.items:
+			if row.ref_doctype != "Work Order Deliverables" or not row.ref_docname:
+				continue
+			qty = flt(row.stock_qty) or flt(row.delivered_quantity or row.qty)
+			_update_work_order_sre_delivered_qty(
+				self.work_order,
+				row.ref_docname,
+				-qty if cancel else qty,
+			)
 
 	def make_stock_ledger_entries(self, cancel=False):
 		from yrp.stock.stock_ledger import make_sl_entries
@@ -399,6 +430,7 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 		"process_name": wo.process_name,
 		"item": wo.item,
 		"production_detail": wo.production_detail,
+		"is_rework": wo.is_rework,
 		"supplier": wo.supplier,
 		"from_location": wo.delivery_location,
 		"from_warehouse": from_warehouse,
@@ -411,12 +443,15 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 
 
 def _pending_deliverable_rows(wo):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dim_fields = get_dimension_fieldnames()
 	rows = []
 	for row in wo.get("deliverables") or []:
 		pending = flt(row.pending_quantity)
 		if pending <= 0:
 			continue
-		rows.append({
+		out = {
 			"item_variant": row.item_variant,
 			"qty": pending,
 			"delivered_quantity": pending,
@@ -427,7 +462,11 @@ def _pending_deliverable_rows(wo):
 			"table_index": row.table_index,
 			"row_index": row.row_index,
 			"set_combination": row.set_combination,
-		})
+		}
+		for fn in dim_fields:
+			if row.meta.get_field(fn) and row.get(fn):
+				out[fn] = row.get(fn)
+		rows.append(out)
 	return rows
 
 
@@ -460,6 +499,45 @@ def _row_dimension_filters(row, child_doctype=None):
 		if value:
 			filters[fn] = value
 	return filters
+
+
+def _is_rework_work_order(work_order):
+	if not work_order:
+		return False
+	return bool(frappe.db.get_value("Work Order", work_order, "is_rework"))
+
+
+def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delta):
+	if not work_order or not voucher_detail_no or not qty_delta:
+		return
+	sre_name = frappe.db.get_value(
+		"Stock Reservation Entry",
+		{
+			"voucher_type": "Work Order",
+			"voucher_no": work_order,
+			"voucher_detail_no": voucher_detail_no,
+			"docstatus": 1,
+		},
+		"name",
+	)
+	if not sre_name:
+		return
+	sre = frappe.get_doc("Stock Reservation Entry", sre_name)
+	# Once an SRE has been manually closed-short, its delivered_qty is
+	# frozen. A later DC submit/cancel must not silently mutate it.
+	if sre.status == "Closed":
+		frappe.throw(_(
+			"Stock Reservation Entry {0} has been closed; cannot update delivered qty."
+		).format(sre.name))
+	delivered_qty = max(flt(sre.delivered_qty) + flt(qty_delta), 0)
+	sre.delivered_qty = delivered_qty
+	sre.set_status()
+	frappe.db.set_value(
+		"Stock Reservation Entry",
+		sre.name,
+		{"delivered_qty": delivered_qty, "status": sre.status},
+		update_modified=False,
+	)
 
 
 @frappe.whitelist()

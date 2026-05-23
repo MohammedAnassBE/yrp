@@ -7,6 +7,7 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
 	_item_uom,
 	_process,
+	_process_cost,
 	_production_group_dimensions,
 	_purchase_order,
 	_purchase_order_grn,
@@ -23,20 +24,21 @@ def _work_order_for_invoice(qty=5):
 	uom = frappe.db.get_value("Item", parent_item, "default_unit_of_measure") or "Piece"
 	supplier = _supplier(f"_Test PI WO Supplier {frappe.generate_hash(length=6)}")
 	delivery_location = _supplier(f"_Test PI WO Delivery {frappe.generate_hash(length=6)}")
+	process_name = _process("_Test PI WO Process")
+	dimensions = _production_group_dimensions()
 	_supplier_warehouse(supplier, f"_Test PI WO Supplier WH {frappe.generate_hash(length=6)}")
 	_supplier_warehouse(delivery_location, f"_Test PI WO Delivery WH {frappe.generate_hash(length=6)}")
+	_process_cost(process_name, parent_item, supplier, dimensions)
 	wo = frappe.get_doc({
 		"doctype": "Work Order",
-		"is_rework": 1,
-		"rework_type": "No Cost",
 		"supplier": supplier,
 		"delivery_location": delivery_location,
 		"planned_end_date": nowdate(),
 		"supplier_address": _address(f"_Test PI WO Supplier Address {frappe.generate_hash(length=6)}"),
 		"delivery_address": _address(f"_Test PI WO Delivery Address {frappe.generate_hash(length=6)}"),
-		"process_name": _process("_Test PI WO Process"),
+		"process_name": process_name,
 		"item": parent_item,
-		**_production_group_dimensions(),
+		**dimensions,
 		"deliverables": [{
 			"item_variant": item_variant,
 			"qty": qty,

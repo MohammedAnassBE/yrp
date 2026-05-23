@@ -11,6 +11,7 @@
   "transit_aging_threshold_days",
   "grn_cancel_window_days",
   "default_received_type",
+  "default_rejected_received_type",
   "freight_allocation_method",
   "column_break_stock_1",
   "default_valuation_method",
@@ -69,6 +70,13 @@
    "label": "Default Received Type",
    "options": "Received Type",
    "description": "Used as the default value when a Received Type is not explicitly set on a stock transaction line."
+  },
+  {
+   "fieldname": "default_rejected_received_type",
+   "fieldtype": "Link",
+   "label": "Default Rejected Received Type",
+   "options": "Received Type",
+   "description": "The Received Type used to mark Rejected stock. Stock in this Received Type is excluded from the Create Rework popup."
   },
   {
    "default": "By Quantity",

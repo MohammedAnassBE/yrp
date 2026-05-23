@@ -7,7 +7,7 @@
                         <tr>
                             <th>S.No.</th>
                             <th>Item</th>
-                            <th v-for="dim in dimensions" :key="dim.fieldname">{{ dim.label }}</th>
+                            <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
                             <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
                             <th v-for="attr in i.primary_attribute_values" :key="attr">{{ attr }}</th>
                             <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
@@ -16,7 +16,7 @@
                         <tr v-for="(j, item1_index) in i.items" :key="item1_index">
                             <td>{{ item1_index + 1 }}</td>
                             <td>{{ j.name }}</td>
-                            <td v-for="dim in dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
+                            <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
                             <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
                             <td v-for="(attr, key) in j.values" :key="key">
                                 <div v-if="attr">
@@ -52,7 +52,7 @@
                         <tr>
                             <th>S.No.</th>
                             <th>Item</th>
-                            <th v-for="dim in dimensions" :key="dim.fieldname">{{ dim.label }}</th>
+                            <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
                             <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
                             <th>Quantity</th>
                             <th v-for="a in table_qty_fields" :key="a.name">{{ a.label }}</th>
@@ -62,7 +62,7 @@
                         <tr v-for="(j, item1_index) in i.items" :key="item1_index">
                             <td>{{ item1_index + 1 }}</td>
                             <td>{{ j.name }}</td>
-                            <td v-for="dim in dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
+                            <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
                             <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
                             <td>
                                 <input v-if="inline_qty_edit && edit && j.values && j.values['default']"
@@ -223,6 +223,22 @@ async function load_dimensions() {
 const can_create = computed(() => _resolve_arg('can_create', true));
 const can_edit = computed(() => _resolve_arg('can_edit', true));
 const can_remove = computed(() => _resolve_arg('can_remove', true));
+
+// Hide dimension columns where no row has a value (e.g. Work Order Deliverables
+// has no `lot` field, so the Lot column would always render empty).
+const visible_dimensions = computed(() => {
+    if (!dimensions.value || !dimensions.value.length) return [];
+    return dimensions.value.filter((dim) => {
+        if (!props.items) return true;
+        for (const group of props.items) {
+            for (const j of (group.items || [])) {
+                const v = (j.dimensions || {})[dim.fieldname];
+                if (v !== undefined && v !== null && v !== '') return true;
+            }
+        }
+        return false;
+    });
+});
 const inline_qty_edit = computed(() => Boolean(props.inlineQtyEdit));
 const inline_qty_max_field = computed(() => props.inlineQtyMaxField || '');
 const show_row_actions = computed(() => props.edit && (can_edit.value || can_remove.value));

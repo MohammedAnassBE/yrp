@@ -18,6 +18,7 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
 	_item_uom,
 	_process,
+	_process_cost,
 	_production_group_dimensions,
 	_supplier,
 	_supplier_warehouse,
@@ -76,18 +77,19 @@ def _make_wo(from_location, to_supplier, qty=10):
 	uom = _item_uom(item_variant)
 	from_wh = _supplier_warehouse(from_location, f"_T_DC_From_WH_{frappe.generate_hash(length=6)}")
 	to_wh = _supplier_warehouse(to_supplier, f"_T_DC_To_WH_{frappe.generate_hash(length=6)}")
+	process_name = _process("_Test DC Internal Process")
+	dimensions = _production_group_dimensions()
+	_process_cost(process_name, parent_item, to_supplier, dimensions)
 	wo = frappe.get_doc({
 		"doctype": "Work Order",
-		"is_rework": 1,
-		"rework_type": "No Cost",
 		"supplier": to_supplier,
 		"delivery_location": from_location,
 		"planned_end_date": nowdate(),
 		"supplier_address": _address(f"_T_DC_To_Addr_{frappe.generate_hash(length=6)}"),
 		"delivery_address": _address(f"_T_DC_From_Addr_{frappe.generate_hash(length=6)}"),
-		"process_name": _process("_Test DC Internal Process"),
+		"process_name": process_name,
 		"item": parent_item,
-		**_production_group_dimensions(),
+		**dimensions,
 		"deliverables": [{
 			"item_variant": item_variant,
 			"qty": qty,

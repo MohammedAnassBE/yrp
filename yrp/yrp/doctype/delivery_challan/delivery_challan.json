@@ -8,6 +8,7 @@
  "field_order": [
   "naming_series",
   "work_order",
+  "is_rework",
   "posting_date",
   "posting_time",
   "edit_posting_date_and_time",
@@ -59,6 +60,13 @@
    "label": "Work Order",
    "options": "Work Order",
    "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_rework",
+   "fieldtype": "Check",
+   "label": "Is Rework",
+   "read_only": 1
   },
   {
    "default": "Today",

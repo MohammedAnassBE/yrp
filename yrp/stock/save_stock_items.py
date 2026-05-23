@@ -61,7 +61,8 @@ PARENT_CHILD_MAP = {
 		"entry_fields": [
 			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
 			"additional_parameters", "set_combination", "grn_detail_no", "item_type",
-			"is_calculated",
+			"is_calculated", "source_grn", "source_grn_item",
+			"source_inspection_entry_item",
 		],
 	},
 	"Work Order Receivables": {

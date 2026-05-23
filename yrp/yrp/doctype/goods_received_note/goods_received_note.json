@@ -10,6 +10,7 @@
   "against",
   "against_id",
   "delivery_challan",
+  "is_rework",
   "posting_date",
   "posting_time",
   "edit_posting_date_and_time",
@@ -79,6 +80,13 @@
    "fieldtype": "Link",
    "label": "Delivery Challan",
    "options": "Delivery Challan"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_rework",
+   "fieldtype": "Check",
+   "label": "Is Rework",
+   "read_only": 1
   },
   {
    "default": "Today",

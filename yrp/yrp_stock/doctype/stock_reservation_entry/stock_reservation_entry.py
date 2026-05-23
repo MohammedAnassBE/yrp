@@ -17,6 +17,11 @@ class StockReservationEntry(Document):
 	def validate(self):
 		if not self.reserved_qty or self.reserved_qty <= 0:
 			frappe.throw(_("Reserved Qty must be > 0"))
+		# closed_qty + delivered_qty must never exceed reserved_qty.
+		if flt(self.delivered_qty) + flt(self.closed_qty) > flt(self.reserved_qty) + 1e-9:
+			frappe.throw(_(
+				"delivered_qty ({0}) + closed_qty ({1}) cannot exceed reserved_qty ({2})."
+			).format(self.delivered_qty, self.closed_qty, self.reserved_qty))
 		self.set_status()
 
 	def before_submit(self):
@@ -71,9 +76,16 @@ class StockReservationEntry(Document):
 		elif self.docstatus == 2:
 			self.status = "Cancelled"
 		else:
-			delivered = self.delivered_qty or 0
-			reserved = self.reserved_qty or 0
-			if delivered >= reserved:
+			delivered = flt(self.delivered_qty)
+			closed = flt(self.closed_qty)
+			reserved = flt(self.reserved_qty)
+			# Closed-short takes precedence: once the user manually closes the
+			# leftover reservation, status reflects that even if only part was
+			# delivered. delivered + closed == reserved by construction of
+			# close_at_delivered, but we accept >= for forward-safety.
+			if closed > 0 and (delivered + closed) >= reserved:
+				self.status = "Closed"
+			elif delivered >= reserved:
 				self.status = "Delivered"
 			elif delivered > 0:
 				self.status = "Partially Delivered"
@@ -81,3 +93,29 @@ class StockReservationEntry(Document):
 				self.status = "Reserved"
 			else:
 				self.status = "Partially Reserved"
+
+	@frappe.whitelist()
+	def close_at_delivered(self):
+		"""Manually close this SRE at whatever has been delivered so far. Sets
+		closed_qty = reserved_qty - delivered_qty and flips status to 'Closed'.
+		The leftover reservation stops counting in get_sre_reserved_qty.
+
+		Use when: reserved 100, only 50 ever got dispatched, plan changed and
+		the other 50 should be released. Preserves reserved_qty and
+		delivered_qty for audit (no in-place mutation).
+		"""
+		if self.docstatus != 1:
+			frappe.throw(_("Only a submitted Stock Reservation Entry can be closed."))
+		if self.status in ("Delivered", "Closed", "Cancelled"):
+			frappe.throw(_("Stock Reservation Entry is already {0}.").format(self.status))
+		remaining = flt(self.reserved_qty) - flt(self.delivered_qty) - flt(self.closed_qty)
+		if remaining <= 0:
+			frappe.throw(_("Nothing left to close — reserved_qty already fully delivered or closed."))
+		new_closed = flt(self.closed_qty) + remaining
+		self.closed_qty = new_closed
+		self.set_status()
+		self.db_set(
+			{"closed_qty": new_closed, "status": self.status},
+			update_modified=False,
+		)
+		return {"closed_qty": new_closed, "status": self.status}

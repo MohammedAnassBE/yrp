@@ -30,3 +30,17 @@ class TestReceivedType(FrappeTestCase):
 			frappe.db.set_single_value("YRP Stock Settings", "default_received_type", original)
 			rt.reload()
 			rt.delete()
+
+	def test_cannot_delete_when_set_as_settings_rejected(self):
+		rt = frappe.get_doc(
+			{"doctype": "Received Type", "received_type_name": "_Test RT Reject Lock"}
+		).insert()
+		original = frappe.db.get_single_value("YRP Stock Settings", "default_rejected_received_type")
+		frappe.db.set_single_value("YRP Stock Settings", "default_rejected_received_type", rt.name)
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				rt.delete()
+		finally:
+			frappe.db.set_single_value("YRP Stock Settings", "default_rejected_received_type", original)
+			rt.reload()
+			rt.delete()

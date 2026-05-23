@@ -84,9 +84,13 @@ class InspectionEntry(Document):
 		if not self.against_id:
 			frappe.throw(_("Against ID is required."))
 		if self.against == "Goods Received Note":
-			docstatus = frappe.db.get_value("Goods Received Note", self.against_id, "docstatus")
+			docstatus, is_rework = frappe.db.get_value(
+				"Goods Received Note", self.against_id, ["docstatus", "is_rework"]
+			)
 			if docstatus != 1:
 				frappe.throw(_("Goods Received Note {0} must be submitted.").format(self.against_id))
+			if is_rework:
+				frappe.throw(_("Rework Goods Received Notes are not inspectable."))
 		else:  # Stock Entry
 			row = frappe.db.get_value(
 				"Stock Entry",
@@ -360,6 +364,8 @@ def _grn_initial_payload(grn):
 	grn_doc = frappe.get_doc("Goods Received Note", grn)
 	if grn_doc.docstatus != 1:
 		frappe.throw(_("Goods Received Note {0} must be submitted.").format(grn))
+	if grn_doc.get("is_rework"):
+		frappe.throw(_("Rework Goods Received Notes are not inspectable."))
 
 	from yrp.stock.dimensions import get_dimension_fieldnames
 

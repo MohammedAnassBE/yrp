@@ -61,6 +61,47 @@ def _process(name):
 	return name
 
 
+def _tax_slab():
+	if not frappe.db.exists("Tax Slab", "0"):
+		frappe.get_doc({"doctype": "Tax Slab", "percentage": "0", "enabled": 1}).insert(ignore_permissions=True)
+	return "0"
+
+
+def _process_cost(process_name, item, supplier, dimensions=None, rate=12, is_rework=0):
+	dimensions = dimensions or {}
+	filters = {
+		"process_name": process_name,
+		"item": item,
+		"supplier": supplier,
+		"is_rework": is_rework,
+		"is_expired": 0,
+		"docstatus": 1,
+		**dimensions,
+	}
+	existing = frappe.db.get_value("Process Cost", filters, "name")
+	if existing:
+		return existing
+	uom = frappe.db.get_value("Item", item, "default_unit_of_measure") or "Piece"
+	doc = frappe.get_doc({
+		"doctype": "Process Cost",
+		"item": item,
+		"uom": uom,
+		"supplier": supplier,
+		"process_name": process_name,
+		"from_date": "2000-01-01",
+		"tax_slab": _tax_slab(),
+		"is_rework": is_rework,
+		**dimensions,
+		"process_cost_values": [{
+			"min_order_qty": 0,
+			"price": rate,
+		}],
+	})
+	doc.insert(ignore_permissions=True)
+	doc.submit()
+	return doc.name
+
+
 def _address(title):
 	if frappe.db.exists("Address", title):
 		return title
@@ -148,6 +189,17 @@ def _purchase_order_grn(po, qty):
 	return grn
 
 
+def _rework_source_refs(qty=1):
+	warehouse = _warehouse(f"_Test Rework Source WH {frappe.generate_hash(length=6)}")
+	po = _purchase_order(qty, warehouse)
+	grn = _purchase_order_grn(po, qty)
+	grn.submit()
+	return {
+		"source_grn": grn.name,
+		"source_grn_item": grn.items[0].name,
+	}
+
+
 def _stock_availability_row(item_variant, warehouse, filters=None):
 	_, rows = stock_availability(
 		{
@@ -167,19 +219,21 @@ def _work_order(qty, warehouse):
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
 	uom = _item_uom(item_variant)
 	delivery_location = _supplier(f"_Test WO Availability Delivery {frappe.generate_hash(length=6)}")
+	supplier = _supplier("_Test WO Availability Supplier")
+	process_name = _process("_Test WO Availability Process")
+	dimensions = _production_group_dimensions()
 	_supplier_warehouse(delivery_location, warehouse)
+	_process_cost(process_name, parent_item, supplier, dimensions)
 	wo = frappe.get_doc({
 		"doctype": "Work Order",
-		"is_rework": 1,
-		"rework_type": "No Cost",
-		"supplier": _supplier("_Test WO Availability Supplier"),
+		"supplier": supplier,
 		"delivery_location": delivery_location,
 		"planned_end_date": nowdate(),
 		"supplier_address": _address(f"_Test WO Supplier Address {frappe.generate_hash(length=6)}"),
 		"delivery_address": _address(f"_Test WO Delivery Address {frappe.generate_hash(length=6)}"),
-		"process_name": _process("_Test WO Availability Process"),
+		"process_name": process_name,
 		"item": parent_item,
-		**_production_group_dimensions(),
+		**dimensions,
 		"deliverables": [{
 			"item_variant": item_variant,
 			"qty": 1,

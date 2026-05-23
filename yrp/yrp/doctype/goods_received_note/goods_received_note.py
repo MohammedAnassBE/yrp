@@ -26,7 +26,11 @@ class GoodsReceivedNote(Document):
 			from yrp.stock.dimensions import apply_dimension_defaults
 
 			wo = frappe.get_doc("Work Order", self.against_id)
-			rows = _pending_receivable_rows(wo, existing_rows=rows)
+			delivery_challan = (
+				frappe.get_doc("Delivery Challan", self.delivery_challan)
+				if self.delivery_challan else None
+			)
+			rows = _pending_receivable_rows(wo, existing_rows=rows, delivery_challan=delivery_challan)
 			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(wo))
 			apply_dimension_defaults(rows)
 		elif self.docstatus == 0 and self.against == "Purchase Order" and self.against_id and rows:
@@ -62,6 +66,7 @@ class GoodsReceivedNote(Document):
 	def on_submit(self):
 		self.update_source_pending()
 		self.make_stock_ledger_entries()
+		self.update_rework_delivery_challan_items()
 
 	def before_cancel(self):
 		self.validate_no_purchase_invoice()
@@ -86,6 +91,7 @@ class GoodsReceivedNote(Document):
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
 		self.update_source_pending(cancel=True)
+		self.update_rework_delivery_challan_items(cancel=True)
 		if self.is_internal_unit:
 			self.db_set("ste_transferred", 0)
 			self.db_set("ste_transferred_percent", 0)
@@ -101,6 +107,8 @@ class GoodsReceivedNote(Document):
 
 		if self.against == "Work Order":
 			wo = frappe.get_cached_doc("Work Order", self.against_id)
+			if self.meta.get_field("is_rework"):
+				self.is_rework = wo.is_rework
 			self.process_name = self.process_name or wo.process_name
 			self.item = self.item or wo.item
 			self.production_detail = self.production_detail or wo.production_detail
@@ -163,6 +171,10 @@ class GoodsReceivedNote(Document):
 			frappe.throw(_("{0} {1} is closed.").format(self.against, self.against_id))
 		if self.delivery_challan and self.against != "Work Order":
 			frappe.throw(_("Delivery Challan can only be used with Work Order GRN."))
+		if self.against == "Work Order":
+			is_rework = frappe.db.get_value("Work Order", self.against_id, "is_rework")
+			if is_rework and not self.delivery_challan:
+				frappe.throw(_("Delivery Challan is required for rework Goods Received Note."))
 		if self.delivery_challan:
 			dc_work_order, dc_docstatus = frappe.db.get_value(
 				"Delivery Challan", self.delivery_challan, ["work_order", "docstatus"]
@@ -345,6 +357,7 @@ class GoodsReceivedNote(Document):
 			self.validate_against_purchase_order_pending()
 			return
 		self.validate_against_work_order_pending()
+		self.validate_rework_delivery_challan_pending()
 
 	def validate_no_purchase_invoice(self):
 		purchase_invoice = self.get("purchase_invoice_name")
@@ -441,6 +454,51 @@ class GoodsReceivedNote(Document):
 				if _find_matching_receivable([target], row):
 					row.max_receivable_quantity = max(flt(allowance), 0)
 
+	def validate_rework_delivery_challan_pending(self):
+		if not _is_rework_work_order(self.against_id):
+			return
+		if not self.delivery_challan:
+			frappe.throw(_("Delivery Challan is required for rework Goods Received Note."))
+
+		from yrp.stock.utils import get_stock_balance
+
+		dc = frappe.get_doc("Delivery Challan", self.delivery_challan)
+		dc_items = {row.name: row for row in dc.items}
+		totals_by_dc_item = defaultdict(float)
+		for row in self.items:
+			if not row.delivery_challan_item:
+				frappe.throw(_("Row {0}: Delivery Challan Item is required for rework GRN.").format(row.idx))
+			dc_item = dc_items.get(row.delivery_challan_item)
+			if not dc_item:
+				frappe.throw(_("Row {0}: Delivery Challan Item must belong to {1}.").format(row.idx, dc.name))
+			if dc_item.item_variant != row.item_variant:
+				frappe.throw(_("Row {0}: Item must match Delivery Challan Item {1}.").format(row.idx, dc_item.name))
+			totals_by_dc_item[dc_item.name] += flt(row.quantity)
+
+		for dc_item_name, qty in totals_by_dc_item.items():
+			dc_item = dc_items[dc_item_name]
+			pending = flt(dc_item.delivered_quantity or dc_item.qty) - flt(dc_item.received_quantity)
+			if qty > pending + 0.0001:
+				frappe.throw(
+					_("Received qty {0} exceeds pending rework return qty {1} for Delivery Challan Item {2}.").format(
+						flt(qty), flt(pending), dc_item.name
+					)
+				)
+			dims = _delivery_challan_item_dimension_values(dc_item)
+			balance = get_stock_balance(
+				dc_item.item_variant,
+				self.from_warehouse,
+				posting_date=self.posting_date,
+				posting_time=self.posting_time,
+				**dims,
+			)
+			if flt(balance) + 0.0001 < qty:
+				frappe.throw(
+					_("Insufficient supplier-side rework stock for {0}: available {1}, required {2}.").format(
+						dc_item.item_variant, flt(balance), flt(qty)
+					)
+				)
+
 	def validate_against_purchase_order_pending(self):
 		po = frappe.get_doc("Purchase Order", self.against_id)
 		totals_by_item = defaultdict(float)
@@ -481,6 +539,24 @@ class GoodsReceivedNote(Document):
 			self.update_purchase_order_items(cancel=cancel)
 			return
 		self.update_work_order_receivables(cancel=cancel)
+
+	def update_rework_delivery_challan_items(self, cancel=False):
+		if not _is_rework_work_order(self.against_id):
+			return
+		totals = defaultdict(float)
+		for row in self.items:
+			if row.delivery_challan_item:
+				totals[row.delivery_challan_item] += flt(row.quantity)
+		for dc_item_name, qty in totals.items():
+			current = flt(frappe.db.get_value("Delivery Challan Item", dc_item_name, "received_quantity"))
+			received = current - qty if cancel else current + qty
+			frappe.db.set_value(
+				"Delivery Challan Item",
+				dc_item_name,
+				"received_quantity",
+				flt(received),
+				update_modified=False,
+			)
 
 	def update_work_order_receivables(self, cancel=False):
 		# Note: pending_quantity may go negative when an excess receipt is allowed
@@ -538,6 +614,15 @@ class GoodsReceivedNote(Document):
 			if qty <= 0:
 				continue
 			base = _sle_base(self, row)
+			if _is_rework_work_order(self.against_id):
+				dc_item = _get_delivery_challan_item(row.delivery_challan_item)
+				entries.append({
+					**_rework_input_sle_base(self, row, dc_item),
+					"warehouse": self.from_warehouse,
+					"qty": -qty,
+					"rate": 0,
+					"outgoing_rate": flt(dc_item.valuation_rate or dc_item.rate or row.rate),
+				})
 			entries.append({
 				**base,
 				"warehouse": destination,
@@ -684,6 +769,10 @@ def get_delivery_challan_material_rate(delivery_challan, row):
 	if not delivery_challan:
 		return 0
 	dc_items = delivery_challan.get("items") or []
+	if row.get("delivery_challan_item"):
+		for dc_row in dc_items:
+			if dc_row.name == row.get("delivery_challan_item"):
+				return flt(dc_row.get("valuation_rate") or dc_row.get("rate"))
 	matching_variant_rows = [
 		dc_row for dc_row in dc_items
 		if dc_row.item_variant == row.get("item_variant")
@@ -726,12 +815,13 @@ def _update_purchase_order_status(purchase_order):
 
 
 @frappe.whitelist()
-def get_work_order_defaults(work_order):
+def get_work_order_defaults(work_order, delivery_challan=None):
 	from yrp.stock.save_stock_items import group_items_for_ui
 	from yrp.stock.dimensions import apply_dimension_defaults
 
 	wo = frappe.get_doc("Work Order", work_order)
-	items = _pending_receivable_rows(wo)
+	dc = frappe.get_doc("Delivery Challan", delivery_challan) if delivery_challan else None
+	items = _pending_receivable_rows(wo, delivery_challan=dc)
 	dimensions = _get_production_group_dimensions(wo)
 	_apply_dimension_values_to_rows(items, dimensions)
 	apply_dimension_defaults(items)
@@ -739,6 +829,7 @@ def get_work_order_defaults(work_order):
 		"process_name": wo.process_name,
 		"item": wo.item,
 		"production_detail": wo.production_detail,
+		"is_rework": wo.is_rework,
 		"supplier": wo.supplier,
 		"delivery_location": wo.delivery_location,
 		"from_warehouse": _get_warehouse_for_supplier(wo.supplier),
@@ -771,7 +862,10 @@ def get_purchase_order_defaults(purchase_order):
 	return defaults
 
 
-def _pending_receivable_rows(wo, existing_rows=None):
+def _pending_receivable_rows(wo, existing_rows=None, delivery_challan=None):
+	if delivery_challan and wo.get("is_rework"):
+		return _pending_rework_receivable_rows(wo, delivery_challan, existing_rows)
+
 	received_types, default_received_type = _get_received_type_options(existing_rows)
 	existing_quantities = (
 		_existing_receipt_quantities(wo, existing_rows, default_received_type)
@@ -819,6 +913,115 @@ def _pending_receivable_rows(wo, existing_rows=None):
 				out["received_type"] = received_type
 			rows.append(out)
 	return rows
+
+
+def _pending_rework_receivable_rows(wo, delivery_challan, existing_rows=None):
+	received_types, default_received_type = _get_rework_output_received_type_options(existing_rows)
+	existing_quantities = (
+		_existing_rework_receipt_quantities(existing_rows, default_received_type)
+		if existing_rows is not None
+		else {}
+	)
+	# Per-DC-item RT visibility: fresh GRN (existing_rows is None or empty)
+	# starts with only the default RT — user adds more via the editor "+" control.
+	# When existing_rows are present, emit the RTs the user has saved so removed
+	# rows stay removed across reloads.
+	rts_seen_per_dc = {}
+	if existing_rows:
+		for row in existing_rows:
+			dc_key = row.get("delivery_challan_item")
+			rt = row.get("received_type") or default_received_type
+			if not dc_key:
+				continue
+			rts_seen_per_dc.setdefault(dc_key, set()).add(rt)
+	rows = []
+	for dc_item in delivery_challan.get("items") or []:
+		pending_dc = flt(dc_item.delivered_quantity or dc_item.qty) - flt(dc_item.received_quantity)
+		if pending_dc <= 0 and existing_rows is None:
+			continue
+		target = _find_matching_receivable(wo.receivables, dc_item)
+		if not target:
+			continue
+		# Drop any source-RT suffix on the DC item's row_index (e.g. "0::Adas"
+		# -> "0") so all source-RT variants for the same parent-Item bucket
+		# collapse into one Received-Type row in the GRN pivot UI.
+		raw_row_index = dc_item.row_index if dc_item.row_index not in (None, "") else dc_item.idx - 1
+		base_row_index = str(raw_row_index).split("::", 1)[0] if raw_row_index not in (None, "") else dc_item.idx - 1
+		emit_rts = sorted(rts_seen_per_dc.get(dc_item.name, set())) if existing_rows is not None else []
+		if not emit_rts:
+			emit_rts = [default_received_type] if default_received_type else (received_types[:1] if received_types else [None])
+		for received_type in emit_rts:
+			key = _rework_receipt_split_key(target.name, dc_item.name, dc_item.item_variant, received_type)
+			if existing_rows is None:
+				quantity = (
+					pending_dc
+					if pending_dc > 0 and (not received_type or received_type == default_received_type)
+					else 0
+				)
+			else:
+				quantity = existing_quantities.get(key, 0)
+			if pending_dc <= 0 and flt(quantity) <= 0:
+				continue
+			out = {
+				"item_variant": dc_item.item_variant,
+				"quantity": quantity,
+				"uom": dc_item.uom,
+				"stock_uom": dc_item.stock_uom,
+				"conversion_factor": flt(dc_item.conversion_factor) or 1,
+				"stock_qty": flt(quantity) * (flt(dc_item.conversion_factor) or 1),
+				"pending_quantity": target.pending_quantity,
+				"max_receivable_quantity": min(flt(target.pending_quantity), flt(pending_dc)),
+				"ref_doctype": "Work Order Receivables",
+				"ref_docname": target.name,
+				"delivery_challan_item": dc_item.name,
+				"table_index": dc_item.table_index,
+				"row_index": f"{base_row_index}::{dc_item.name}::{received_type or ''}",
+				"set_combination": dc_item.set_combination,
+				"rate": flt(dc_item.valuation_rate or dc_item.rate),
+			}
+			out["row_index"] = f"{base_row_index}::{received_type or ''}"
+			for fn, value in _delivery_challan_item_dimension_values(dc_item).items():
+				if fn == "received_type":
+					continue
+				out[fn] = value
+			if received_type:
+				out["received_type"] = received_type
+			rows.append(out)
+	return _aggregate_rework_receivable_rows(rows)
+
+
+def _aggregate_rework_receivable_rows(rows):
+	"""When two DC items feed the same `(target receivable, variant, RT)` cell
+	(e.g. one dispatched as Adas + one as Oil Mark, but both received back as
+	Accepted), sum their max_receivable / pending / stock_qty into one row.
+
+	Without this, `group_items_for_ui` silently overwrites one cell entry with
+	the next at the same primary attribute value (size), so the GRN's Allowed
+	column under-reports vs the WO's Pending by the lost cell's qty.
+
+	Linkage trade-off: `delivery_challan_item` keeps the FIRST contributing
+	DC item's name. On submit, only that DC item's `received_quantity` updates
+	directly — bucket-level reconciliation is correct, per-DC-item is approximate.
+	"""
+	aggregated = {}
+	order = []
+	for row in rows:
+		key = (
+			row.get("ref_docname"),
+			row.get("item_variant"),
+			row.get("received_type") or "",
+		)
+		if key not in aggregated:
+			aggregated[key] = {**row}
+			order.append(key)
+			continue
+		existing = aggregated[key]
+		existing["max_receivable_quantity"] = flt(
+			existing.get("max_receivable_quantity")
+		) + flt(row.get("max_receivable_quantity"))
+		existing["stock_qty"] = flt(existing.get("stock_qty")) + flt(row.get("stock_qty"))
+		existing["quantity"] = flt(existing.get("quantity")) + flt(row.get("quantity"))
+	return [aggregated[k] for k in order]
 
 
 def _pending_purchase_order_rows(po, existing_rows=None):
@@ -905,6 +1108,56 @@ def _get_received_type_options(existing_rows=None):
 	return received_types, default_received_type
 
 
+@frappe.whitelist()
+def get_rework_output_received_types(work_order=None):
+	"""Whitelisted: list of Received Types the GRN UI can offer for adding RT
+	rows on a rework GRN. Order: default, rejected, then others alphabetically.
+	"""
+	received_types, default_received_type = _get_rework_output_received_type_options(None)
+	return {
+		"received_types": received_types,
+		"default_received_type": default_received_type,
+	}
+
+
+def _get_rework_output_received_type_options(existing_rows=None):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	if "received_type" not in get_dimension_fieldnames():
+		return [None], None
+
+	settings = frappe.get_cached_doc("YRP Stock Settings")
+	default_received_type = settings.get("default_received_type")
+	rejected_received_type = settings.get("default_rejected_received_type")
+	received_type_rows = frappe.get_all(
+		"Received Type",
+		fields=["name", "is_default"],
+		order_by="is_default desc, name asc",
+	)
+	# Rework supplier may classify returned stock at any RT — fully fixed
+	# (default), partially fixed (e.g. previous defect resolved but a new one
+	# detected), still defective, or unrecoverable (rejected). Include all RTs;
+	# order: default first, rejected second, others alphabetically.
+	received_types = []
+	if default_received_type:
+		received_types.append(default_received_type)
+	if rejected_received_type and rejected_received_type not in received_types:
+		received_types.append(rejected_received_type)
+	for row in received_type_rows:
+		if row.name not in received_types:
+			received_types.append(row.name)
+	if not received_types:
+		return [None], None
+
+	for row in existing_rows or []:
+		received_type = row.get("received_type")
+		if received_type and received_type not in received_types:
+			received_types.append(received_type)
+	if not default_received_type:
+		default_received_type = received_types[0]
+	return received_types, default_received_type
+
+
 def _existing_receipt_quantities(wo, existing_rows, default_received_type):
 	quantities = defaultdict(float)
 	for row in existing_rows or []:
@@ -919,6 +1172,55 @@ def _existing_receipt_quantities(wo, existing_rows, default_received_type):
 
 def _receipt_split_key(receivable_name, item_variant, received_type):
 	return (receivable_name, item_variant, received_type or "")
+
+
+def _existing_rework_receipt_quantities(existing_rows, default_received_type):
+	quantities = defaultdict(float)
+	for row in existing_rows or []:
+		received_type = row.get("received_type") or default_received_type
+		key = _rework_receipt_split_key(
+			row.get("ref_docname"),
+			row.get("delivery_challan_item"),
+			row.get("item_variant"),
+			received_type,
+		)
+		quantities[key] += flt(row.get("quantity"))
+	return quantities
+
+
+def _rework_receipt_split_key(receivable_name, delivery_challan_item, item_variant, received_type):
+	return (receivable_name, delivery_challan_item, item_variant, received_type or "")
+
+
+def _is_rework_work_order(work_order):
+	if not work_order:
+		return False
+	return bool(frappe.db.get_value("Work Order", work_order, "is_rework"))
+
+
+def _get_delivery_challan_item(name):
+	if not name:
+		frappe.throw(_("Delivery Challan Item is required for rework GRN rows."))
+	return frappe.get_doc("Delivery Challan Item", name)
+
+
+def _delivery_challan_item_dimension_values(row):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	values = {}
+	for fn in get_dimension_fieldnames():
+		value = row.get(fn) if row.meta.get_field(fn) else None
+		if fn == "received_type" and not value:
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
+		if value is not None:
+			values[fn] = value
+	return values
+
+
+def _rework_input_sle_base(doc, row, dc_item):
+	base = _sle_base(doc, row)
+	base.update(_delivery_challan_item_dimension_values(dc_item))
+	return base
 
 
 @frappe.whitelist()

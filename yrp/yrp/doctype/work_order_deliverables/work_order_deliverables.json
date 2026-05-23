@@ -23,7 +23,10 @@
   "valuation_rate",
   "set_combination",
   "grn_detail_no",
-  "received_type"
+  "received_type",
+  "source_grn",
+  "source_grn_item",
+  "source_inspection_entry_item"
  ],
  "fields": [
   {
@@ -140,6 +143,24 @@
    "fieldtype": "Link",
    "label": "Received Type",
    "options": "Received Type"
+  },
+  {
+   "fieldname": "source_grn",
+   "fieldtype": "Link",
+   "label": "Source GRN",
+   "options": "Goods Received Note"
+  },
+  {
+   "fieldname": "source_grn_item",
+   "fieldtype": "Link",
+   "label": "Source GRN Item",
+   "options": "Goods Received Note Item"
+  },
+  {
+   "fieldname": "source_inspection_entry_item",
+   "fieldtype": "Link",
+   "label": "Source Inspection Entry Item",
+   "options": "Inspection Entry Item"
   }
  ],
  "index_web_pages_for_search": 1,

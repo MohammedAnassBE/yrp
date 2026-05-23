@@ -4,6 +4,9 @@ frappe.ui.form.on("Inspection Entry", {
 	setup(frm) {
 		frm.set_query("against_id", () => {
 			const base = { docstatus: 1 };
+			if (frm.doc.against === "Goods Received Note") {
+				base.is_rework = 0;
+			}
 			if (frm.doc.against === "Stock Entry") {
 				base.purpose = "Material Receipt";
 			}

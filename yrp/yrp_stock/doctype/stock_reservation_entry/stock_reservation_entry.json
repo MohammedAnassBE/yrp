@@ -20,6 +20,7 @@
   "column_break_3",
   "reserved_qty",
   "delivered_qty",
+  "closed_qty",
   "section_break_2",
   "status",
   "amended_from"
@@ -40,8 +41,9 @@
   {"fieldname": "column_break_3", "fieldtype": "Column Break"},
   {"fieldname": "reserved_qty", "fieldtype": "Float", "label": "Reserved Qty"},
   {"fieldname": "delivered_qty", "fieldtype": "Float", "label": "Delivered Qty", "read_only": 1},
+  {"fieldname": "closed_qty", "fieldtype": "Float", "label": "Closed Qty", "read_only": 1, "default": 0, "description": "Qty released without delivery when the reservation was manually closed short. reserved_qty - delivered_qty - closed_qty is the qty still live-reserved."},
   {"fieldname": "section_break_2", "fieldtype": "Section Break"},
-  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Draft\nPartially Reserved\nReserved\nPartially Delivered\nDelivered\nCancelled", "read_only": 1},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Draft\nPartially Reserved\nReserved\nPartially Delivered\nDelivered\nClosed\nCancelled", "read_only": 1},
   {"fieldname": "amended_from", "fieldtype": "Link", "label": "Amended From", "no_copy": 1, "options": "Stock Reservation Entry", "print_hide": 1, "read_only": 1}
  ],
  "is_submittable": 1,

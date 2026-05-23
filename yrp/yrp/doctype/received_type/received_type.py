@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 
@@ -22,10 +23,12 @@ class ReceivedType(Document):
 			frappe.db.set_value("Received Type", other, "is_default", 0)
 
 	def on_trash(self):
-		settings_default = frappe.db.get_single_value(
-			"YRP Stock Settings", "default_received_type"
-		)
-		if settings_default == self.name:
+		settings = frappe.get_single("YRP Stock Settings")
+		if settings.get("default_received_type") == self.name:
 			frappe.throw(
 				f"Cannot delete '{self.name}' — it is set as the default in YRP Stock Settings."
+			)
+		if settings.get("default_rejected_received_type") == self.name:
+			frappe.throw(
+				f"Cannot delete '{self.name}' — it is set as the default rejected type in YRP Stock Settings."
 			)

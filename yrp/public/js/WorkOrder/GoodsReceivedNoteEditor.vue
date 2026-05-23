@@ -27,7 +27,14 @@
                             </div>
                             <div v-if="row.defaultUom" class="text-muted small">{{ row.defaultUom }}</div>
                         </td>
-                        <td>{{ split.receivedType || 'Received' }}</td>
+                        <td>
+                            <span>{{ split.receivedType || 'Received' }}</span>
+                            <button v-if="edit && canRemoveSplit(row, split)"
+                                    type="button"
+                                    class="grn-rt-remove"
+                                    title="Remove this Received Type row"
+                                    @click="removeSplit(row, split)">×</button>
+                        </td>
                         <td v-for="col in row.columns" :key="col.key">
                             <input v-if="edit"
                                    class="form-control form-control-sm grn-qty-input"
@@ -52,6 +59,18 @@
                             {{ formatQty(rowBalance(row)) }}
                         </td>
                     </tr>
+                    <tr v-if="edit && unusedRTs(row).length" class="grn-rt-add-row">
+                        <td></td>
+                        <td></td>
+                        <td :colspan="row.columns.length + 5">
+                            <span class="text-muted small mr-2">Add Received Type:</span>
+                            <button v-for="rt in unusedRTs(row)"
+                                    :key="rt"
+                                    type="button"
+                                    class="btn btn-xs btn-default grn-rt-add"
+                                    @click="addSplit(row, rt)">+ {{ rt }}</button>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -68,12 +87,23 @@ const props = defineProps({
 const emit = defineEmits(['itemupdated']);
 
 const dimensions = ref([]);
+const availableRTs = ref([]);
+const defaultRT = ref('');
 
 onMounted(() => {
     frappe.call({
         method: 'yrp.stock.api.get_stock_dimensions_for_ui',
         callback: (r) => {
             dimensions.value = r.message || [];
+        },
+    });
+    frappe.call({
+        method: 'yrp.yrp.doctype.goods_received_note.goods_received_note.get_rework_output_received_types',
+        callback: (r) => {
+            if (r && r.message) {
+                availableRTs.value = r.message.received_types || [];
+                defaultRT.value = r.message.default_received_type || '';
+            }
         },
     });
 });
@@ -290,6 +320,56 @@ function rowBalance(row) {
     return rowAllowed(row) - rowReceived(row);
 }
 
+function unusedRTs(row) {
+    if (!availableRTs.value || !availableRTs.value.length) return [];
+    const used = new Set(row.splits.map((s) => s.receivedType || ''));
+    return availableRTs.value.filter((rt) => !used.has(rt));
+}
+
+function canRemoveSplit(row, split) {
+    // Only allow removing a split that has no qty entered, and keep at least one split per row.
+    if (!row.splits || row.splits.length <= 1) return false;
+    return splitTotal(split, row.columns) === 0;
+}
+
+function addSplit(row, rt) {
+    // Find the source group + a template entry to clone the shape.
+    for (const group of props.items || []) {
+        for (const entry of (group.items || [])) {
+            const stripped = stripReceivedType(entry.dimensions || {});
+            const dimsWithoutTypeKey = stableKey({
+                name: entry.name,
+                dimensions: stripped,
+                attributes: entry.attributes || {},
+                columns: getColumns(group, entry).map((col) => col.key),
+            });
+            if (dimsWithoutTypeKey !== row.key) continue;
+            const clone = JSON.parse(JSON.stringify(entry));
+            clone.dimensions = { ...stripped, received_type: rt };
+            clone.values = {};
+            const cols = getColumns(group, entry);
+            for (const col of cols) {
+                const src = (entry.values || {})[col.key] || {};
+                clone.values[col.key] = { ...src, qty: 0 };
+            }
+            group.items.push(clone);
+            emit('itemupdated', true);
+            return;
+        }
+    }
+}
+
+function removeSplit(row, split) {
+    for (const group of props.items || []) {
+        const idx = (group.items || []).indexOf(split.entry);
+        if (idx !== -1) {
+            group.items.splice(idx, 1);
+            emit('itemupdated', true);
+            return;
+        }
+    }
+}
+
 function formatQty(value) {
     const numberValue = toNumber(value);
     if (Number.isInteger(numberValue)) {
@@ -352,5 +432,27 @@ function formatQty(value) {
 .grn-qty-input {
     width: 50px;
     min-width: 48px;
+}
+
+.grn-rt-remove {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 14px;
+    line-height: 1;
+    margin-left: 4px;
+    padding: 0 4px;
+    cursor: pointer;
+}
+.grn-rt-remove:hover {
+    color: #c00;
+}
+
+.grn-rt-add-row {
+    background-color: #fafbfc;
+}
+.grn-rt-add {
+    margin-right: 4px;
+    margin-bottom: 2px;
 }
 </style>

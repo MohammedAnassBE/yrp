@@ -274,7 +274,7 @@ def close_voucher_reservations(voucher_type, voucher_name):
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_name,
 			"docstatus": 1,
-			"status": ("not in", ["Delivered", "Cancelled"]),
+			"status": ("not in", ["Delivered", "Closed", "Cancelled"]),
 		},
 		pluck="name",
 	)
@@ -292,7 +292,7 @@ def get_sre_reserved_qty(
 	filters=None,
 	**dimension_filters,
 ):
-	"""Sum of reserved_qty - delivered_qty across active SRE rows.
+	"""Sum of reserved_qty - delivered_qty - closed_qty across active SRE rows.
 
 	Two calling styles are supported for back-compat:
 	  - Modern:  get_sre_reserved_qty(item_code=..., warehouse=..., **dim_filters,
@@ -300,7 +300,9 @@ def get_sre_reserved_qty(
 	  - Legacy:  get_sre_reserved_qty(filters={...})  — single dict of column:value.
 
 	Behavior:
-	  - Active = docstatus=1 AND status NOT IN ('Delivered', 'Cancelled').
+	  - Active = docstatus=1 AND status NOT IN ('Delivered', 'Closed', 'Cancelled').
+	    'Closed' SREs have been manually closed-short; their leftover is
+	    released and must stop counting as live reserved.
 	  - Dimension filters use NULL-matches-any (Gap #28): for each dim in
 	    `dimension_filters`, an SRE row whose dim is either equal to the value
 	    OR NULL is counted. This is conservative over-reservation — a NULL SRE
@@ -321,7 +323,7 @@ def get_sre_reserved_qty(
 		for k, v in merged.items():
 			dimension_filters.setdefault(k, v)
 
-	conds = ["docstatus = 1", "status NOT IN ('Delivered', 'Cancelled')"]
+	conds = ["docstatus = 1", "status NOT IN ('Delivered', 'Closed', 'Cancelled')"]
 	values = []
 
 	if item_code:
@@ -351,7 +353,7 @@ def get_sre_reserved_qty(
 	where_sql = " AND ".join(conds)
 	row = frappe.db.sql(
 		f"""
-		SELECT COALESCE(SUM(reserved_qty - delivered_qty), 0) AS qty
+		SELECT COALESCE(SUM(reserved_qty - delivered_qty - COALESCE(closed_qty, 0)), 0) AS qty
 		FROM `tabStock Reservation Entry`
 		WHERE {where_sql}
 		""",

@@ -11,7 +11,7 @@ frappe.ui.form.on("Work Order", {
 			options: {
 				title: "Deliverables",
 				editorType: "work_order_deliverables",
-				showDimensions: false,
+				showDimensions: !!frm.doc.is_rework,
 				allowCreate: true,
 				allowEdit: true,
 				allowRemove: true,
@@ -34,6 +34,7 @@ frappe.ui.form.on("Work Order", {
 		});
 		if (frm.doc.docstatus === 1 && frm.doc.open_status !== "Close") {
 			add_close_button(frm);
+			add_create_rework_button(frm);
 		}
 	},
 
@@ -63,6 +64,221 @@ function add_close_button(frm) {
 			frm.add_custom_button(label, () => open_close_dialog(frm));
 		},
 	});
+}
+
+function add_create_rework_button(frm) {
+	if (frm.doc.is_rework) return;
+	frm.add_custom_button(__("Create Rework"), () => {
+		frappe.call({
+			method: "yrp.yrp.doctype.work_order.work_order.get_rework_source_rows",
+			args: { work_order: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Loading rework sources..."),
+			callback(r) {
+				const sources = r.message || [];
+				if (!sources.length) {
+					frappe.msgprint(__("No rework-eligible stock (non-Accepted, non-Rejected) is available for this Work Order."));
+					return;
+				}
+				open_create_rework_dialog(frm, sources);
+			},
+		});
+	});
+}
+
+function open_create_rework_dialog(frm, sources) {
+	const buckets = group_rework_sources(sources);
+	const d = new frappe.ui.Dialog({
+		title: __("Create Rework"),
+		size: "extra-large",
+		fields: [
+			{
+				fieldtype: "Select",
+				fieldname: "supplier_type",
+				label: __("Supplier Type"),
+				options: "Same Supplier\nDifferent Supplier",
+				default: "Same Supplier",
+				reqd: 1,
+			},
+			{
+				fieldtype: "Link",
+				fieldname: "supplier",
+				label: __("Supplier"),
+				options: "Supplier",
+				depends_on: "eval: doc.supplier_type == 'Different Supplier'",
+				mandatory_depends_on: "eval: doc.supplier_type == 'Different Supplier'",
+			},
+			{ fieldtype: "Column Break" },
+			{ fieldtype: "Section Break", label: __("Rework Sources") },
+			{ fieldtype: "HTML", fieldname: "pivot_html" },
+		],
+		primary_action_label: __("Create Work Order"),
+		primary_action(values) {
+			const payload = collect_rework_payload(d, buckets);
+			if (!payload.length) {
+				frappe.throw(__("Enter Rework Qty for at least one source row."));
+			}
+			frappe.call({
+				method: "yrp.yrp.doctype.work_order.work_order.create_rework_work_order",
+				args: {
+					parent_wo: frm.doc.name,
+					rows: JSON.stringify(payload),
+					supplier_type: values.supplier_type,
+					supplier: values.supplier || "",
+				},
+				freeze: true,
+				freeze_message: __("Creating rework Work Order..."),
+				callback(r) {
+					if (r.message) {
+						d.hide();
+						frappe.set_route("Form", "Work Order", r.message);
+					}
+				},
+			});
+		},
+	});
+	d.show();
+	render_rework_pivot(d, buckets);
+}
+
+function group_rework_sources(sources) {
+	// Build map of bucket_key -> { meta, cells: { rt -> { primary_value -> [src_rows] } }, rts: Set, primary_values: Set }
+	const map = new Map();
+	for (const row of sources) {
+		const np = row.non_primary_attrs || {};
+		const np_key = Object.keys(np).sort().map((k) => `${k}=${np[k]}`).join("|");
+		const bucket_key = [
+			row.parent_item || "",
+			row.lot || "",
+			row.set_combination || "",
+			np_key,
+		].join("::");
+		let bucket = map.get(bucket_key);
+		if (!bucket) {
+			bucket = {
+				key: bucket_key,
+				meta: {
+					parent_item: row.parent_item,
+					lot: row.lot,
+					set_combination: row.set_combination,
+					non_primary_attrs: np,
+					primary_attribute: row.primary_attribute,
+				},
+				cells: {},
+				rts: new Set(),
+				primary_values: new Set(),
+			};
+			map.set(bucket_key, bucket);
+		}
+		const rt = row.received_type || "";
+		const pv = row.primary_attribute_value || "";
+		bucket.rts.add(rt);
+		bucket.primary_values.add(pv);
+		bucket.cells[rt] = bucket.cells[rt] || {};
+		bucket.cells[rt][pv] = bucket.cells[rt][pv] || [];
+		bucket.cells[rt][pv].push(row);
+	}
+	return Array.from(map.values()).sort((a, b) =>
+		(a.meta.parent_item || "").localeCompare(b.meta.parent_item || "")
+		|| a.key.localeCompare(b.key)
+	);
+}
+
+function render_rework_pivot(dialog, buckets) {
+	const $wrapper = dialog.get_field("pivot_html").$wrapper;
+	$wrapper.empty();
+	if (!buckets.length) {
+		$wrapper.append(`<div class="text-muted">${__("No rework sources available.")}</div>`);
+		return;
+	}
+	for (const bucket of buckets) {
+		const np = bucket.meta.non_primary_attrs || {};
+		const np_label = Object.keys(np).sort().map((k) => `${k}: ${np[k]}`).join(" / ");
+		const header_bits = [bucket.meta.parent_item];
+		if (np_label) header_bits.push(np_label);
+		if (bucket.meta.lot) header_bits.push(`Lot ${bucket.meta.lot}`);
+		const header = header_bits.filter(Boolean).join(" • ");
+		const primary_values = Array.from(bucket.primary_values).sort(compare_primary_values);
+		const rts = Array.from(bucket.rts).sort();
+		const $block = $(`
+			<div class="rework-pivot-block" style="margin-bottom: 1.25rem;">
+				<div class="rework-pivot-header" style="font-weight: 600; margin-bottom: 0.35rem;">${frappe.utils.escape_html(header)}</div>
+				<table class="table table-bordered table-sm" style="margin-bottom: 0;">
+					<thead>
+						<tr>
+							<th style="width: 12rem;">${frappe.utils.escape_html(bucket.meta.primary_attribute || "Attribute")}</th>
+							${primary_values.map((pv) => `<th class="text-center">${frappe.utils.escape_html(pv || "—")}</th>`).join("")}
+						</tr>
+					</thead>
+					<tbody></tbody>
+				</table>
+			</div>
+		`);
+		const $tbody = $block.find("tbody");
+		for (const rt of rts) {
+			const $tr = $(`<tr><th>${frappe.utils.escape_html(rt)}</th></tr>`);
+			for (const pv of primary_values) {
+				const cell_rows = (bucket.cells[rt] || {})[pv] || [];
+				const avail = cell_rows.reduce((s, r) => s + (r.available_qty || 0), 0);
+				if (!cell_rows.length || avail <= 0) {
+					$tr.append('<td class="text-center text-muted">—</td>');
+					continue;
+				}
+				const $td = $(`
+					<td class="text-center">
+						<span class="text-muted rework-pivot-avail">${avail}</span>
+						<input type="number" class="form-control input-sm rework-pivot-input" min="0" max="${avail}" step="1" value="0"
+							data-bucket="${frappe.utils.escape_html(bucket.key)}"
+							data-rt="${frappe.utils.escape_html(rt)}"
+							data-pv="${frappe.utils.escape_html(pv)}"
+							style="display:inline-block; width: 5rem; margin-left: 0.4rem;" />
+					</td>
+				`);
+				$tr.append($td);
+			}
+			$tbody.append($tr);
+		}
+		$wrapper.append($block);
+	}
+}
+
+function collect_rework_payload(dialog, buckets) {
+	const bucket_by_key = new Map(buckets.map((b) => [b.key, b]));
+	const payload = [];
+	dialog.get_field("pivot_html").$wrapper.find("input.rework-pivot-input").each(function () {
+		const qty = flt($(this).val());
+		if (qty <= 0) return;
+		const bucket = bucket_by_key.get($(this).data("bucket"));
+		if (!bucket) return;
+		const rt = $(this).data("rt");
+		const pv = $(this).data("pv");
+		const cell_rows = (bucket.cells[rt] || {})[pv] || [];
+		let remaining = qty;
+		for (const src of cell_rows) {
+			if (remaining <= 0) break;
+			const take = Math.min(remaining, src.available_qty);
+			if (take > 0) {
+				payload.push({ source_key: src.source_key, qty: take });
+				remaining -= take;
+			}
+		}
+		if (remaining > 0.0001) {
+			frappe.throw(__("Requested qty {0} exceeds available {1} for {2} / {3}.", [
+				qty, qty - remaining, rt, pv,
+			]));
+		}
+	});
+	return payload;
+}
+
+const SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "3XL", "4XL", "5XL"];
+function compare_primary_values(a, b) {
+	const ai = SIZE_ORDER.indexOf((a || "").toUpperCase());
+	const bi = SIZE_ORDER.indexOf((b || "").toUpperCase());
+	if (ai !== -1 && bi !== -1) return ai - bi;
+	if (ai !== -1) return -1;
+	if (bi !== -1) return 1;
+	return (a || "").localeCompare(b || "");
 }
 
 function mount_work_order_editor(frm, config) {
