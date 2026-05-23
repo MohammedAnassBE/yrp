@@ -8,6 +8,7 @@
  "field_order": [
   "naming_series",
   "work_order",
+  "purchase_order",
   "is_rework",
   "posting_date",
   "posting_time",
@@ -24,6 +25,7 @@
   "to_warehouse",
   "logistics_section",
   "vehicle_no",
+  "supplier_document_no",
   "comments",
   "items_section",
   "items",
@@ -286,6 +288,18 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_document_no",
+   "fieldtype": "Data",
+   "label": "Supplier Document No"
   }
  ],
  "grid_page_length": 50,

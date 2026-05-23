@@ -40,6 +40,7 @@ function mount_po_editor(frm) {
 		allowCreate: true,
 		allowEdit: true,
 		allowRemove: true,
+		showSecondary: true,
 	});
 	const data = get_item_details(frm);
 	frm.itemEditor.load_data(data);
@@ -108,7 +109,52 @@ function add_status_actions(frm) {
 	} else {
 		frm.add_custom_button(__("Reopen"), () => reopen_purchase_order(frm));
 	}
+	frm.add_custom_button(__("Create Delivery Challan"), () => show_create_dc_dialog(frm));
 	frm.page.add_menu_item(__("Refresh Status"), () => refresh_status(frm));
+}
+
+function show_create_dc_dialog(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __("Create Delivery Challan from {0}", [frm.doc.name]),
+		fields: [
+			{
+				fieldname: "work_order",
+				fieldtype: "Link",
+				options: "Work Order",
+				label: __("Work Order"),
+				reqd: 1,
+				description: __("The Work Order this Delivery Challan will be against. The Purchase Order is a traceability reference only."),
+				get_query: () => ({
+					filters: { docstatus: 1 },
+				}),
+			},
+		],
+		primary_action_label: __("Create"),
+		primary_action(values) {
+			d.hide();
+			const po_name = frm.doc.name;
+			const wo_name = values.work_order;
+			// route_options is consumed by Frappe when it creates a new doc on route "new".
+			// Set it BEFORE the navigation so it propagates through frm.set_value during form mount.
+			frappe.route_options = {
+				work_order: wo_name,
+				purchase_order: po_name,
+			};
+			frappe.set_route("Form", "Delivery Challan", "new").then(() => {
+				// Belt-and-suspenders: ensure the two fields are populated even if
+				// route_options didn't propagate (which can happen depending on Frappe build).
+				if (cur_frm && cur_frm.doctype === "Delivery Challan") {
+					if (!cur_frm.doc.work_order) {
+						cur_frm.set_value("work_order", wo_name);
+					}
+					if (!cur_frm.doc.purchase_order) {
+						cur_frm.set_value("purchase_order", po_name);
+					}
+				}
+			});
+		},
+	});
+	d.show();
 }
 
 function close_purchase_order(frm) {

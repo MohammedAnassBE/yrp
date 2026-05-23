@@ -33,7 +33,7 @@ PARENT_CHILD_MAP = {
 		"child_doctype": "Stock Entry Detail",
 		"item_field": "item",
 		"qty_field": "qty",
-		"value_fields": ["rate"],
+		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
 	"Stock Update": {
@@ -41,7 +41,7 @@ PARENT_CHILD_MAP = {
 		"child_doctype": "Stock Update Detail",
 		"item_field": "item_variant",
 		"qty_field": "update_diff_qty",
-		"value_fields": ["rate"],
+		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
 	"Stock Reconciliation": {
@@ -49,7 +49,7 @@ PARENT_CHILD_MAP = {
 		"child_doctype": "Stock Reconciliation Item",
 		"item_field": "item",
 		"qty_field": "qty",
-		"value_fields": ["rate"],
+		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
 	"Work Order Deliverables": {
@@ -84,6 +84,7 @@ PARENT_CHILD_MAP = {
 		"value_fields": [
 			"rate", "valuation_rate", "pending_quantity", "delivered_quantity",
 			"received_quantity", "stock_qty", "amount", "ref_doctype", "ref_docname",
+			"secondary_qty", "secondary_uom",
 		],
 		"entry_fields": [
 			"stock_uom", "conversion_factor", "table_index", "row_index",
@@ -98,6 +99,7 @@ PARENT_CHILD_MAP = {
 		"value_fields": [
 			"rate", "pending_quantity", "max_receivable_quantity", "stock_qty", "amount",
 			"ref_doctype", "ref_docname", "delivery_challan_item",
+			"secondary_qty", "secondary_uom",
 		],
 		"entry_fields": [
 			"stock_uom", "conversion_factor", "ref_doctype", "ref_docname",
@@ -113,6 +115,7 @@ PARENT_CHILD_MAP = {
 		"value_fields": [
 			"rate", "pending_quantity", "received_quantity", "cancelled_quantity",
 			"stock_qty", "amount", "discount_amount", "tax_amount", "total_amount",
+			"secondary_qty", "secondary_uom",
 		],
 		"entry_fields": [
 			"stock_uom", "conversion_factor", "delivery_date", "tax",

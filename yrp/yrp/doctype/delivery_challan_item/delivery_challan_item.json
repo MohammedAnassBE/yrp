@@ -11,6 +11,8 @@
   "qty",
   "delivered_quantity",
   "uom",
+  "secondary_qty",
+  "secondary_uom",
   "stock_qty",
   "stock_uom",
   "conversion_factor",
@@ -162,6 +164,17 @@
    "fieldname": "comments",
    "fieldtype": "Small Text",
    "label": "Comments"
+  },
+  {
+   "fieldname": "secondary_qty",
+   "fieldtype": "Float",
+   "label": "Secondary Qty"
+  },
+  {
+   "fieldname": "secondary_uom",
+   "fieldtype": "Link",
+   "label": "Secondary UOM",
+   "options": "UOM"
   }
  ],
  "grid_page_length": 50,

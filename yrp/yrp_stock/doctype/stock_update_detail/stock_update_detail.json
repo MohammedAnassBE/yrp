@@ -6,6 +6,8 @@
  "field_order": [
   "item_variant",
   "uom",
+  "secondary_qty",
+  "secondary_uom",
   "available_stock",
   "update_diff_qty",
   "rate",
@@ -16,16 +18,75 @@
   "stock_qty"
  ],
  "fields": [
-  {"fieldname": "item_variant", "fieldtype": "Link", "in_list_view": 1, "label": "Item Variant", "options": "Item Variant", "reqd": 1},
-  {"fieldname": "uom", "fieldtype": "Link", "in_list_view": 1, "label": "UOM", "options": "UOM"},
-  {"fieldname": "available_stock", "fieldtype": "Float", "in_list_view": 1, "label": "Available Stock"},
-  {"fieldname": "table_index", "fieldtype": "Int", "label": "Table Index"},
-  {"fieldname": "row_index", "fieldtype": "Int", "label": "Row Index"},
-  {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate"},
-  {"fieldname": "update_diff_qty", "fieldtype": "Float", "label": "Update Diff Qty", "reqd": 1},
-  {"fieldname": "stock_uom", "fieldtype": "Link", "label": "Stock UOM", "options": "UOM"},
-  {"fieldname": "conversion_factor", "fieldtype": "Float", "label": "Conversion Factor"},
-  {"fieldname": "stock_qty", "fieldtype": "Float", "label": "Stock Qty"}
+  {
+   "fieldname": "item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Variant",
+   "options": "Item Variant",
+   "reqd": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "available_stock",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Available Stock"
+  },
+  {
+   "fieldname": "table_index",
+   "fieldtype": "Int",
+   "label": "Table Index"
+  },
+  {
+   "fieldname": "row_index",
+   "fieldtype": "Int",
+   "label": "Row Index"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate"
+  },
+  {
+   "fieldname": "update_diff_qty",
+   "fieldtype": "Float",
+   "label": "Update Diff Qty",
+   "reqd": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "conversion_factor",
+   "fieldtype": "Float",
+   "label": "Conversion Factor"
+  },
+  {
+   "fieldname": "stock_qty",
+   "fieldtype": "Float",
+   "label": "Stock Qty"
+  },
+  {
+   "fieldname": "secondary_qty",
+   "fieldtype": "Float",
+   "label": "Secondary Qty"
+  },
+  {
+   "fieldname": "secondary_uom",
+   "fieldtype": "Link",
+   "label": "Secondary UOM",
+   "options": "UOM"
+  }
  ],
  "istable": 1,
  "links": [],

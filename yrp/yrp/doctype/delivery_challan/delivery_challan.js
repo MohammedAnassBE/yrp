@@ -95,6 +95,7 @@ function mount_dc_editor(frm) {
 		allowCreate: false,
 		allowEdit: false,
 		allowRemove: false,
+		showSecondary: true,
 	});
 	const data = get_item_details(frm);
 	frm.itemEditor.load_data(data);

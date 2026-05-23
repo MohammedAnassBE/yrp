@@ -43,13 +43,19 @@ const props = defineProps({
     allowRemove: { type: Boolean, default: true },
     lockDimensionsOnEdit: { type: Boolean, default: false },
     sourceType: { type: String, default: '' },
+    showSecondary: { type: Boolean, default: false },
 });
+
+const SECONDARY_COLUMNS = [
+    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
+    { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
+];
 
 const docstatus = ref(cur_frm.doc.docstatus || 0);
 const items = ref([]);
 const allowedItems = ref([]);
 
-const tableFields = computed(() => {
+const baseTableFields = computed(() => {
     if (props.editorType === 'work_order_receivables') {
         return [
             { name: 'cost', label: 'Cost', uses_primary_attribute: 1 },
@@ -87,7 +93,11 @@ const tableFields = computed(() => {
     ];
 });
 
-const qtyFields = computed(() => {
+const tableFields = computed(() => (
+    props.showSecondary ? [...baseTableFields.value, ...SECONDARY_COLUMNS] : baseTableFields.value
+));
+
+const baseQtyFields = computed(() => {
     if (props.editorType === 'work_order_receivables') return ['cost'];
     if (props.editorType === 'work_order_deliverables') return [];
     if (props.editorType === 'delivery_challan') return [];
@@ -95,6 +105,10 @@ const qtyFields = computed(() => {
     if (props.editorType === 'purchase_order') return [];
     return ['rate'];
 });
+
+const qtyFields = computed(() => (
+    props.showSecondary ? [...baseQtyFields.value, 'secondary_qty'] : baseQtyFields.value
+));
 
 const grnSourceType = computed(() => {
     if (props.sourceType) return props.sourceType;

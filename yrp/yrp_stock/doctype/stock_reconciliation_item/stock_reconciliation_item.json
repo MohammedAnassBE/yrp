@@ -14,6 +14,8 @@
   "make_qty_zero",
   "column_break_2",
   "uom",
+  "secondary_qty",
+  "secondary_uom",
   "stock_uom",
   "conversion_factor",
   "section_break_2",
@@ -27,27 +29,125 @@
   "row_index"
  ],
  "fields": [
-  {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item Variant", "reqd": 1},
-  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse", "reqd": 1},
-  {"fieldname": "qty", "fieldtype": "Float", "label": "Qty"},
-  {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate"},
-  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},
-  {"fieldname": "table_index", "fieldtype": "Int", "label": "Table Index"},
-  {"fieldname": "row_index", "fieldtype": "Int", "label": "Row Index"},
-  {"default": "0", "fieldname": "allow_zero_valuation_rate", "fieldtype": "Check", "label": "Allow Zero Valuation Rate"},
-  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "section_break_1", "fieldtype": "Section Break"},
-  {"fieldname": "column_break_2", "fieldtype": "Column Break"},
-  {"fieldname": "section_break_2", "fieldtype": "Section Break"},
-  {"fieldname": "column_break_3", "fieldtype": "Column Break"},
-  {"fieldname": "section_break_3", "fieldtype": "Section Break"},
-  {"fieldname": "column_break_4", "fieldtype": "Column Break"},
-  {"fieldname": "stock_qty", "fieldtype": "Float", "label": "Stock Qty"},
-  {"fieldname": "stock_uom", "fieldtype": "Link", "label": "Stock UOM", "options": "UOM"},
-  {"fieldname": "conversion_factor", "fieldtype": "Float", "label": "Conversion Factor"},
-  {"fieldname": "stock_uom_rate", "fieldtype": "Currency", "label": "Stock UOM Rate"},
-  {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount"},
-  {"default": "0", "fieldname": "make_qty_zero", "fieldtype": "Check", "label": "Make Qty Zero"}
+  {
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item",
+   "options": "Item Variant",
+   "reqd": 1
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Qty"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate"
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "table_index",
+   "fieldtype": "Int",
+   "label": "Table Index"
+  },
+  {
+   "fieldname": "row_index",
+   "fieldtype": "Int",
+   "label": "Row Index"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_zero_valuation_rate",
+   "fieldtype": "Check",
+   "label": "Allow Zero Valuation Rate"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_3",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stock_qty",
+   "fieldtype": "Float",
+   "label": "Stock Qty"
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "conversion_factor",
+   "fieldtype": "Float",
+   "label": "Conversion Factor"
+  },
+  {
+   "fieldname": "stock_uom_rate",
+   "fieldtype": "Currency",
+   "label": "Stock UOM Rate"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount"
+  },
+  {
+   "default": "0",
+   "fieldname": "make_qty_zero",
+   "fieldtype": "Check",
+   "label": "Make Qty Zero"
+  },
+  {
+   "fieldname": "secondary_qty",
+   "fieldtype": "Float",
+   "label": "Secondary Qty"
+  },
+  {
+   "fieldname": "secondary_uom",
+   "fieldtype": "Link",
+   "label": "Secondary UOM",
+   "options": "UOM"
+  }
  ],
  "istable": 1,
  "links": [],
