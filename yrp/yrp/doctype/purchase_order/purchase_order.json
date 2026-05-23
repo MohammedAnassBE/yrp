@@ -13,6 +13,7 @@
   "expected_delivery_date",
   "column_break_header",
   "delivery_warehouse",
+  "terms_and_condition",
   "open_status",
   "status",
   "items_section",
@@ -223,6 +224,14 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "terms_and_condition",
+   "fieldtype": "Link",
+   "label": "Terms and Condition",
+   "options": "Terms and Condition",
+   "fetch_from": "supplier.terms_and_condition",
+   "fetch_if_empty": 1
   }
  ],
  "grid_page_length": 50,

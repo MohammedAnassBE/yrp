@@ -10,6 +10,7 @@
   "uid",
   "gstin",
   "pan",
+  "terms_and_condition",
   "address_html",
   "column_break_4",
   "disabled",
@@ -87,6 +88,12 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "GSTIN / UIN"
+  },
+  {
+   "fieldname": "terms_and_condition",
+   "fieldtype": "Link",
+   "label": "Terms and Condition",
+   "options": "Terms and Condition"
   }
  ],
  "grid_page_length": 50,

@@ -20,6 +20,7 @@
   "is_internal_unit",
   "parent_wo",
   "process_name",
+  "terms_and_condition",
   "item",
   "production_detail",
   "delivery_location",
@@ -633,6 +634,14 @@
    "fieldtype": "Small Text",
    "label": "Rejection Reason",
    "read_only": 1
+  },
+  {
+   "fieldname": "terms_and_condition",
+   "fieldtype": "Link",
+   "label": "Terms and Condition",
+   "options": "Terms and Condition",
+   "fetch_from": "supplier.terms_and_condition",
+   "fetch_if_empty": 1
   }
  ],
  "grid_page_length": 50,
