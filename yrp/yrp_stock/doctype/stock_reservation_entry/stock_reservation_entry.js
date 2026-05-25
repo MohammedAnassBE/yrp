@@ -1,4 +1,12 @@
 frappe.ui.form.on("Stock Reservation Entry", {
+	setup(frm) {
+		frm.set_query("warehouse", () => {
+			const filters = {};
+			if (frm.doc.supplier) filters.supplier = frm.doc.supplier;
+			return { filters };
+		});
+	},
+
 	refresh(frm) {
 		if (frm.doc.docstatus !== 1) return;
 		const reserved = flt(frm.doc.reserved_qty);

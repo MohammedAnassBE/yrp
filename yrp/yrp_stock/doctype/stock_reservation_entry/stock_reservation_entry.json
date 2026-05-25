@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "item_code",
+  "supplier",
   "warehouse",
   "column_break_1",
   "voucher_type",
@@ -153,6 +154,14 @@
    "fieldtype": "Link",
    "label": "Secondary UOM",
    "options": "UOM"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "fetch_from": "warehouse.supplier",
+   "fetch_if_empty": 0
   }
  ],
  "is_submittable": 1,

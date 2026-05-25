@@ -1,6 +1,19 @@
 frappe.provide("frappe.yrp.stock");
 
 frappe.ui.form.on("Stock Entry", {
+	setup(frm) {
+		frm.set_query("from_warehouse", () => {
+			const filters = {};
+			if (frm.doc.from_supplier) filters.supplier = frm.doc.from_supplier;
+			return { filters };
+		});
+		frm.set_query("to_warehouse", () => {
+			const filters = {};
+			if (frm.doc.to_supplier) filters.supplier = frm.doc.to_supplier;
+			return { filters };
+		});
+	},
+
 	refresh(frm) {
 		// Clean up previous Vue app and event listener before re-mounting
 		if (frm.itemEditor) {

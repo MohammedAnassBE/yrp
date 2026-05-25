@@ -18,8 +18,10 @@
   "vehicle_no",
   "terms_and_condition",
   "section_break_1",
+  "from_supplier",
   "from_warehouse",
   "column_break_2",
+  "to_supplier",
   "to_warehouse",
   "section_break_2",
   "items",
@@ -87,7 +89,8 @@
    "fieldname": "from_warehouse",
    "fieldtype": "Link",
    "label": "Default Source Warehouse",
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "depends_on": "eval:[\"Material Issue\",\"Send to Warehouse\",\"Material Consumed\"].includes(doc.purpose)"
   },
   {
    "fieldname": "column_break_2",
@@ -97,7 +100,8 @@
    "fieldname": "to_warehouse",
    "fieldtype": "Link",
    "label": "Default Target Warehouse",
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "depends_on": "eval:[\"Material Receipt\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
   },
   {
    "fieldname": "section_break_2",
@@ -202,6 +206,24 @@
    "options": "Terms and Condition",
    "fetch_from": "to_warehouse.terms_and_condition",
    "fetch_if_empty": 1
+  },
+  {
+   "fieldname": "from_supplier",
+   "fieldtype": "Link",
+   "label": "From Supplier",
+   "options": "Supplier",
+   "fetch_from": "from_warehouse.supplier",
+   "fetch_if_empty": 0,
+   "depends_on": "eval:[\"Material Issue\",\"Send to Warehouse\",\"Material Consumed\"].includes(doc.purpose)"
+  },
+  {
+   "fieldname": "to_supplier",
+   "fieldtype": "Link",
+   "label": "To Supplier",
+   "options": "Supplier",
+   "fetch_from": "to_warehouse.supplier",
+   "fetch_if_empty": 0,
+   "depends_on": "eval:[\"Material Receipt\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
   }
  ],
  "is_submittable": 1,

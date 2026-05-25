@@ -1,6 +1,14 @@
 frappe.provide("frappe.yrp.stock");
 
 frappe.ui.form.on("Stock Update", {
+	setup(frm) {
+		frm.set_query("warehouse", () => {
+			const filters = {};
+			if (frm.doc.supplier) filters.supplier = frm.doc.supplier;
+			return { filters };
+		});
+	},
+
 	refresh(frm) {
 		// Clean up previous Vue app and event listener before re-mounting
 		if (frm.itemEditor) {

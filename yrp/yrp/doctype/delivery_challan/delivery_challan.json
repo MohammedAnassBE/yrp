@@ -135,16 +135,16 @@
    "label": "Movement"
   },
   {
-   "fetch_from": "work_order.delivery_location",
-   "fetch_if_empty": 1,
+   "fetch_from": "from_warehouse.supplier",
+   "fetch_if_empty": 0,
    "fieldname": "from_location",
    "fieldtype": "Link",
    "label": "From Location",
    "options": "Supplier"
   },
   {
-   "fetch_from": "work_order.supplier",
-   "fetch_if_empty": 1,
+   "fetch_from": "to_warehouse.supplier",
+   "fetch_if_empty": 0,
    "fieldname": "supplier",
    "fieldtype": "Link",
    "in_list_view": 1,

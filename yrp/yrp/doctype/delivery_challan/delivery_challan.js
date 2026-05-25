@@ -6,6 +6,16 @@ frappe.ui.form.on("Delivery Challan", {
 				open_status: ["!=", "Close"],
 			},
 		}));
+		frm.set_query("from_warehouse", () => {
+			const filters = {};
+			if (frm.doc.from_location) filters.supplier = frm.doc.from_location;
+			return { filters };
+		});
+		frm.set_query("to_warehouse", () => {
+			const filters = {};
+			if (frm.doc.supplier) filters.supplier = frm.doc.supplier;
+			return { filters };
+		});
 	},
 
 	refresh(frm) {

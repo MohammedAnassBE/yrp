@@ -12,6 +12,16 @@ frappe.ui.form.on("Goods Received Note", {
 				work_order: frm.doc.against === "Work Order" ? frm.doc.against_id || "" : "",
 			},
 		}));
+		frm.set_query("from_warehouse", () => {
+			const filters = {};
+			if (frm.doc.supplier) filters.supplier = frm.doc.supplier;
+			return { filters };
+		});
+		frm.set_query("to_warehouse", () => {
+			const filters = {};
+			if (frm.doc.delivery_location) filters.supplier = frm.doc.delivery_location;
+			return { filters };
+		});
 	},
 
 	refresh(frm) {

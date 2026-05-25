@@ -1,6 +1,14 @@
 frappe.provide("frappe.yrp.stock");
 
 frappe.ui.form.on("Stock Reconciliation", {
+	setup(frm) {
+		frm.set_query("default_warehouse", () => {
+			const filters = {};
+			if (frm.doc.default_supplier) filters.supplier = frm.doc.default_supplier;
+			return { filters };
+		});
+	},
+
 	refresh(frm) {
 		// Clean up previous Vue app and event listener before re-mounting
 		if (frm.itemEditor) {

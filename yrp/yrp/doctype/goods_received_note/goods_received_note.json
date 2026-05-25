@@ -153,13 +153,17 @@
    "in_standard_filter": 1,
    "label": "Supplier / Sender",
    "options": "Supplier",
-   "reqd": 1
+   "reqd": 1,
+   "fetch_from": "from_warehouse.supplier",
+   "fetch_if_empty": 0
   },
   {
    "fieldname": "delivery_location",
    "fieldtype": "Link",
    "label": "Delivery Location",
-   "options": "Supplier"
+   "options": "Supplier",
+   "fetch_from": "to_warehouse.supplier",
+   "fetch_if_empty": 0
   },
   {
    "fieldname": "column_break_supplier",

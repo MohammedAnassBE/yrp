@@ -438,3 +438,4 @@ def _get_attribute_price_for_ui(item_price, item_detail):
 		}
 
 	return {"rate": None}
+
