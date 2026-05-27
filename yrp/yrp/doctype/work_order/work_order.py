@@ -229,7 +229,12 @@ class WorkOrder(Document):
 		if not process_cost_name:
 			if self.get("is_rework"):
 				return
-			frappe.throw(_("No process cost for {0}.").format(self.process_name))
+			frappe.throw(
+				_(
+					"No approved Process Cost for process {0} / supplier {1}. "
+					"Create one under Process & Setup → Process Cost and get it approved."
+				).format(self.process_name, self.supplier or _("(any supplier)"))
+			)
 
 		self.process_cost = process_cost_name
 		process_cost = frappe.get_doc("Process Cost", process_cost_name)
