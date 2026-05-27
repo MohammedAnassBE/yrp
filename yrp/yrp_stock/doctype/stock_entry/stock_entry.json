@@ -204,7 +204,7 @@
    "fieldtype": "Link",
    "label": "Terms and Condition",
    "options": "Terms and Condition",
-   "fetch_from": "to_warehouse.terms_and_condition",
+   "fetch_from": "to_supplier.terms_and_condition",
    "fetch_if_empty": 1
   },
   {

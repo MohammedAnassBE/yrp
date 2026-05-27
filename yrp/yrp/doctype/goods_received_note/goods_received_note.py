@@ -1,4 +1,5 @@
 from collections import defaultdict
+import json
 
 import frappe
 from frappe import _
@@ -15,6 +16,35 @@ from yrp.yrp.doctype.delivery_challan.delivery_challan import (
 	_sle_base,
 	_update_work_order_status,
 )
+
+
+def _strip_zero_entries(item_details):
+	"""Drop entries whose every cell qty is 0 from the grouped item_details JSON.
+
+	The editor pads received-type splits (one entry per received type) at qty 0 so
+	the user can split into them; `ungroup_items_from_ui` already skips those zero
+	rows for the flat `items` table, but the grouped twin (`item_details`, a stored
+	Long Text) would otherwise persist them. Strip here so the DB never carries
+	zero-qty received-type rows — `onload` rebuilds the padded editable view from
+	`items` on the next load, so nothing downstream needs the padding.
+	"""
+	if isinstance(item_details, str):
+		try:
+			data = json.loads(item_details or "[]")
+		except (ValueError, json.JSONDecodeError):
+			return item_details
+	else:
+		data = item_details or []
+	out = []
+	for group in data:
+		kept = [
+			entry
+			for entry in (group.get("items") or [])
+			if any(flt((v or {}).get("qty")) for v in (entry.get("values") or {}).values())
+		]
+		if kept:
+			out.append({**group, "items": kept})
+	return frappe.as_json(out)
 
 
 class GoodsReceivedNote(Document):
@@ -133,6 +163,9 @@ class GoodsReceivedNote(Document):
 		self.set("items", [])
 		for row in rows:
 			self.append("items", row)
+		# Don't persist padded all-zero received-type entries in the grouped twin —
+		# they aren't real receipts (ungroup already dropped them from `items`).
+		self.item_details = _strip_zero_entries(self.item_details)
 
 	def apply_dimensions(self):
 		_copy_header_dimensions_to_items(self)
