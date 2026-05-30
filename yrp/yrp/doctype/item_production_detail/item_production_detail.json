@@ -1,7 +1,6 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "format:IPD-{item}-{version}",
  "creation": "2026-05-02 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,

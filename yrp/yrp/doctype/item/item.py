@@ -14,7 +14,7 @@ import frappe
 from frappe import _
 from frappe.desk.search import search_widget
 from frappe.model.document import Document
-from frappe.model.naming import make_autoname
+from frappe.model.naming import append_number_if_name_exists, make_autoname
 from frappe.utils import cstr, flt
 
 from yrp.yrp.doctype.item_dependent_attribute_mapping.item_dependent_attribute_mapping import (
@@ -27,6 +27,20 @@ class Item(Document):
 	def before_validate(self):
 		if self.is_new():
 			self.item_hash_value = make_autoname(key="hash")
+
+	def autoname(self):
+		"""Name the Item from its descriptive `name1` (no `Item-.####` series).
+
+		Uses the SAME `get_name(brand, name1)` the `rename_item` flow uses, so the
+		create-path and rename-path agree: with no brand the name is just `name1`
+		(matches the existing data, where name == name1); with a brand set it is
+		`<brand> <name1>`. `name1` is not unique, so we append `-1`/`-2` on a
+		collision (Frappe's standard pattern) rather than hard-failing creation.
+		"""
+		name = self.get_name(self.brand, cstr(self.name1).strip())
+		if not name:
+			frappe.throw(_("Name is required"))
+		self.name = append_number_if_name_exists("Item", name)
 
 	def get_name(self, brand, name):
 		"""Build the Item name: prepend brand if not already present."""
@@ -155,9 +169,15 @@ class Item(Document):
 			self.dependent_attribute_mapping = None
 
 	def _ensure_attribute_mappings_exist(self):
-		"""Create empty mapping docs for attributes that don't have one yet."""
+		"""Create empty mapping docs for attributes that don't have one yet.
+
+		Treat empty-string (sent by clients that round-trip the form via
+		JSON, e.g. /web's REST PUT) the same as None — otherwise downstream
+		validators throw an opaque "Item Item Attribute Mapping not found"
+		from a get_doc on the empty name.
+		"""
 		for attribute in self.get("attributes"):
-			if attribute.mapping is None:
+			if not attribute.mapping:
 				mapping = frappe.new_doc("Item Item Attribute Mapping")
 				mapping.attribute_name = attribute.attribute
 				mapping.save()

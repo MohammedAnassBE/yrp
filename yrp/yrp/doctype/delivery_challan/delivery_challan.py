@@ -19,6 +19,13 @@ class DeliveryChallan(Document):
 		self.apply_dimensions()
 		self.set_item_defaults()
 		self.compute_internal_unit()
+		# Submit pass: drop the zero-qty rows that sync_vue_item_details kept
+		# for draft re-editing (a DC inherits every WO deliverable; users
+		# typically zero out items they're not delivering in this DC, then
+		# submit only the rows that actually move). The save pass leaves them
+		# untouched so the user can come back and re-edit.
+		if self.docstatus == 1:
+			self.items = [it for it in self.get("items") or [] if (it.qty or 0) > 0]
 
 	def validate(self):
 		self.validate_work_order()
@@ -87,7 +94,11 @@ class DeliveryChallan(Document):
 			return
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
-		rows = ungroup_items_from_ui(self.item_details, "Delivery Challan")
+		# keep_zero=True: a DC inherits every WO deliverable and the user
+		# typically zeroes rows they aren't dispatching in this DC; we keep
+		# them across draft saves so the row can be re-edited, then strip
+		# qty=0 in before_validate when docstatus==1 (the submit pass).
+		rows = ungroup_items_from_ui(self.item_details, "Delivery Challan", keep_zero=True)
 		self.set("items", [])
 		for row in rows:
 			self.append("items", row)
@@ -134,10 +145,15 @@ class DeliveryChallan(Document):
 			frappe.throw(_("At least one item is required."))
 		if self.from_warehouse == self.to_warehouse:
 			frappe.throw(_("From Warehouse and To Warehouse must be different."))
+		# qty=0 rows are kept across draft saves so the user can re-edit later;
+		# before_validate(docstatus==1) strips them on the submit pass, so by
+		# the time validate_items runs on submit the items list is already
+		# clean. Skip the qty>0 check on draft saves only.
+		check_qty = self.docstatus == 1
 		for row in self.items:
 			if not row.item_variant:
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
-			if flt(row.delivered_quantity or row.qty) <= 0:
+			if check_qty and flt(row.delivered_quantity or row.qty) <= 0:
 				frappe.throw(_("Row {0}: Qty must be greater than zero.").format(row.idx))
 			if not row.uom:
 				frappe.throw(_("Row {0}: UOM is required.").format(row.idx))

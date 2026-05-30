@@ -340,13 +340,21 @@ def _get_item_group_index(item_details, attr_details):
 # Ungroup: grouped JSON → flat rows for self.set("items", ...)
 # ====================================================================
 
-def ungroup_items_from_ui(item_details, parent_doctype):
+def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
 	"""Flatten the editor's grouped JSON into rows for the parent's child table.
 
 	CRITICAL: row_index increments once per LOGICAL ITEM (not per variant row).
 	All primary-attribute variants of the same item share the same row_index,
 	matching production_api's convention. This is what allows group_items_for_ui
 	to batch them back together on reload.
+
+	`keep_zero` (default False — preserves SE/SU/GRN/PO behaviour): when True,
+	rows whose cell qty is 0 are RETAINED in the output. Used by Delivery
+	Challan during draft saves so a user-zeroed item stays in the table and
+	can be re-edited; the DC's `before_validate(docstatus==1)` filters them
+	out on the submit pass. Stock Reconciliation already keeps qty=0 rows
+	through the existing parent_doctype exemption — `keep_zero` extends the
+	same behaviour to other doctypes opting in.
 	"""
 	if isinstance(item_details, str):
 		try:
@@ -387,7 +395,7 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 				primary = entry["primary_attribute"]
 				for pv, vals in values_dict.items():
 					qty = (vals or {}).get("qty") or 0
-					if not qty:
+					if not qty and not keep_zero:
 						continue
 					attrs = dict(base_attrs)
 					attrs[primary] = pv
@@ -409,8 +417,9 @@ def ungroup_items_from_ui(item_details, parent_doctype):
 				vals = (entry.get("values") or {}).get("default") or {}
 				qty = vals.get("qty") or 0
 				# Skip zero-qty items — except for Stock Reconciliation where
-				# qty=0 is valid (make_qty_zero or manual zero entry)
-				if not qty and parent_doctype != "Stock Reconciliation":
+				# qty=0 is valid (make_qty_zero or manual zero entry), or when
+				# the caller opts into keep_zero (DC draft saves).
+				if not qty and parent_doctype != "Stock Reconciliation" and not keep_zero:
 					row_index += 1
 					continue
 				variant_name = _resolve_or_create_variant(parent_item, base_attrs)
