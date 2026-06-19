@@ -36,6 +36,7 @@ frappe.ui.form.on("Work Order", {
 			add_close_button(frm);
 			add_create_rework_button(frm);
 		}
+		add_create_debit_button(frm);
 	},
 
 	validate(frm) {
@@ -63,6 +64,14 @@ function add_close_button(frm) {
 			}
 			frm.add_custom_button(label, () => open_close_dialog(frm));
 		},
+	});
+}
+
+function add_create_debit_button(frm) {
+	if (frm.doc.docstatus !== 1 || frm.doc.open_status !== "Open") return;
+	if (!frappe.model.can_create("Debit")) return;
+	frm.add_custom_button(__("Create Debit"), () => {
+		frappe.new_doc("Debit", { work_order: frm.doc.name });
 	});
 }
 

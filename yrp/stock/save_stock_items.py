@@ -149,6 +149,8 @@ def _copy_supported_fields(source, fieldnames, child_doctype=None):
 		value = source.get(fn)
 		if value is None:
 			continue
+		if df and df.fieldtype == "Link" and value in ("", 0, "0"):
+			continue
 		if isinstance(value, list):
 			if not value:
 				continue

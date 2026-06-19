@@ -22,6 +22,14 @@ class Debit(Document):
 
 
 @frappe.whitelist()
+def get_work_order_defaults(work_order):
+	# Debit is a standalone voucher with no item child table, so the only
+	# value to prefill from the source Work Order is the work_order link
+	# itself. Mirrors delivery_challan.get_work_order_defaults' shape.
+	return {"work_order": work_order}
+
+
+@frappe.whitelist()
 def approve_debit(name):
 	if not _user_has_settings_role("debit_approval_role"):
 		frappe.throw(_("You do not have permission to approve debits."))

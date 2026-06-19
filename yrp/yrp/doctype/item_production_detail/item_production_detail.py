@@ -5,6 +5,19 @@ from yrp.yrp.utils import ipd_engine
 
 
 class ItemProductionDetail(Document):
+	def autoname(self):
+		# Name as "<item>-<version>" (mirrors production_api), incrementing the
+		# integer `version` per item, instead of Frappe's default random hash.
+		if not self.item:
+			return
+		max_version = frappe.db.sql(
+			"select max(version) from `tabItem Production Detail` where item = %s",
+			(self.item,),
+		)[0][0]
+		new_version = (max_version or 0) + 1
+		self.version = new_version
+		self.name = f"{self.item}-{new_version}"
+
 	def validate(self):
 		self.validate_unique_attributes()
 		self.validate_attribute_references()

@@ -24,8 +24,12 @@ import { ref } from 'vue';
 const docstatus = ref(cur_frm.doc.docstatus);
 const items = ref([]);
 const otherInputs = ref([]);
+// Rate is intentionally NOT shown or entered here. It is auto-valued on the
+// server from the last Stock Ledger Entry (before_validate ->
+// set_rate_from_last_sle -> get_last_sle_rate). Showing it as a column only
+// displayed "Rate: 0" until save and read as a field the user had to fill in.
+// The child `rate` field is also read_only as a safeguard.
 const table_fields = ref([
-    { name: 'rate', label: 'Rate', uses_primary_attribute: 1 },
     { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
     { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
 ]);

@@ -111,6 +111,15 @@ class StockUpdate(Document):
 	# ------------------------------------------------------------------
 	# Submit and Cancel — both use _build_sl_entries to avoid duplication
 	# ------------------------------------------------------------------
+	def before_submit(self):
+		# Rate must reflect the last SLE at submit time on EVERY path. A direct
+		# submit (no prior save) and an amend both run before_validate with
+		# _action == 'submit', which skips the save-path re-sourcing; re-source
+		# here so a stale/copied rate can never reach the Stock Ledger. Idempotent
+		# with the save path.
+		if self.stock_update_details:
+			self.set_rate_from_last_sle()
+
 	def on_submit(self):
 		from yrp.stock.stock_ledger import make_sl_entries
 		make_sl_entries(self._build_sl_entries())

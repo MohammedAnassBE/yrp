@@ -52,7 +52,8 @@
   {
    "fieldname": "rate",
    "fieldtype": "Currency",
-   "label": "Rate"
+   "label": "Rate",
+   "read_only": 1
   },
   {
    "fieldname": "update_diff_qty",

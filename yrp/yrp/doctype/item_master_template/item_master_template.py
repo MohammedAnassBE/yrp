@@ -95,7 +95,12 @@ class ItemMasterTemplate(Document):
 	def _ensure_attribute_mappings_exist(self):
 		"""Create empty mapping docs for attributes that don't have one yet."""
 		for attribute in self.get("attributes"):
-			if attribute.mapping is None:
+			# Guard with falsiness, not `is None`: the /web SPA's addChildRow()
+			# initialises new attribute rows with mapping="" (empty string, not
+			# None), which `is None` lets through — the empty mapping then reaches
+			# validate()/get_doc("Item Item Attribute Mapping", "") and raises
+			# DoesNotExistError. `not attribute.mapping` auto-creates for "" too.
+			if not attribute.mapping:
 				mapping = frappe.new_doc("Item Item Attribute Mapping")
 				mapping.attribute_name = attribute.attribute
 				mapping.save()
