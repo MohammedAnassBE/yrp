@@ -238,11 +238,17 @@ class PurchaseInvoice(Document):
 			if row.grn
 		)
 		self.grn_grand_total = grn_total
-		if self.against == "Purchase Order" and flt(self.grand_total) > flt(grn_total) + 0.01:
+		# Compare PRE-TAX (self.total) against the GRN total, which is itself pre-tax.
+		# Using the tax-inclusive grand_total would falsely trip on any taxed row.
+		if self.against == "Purchase Order" and flt(self.total) > flt(grn_total) + 0.01:
 			frappe.throw(_("Total amount is greater than GRN total amount."))
-		if self.against == "Work Order" and not self.allow_to_change_rate:
-			if round(flt(self.grand_total), 2) != round(flt(grn_total), 2):
-				frappe.throw(_("Invoice total must match GRN total amount."))
+		# Work Order: the PI bills at the WO's Process Cost (the processing charge
+		# only), NOT the GRN line total — which also bakes in the issued material
+		# valuation (material_rate + process_rate). So the GRN total is no longer the
+		# yardstick: the PI total IS the process-cost total by construction
+		# (calculate_total: amount = qty * process_cost). No equality check against the
+		# material-inclusive GRN total (that wrongly blocked every subcontract WO that
+		# issued material or carried tax).
 
 
 def update_wo_billed_qty(doc, docstatus=1):
@@ -286,9 +292,21 @@ def fetch_grn_details(grns, against, supplier):
 		for grn_item in grn.get("items") or []:
 			qty = flt(grn_item.quantity)
 			stock_rate = flt(grn_item.rate)
-			rate = (flt(grn_item.amount) / qty) if qty else stock_rate
 			tax = grn_item.get("tax") if grn_item.meta.get_field("tax") else None
 			set_combination = _normal_json(grn_item.get("set_combination"))
+			# Rate = the Work Order's Process Cost for this receivable variant (the
+			# supplier's processing charge, which the WO resolves into receivable.cost
+			# via get_process_cost_rate). A Purchase-Order GRN has no process cost, so
+			# fall back to the GRN line rate. Billing amount = qty * rate (set below).
+			if work_order:
+				# Every WO GRN line should match a WO receivable (→ its Process Cost).
+				# The no-match fallback keeps the GRN line rate so a stray row still
+				# bills *something* rather than silently zeroing — it should not occur
+				# in practice; if it does it signals a WO/GRN data mismatch to chase.
+				process_cost_rate = _get_wo_process_cost(work_order, grn_item.item_variant, set_combination)
+				rate = process_cost_rate if process_cost_rate is not None else ((flt(grn_item.amount) / qty) if qty else stock_rate)
+			else:
+				rate = (flt(grn_item.amount) / qty) if qty else stock_rate
 			key = (
 				grn_item.item_variant,
 				grn_item.uom,
@@ -494,6 +512,17 @@ def _get_work_order_item_totals(work_order, item_variant, set_combination):
 def _get_item_group(item_variant):
 	item = frappe.db.get_value("Item Variant", item_variant, "item")
 	return frappe.db.get_value("Item", item, "item_group") if item else None
+
+
+def _get_wo_process_cost(work_order, item_variant, set_combination):
+	"""Per-unit Process Cost the Work Order resolved for this receivable variant.
+	Work Order.set_receivable_process_costs writes it to receivable.cost (via
+	get_process_cost_rate). Returns None when no receivable matches the variant,
+	so the caller can fall back to the GRN line rate."""
+	for row in work_order.get("receivables") or []:
+		if row.item_variant == item_variant and _normal_json(row.get("set_combination")) == set_combination:
+			return flt(row.get("cost"))
+	return None
 
 
 def _get_tax_rate(tax):
