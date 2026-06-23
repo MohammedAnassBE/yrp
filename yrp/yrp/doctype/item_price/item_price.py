@@ -69,7 +69,8 @@ class ItemPrice(Document):
 
 	def get_price_value(self, item_price_values, qty=0, attribute_value=None, get_lowest_moq_price=False, get_lead_time=False):
 		"""Get Item Price Value for the qty and attribute value (MOQ-based pricing)."""
-		item_price_values = [p for p in item_price_values if p[3] == attribute_value]
+		attribute_value = _normalize_attribute_value(attribute_value)
+		item_price_values = [p for p in item_price_values if _normalize_attribute_value(p[3]) == attribute_value]
 		if not item_price_values:
 			return None
 
@@ -85,6 +86,14 @@ class ItemPrice(Document):
 		if moq != -1:
 			return lead_time if get_lead_time else rate
 		return None
+
+
+def _normalize_attribute_value(value):
+	if value is None:
+		return None
+	if isinstance(value, str) and not value.strip():
+		return None
+	return value
 
 
 def validate_price_values(item_price_values):

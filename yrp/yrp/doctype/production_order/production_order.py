@@ -5,7 +5,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import date_diff, flt, now, nowdate
+from frappe.utils import date_diff, flt, getdate, now, nowdate
 
 from yrp.yrp.doctype.item.item import (
 	get_attribute_details,
@@ -27,8 +27,7 @@ class ProductionOrder(frappe.model.document.Document):
 			for row in rows:
 				self.append("production_order_details", row)
 
-		if self.delivery_date and self.posting_date:
-			self.lead_time_given = date_diff(self.delivery_date, self.posting_date)
+		self.set_lead_time_given()
 
 	def before_submit(self):
 		if self.production_term:
@@ -37,14 +36,17 @@ class ProductionOrder(frappe.model.document.Document):
 				frappe.throw(_("Selected Production Term is not submitted."))
 
 		self.posting_date = nowdate()
+		delivery_date = getdate(self.delivery_date)
+		posting_date = getdate(self.posting_date)
+		dont_deliver_after = getdate(self.dont_deliver_after)
 
-		if self.delivery_date < self.posting_date:
+		if delivery_date < posting_date:
 			frappe.throw(_("Delivery Date cannot be before Posting Date."))
 
-		if self.delivery_date > self.dont_deliver_after:
+		if delivery_date > dont_deliver_after:
 			frappe.throw(_("Delivery Date cannot be after Don't Deliver After date."))
 
-		self.lead_time_given = date_diff(self.delivery_date, self.posting_date)
+		self.set_lead_time_given()
 		self.submitted_by = frappe.session.user
 		self.submitted_time = now()
 
@@ -60,8 +62,16 @@ class ProductionOrder(frappe.model.document.Document):
 				)
 
 	def on_update_after_submit(self):
+		self.set_lead_time_given()
+
+	def set_lead_time_given(self):
+		if self.delivery_date and not self.posting_date:
+			self.posting_date = nowdate()
 		if self.delivery_date and self.posting_date:
-			self.lead_time_given = date_diff(self.delivery_date, self.posting_date)
+			self.lead_time_given = date_diff(
+				getdate(self.delivery_date),
+				getdate(self.posting_date),
+			)
 
 	def onload(self):
 		self.set_onload("order_summary", get_order_summary(self.name))

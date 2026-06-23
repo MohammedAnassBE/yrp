@@ -20,6 +20,15 @@ def _department(name_prefix):
 	return doc.name
 
 
+def _received_via(value="HO"):
+	if not frappe.db.exists("Bill Tracking Received Via", value):
+		frappe.get_doc({
+			"doctype": "Bill Tracking Received Via",
+			"received_via": value,
+		}).insert(ignore_permissions=True)
+	return value
+
+
 def _bill(supplier=None, bill_no=None, bill_date=None, invoice_value=1000, received_via="HO"):
 	doc = frappe.get_doc({
 		"doctype": "Bill Tracking",
@@ -67,6 +76,8 @@ class TestBillTracking(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		_default_received_type()
+		for value in ("HO", "Post", "Email", "Warehouse", "Others"):
+			_received_via(value)
 
 	# ---------- Lifecycle ----------
 
