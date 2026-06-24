@@ -8,6 +8,9 @@
  "field_order": [
   "section_break_1",
   "terms_and_condition_name",
+  "is_default_po_term",
+  "is_default_wo_term",
+  "is_default_company",
   "amended_from",
   "terms_and_condition_details"
  ],
@@ -23,6 +26,24 @@
    "label": "Terms and Condition Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_default_po_term",
+   "fieldtype": "Check",
+   "label": "Default PO Term"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_default_wo_term",
+   "fieldtype": "Check",
+   "label": "Default WO Term"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_default_company",
+   "fieldtype": "Check",
+   "label": "Default Company Term"
   },
   {
    "fieldname": "amended_from",

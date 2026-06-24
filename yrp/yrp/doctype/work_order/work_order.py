@@ -27,6 +27,15 @@ class WorkOrder(Document):
 
 	def before_validate(self):
 		self.prepare_process_cost_links()
+		self.set_default_terms()
+
+	def set_default_terms(self):
+		# Prefill Terms and Condition once, on creation, only when empty — so the
+		# user can change or remove it and the removal sticks on later saves.
+		if self.is_new() and not self.terms_and_condition:
+			from yrp.yrp.doctype.terms_and_condition.terms_and_condition import get_default_terms
+
+			self.terms_and_condition = get_default_terms("WO", self.supplier)
 
 	def validate(self):
 		self.set_missing_dates()

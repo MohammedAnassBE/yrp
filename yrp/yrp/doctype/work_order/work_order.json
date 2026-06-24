@@ -639,9 +639,7 @@
    "fieldname": "terms_and_condition",
    "fieldtype": "Link",
    "label": "Terms and Condition",
-   "options": "Terms and Condition",
-   "fetch_from": "supplier.terms_and_condition",
-   "fetch_if_empty": 1
+   "options": "Terms and Condition"
   }
  ],
  "grid_page_length": 50,

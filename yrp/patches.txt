@@ -16,3 +16,4 @@ yrp.patches.repair_delivery_challan_item_refs
 yrp.patches.rename_work_order_deliverables_item_type_to_received_type
 yrp.patches.drop_received_type_role_flags
 yrp.patches.create_bill_tracking_received_via
+yrp.patches.migrate_supplier_terms_and_condition

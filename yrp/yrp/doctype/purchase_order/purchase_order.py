@@ -18,6 +18,7 @@ class PurchaseOrder(Document):
 
 	def before_validate(self):
 		self.sync_vue_item_details()
+		self.set_default_terms()
 		self.remove_blank_item_rows()
 		self.set_missing_values()
 		self.set_item_defaults()
@@ -97,6 +98,14 @@ class PurchaseOrder(Document):
 			self.po_date = nowdate()
 		if not self.open_status:
 			self.open_status = "Open"
+
+	def set_default_terms(self):
+		# Prefill Terms and Condition once, on creation, only when empty — so the
+		# user can change or remove it and the removal sticks on later saves.
+		if self.is_new() and not self.terms_and_condition:
+			from yrp.yrp.doctype.terms_and_condition.terms_and_condition import get_default_terms
+
+			self.terms_and_condition = get_default_terms("PO", self.supplier)
 
 	def set_item_defaults(self):
 		from yrp.stock.utils import get_conversion_factor
