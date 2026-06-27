@@ -1,5 +1,8 @@
+import json
+
 import frappe
 from frappe.model.document import Document
+from frappe.utils import now_datetime
 
 from yrp.yrp.utils import ipd_engine
 
@@ -117,3 +120,83 @@ def calculate_bom(ipd_name, variant_demands, process_names=None, include_outputs
 		process_names=process_names,
 		include_outputs=include_outputs,
 	)
+
+
+def get_ipd_primary_values(production_detail):
+	doc = frappe.get_cached_doc("Item Production Detail", production_detail)
+	primary_attr_values = []
+	mapping = None
+	for row in doc.item_attributes:
+		attribute_name = row.get("attribute") or row.get("item_attribute")
+		if attribute_name == doc.primary_item_attribute:
+			mapping = row.get("mapping")
+			break
+	if mapping:
+		map_doc = frappe.get_cached_doc("Item Item Attribute Mapping", mapping)
+		for val in map_doc.values:
+			primary_attr_values.append(val.attribute_value)
+	return primary_attr_values
+
+
+@frappe.whitelist()
+def get_calculated_bom(item_production_detail, items, lot_name, process_name=None, doctype=None, deliverable=False):
+	lot = frappe.get_doc("Lot", lot_name)
+	variant_demands = _get_lot_variant_demands(lot, items)
+	bom = calculate_lot_bom(
+		item_production_detail,
+		variant_demands,
+		process_names=process_name,
+		include_outputs=False,
+	)
+	major_rows = bom["major_deliverables"]
+	accessory_rows = bom["accessories"]
+	bom_summary_rows = [
+		_to_lot_bom_row(row)
+		for row in major_rows + accessory_rows
+	]
+
+	lot.set("bom_summary", bom_summary_rows)
+	lot.bom_summary_json = json.dumps(
+		{
+			"major_deliverables": major_rows,
+			"accessories": accessory_rows,
+		},
+		default=str,
+	)
+	lot.last_calculated_time = now_datetime()
+	lot.total_quantity = int(sum(row["qty"] for row in variant_demands))
+	lot.save(ignore_permissions=True)
+	return {
+		"rows": len(bom_summary_rows),
+		"major_rows": len(major_rows),
+		"accessory_rows": len(accessory_rows),
+		"total_qty": lot.total_quantity,
+	}
+
+
+def _get_lot_variant_demands(lot, items=None):
+	rows = []
+	items = frappe.parse_json(items) if isinstance(items, str) else items
+	for row in items or lot.get("lot_order_details") or []:
+		item_variant = row.get("item_variant") if isinstance(row, dict) else row.item_variant
+		quantity = row.get("quantity") if isinstance(row, dict) else row.quantity
+		if item_variant and float(quantity or 0) > 0:
+			rows.append({"item_variant": item_variant, "qty": float(quantity or 0)})
+
+	if not rows:
+		for row in lot.get("items") or []:
+			if row.item_variant and float(row.qty or 0) > 0:
+				rows.append({"item_variant": row.item_variant, "qty": float(row.qty or 0)})
+
+	if not rows:
+		frappe.throw("Please add Item Variant and Qty before calculating BOM.")
+	return rows
+
+
+def _to_lot_bom_row(row):
+	return {
+		"item_name": row.get("item_variant"),
+		"process_name": row.get("process_name"),
+		"required_qty": row.get("required_qty") or row.get("qty") or 0,
+		"uom": row.get("uom"),
+	}

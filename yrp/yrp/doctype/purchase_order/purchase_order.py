@@ -7,6 +7,48 @@ from frappe.model.document import Document
 from frappe.utils import add_days, flt, money_in_words, nowdate, today
 
 
+def get_item_group_index(items, item_details):
+	index = -1
+	for i, item in enumerate(items):
+		item_attr = item.get("attributes")
+		item_details_attr = item_details.get("attributes")
+		item_attr.sort()
+		item_details_attr.sort()
+		if not (
+			len(item_attr) == len(item_details_attr)
+			and len(item_attr) == sum([1 for i, j in zip(item_attr, item_details_attr) if i == j])
+		):
+			continue
+		if not item.get("primary_attribute") == item_details.get("primary_attribute"):
+			continue
+		primary_attr_list1 = item.get("primary_attribute_values").copy()
+		primary_attr_list2 = item_details.get("primary_attribute_values").copy()
+		if not primary_attr_list1.sort() == primary_attr_list2.sort():
+			continue
+		if not item.get("dependent_attribute") == item_details.get("dependent_attribute"):
+			continue
+		index = i
+		break
+	item_name = item_details.get("item")
+	if index != -1 and item_details.get("primary_attribute"):
+		check = True
+		for i, item in enumerate(items):
+			if item["items"][0]["name"] == item_name and i == index:
+				check = False
+				break
+		a = False
+		if check:
+			a = True
+			for i, item in enumerate(items):
+				if item["items"][0]["name"] == item_name:
+					a = False
+					index = i
+					break
+		if a:
+			index = -1
+	return index
+
+
 class PurchaseOrder(Document):
 	def onload(self):
 		from yrp.stock.save_stock_items import group_items_for_ui
@@ -447,4 +489,3 @@ def _get_attribute_price_for_ui(item_price, item_detail):
 		}
 
 	return {"rate": None}
-

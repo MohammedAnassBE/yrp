@@ -18,6 +18,6 @@ def execute():
 	if existing:
 		return
 	col_list = ", ".join(f"`{c}`" for c in INDEX_COLS)
-	frappe.db.sql(
+	frappe.db.sql_ddl(
 		f"ALTER TABLE `tabStock Ledger Entry` ADD INDEX `{INDEX_NAME}` ({col_list})"
 	)

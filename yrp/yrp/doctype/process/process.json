@@ -19,6 +19,8 @@
   "column_break_uom",
   "output_uom",
   "wo_excess_allowed_percentage",
+  "section_break_transformation",
+  "value_change_attributes",
   "section_break_details",
   "process_details"
  ],
@@ -111,11 +113,24 @@
    "fieldname": "default_excess",
    "fieldtype": "Percent",
    "label": "Default Excess %"
+  },
+  {
+   "depends_on": "eval:doc.is_group != 1",
+   "fieldname": "section_break_transformation",
+   "fieldtype": "Section Break",
+   "label": "Transformation"
+  },
+  {
+   "depends_on": "eval:doc.is_group != 1",
+   "fieldname": "value_change_attributes",
+   "fieldtype": "Table",
+   "label": "Value Change Attributes",
+   "options": "Process Value Change"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-26 14:29:25.796938",
+ "modified": "2026-06-25 18:12:01.789532",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "Process",
