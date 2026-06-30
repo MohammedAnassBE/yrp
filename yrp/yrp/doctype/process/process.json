@@ -107,7 +107,7 @@
    "fieldname": "process_details",
    "fieldtype": "Table",
    "label": "Process Details",
-   "options": "Process Detail"
+   "options": "Process Details"
   },
   {
    "fieldname": "default_excess",

@@ -4,5 +4,5 @@
 from frappe.model.document import Document
 
 
-class ProcessDetail(Document):
+class ProcessDetails(Document):
 	pass

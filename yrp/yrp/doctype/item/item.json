@@ -13,6 +13,7 @@
   "column_break_4",
   "name1",
   "disabled",
+  "over_delivery_receipt_allowance",
   "po_excess_allowed_percentage",
   "is_stock_item",
   "allow_negative_stock",
@@ -33,6 +34,8 @@
   "attribute_list_html",
   "dependent_attribute_details_html",
   "additional_parameters",
+  "price_section",
+  "price_html",
   "tax_section",
   "is_ineligible_for_itc"
  ],
@@ -69,6 +72,14 @@
    "fieldtype": "Check",
    "label": "Disabled",
    "permlevel": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "over_delivery_receipt_allowance",
+   "fieldtype": "Float",
+   "label": "Over Delivery/Receipt Allowance (%)",
+   "permlevel": 1,
+   "precision": "1"
   },
   {
    "fieldname": "uom_section",
@@ -202,6 +213,17 @@
    "fieldname": "dependent_attribute_details_html",
    "fieldtype": "HTML",
    "label": "Dependent Attribute Details",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "price_section",
+   "fieldtype": "Section Break",
+   "label": "Price List"
+  },
+  {
+   "fieldname": "price_html",
+   "fieldtype": "HTML",
+   "label": "Price",
    "permlevel": 1
   },
   {
