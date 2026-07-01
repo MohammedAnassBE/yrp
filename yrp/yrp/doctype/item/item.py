@@ -91,9 +91,16 @@ class Item(Document):
 	def validate(self):
 		self._validate_default_uom()
 		self._validate_primary_attribute()
-		self._duplicate_mappings_on_create()
-		self._ensure_attribute_mappings_exist()
-		self._validate_dependent_attribute()
+		if not self.flags.get("last_updated_by_sd_yrp_sync"):
+			# Skipped during SD-YRP sync: the attribute / dependent-attribute
+			# mappings (IIAM / IDAM) are replicated as their own doctypes and the
+			# Item's links are managed by the consumer. Running these here would
+			# duplicate/regenerate those mappings and fail on links not yet applied
+			# during the Item's own insert (e.g. an IDAM that points back at this
+			# not-yet-committed Item).
+			self._duplicate_mappings_on_create()
+			self._ensure_attribute_mappings_exist()
+			self._validate_dependent_attribute()
 		self._validate_allow_negative_stock_toggle()
 
 	def _validate_allow_negative_stock_toggle(self):
