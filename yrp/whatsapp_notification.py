@@ -290,6 +290,20 @@ def send_whatsapp_notification(doctype, docname, template_name, language_code,
             _("Template {0} is not applicable for {1}").format(template_name, _(doctype))
         )
 
+    # Normalise the recipient to an E.164-style wa_id: strip formatting, drop a
+    # leading domestic 0, and prefix the settings country code to a bare 10-digit
+    # number. Meta matches the registered/allow-listed number exactly, so a bare
+    # "9944405056" (without the 91) is rejected with (#131030) "not in allowed list".
+    cc = (getattr(settings, "country_code", None) or "91").strip()
+    _num = number
+    for _x in (" ", "-", "(", ")", "+"):
+        _num = _num.replace(_x, "")
+    if len(_num) == 11 and _num.startswith("0"):
+        _num = _num[1:]
+    if cc and len(_num) == 10:
+        _num = cc + _num
+    number = _num
+
     # header_file is a bare client-supplied file_url with no inherent access
     # check -- without this, a user could pass ANY private File's URL and have
     # its bytes read and sent out over WhatsApp regardless of read permission.

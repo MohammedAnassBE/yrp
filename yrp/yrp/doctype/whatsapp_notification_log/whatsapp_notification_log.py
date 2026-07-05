@@ -34,6 +34,13 @@ def create_whatsapp_log(*, reference_doctype, reference_name, supplier, contact,
 	# never crashes on a non-subscriptable value.
 	raw_val = result.get("raw")
 	raw_val = frappe.as_json(raw_val) if isinstance(raw_val, (dict, list)) else (raw_val or "")
+	# meta_error (and, defensively, error) arrive as a dict/list on a failed Meta
+	# send — the Meta error object. Stringify before storing in the Small Text
+	# field, else the DB insert raises "dict can not be used as parameter".
+	meta_error_val = result.get("meta_error")
+	meta_error_val = frappe.as_json(meta_error_val) if isinstance(meta_error_val, (dict, list)) else meta_error_val
+	error_val = result.get("error")
+	error_val = frappe.as_json(error_val) if isinstance(error_val, (dict, list)) else error_val
 	log = frappe.get_doc({
 		"doctype": "WhatsApp Notification Log",
 		"reference_doctype": reference_doctype,
@@ -53,8 +60,8 @@ def create_whatsapp_log(*, reference_doctype, reference_name, supplier, contact,
 		"meta_message_id": result.get("meta_message_id"),
 		"http_status": result.get("http_status"),
 		"gateway_response": raw_val[:500],
-		"meta_error": result.get("meta_error"),
-		"error": result.get("error"),
+		"meta_error": meta_error_val,
+		"error": error_val,
 		"media_id": result.get("media_id"),
 		"media_mime": result.get("media_mime"),
 		"file_name": result.get("file_name"),
