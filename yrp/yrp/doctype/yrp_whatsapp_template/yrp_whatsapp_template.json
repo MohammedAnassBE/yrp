@@ -1,0 +1,181 @@
+{
+ "actions": [],
+ "autoname": "format:{template_name}-{language_code}",
+ "creation": "2026-07-05 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_info_section",
+  "template_name",
+  "template_id",
+  "language_code",
+  "category",
+  "status",
+  "column_break_1",
+  "whatsapp_account",
+  "header_type",
+  "header_content",
+  "body_section",
+  "body_text",
+  "footer_section",
+  "footer_text",
+  "buttons_section",
+  "buttons",
+  "sample_values_section",
+  "sample_values",
+  "applicable_section",
+  "applicable_doctypes"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_info_section",
+   "fieldtype": "Section Break",
+   "label": "Template Information"
+  },
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Template Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "template_id",
+   "fieldtype": "Data",
+   "label": "Meta Template ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "language_code",
+   "fieldtype": "Select",
+   "label": "Language",
+   "options": "en\nen_US\nen_GB\nes\nes_ES\nfr\nfr_FR\nde\nde_DE\nit\nit_IT\npt\npt_BR\nar\nar_AR\nhi\nhi_IN\nzh\nzh_CN\nzh_TW",
+   "reqd": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Category",
+   "options": "MARKETING\nUTILITY\nAUTHENTICATION",
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "DRAFT\nIN_REVIEW\nAPPROVED\nREJECTED\nPAUSED\nDISABLED",
+   "read_only": 1,
+   "default": "DRAFT"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "whatsapp_account",
+   "fieldtype": "Link",
+   "label": "WhatsApp Account",
+   "options": "YRP WhatsApp Account",
+   "reqd": 1
+  },
+  {
+   "fieldname": "header_type",
+   "fieldtype": "Select",
+   "label": "Header Type",
+   "options": "\nTEXT\nIMAGE\nVIDEO\nDOCUMENT\nLOCATION"
+  },
+  {
+   "fieldname": "header_content",
+   "fieldtype": "Data",
+   "label": "Header Content",
+   "depends_on": "eval:doc.header_type=='TEXT'",
+   "description": "For TEXT header. Use {{1}} for variables."
+  },
+  {
+   "fieldname": "body_section",
+   "fieldtype": "Section Break",
+   "label": "Body"
+  },
+  {
+   "fieldname": "body_text",
+   "fieldtype": "Text",
+   "label": "Body Text",
+   "reqd": 1,
+   "description": "Use {{1}}, {{2}}, etc. for variables."
+  },
+  {
+   "fieldname": "footer_section",
+   "fieldtype": "Section Break",
+   "label": "Footer"
+  },
+  {
+   "fieldname": "footer_text",
+   "fieldtype": "Data",
+   "label": "Footer Text"
+  },
+  {
+   "fieldname": "buttons_section",
+   "fieldtype": "Section Break",
+   "label": "Buttons"
+  },
+  {
+   "fieldname": "buttons",
+   "fieldtype": "Table",
+   "label": "Buttons",
+   "options": "YRP WhatsApp Template Button"
+  },
+  {
+   "fieldname": "sample_values_section",
+   "fieldtype": "Section Break",
+   "label": "Sample Values"
+  },
+  {
+   "fieldname": "sample_values",
+   "fieldtype": "Table",
+   "label": "Sample Values",
+   "options": "YRP WhatsApp Template Sample"
+  },
+  {
+   "fieldname": "applicable_section",
+   "fieldtype": "Section Break",
+   "label": "Applicable DocTypes"
+  },
+  {
+   "fieldname": "applicable_doctypes",
+   "fieldtype": "Table",
+   "label": "Applicable DocTypes",
+   "options": "YRP WhatsApp Template DocType",
+   "description": "Which enabled DocTypes may send this template. This is user configuration, not synced from Meta."
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP WhatsApp Template",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

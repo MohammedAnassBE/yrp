@@ -7,6 +7,7 @@ app_license = "mit"
 
 fixtures = [
 	{"dt": "Workflow", "filters": [["name", "in", ["Item Price Workflow", "Process Cost Workflow"]]]},
+	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},
 ]
 
 # Apps
@@ -29,7 +30,7 @@ fixtures = [
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/yrp/css/yrp.css"
+app_include_css = ["/assets/yrp/css/form_overrides.css"]
 app_include_js = ["yrp.bundle.js"]
 
 # include js, css files in header of web template
@@ -90,7 +91,7 @@ app_include_js = ["yrp.bundle.js"]
 # ------------
 
 # before_install = "yrp.install.before_install"
-# after_install = "yrp.install.after_install"
+after_install = "yrp.yrp.doctype.notification_template.notification_template.add_whatsapp_communication_medium"
 
 # Uninstallation
 # ------------
@@ -149,10 +150,30 @@ app_include_js = ["yrp.bundle.js"]
 
 scheduler_events = {
 	"daily": [
-		"yrp.yrp.doctype.item_price.item_price.update_all_expired_item_price",
-		"yrp.yrp.doctype.process_cost.process_cost.update_all_expired_process_cost",
+		"yrp.yrp_stock.doctype.stock_integrity_check.stock_integrity_check.run_daily_check",
+		"yrp.whatsapp_templates.sync_templates_from_hub",
 	],
+	"hourly": [
+		"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost_entries",
+	],
+	"cron": {
+		"0 1 * * *": [
+			"yrp.tasks.daily",
+		],
+	},
 }
+
+doc_events = {
+	"YRP Stock Settings": {
+		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
+	},
+}
+
+after_migrate = [
+	"yrp.stock.dimensions.create_dimension_fields",
+	"yrp.patches.add_sle_composite_index.execute",
+	"yrp.yrp.doctype.notification_template.notification_template.add_whatsapp_communication_medium",
+]
 
 # Testing
 # -------
@@ -242,4 +263,3 @@ scheduler_events = {
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

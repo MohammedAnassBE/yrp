@@ -19,42 +19,75 @@ class Supplier(Document):
 	def on_trash(self):
 		delete_contact_and_address('Supplier', self.name)
 
-	def send_notification(self, doctype: str, docname: str, channels: list[str], event: str):
-		# get contact information from supplier
+	def get_primary_contact_details(self) -> dict:
+		"""Primary email + mobile from this supplier's default Contact.
+		Throws when no default contact is set."""
 		contact_name = get_default_contact(self.doctype, self.name)
 		if not contact_name:
-			frappe.throw(_("Please set a default contact for this supplier"))
+			frappe.throw(_("Please set a default contact for supplier {0}").format(self.name))
 		contact = frappe.get_doc("Contact", contact_name)
-		# Get Primary Email from email_ids
+
 		primary_email = None
 		if contact.email_ids:
 			primary_emails = [email.email_id for email in contact.email_ids if email.is_primary == 1]
 			if primary_emails:
 				primary_email = primary_emails[0]
 
-		# Get Primary Mobile from phone_nos
 		primary_mobile = None
 		if contact.phone_nos:
 			primary_mobiles = [phone.phone for phone in contact.phone_nos if phone.is_primary_mobile_no == 1]
 			if primary_mobiles:
 				primary_mobile = primary_mobiles[0]
-		# get all notification template for the doctype and channel
-		filters = {
-			"document_type": doctype,
-			"channel": ["in", channels],
-			"event": event,
-			"enabled": 1
-		}
-		notificaton_templates = frappe.get_all("Notification Template", filters=filters)
 
-		# send notification
-		for template in notificaton_templates:
-			template = frappe.get_doc("Notification Template", template.name)
-			if template.channel == "Email" and primary_email:
-				template.send(docname, event, [primary_email])
-			elif template.channel == "SMS" and primary_mobile:
-				template.send(docname, event, [primary_mobile])
-		pass
+		return {"contact": contact_name, "email": primary_email, "mobile": primary_mobile}
+
+	def send_notification(self, doctype: str, docname: str, channels: list[str], event: str):
+		details = self.get_primary_contact_details()
+		recipient_by_channel = {"Email": details["email"], "SMS": details["mobile"], "WhatsApp": details["mobile"]}
+
+		templates = frappe.get_all(
+			"Notification Template",
+			filters={
+				"document_type": doctype,
+				"channel": ["in", channels],
+				"event": event,
+				"enabled": 1,
+			},
+			pluck="name",
+		)
+		if not templates:
+			frappe.msgprint(
+				_("No enabled Notification Template for {0} / {1} / {2}").format(
+					doctype, event, ", ".join(channels)
+				)
+			)
+			return
+
+		sent_channels = []
+		skipped_channels = []
+		for template_name in templates:
+			template = frappe.get_doc("Notification Template", template_name)
+			recipient = recipient_by_channel.get(template.channel)
+			if not recipient:
+				skipped_channels.append(template.channel)
+				continue
+			template.send(docname, event, [recipient])
+			sent_channels.append(template.channel)
+
+		# A channel without a recipient detail is only an error when nothing
+		# at all could be sent; otherwise warn and deliver the rest.
+		if skipped_channels and not sent_channels:
+			frappe.throw(
+				_("Contact {0} has no recipient detail for channel(s): {1}").format(
+					details["contact"], ", ".join(sorted(set(skipped_channels)))
+				)
+			)
+		elif skipped_channels:
+			frappe.msgprint(
+				_("Skipped channel(s) without recipient detail: {0}").format(
+					", ".join(sorted(set(skipped_channels)))
+				)
+			)
 
 def make_gstin_custom_field():
 	custom_fields = {
@@ -114,3 +147,13 @@ def get_supplier_address_display(supplier):
 		return frappe.render_template(template, address_dict)
 	except TemplateSyntaxError:
 		frappe.throw(_("There is an error in your Address Template"))
+
+
+def update_supplier_department_on_bill_tracking(supplier, dept):
+	"""Set Supplier.department if currently empty. Called from Bill Tracking
+	assignment so a supplier's bills route to a consistent department over time."""
+	existing = frappe.db.get_value("Supplier", supplier, "department")
+	if existing is None and not frappe.db.exists("Supplier", supplier):
+		frappe.throw(f"Can't find supplier -> {supplier}")
+	if not existing:
+		frappe.db.set_value("Supplier", supplier, "department", dept)

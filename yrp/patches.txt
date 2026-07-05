@@ -1,7 +1,20 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
+yrp.patches.rename_process_detail_to_process_details
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 yrp.patches.create_stock_dimension_fields
+yrp.patches.register_received_type_dimension
+yrp.patches.drop_bin_reserved_qty
+yrp.patches.add_sle_composite_index
+yrp.patches.rename_ipd_primary_attribute
+yrp.patches.backfill_ipd_item_attribute_mapping
+yrp.patches.backfill_stock_reconciliation_sle_qty
+yrp.patches.ensure_workflow_state_fields
+yrp.patches.repair_delivery_challan_item_refs
+yrp.patches.rename_work_order_deliverables_item_type_to_received_type
+yrp.patches.drop_received_type_role_flags
+yrp.patches.create_bill_tracking_received_via
+yrp.patches.migrate_supplier_terms_and_condition

@@ -1,0 +1,208 @@
+{
+ "actions": [],
+ "autoname": "SRE-.YYYY.-.#####",
+ "creation": "2026-04-08 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "supplier",
+  "warehouse",
+  "column_break_1",
+  "voucher_type",
+  "voucher_no",
+  "voucher_detail_no",
+  "section_break_1",
+  "stock_uom",
+  "secondary_qty",
+  "secondary_uom",
+  "stock_entry",
+  "column_break_2",
+  "available_qty",
+  "voucher_qty",
+  "column_break_3",
+  "reserved_qty",
+  "delivered_qty",
+  "closed_qty",
+  "section_break_2",
+  "status",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "options": "Item Variant",
+   "read_only": 1
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "voucher_type",
+   "fieldtype": "Link",
+   "label": "Voucher Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_no",
+   "fieldtype": "Dynamic Link",
+   "label": "Voucher No",
+   "options": "voucher_type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_detail_no",
+   "fieldtype": "Data",
+   "label": "Voucher Detail No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_1",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "label": "Stock Entry",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "available_qty",
+   "fieldtype": "Float",
+   "label": "Available Qty to Reserve",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_qty",
+   "fieldtype": "Float",
+   "label": "Voucher Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reserved_qty",
+   "fieldtype": "Float",
+   "label": "Reserved Qty"
+  },
+  {
+   "fieldname": "delivered_qty",
+   "fieldtype": "Float",
+   "label": "Delivered Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "closed_qty",
+   "fieldtype": "Float",
+   "label": "Closed Qty",
+   "read_only": 1,
+   "default": 0,
+   "description": "Qty released without delivery when the reservation was manually closed short. reserved_qty - delivered_qty - closed_qty is the qty still live-reserved."
+  },
+  {
+   "fieldname": "section_break_2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nPartially Reserved\nReserved\nPartially Delivered\nDelivered\nClosed\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Stock Reservation Entry",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "secondary_qty",
+   "fieldtype": "Float",
+   "label": "Secondary Qty"
+  },
+  {
+   "fieldname": "secondary_uom",
+   "fieldtype": "Link",
+   "label": "Secondary UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "fetch_from": "warehouse.supplier",
+   "fetch_if_empty": 0
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-04-08 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP Stock",
+ "name": "Stock Reservation Entry",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stock Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "field:process_name",
- "creation": "2026-03-26 12:00:00.000000",
+ "creation": "2026-03-26 12:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -14,10 +14,13 @@
   "section_break_uom",
   "input_uom",
   "default_wastage",
+  "default_excess",
   "default_lead_time_days",
   "column_break_uom",
   "output_uom",
-  "additional_allowance",
+  "wo_excess_allowed_percentage",
+  "section_break_transformation",
+  "value_change_attributes",
   "section_break_details",
   "process_details"
  ],
@@ -26,6 +29,7 @@
    "allow_in_quick_entry": 1,
    "fieldname": "process_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Process Name",
    "reqd": 1,
    "unique": 1
@@ -85,9 +89,12 @@
    "options": "UOM"
   },
   {
-   "fieldname": "additional_allowance",
+   "default": "0",
+   "description": "When > 0, a GRN against a Work Order using this Process may receive up to `receivable_qty \u00d7 (1 + pct/100)` per line. 0 enforces strict pending.",
+   "fieldname": "wo_excess_allowed_percentage",
    "fieldtype": "Percent",
-   "label": "Additional Allowance %"
+   "label": "WO Excess Allowed Percentage",
+   "non_negative": 1
   },
   {
    "depends_on": "eval:doc.is_group == 1",
@@ -100,12 +107,30 @@
    "fieldname": "process_details",
    "fieldtype": "Table",
    "label": "Process Details",
-   "options": "Process Detail"
+   "options": "Process Details"
+  },
+  {
+   "fieldname": "default_excess",
+   "fieldtype": "Percent",
+   "label": "Default Excess %"
+  },
+  {
+   "depends_on": "eval:doc.is_group != 1",
+   "fieldname": "section_break_transformation",
+   "fieldtype": "Section Break",
+   "label": "Transformation"
+  },
+  {
+   "depends_on": "eval:doc.is_group != 1",
+   "fieldname": "value_change_attributes",
+   "fieldtype": "Table",
+   "label": "Value Change Attributes",
+   "options": "Process Value Change"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-26 16:30:00.000000",
+ "modified": "2026-06-25 18:12:01.789532",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "Process",
@@ -137,6 +162,7 @@
   }
  ],
  "quick_entry": 1,
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

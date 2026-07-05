@@ -1,0 +1,26 @@
+.std-form-layout .section-head,
+.std-form-layout .section-header,
+.std-form-layout .section-body {
+	margin: 0 !important;
+	max-width: none !important;
+}
+
+body:not(.full-width) .std-form-layout .section-head,
+body:not(.full-width) .std-form-layout .section-header,
+body:not(.full-width) .std-form-layout .section-body,
+body .std-form-layout .form-section .section-head,
+body .std-form-layout .form-section .section-header,
+body .std-form-layout .form-section .section-body {
+	margin: 0 !important;
+	max-width: none !important;
+}
+
+body:not(.full-width) .std-form-layout .section-head.section-head,
+body:not(.full-width) .std-form-layout .section-header.section-header,
+body:not(.full-width) .std-form-layout .section-body.section-body,
+body .std-form-layout .section-head.section-head,
+body .std-form-layout .section-header.section-header,
+body .std-form-layout .section-body.section-body {
+	margin: 0 !important;
+	max-width: none !important;
+}

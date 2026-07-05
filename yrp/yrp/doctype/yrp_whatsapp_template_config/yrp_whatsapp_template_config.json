@@ -1,0 +1,27 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["config_name", "reference_doctype", "whatsapp_template", "language_code", "header_source", "print_format", "variable_mapping"],
+ "fields": [
+  {"fieldname": "config_name", "fieldtype": "Data", "label": "Name", "in_list_view": 1, "reqd": 1, "columns": 2, "description": "Label shown in the Send WhatsApp popup (a DocType can have several template configs)"},
+  {"fieldname": "reference_doctype", "fieldtype": "Link", "label": "DocType", "options": "DocType", "in_list_view": 1, "reqd": 1, "columns": 2},
+  {"fieldname": "whatsapp_template", "fieldtype": "Link", "label": "WhatsApp Template", "options": "YRP WhatsApp Template", "in_list_view": 1, "reqd": 1, "columns": 2},
+  {"fieldname": "language_code", "fieldtype": "Data", "label": "Language Code", "fetch_from": "whatsapp_template.language_code", "read_only": 1},
+  {"fieldname": "header_source", "fieldtype": "Select", "label": "Header Source", "options": "None\nDocument\nImage", "default": "None", "description": "Default media-header source: None = no/text header; Document = render Print Format to PDF; Image = a file chosen in the dialog"},
+  {"fieldname": "print_format", "fieldtype": "Link", "label": "Print Format", "options": "Print Format", "mandatory_depends_on": "eval:doc.header_source=='Document'"},
+  {"fieldname": "variable_mapping", "fieldtype": "Code", "label": "Variable Mapping", "options": "JSON", "description": "Maps each {{n}} to a source-doc fieldname, a dotted link path, or a literal (leading =). e.g. {\"1\":\"name\",\"2\":\"supplier\",\"3\":\"=Ready for dispatch\"}"}
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00",
+ "module": "YRP",
+ "name": "YRP WhatsApp Template Config",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

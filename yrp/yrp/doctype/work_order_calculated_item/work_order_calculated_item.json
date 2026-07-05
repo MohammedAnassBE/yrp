@@ -1,0 +1,96 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-05-21 12:51:59.267920",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_variant",
+  "quantity",
+  "delivered_quantity",
+  "received_qty",
+  "billed_qty",
+  "table_index",
+  "row_index",
+  "received_type_json",
+  "set_combination"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Variant",
+   "options": "Item Variant",
+   "reqd": 1
+  },
+  {
+   "fieldname": "table_index",
+   "fieldtype": "Int",
+   "label": "Table Index"
+  },
+  {
+   "fieldname": "row_index",
+   "fieldtype": "Int",
+   "label": "Row Index"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "received_qty",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Received Qty",
+   "non_negative": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "received_type_json",
+   "fieldtype": "JSON",
+   "in_list_view": 1,
+   "label": "Received Type JSON"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "quantity",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Quantity",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "set_combination",
+   "fieldtype": "JSON",
+   "label": "Set Combination"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "delivered_quantity",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Delivered Quantity",
+   "non_negative": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "billed_qty",
+   "fieldtype": "Float",
+   "label": "Billed Qty"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-10-31 11:17:53.790411",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Work Order Calculated Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

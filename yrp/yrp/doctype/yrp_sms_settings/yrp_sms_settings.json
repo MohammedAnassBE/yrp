@@ -1,0 +1,29 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["enabled", "column_break_head", "sms_gateway_url", "country_code", "section_break_templates", "templates_help", "templates"],
+ "fields": [
+  {"fieldname": "enabled", "fieldtype": "Check", "label": "Enabled", "default": "1"},
+  {"fieldname": "column_break_head", "fieldtype": "Column Break"},
+  {"fieldname": "sms_gateway_url", "fieldtype": "Data", "label": "SMS Gateway URL", "default": "https://api.msg91.com/api/v5/otp/", "reqd": 1, "description": "MSG91 v5 endpoint; called as GET with authkey + mobile + template_id + params (same as the working essdee_attendance OTP call)"},
+  {"fieldname": "country_code", "fieldtype": "Data", "label": "Country Code", "default": "91", "description": "Prefixed to 10-digit mobile numbers before sending"},
+  {"fieldname": "section_break_templates", "fieldtype": "Section Break", "label": "Per-DocType Templates"},
+  {"fieldname": "templates_help", "fieldtype": "HTML", "options": "<div class='text-muted small'>Map each DocType to its MSG91 registered Template ID and Auth Key. The document's Send SMS button uses the row matching its DocType.</div>"},
+  {"fieldname": "templates", "fieldtype": "Table", "label": "Templates", "options": "YRP SMS Template Config"}
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00",
+ "module": "YRP",
+ "name": "YRP SMS Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

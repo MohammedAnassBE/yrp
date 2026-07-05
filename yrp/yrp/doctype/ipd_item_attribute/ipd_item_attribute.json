@@ -1,0 +1,25 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-02 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["attribute", "mapping"],
+ "fields": [
+  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "Item Attribute", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "mapping", "fieldtype": "Link", "label": "Attribute Mapping", "options": "Item Item Attribute Mapping", "in_list_view": 1, "description": "Link to the Item Item Attribute Mapping that holds the values for this attribute on this item. Auto-fetched from the parent Item when the IPD's item changes."}
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-04 00:00:00",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "IPD Item Attribute",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

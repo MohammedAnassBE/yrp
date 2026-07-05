@@ -19,6 +19,8 @@ class NotificationTemplate(Document):
 			self.send_email(docname, recipients)
 		elif self.channel == "SMS":
 			self.send_sms(docname, recipients)
+		elif self.channel == "WhatsApp":
+			self.send_whatsapp(docname, recipients)
 
 	def get_message(self, context=None, docname=None):
 		return frappe.render_template(self.template, context or get_context(self.document_type, docname))
@@ -58,9 +60,10 @@ class NotificationTemplate(Document):
 				communication_type="Automated Message",
 			)
 
-	def send_sms(self, docname, recipients):
-		context = get_context(self.document_type, docname)
-		message = frappe.render_template(self.template, context)
+	def send_sms(self, docname, recipients, message=None):
+		if not message:
+			context = get_context(self.document_type, docname)
+			message = frappe.render_template(self.template, context)
 		dynamic_params = []
 		if self.parameters:
 			dynamic_params = frappe.parse_json(self.parameters)
@@ -77,6 +80,70 @@ class NotificationTemplate(Document):
 				send_email=False,
 				communication_type="Automated Message",
 			)
+
+	def send_whatsapp(self, docname, recipients):
+		"""Dormant event path: resolve the per-doctype approved template from
+		Hub Settings and deliver it via the hub. The Jinja `template` body is
+		NOT the WhatsApp payload (Meta accepts only the approved template name
+		+ ordered variables); it renders a human-readable preview only."""
+		from yrp.whatsapp import deliver_whatsapp_template
+
+		resolved = self._resolve_whatsapp_template()
+		if not resolved:
+			frappe.msgprint(
+				_("No WhatsApp template configured for {0}").format(self.document_type)
+			)
+			return
+		account_name, template_name, language_code = resolved
+
+		context = get_context(self.document_type, docname)
+		preview = frappe.render_template(self.template, context) if self.template else ""
+
+		for recipient in recipients:
+			deliver_whatsapp_template(
+				account_name=account_name,
+				to_number=recipient,
+				template_name=template_name,
+				language_code=language_code,
+			)
+			self._log_whatsapp_communication(docname, recipient, preview)
+
+	def _resolve_whatsapp_template(self):
+		"""(account_name, template_name, language_code) for this doctype from the
+		Hub Settings routing table, or None when nothing is configured."""
+		settings = frappe.get_cached_doc("YRP WhatsApp Hub Settings")
+		config = settings.get_template_config(self.document_type)
+		if not config:
+			return None
+		template_name = frappe.db.get_value(
+			"YRP WhatsApp Template", config.whatsapp_template, "template_name"
+		)
+		language_code = config.language_code or "en"
+		return settings.get_default_account_name(), template_name, language_code
+
+	def _log_whatsapp_communication(self, docname, recipient, content):
+		"""Best-effort timeline Communication (medium WhatsApp). Isolated in a
+		savepoint + try/except so a Communication failure (e.g. the medium
+		option missing) can NEVER roll back the just-sent state."""
+		from frappe.core.doctype.communication.email import _make as make_communication
+
+		savepoint = "wa_comm"
+		frappe.db.savepoint(savepoint)
+		try:
+			make_communication(
+				doctype=self.document_type,
+				name=docname,
+				content=content,
+				subject="WhatsApp",
+				sender="",
+				recipients=[recipient],
+				communication_medium="WhatsApp",
+				send_email=False,
+				communication_type="Automated Message",
+			)
+		except Exception:
+			frappe.db.rollback(save_point=savepoint)
+			frappe.log_error("WhatsApp timeline Communication failed")
 
 	def get_attachment(self, docname):
 		if not self.attach_print:
@@ -114,6 +181,28 @@ def get_context(doctype, docname):
 		"nowdate": frappe.utils.nowdate,
 		"frappe": frappe._dict(utils=get_safe_globals().get("frappe").get("utils")),
 	}
+
+def add_whatsapp_communication_medium():
+	"""Append 'WhatsApp' to Communication.communication_medium options so the
+	best-effort timeline Communication validates. Idempotent; wired to
+	after_install + after_migrate. A property setter is allowed (it does not
+	edit core)."""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	field = frappe.get_meta("Communication").get_field("communication_medium")
+	options = (field.options or "").split("\n")
+	if "WhatsApp" in options:
+		return
+	options.append("WhatsApp")
+	make_property_setter(
+		"Communication",
+		"communication_medium",
+		"options",
+		"\n".join(options),
+		"Text",
+		validate_fields_for_doctype=False,
+	)
+	frappe.clear_cache(doctype="Communication")
 
 def send_sms(receiver_list, msg, dynamic_params):
 
@@ -161,7 +250,8 @@ def send_via_gateway(arg):
 	success_list = []
 	for d in arg.get("receiver_list"):
 		args[ss.receiver_parameter] = d
-		status = send_request(ss.sms_gateway_url, args, headers, ss.use_post, use_json)
+		response = send_request(ss.sms_gateway_url, args, headers, ss.use_post, use_json)
+		status = response.status_code
 		if 200 <= status < 300:
 			success_list.append(d)
 
@@ -199,7 +289,7 @@ def send_request(gateway_url, params, headers=None, use_post=False, use_json=Fal
 	else:
 		response = requests.get(gateway_url, **kwargs)
 	response.raise_for_status()
-	return response.status_code
+	return response
 
 def validate_receiver_nos(receiver_list):
 	validated_receiver_list = []

@@ -1,0 +1,208 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-05-08 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_variant",
+  "qty",
+  "uom",
+  "secondary_qty",
+  "secondary_uom",
+  "stock_qty",
+  "stock_uom",
+  "conversion_factor",
+  "rate",
+  "tax",
+  "discount_percentage",
+  "amount",
+  "discount_amount",
+  "tax_amount",
+  "total_amount",
+  "pending_quantity",
+  "received_quantity",
+  "cancelled_quantity",
+  "delivery_date",
+  "table_index",
+  "row_index",
+  "set_combination",
+  "comments"
+ ],
+ "fields": [
+  {
+   "columns": 4,
+   "fieldname": "item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Variant",
+   "options": "Item Variant",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty",
+   "precision": "3",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "UOM",
+   "options": "UOM",
+   "reqd": 1
+  },
+  {
+   "fieldname": "stock_qty",
+   "fieldtype": "Float",
+   "label": "Stock Qty",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "conversion_factor",
+   "fieldtype": "Float",
+   "label": "Conversion Factor"
+  },
+  {
+   "columns": 1,
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Rate",
+   "precision": "3"
+  },
+  {
+   "fieldname": "tax",
+   "fieldtype": "Link",
+   "label": "Tax Slab",
+   "options": "Tax Slab"
+  },
+  {
+   "default": "0",
+   "fieldname": "discount_percentage",
+   "fieldtype": "Float",
+   "label": "Discount %",
+   "precision": "2"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "Discount Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "label": "Tax Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Total Amount",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "pending_quantity",
+   "fieldtype": "Float",
+   "label": "Pending Quantity",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "received_quantity",
+   "fieldtype": "Float",
+   "label": "Received Quantity",
+   "no_copy": 1,
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "cancelled_quantity",
+   "fieldtype": "Float",
+   "label": "Cancelled Quantity",
+   "no_copy": 1,
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "delivery_date",
+   "fieldtype": "Date",
+   "label": "Delivery Date"
+  },
+  {
+   "fieldname": "table_index",
+   "fieldtype": "Int",
+   "label": "Table Index",
+   "read_only": 1
+  },
+  {
+   "fieldname": "row_index",
+   "fieldtype": "Data",
+   "label": "Row Index",
+   "read_only": 1
+  },
+  {
+   "fieldname": "set_combination",
+   "fieldtype": "JSON",
+   "label": "Set Combination"
+  },
+  {
+   "fieldname": "comments",
+   "fieldtype": "Small Text",
+   "label": "Comments"
+  },
+  {
+   "fieldname": "secondary_qty",
+   "fieldtype": "Float",
+   "label": "Secondary Qty"
+  },
+  {
+   "fieldname": "secondary_uom",
+   "fieldtype": "Link",
+   "label": "Secondary UOM",
+   "options": "UOM"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-08 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Purchase Order Item",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

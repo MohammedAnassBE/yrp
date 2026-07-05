@@ -36,8 +36,7 @@
    "fieldname": "production_term_details",
    "fieldtype": "Table",
    "label": "Production Term Details",
-   "options": "Production Term Detail",
-   "reqd": 1
+   "options": "Production Term Detail"
   }
  ],
  "index_web_pages_for_search": 1,

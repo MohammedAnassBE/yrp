@@ -23,10 +23,9 @@ class ItemPrice(Document):
 		else:
 			filters.append(["supplier", "=", self.supplier])
 
-		# Check for workflow state if workflow exists
-		workflow_exists = frappe.db.exists("Workflow", {"document_type": "Item Price", "is_active": 1})
-		if workflow_exists:
-			filters.append(["workflow_state", "=", "Approved"])
+		workflow_state_field = get_active_workflow_state_field("Item Price")
+		if workflow_state_field:
+			filters.append([workflow_state_field, "=", "Approved"])
 
 		price_list = frappe.db.get_list(
 			"Item Price",
@@ -70,7 +69,8 @@ class ItemPrice(Document):
 
 	def get_price_value(self, item_price_values, qty=0, attribute_value=None, get_lowest_moq_price=False, get_lead_time=False):
 		"""Get Item Price Value for the qty and attribute value (MOQ-based pricing)."""
-		item_price_values = [p for p in item_price_values if p[3] == attribute_value]
+		attribute_value = _normalize_attribute_value(attribute_value)
+		item_price_values = [p for p in item_price_values if _normalize_attribute_value(p[3]) == attribute_value]
 		if not item_price_values:
 			return None
 
@@ -86,6 +86,14 @@ class ItemPrice(Document):
 		if moq != -1:
 			return lead_time if get_lead_time else rate
 		return None
+
+
+def _normalize_attribute_value(value):
+	if value is None:
+		return None
+	if isinstance(value, str) and not value.strip():
+		return None
+	return value
 
 
 def validate_price_values(item_price_values):
@@ -109,6 +117,9 @@ def get_active_price(item, supplier=None, raise_error=True):
 		"from_date": ["<=", utils.nowdate()],
 		"docstatus": 1,
 	}
+	workflow_state_field = get_active_workflow_state_field("Item Price")
+	if workflow_state_field:
+		filters[workflow_state_field] = "Approved"
 	if supplier:
 		filters["supplier"] = supplier
 
@@ -143,6 +154,9 @@ def get_all_active_price(item=None, supplier=None):
 		"from_date": ["<=", utils.nowdate()],
 		"docstatus": 1,
 	}
+	workflow_state_field = get_active_workflow_state_field("Item Price")
+	if workflow_state_field:
+		filters[workflow_state_field] = "Approved"
 	if item:
 		filters["item_name"] = item
 	if supplier:
@@ -234,7 +248,7 @@ def update_all_expired_item_price():
 		["docstatus", "=", 1],
 	]
 	price_list = frappe.db.get_all("Item Price", filters=filters, pluck="name")
-	workflow_exists = frappe.db.exists("Workflow", {"document_type": "Item Price", "is_active": 1})
+	workflow_exists = bool(get_active_workflow_state_field("Item Price"))
 
 	for price in price_list:
 		doc = frappe.get_doc("Item Price", price)
@@ -243,6 +257,9 @@ def update_all_expired_item_price():
 		else:
 			doc.cancel()
 		doc.add_comment("Info", "Cancelled automatically due to expiry")
+
+	if price_list:
+		frappe.db.commit()
 
 
 def _cancel_item_price_via_workflow(doc):
@@ -253,6 +270,10 @@ def _cancel_item_price_via_workflow(doc):
 		return
 
 	workflow = frappe.get_doc("Workflow", workflow_name)
+	if not frappe.get_meta("Item Price").get_field(workflow.workflow_state_field):
+		doc.cancel()
+		return
+
 	cancel_states = [s.state for s in workflow.states if cint(s.doc_status) == 2]
 	if "Expired" in cancel_states:
 		cancel_states = ["Expired"]
@@ -273,3 +294,18 @@ def _cancel_item_price_via_workflow(doc):
 			return
 
 	doc.cancel()
+
+
+def get_active_workflow_state_field(doctype):
+	workflow_name = frappe.db.get_value(
+		"Workflow", {"document_type": doctype, "is_active": 1}, "name"
+	)
+	if not workflow_name:
+		return None
+
+	workflow_state_field = frappe.db.get_value(
+		"Workflow", workflow_name, "workflow_state_field"
+	)
+	if workflow_state_field and frappe.get_meta(doctype).get_field(workflow_state_field):
+		return workflow_state_field
+	return None

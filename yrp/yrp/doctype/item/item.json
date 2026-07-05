@@ -1,6 +1,6 @@
 {
  "actions": [],
- "autoname": "Item-.#####",
+ "autoname": "",
  "creation": "2021-08-23 16:59:13.935404",
  "doctype": "DocType",
  "editable_grid": 1,
@@ -14,13 +14,17 @@
   "name1",
   "disabled",
   "over_delivery_receipt_allowance",
+  "po_excess_allowed_percentage",
   "is_stock_item",
+  "allow_negative_stock",
   "is_purchase_item",
   "is_sales_item",
   "uom_section",
   "default_unit_of_measure",
   "uom_conversion_details",
   "secondary_unit_of_measure",
+  "weight_per_unit",
+  "weight_uom",
   "item_hash_value",
   "attributes_section",
   "primary_attribute",
@@ -30,6 +34,8 @@
   "attribute_list_html",
   "dependent_attribute_details_html",
   "additional_parameters",
+  "price_section",
+  "price_html",
   "tax_section",
   "is_ineligible_for_itc"
  ],
@@ -66,6 +72,14 @@
    "fieldtype": "Check",
    "label": "Disabled",
    "permlevel": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "over_delivery_receipt_allowance",
+   "fieldtype": "Float",
+   "label": "Over Delivery/Receipt Allowance (%)",
+   "permlevel": 1,
+   "precision": "1"
   },
   {
    "fieldname": "uom_section",
@@ -114,6 +128,20 @@
    "permlevel": 1
   },
   {
+   "default": "0",
+   "fieldname": "weight_per_unit",
+   "fieldtype": "Float",
+   "label": "Weight Per Unit",
+   "non_negative": 1,
+   "description": "Per-unit weight in `weight_uom`."
+  },
+  {
+   "fieldname": "weight_uom",
+   "fieldtype": "Link",
+   "label": "Weight UOM",
+   "options": "UOM"
+  },
+  {
    "fieldname": "primary_attribute",
    "fieldtype": "Link",
    "label": "Primary Attribute",
@@ -129,11 +157,11 @@
   },
   {
    "default": "0",
-   "fieldname": "over_delivery_receipt_allowance",
-   "fieldtype": "Float",
-   "label": "Over Delivery/Receipt Allowance (%)",
-   "permlevel": 1,
-   "precision": "1"
+   "fieldname": "po_excess_allowed_percentage",
+   "fieldtype": "Percent",
+   "label": "PO Excess Allowed Percentage",
+   "non_negative": 1,
+   "description": "When > 0, a GRN against a Purchase Order may receive up to `ordered_qty × (1 + pct/100)` for this Item. 0 enforces strict pending."
   },
   {
    "fieldname": "item_group",
@@ -147,6 +175,15 @@
    "fieldname": "is_stock_item",
    "fieldtype": "Check",
    "label": "Is Stock Item",
+   "permlevel": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_negative_stock",
+   "fieldtype": "Check",
+   "label": "Allow Negative Stock",
+   "depends_on": "eval:doc.is_stock_item",
+   "description": "If checked, stock can go below zero for this item. Valuation uses the last known rate until stock is replenished (frozen-rate, two-phase settlement).",
    "permlevel": 1
   },
   {
@@ -176,6 +213,17 @@
    "fieldname": "dependent_attribute_details_html",
    "fieldtype": "HTML",
    "label": "Dependent Attribute Details",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "price_section",
+   "fieldtype": "Section Break",
+   "label": "Price List"
+  },
+  {
+   "fieldname": "price_html",
+   "fieldtype": "HTML",
+   "label": "Price",
    "permlevel": 1
   },
   {

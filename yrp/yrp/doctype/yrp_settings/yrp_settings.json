@@ -8,15 +8,37 @@
   "default_currency",
   "column_break_1",
   "default_letter_head",
+  "advanced_section",
+  "enable_tuple_attribute",
   "purchase_settings_section",
   "enable_price_validation",
   "grn_settings_section",
   "grn_cancellation_in_days",
   "allow_grn_cancellation",
   "column_break_2",
-  "allow_excess_grn",
+  "purchase_invoice_settings_section",
+  "pi_minimum_grn_date",
+  "override_pi_approve",
+  "roles_section",
+  "debit_request_role",
+  "debit_approval_role",
+  "column_break_roles_1",
+  "work_order_closing_approver_role",
+  "column_break_roles_2",
+  "purchase_invoice_approval_initiate_role",
+  "purchase_invoice_approval_pending_role",
+  "purchase_invoice_approver_role",
+  "inspection_entry_approver_role",
   "production_order_settings_section",
-  "production_order_attributes"
+  "production_order_attributes",
+  "po_dependent_attribute_section",
+  "po_dependent_attribute",
+  "column_break_po_dep",
+  "po_dependent_attribute_value",
+  "vendor_bill_section",
+  "unique_vendor_bill_per_year",
+  "fiscal_year_start_date",
+  "fiscal_year_end_date"
  ],
  "fields": [
   {
@@ -39,6 +61,18 @@
    "fieldtype": "Link",
    "label": "Default Letter Head",
    "options": "Letter Head"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "advanced_section",
+   "fieldtype": "Section Break",
+   "label": "Advanced"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_tuple_attribute",
+   "fieldtype": "Check",
+   "label": "Enable Tuple Attribute (Fast Variant Lookup)"
   },
   {
    "fieldname": "purchase_settings_section",
@@ -72,10 +106,76 @@
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "purchase_invoice_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Purchase Invoice Settings"
+  },
+  {
+   "fieldname": "pi_minimum_grn_date",
+   "fieldtype": "Date",
+   "label": "PI Minimum GRN Date"
+  },
+  {
    "default": "0",
-   "fieldname": "allow_excess_grn",
+   "fieldname": "override_pi_approve",
    "fieldtype": "Check",
-   "label": "Allow Excess GRN"
+   "label": "Override PI Approve"
+  },
+  {
+   "fieldname": "roles_section",
+   "fieldtype": "Section Break",
+   "label": "Roles"
+  },
+  {
+   "fieldname": "debit_request_role",
+   "fieldtype": "Link",
+   "label": "Debit Request Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "debit_approval_role",
+   "fieldtype": "Link",
+   "label": "Debit Approval Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "column_break_roles_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "work_order_closing_approver_role",
+   "fieldtype": "Link",
+   "label": "Work Order Closing Approver Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "column_break_roles_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "purchase_invoice_approval_initiate_role",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice Approval Initiate Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "purchase_invoice_approval_pending_role",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice Approval Pending Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "purchase_invoice_approver_role",
+   "fieldtype": "Link",
+   "label": "Purchase Invoice Approver Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "inspection_entry_approver_role",
+   "fieldtype": "Link",
+   "label": "Inspection Entry Approver Role",
+   "options": "Role",
+   "description": "Only users with this role see the 'Convert Stock' button on a submitted Inspection Entry, and only they can trigger the SLE conversion."
   },
   {
    "fieldname": "production_order_settings_section",
@@ -87,6 +187,53 @@
    "fieldtype": "Table",
    "label": "Production Order Attributes",
    "options": "Production Order Attribute Setting"
+  },
+  {
+   "fieldname": "po_dependent_attribute_section",
+   "fieldtype": "Section Break",
+   "label": "Dependent Attribute for Variant Creation",
+   "description": "When items have a dependent attribute (e.g., Stage), set its value here. This determines which attributes are required to create variants."
+  },
+  {
+   "fieldname": "po_dependent_attribute",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute",
+   "options": "Item Attribute"
+  },
+  {
+   "fieldname": "column_break_po_dep",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "po_dependent_attribute",
+   "fieldname": "po_dependent_attribute_value",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute Value",
+   "options": "Item Attribute Value"
+  },
+  {
+   "fieldname": "vendor_bill_section",
+   "fieldtype": "Section Break",
+   "label": "Bill Tracking"
+  },
+  {
+   "default": "0",
+   "fieldname": "unique_vendor_bill_per_year",
+   "fieldtype": "Check",
+   "label": "Unique Vendor Bill No Per Year",
+   "description": "Reject duplicate (supplier, bill_no) combinations within the fiscal year window."
+  },
+  {
+   "depends_on": "unique_vendor_bill_per_year",
+   "fieldname": "fiscal_year_start_date",
+   "fieldtype": "Date",
+   "label": "Fiscal Year Start Date"
+  },
+  {
+   "depends_on": "unique_vendor_bill_per_year",
+   "fieldname": "fiscal_year_end_date",
+   "fieldtype": "Date",
+   "label": "Fiscal Year End Date"
   }
  ],
  "index_web_pages_for_search": 1,

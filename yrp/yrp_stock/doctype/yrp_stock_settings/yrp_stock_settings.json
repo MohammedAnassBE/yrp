@@ -1,0 +1,194 @@
+{
+ "actions": [],
+ "creation": "2026-03-26 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "stock_dimensions_section",
+  "stock_dimensions",
+  "stock_settings_section",
+  "transit_warehouse",
+  "transit_aging_threshold_days",
+  "grn_cancel_window_days",
+  "default_received_type",
+  "default_rejected_received_type",
+  "freight_allocation_method",
+  "column_break_stock_1",
+  "default_valuation_method",
+  "allow_negative_stock",
+  "reposting_section",
+  "limit_reposting_timeslot",
+  "start_time",
+  "end_time",
+  "limits_dont_apply_on",
+  "column_break_repost_1",
+  "item_based_reposting",
+  "do_reposting_for_each_stock_transaction",
+  "backdated_repost_threshold",
+  "notify_reposting_error_to_role"
+ ],
+ "fields": [
+  {
+   "fieldname": "stock_dimensions_section",
+   "fieldtype": "Section Break",
+   "label": "Stock Dimensions"
+  },
+  {
+   "fieldname": "stock_dimensions",
+   "fieldtype": "Table",
+   "label": "Stock Dimensions",
+   "options": "YRP Stock Dimension"
+  },
+  {
+   "fieldname": "stock_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Stock Settings"
+  },
+  {
+   "fieldname": "transit_warehouse",
+   "fieldtype": "Link",
+   "label": "Transit Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "default": "7",
+   "fieldname": "transit_aging_threshold_days",
+   "fieldtype": "Int",
+   "label": "Transit Aging Threshold (Days)",
+   "description": "Stock Entries older than this many days that are still in transit are flagged in the Pending Transit report."
+  },
+  {
+   "default": "0",
+   "fieldname": "grn_cancel_window_days",
+   "fieldtype": "Int",
+   "label": "GRN Cancel Window (Days)",
+   "description": "Block cancelling a Goods Received Note whose posting_date is older than this many days. 0 disables the guard."
+  },
+  {
+   "fieldname": "default_received_type",
+   "fieldtype": "Link",
+   "label": "Default Received Type",
+   "options": "Received Type",
+   "description": "Used as the default value when a Received Type is not explicitly set on a stock transaction line."
+  },
+  {
+   "fieldname": "default_rejected_received_type",
+   "fieldtype": "Link",
+   "label": "Default Rejected Received Type",
+   "options": "Received Type",
+   "description": "The Received Type used to mark Rejected stock. Stock in this Received Type is excluded from the Create Rework popup."
+  },
+  {
+   "default": "By Quantity",
+   "fieldname": "freight_allocation_method",
+   "fieldtype": "Select",
+   "label": "Freight Allocation Method",
+   "options": "By Quantity\nBy Value\nManual",
+   "description": "How GRN.freight_charges is split across receipt lines. By Quantity → share by stock_qty. By Value → share by row.amount; falls back to By Quantity when total amount is zero. Manual → sum of per-row freight_amount must equal freight_charges; submit is blocked otherwise."
+  },
+  {
+   "fieldname": "column_break_stock_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "FIFO",
+   "fieldname": "default_valuation_method",
+   "fieldtype": "Select",
+   "label": "Default Valuation Method",
+   "options": "FIFO\nMoving Average"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_negative_stock",
+   "fieldtype": "Check",
+   "label": "Allow Negative Stock (Legacy)",
+   "description": "Legacy global toggle. Negative stock is now controlled per-Item via Item.allow_negative_stock. This field is kept for backwards compatibility and is ignored by the engine."
+  },
+  {
+   "fieldname": "reposting_section",
+   "fieldtype": "Section Break",
+   "label": "Reposting Settings"
+  },
+  {
+   "default": "0",
+   "fieldname": "limit_reposting_timeslot",
+   "fieldtype": "Check",
+   "label": "Limit Reposting Timeslot"
+  },
+  {
+   "depends_on": "eval:doc.limit_reposting_timeslot",
+   "fieldname": "start_time",
+   "fieldtype": "Time",
+   "label": "Start Time"
+  },
+  {
+   "depends_on": "eval:doc.limit_reposting_timeslot",
+   "fieldname": "end_time",
+   "fieldtype": "Time",
+   "label": "End Time"
+  },
+  {
+   "depends_on": "eval:doc.limit_reposting_timeslot",
+   "fieldname": "limits_dont_apply_on",
+   "fieldtype": "Select",
+   "label": "Limits Don't Apply On",
+   "options": "\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday"
+  },
+  {
+   "fieldname": "column_break_repost_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "item_based_reposting",
+   "fieldtype": "Check",
+   "label": "Item Based Reposting"
+  },
+  {
+   "default": "0",
+   "fieldname": "do_reposting_for_each_stock_transaction",
+   "fieldtype": "Check",
+   "label": "Do Reposting For Each Stock Transaction"
+  },
+  {
+   "default": "50",
+   "fieldname": "backdated_repost_threshold",
+   "fieldtype": "Int",
+   "label": "Backdated Repost Threshold",
+   "description": "If a backdated transaction is followed by more than this many SLEs in the same bucket, the repost is queued as a background job instead of running inline."
+  },
+  {
+   "fieldname": "notify_reposting_error_to_role",
+   "fieldtype": "Link",
+   "label": "Notify Reposting Error To Role",
+   "options": "Role"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-26 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP Stock",
+ "name": "YRP Stock Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

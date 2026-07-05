@@ -1,0 +1,146 @@
+{
+ "actions": [],
+ "autoname": "format:{ipd}-{process_name}-{#####}",
+ "creation": "2026-05-02 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "ipd",
+  "process_name",
+  "reference_item_variant",
+  "input_item",
+  "output_item",
+  "column_break_main",
+  "input_attributes",
+  "output_attributes",
+  "section_break_grid",
+  "get_combination",
+  "combination_html",
+  "combinations",
+  "combination_attributes",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "ipd",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "IPD",
+   "options": "Item Production Detail",
+   "reqd": 1
+  },
+  {
+   "fieldname": "process_name",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Process",
+   "options": "Process",
+   "reqd": 1
+  },
+  {
+   "description": "Optional final/context variant this matrix applies to. Leave blank for generic matrices.",
+   "fieldname": "reference_item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference Item Variant",
+   "options": "Item Variant"
+  },
+  {
+   "description": "Source item being consumed (e.g. fabric for Cutting). Leave blank if input item = the IPD's main item.",
+   "fieldname": "input_item",
+   "fieldtype": "Link",
+   "label": "Input Item",
+   "options": "Item"
+  },
+  {
+   "description": "Item being produced (e.g. panel for Cutting, pack for Packing). Leave blank if output item = the IPD's main item.",
+   "fieldname": "output_item",
+   "fieldtype": "Link",
+   "label": "Output Item",
+   "options": "Item"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "input_attributes",
+   "fieldtype": "Table",
+   "label": "Input Attributes",
+   "options": "IPD Matrix Attribute"
+  },
+  {
+   "fieldname": "output_attributes",
+   "fieldtype": "Table",
+   "label": "Output Attributes",
+   "options": "IPD Matrix Attribute"
+  },
+  {
+   "fieldname": "section_break_grid",
+   "fieldtype": "Section Break",
+   "label": "Combinations"
+  },
+  {
+   "fieldname": "get_combination",
+   "fieldtype": "Button",
+   "label": "Get Combination"
+  },
+  {
+   "fieldname": "combination_html",
+   "fieldtype": "HTML",
+   "label": "Combination Grid"
+  },
+  {
+   "fieldname": "combinations",
+   "fieldtype": "Table",
+   "label": "Combinations",
+   "options": "IPD Matrix Combination"
+  },
+  {
+   "fieldname": "combination_attributes",
+   "fieldtype": "Table",
+   "label": "Combination Attributes",
+   "options": "IPD Matrix Combination Attribute"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "IPD Process Matrix",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-05 15:03:26.220457",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "IPD Process Matrix",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

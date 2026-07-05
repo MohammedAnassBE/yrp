@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-05-24 11:44:42.904319",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_variant",
+  "qty",
+  "rate",
+  "uom",
+  "secondary_qty",
+  "secondary_uom",
+  "comments",
+  "table_index",
+  "row_index",
+  "pending_quantity",
+  "cancelled_quantity",
+  "additional_parameters",
+  "stock_update",
+  "is_calculated",
+  "valuation_rate",
+  "set_combination",
+  "grn_detail_no",
+  "received_type",
+  "source_grn",
+  "source_grn_item",
+  "source_inspection_entry_item"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Variant",
+   "options": "Item Variant",
+   "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 1,
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "UOM",
+   "options": "UOM",
+   "reqd": 1
+  },
+  {
+   "fieldname": "secondary_qty",
+   "fieldtype": "Int",
+   "label": "Secondary Qty"
+  },
+  {
+   "fieldname": "secondary_uom",
+   "fieldtype": "Link",
+   "label": "Secondary UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "comments",
+   "fieldtype": "Data",
+   "label": "Comments"
+  },
+  {
+   "fieldname": "table_index",
+   "fieldtype": "Int",
+   "label": "Table Index"
+  },
+  {
+   "fieldname": "row_index",
+   "fieldtype": "Data",
+   "label": "Row Index"
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 2,
+   "fieldname": "pending_quantity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Pending Quantity",
+   "precision": "3"
+  },
+  {
+   "fieldname": "cancelled_quantity",
+   "fieldtype": "Int",
+   "label": "Cancelled Quantity"
+  },
+  {
+   "fieldname": "additional_parameters",
+   "fieldtype": "Data",
+   "label": "Additional Parameters"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Float",
+   "label": "Rate"
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 2,
+   "fieldname": "stock_update",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Stock Update"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "is_calculated",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Calculated"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "valuation_rate",
+   "fieldtype": "Currency",
+   "label": "Valuation Rate"
+  },
+  {
+   "fieldname": "set_combination",
+   "fieldtype": "JSON",
+   "label": "Set Combination"
+  },
+  {
+   "fieldname": "grn_detail_no",
+   "fieldtype": "Data",
+   "label": "GRN Detail No"
+  },
+  {
+   "fieldname": "received_type",
+   "fieldtype": "Link",
+   "label": "Received Type",
+   "options": "Received Type"
+  },
+  {
+   "fieldname": "source_grn",
+   "fieldtype": "Link",
+   "label": "Source GRN",
+   "options": "Goods Received Note"
+  },
+  {
+   "fieldname": "source_grn_item",
+   "fieldtype": "Link",
+   "label": "Source GRN Item",
+   "options": "Goods Received Note Item"
+  },
+  {
+   "fieldname": "source_inspection_entry_item",
+   "fieldtype": "Link",
+   "label": "Source Inspection Entry Item",
+   "options": "Inspection Entry Item"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-04-09 18:36:54.113095",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Work Order Deliverables",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
