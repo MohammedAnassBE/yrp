@@ -1,0 +1,57 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "button_type",
+  "button_text",
+  "button_url",
+  "phone_number"
+ ],
+ "fields": [
+  {
+   "fieldname": "button_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Button Type",
+   "options": "QUICK_REPLY\nURL\nPHONE_NUMBER",
+   "reqd": 1
+  },
+  {
+   "fieldname": "button_text",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Button Text",
+   "reqd": 1
+  },
+  {
+   "fieldname": "button_url",
+   "fieldtype": "Data",
+   "depends_on": "eval:doc.button_type=='URL'",
+   "label": "URL"
+  },
+  {
+   "fieldname": "phone_number",
+   "fieldtype": "Data",
+   "depends_on": "eval:doc.button_type=='PHONE_NUMBER'",
+   "label": "Phone Number"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP WhatsApp Template Button",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

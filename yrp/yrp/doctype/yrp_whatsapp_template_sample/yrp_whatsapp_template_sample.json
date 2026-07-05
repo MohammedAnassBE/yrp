@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "variable_number",
+  "variable_type",
+  "sample_value"
+ ],
+ "fields": [
+  {
+   "fieldname": "variable_number",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Variable #",
+   "reqd": 1
+  },
+  {
+   "fieldname": "variable_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "body\nheader",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sample_value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Sample Value"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP WhatsApp Template Sample",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

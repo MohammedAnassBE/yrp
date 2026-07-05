@@ -1,0 +1,140 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "enabled",
+  "section_break_connection",
+  "hub_url",
+  "column_break_connection",
+  "api_key",
+  "api_secret",
+  "section_break_webhook",
+  "webhook_user",
+  "country_code",
+  "webhook_help",
+  "section_break_accounts",
+  "accounts",
+  "section_break_enabled_doctypes",
+  "enabled_doctypes_help",
+  "enabled_doctypes"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "section_break_connection",
+   "fieldtype": "Section Break",
+   "label": "Hub Connection"
+  },
+  {
+   "description": "Full URL of the hub site",
+   "fieldname": "hub_url",
+   "fieldtype": "Data",
+   "label": "Hub URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_connection",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "API Key of the dedicated hub-site user (used to build the token Authorization header)",
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key",
+   "reqd": 1
+  },
+  {
+   "description": "API Secret of the dedicated hub-site user",
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "API Secret",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_webhook",
+   "fieldtype": "Section Break",
+   "label": "Webhook"
+  },
+  {
+   "description": "The dedicated spoke hub user. The webhook receive() asserts the caller equals this user before processing.",
+   "fieldname": "webhook_user",
+   "fieldtype": "Link",
+   "label": "Webhook User",
+   "options": "User"
+  },
+  {
+   "default": "91",
+   "description": "Prefixed to bare 10-digit numbers to form the WhatsApp wa_id",
+   "fieldname": "country_code",
+   "fieldtype": "Data",
+   "label": "Country Code"
+  },
+  {
+   "fieldname": "webhook_help",
+   "fieldtype": "HTML",
+   "label": "Webhook Help",
+   "options": "<div class='text-muted small'>Register this endpoint on the hub's Hub Connected Site: <code>/api/method/yrp.api.whatsapp_webhook.receive</code> (status webhooks) and <code>/api/method/yrp.api.whatsapp_webhook.receive_push</code> (template push). Authenticate as the Webhook User above.</div>"
+  },
+  {
+   "fieldname": "section_break_accounts",
+   "fieldtype": "Section Break",
+   "label": "Accounts"
+  },
+  {
+   "fieldname": "accounts",
+   "fieldtype": "Table",
+   "label": "Accounts",
+   "options": "YRP WhatsApp Hub Account"
+  },
+  {
+   "fieldname": "section_break_enabled_doctypes",
+   "fieldtype": "Section Break",
+   "label": "Enabled DocTypes"
+  },
+  {
+   "fieldname": "enabled_doctypes_help",
+   "fieldtype": "HTML",
+   "label": "Enabled DocTypes Help",
+   "options": "<div class='text-muted small'>List the DocTypes that may send a WhatsApp message. Which templates are offered for each DocType is configured on the template itself (YRP WhatsApp Template &gt; Applicable DocTypes).</div>"
+  },
+  {
+   "fieldname": "enabled_doctypes",
+   "fieldtype": "Table",
+   "label": "Enabled DocTypes",
+   "options": "YRP WhatsApp Enabled DocType"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-05 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP WhatsApp Hub Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

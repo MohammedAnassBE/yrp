@@ -7,6 +7,7 @@ app_license = "mit"
 
 fixtures = [
 	{"dt": "Workflow", "filters": [["name", "in", ["Item Price Workflow", "Process Cost Workflow"]]]},
+	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},
 ]
 
 # Apps
@@ -90,7 +91,7 @@ app_include_js = ["yrp.bundle.js"]
 # ------------
 
 # before_install = "yrp.install.before_install"
-# after_install = "yrp.install.after_install"
+after_install = "yrp.yrp.doctype.notification_template.notification_template.add_whatsapp_communication_medium"
 
 # Uninstallation
 # ------------
@@ -150,6 +151,7 @@ app_include_js = ["yrp.bundle.js"]
 scheduler_events = {
 	"daily": [
 		"yrp.yrp_stock.doctype.stock_integrity_check.stock_integrity_check.run_daily_check",
+		"yrp.whatsapp_templates.sync_templates_from_hub",
 	],
 	"hourly": [
 		"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost_entries",
@@ -170,6 +172,7 @@ doc_events = {
 after_migrate = [
 	"yrp.stock.dimensions.create_dimension_fields",
 	"yrp.patches.add_sle_composite_index.execute",
+	"yrp.yrp.doctype.notification_template.notification_template.add_whatsapp_communication_medium",
 ]
 
 # Testing
