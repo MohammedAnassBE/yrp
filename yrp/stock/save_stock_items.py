@@ -216,7 +216,12 @@ def group_items_for_ui(child_rows, parent_doctype):
 	rows = []
 	for idx, r in enumerate(child_rows):
 		d = dict(r) if isinstance(r, dict) else r.as_dict()
-		d.setdefault("row_index", idx)
+		# A NULL row_index survives as_dict(), so setdefault alone never fires.
+		# Indexless rows (created programmatically) must each stay their OWN
+		# logical row — collapsing them into one "" bucket rendered only the
+		# bucket's first variant and silently dropped the rest on re-save.
+		if d.get("row_index") in (None, ""):
+			d["row_index"] = f"__auto__{idx}"
 		d["_original_order"] = idx
 		rows.append(d)
 
