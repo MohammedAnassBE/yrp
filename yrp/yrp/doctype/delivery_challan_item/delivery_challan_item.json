@@ -24,6 +24,7 @@
   "ste_delivered_quantity",
   "ref_doctype",
   "ref_docname",
+  "work_order_correction",
   "table_index",
   "row_index",
   "set_combination",
@@ -141,6 +142,13 @@
    "fieldtype": "Dynamic Link",
    "label": "Reference Row",
    "options": "ref_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "work_order_correction",
+   "fieldtype": "Link",
+   "label": "Work Order Correction",
+   "options": "Work Order Correction",
    "read_only": 1
   },
   {
