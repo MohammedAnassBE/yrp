@@ -1,6 +1,7 @@
 <template>
     <div>
         <div v-if="title" class="text-muted mb-2">{{ title }}</div>
+        <div v-if="showEmptyMessage" class="text-muted">{{ emptyMessage }}</div>
         <goods-received-note-editor
             v-if="useReceivedTypeGrnEditor"
             :items="items"
@@ -117,6 +118,28 @@ const grnSourceType = computed(() => {
 });
 const useReceivedTypeGrnEditor = computed(() => (
     props.editorType === 'goods_received_note' && grnSourceType.value === 'Work Order'
+));
+
+// Empty-state message for the source-derived, read-only editors (DC / GRN,
+// allowCreate: false): rows come only from the selected source document, so an
+// empty list after selection means "nothing pending" — say so instead of
+// rendering a bare heading that looks broken. Editors where the user adds rows
+// (Work Order, Purchase Order) keep their normal add-item UI.
+const showEmptyMessage = computed(() => {
+    if (props.allowCreate || (items.value || []).length) return false;
+    // The received-type GRN editor renders its own empty state — don't double up.
+    if (useReceivedTypeGrnEditor.value) return false;
+    if (typeof cur_frm === 'undefined' || !cur_frm?.doc) return false;
+    if (props.editorType === 'delivery_challan') return Boolean(cur_frm.doc.work_order);
+    if (props.editorType === 'goods_received_note') return Boolean(cur_frm.doc.against_id);
+    return false;
+});
+// DC now lists the WO's own deliverables even at pending 0 (excess delivery,
+// 2026-07-10), so an empty DC list means the WO genuinely has no deliverables.
+const emptyMessage = computed(() => (
+    props.editorType === 'goods_received_note'
+        ? 'No pending receivables — all quantities are already received.'
+        : 'No deliverables on this Work Order.'
 ));
 const useInlineReceiveEditor = computed(() => (
     props.editorType === 'goods_received_note' && grnSourceType.value === 'Purchase Order'

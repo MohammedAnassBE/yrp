@@ -1,0 +1,271 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-07-07 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "work_order",
+  "status",
+  "correction_date",
+  "reason",
+  "column_break_hdr",
+  "process_name",
+  "item",
+  "production_detail",
+  "supplier",
+  "delivery_location",
+  "wo_date",
+  "address_section",
+  "supplier_address",
+  "delivery_address",
+  "deliverables_section",
+  "deliverable_items",
+  "deliverables",
+  "deliverable_details",
+  "receivables_section",
+  "receivable_items",
+  "receivables",
+  "receivable_details",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "default": "WOC-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "WOC-.YYYY.-",
+   "reqd": 1
+  },
+  {
+   "fieldname": "work_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Work Order",
+   "options": "Work Order",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nSubmitted\nPartially Delivered\nFully Delivered\nPartially Received\nFully Received\nCancelled",
+   "read_only": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "correction_date",
+   "fieldtype": "Date",
+   "label": "Correction Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "column_break_hdr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "work_order.process_name",
+   "fetch_if_empty": 1,
+   "fieldname": "process_name",
+   "fieldtype": "Link",
+   "label": "Process Name",
+   "options": "Process",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "work_order.item",
+   "fetch_if_empty": 1,
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "work_order.production_detail",
+   "fetch_if_empty": 1,
+   "fieldname": "production_detail",
+   "fieldtype": "Link",
+   "label": "Production Detail",
+   "options": "Item Production Detail",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "work_order.supplier",
+   "fetch_if_empty": 1,
+   "fieldname": "supplier",
+   "fieldtype": "Link",
+   "label": "Supplier",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "work_order.delivery_location",
+   "fetch_if_empty": 1,
+   "fieldname": "delivery_location",
+   "fieldtype": "Link",
+   "label": "Delivery Location",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "work_order.wo_date",
+   "fetch_if_empty": 1,
+   "fieldname": "wo_date",
+   "fieldtype": "Date",
+   "label": "WO Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "address_section",
+   "fieldtype": "Section Break",
+   "label": "Address"
+  },
+  {
+   "fetch_from": "work_order.supplier_address",
+   "fetch_if_empty": 1,
+   "fieldname": "supplier_address",
+   "fieldtype": "Link",
+   "label": "Supplier Address",
+   "options": "Address",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "work_order.delivery_address",
+   "fetch_if_empty": 1,
+   "fieldname": "delivery_address",
+   "fieldtype": "Link",
+   "label": "Delivery Address",
+   "options": "Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deliverables_section",
+   "fieldtype": "Section Break",
+   "label": "Deliverables"
+  },
+  {
+   "fieldname": "deliverable_items",
+   "fieldtype": "HTML",
+   "label": "Deliverable Items"
+  },
+  {
+   "fieldname": "deliverables",
+   "fieldtype": "Table",
+   "label": "Deliverables",
+   "options": "Work Order Deliverables"
+  },
+  {
+   "fieldname": "deliverable_details",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Deliverable Details",
+   "no_copy": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "receivables_section",
+   "fieldtype": "Section Break",
+   "label": "Receivables"
+  },
+  {
+   "fieldname": "receivable_items",
+   "fieldtype": "HTML",
+   "label": "Receivable Items"
+  },
+  {
+   "fieldname": "receivables",
+   "fieldtype": "Table",
+   "label": "Receivables",
+   "options": "Work Order Receivables"
+  },
+  {
+   "fieldname": "receivable_details",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Receivable Details",
+   "no_copy": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Work Order Correction",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-07-07 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "Work Order Correction",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Production Planner",
+   "select": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1,
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

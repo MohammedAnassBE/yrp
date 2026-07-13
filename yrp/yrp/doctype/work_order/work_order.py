@@ -49,6 +49,7 @@ class WorkOrder(Document):
 			frappe.throw("There are no deliverables on the Work Order.")
 		if not self.get("receivables"):
 			frappe.throw("There are no receivables on the Work Order.")
+		self.set_receivable_process_costs(require_approved=True)
 		if not self.start_date:
 			self.start_date = nowdate()
 		if not self.get("work_order_tracking_logs"):
@@ -223,7 +224,7 @@ class WorkOrder(Document):
 			if flt(row.qty) and not flt(row.pending_quantity):
 				row.pending_quantity = row.qty
 
-	def set_receivable_process_costs(self):
+	def set_receivable_process_costs(self, require_approved=False):
 		if not self.get("receivables"):
 			return
 		if self.get("rework_type") == "No Cost":
@@ -237,6 +238,10 @@ class WorkOrder(Document):
 		process_cost_name = self.get_receivable_process_cost()
 		if not process_cost_name:
 			if self.get("is_rework"):
+				return
+			if not require_approved:
+				# Draft save: don't block. The approved Process Cost is enforced
+				# at submit (before_submit passes require_approved=True).
 				return
 			frappe.throw(
 				_(
@@ -315,7 +320,10 @@ class WorkOrder(Document):
 		status = "Submitted"
 
 		total_deliverable_qty = sum(flt(row.qty) for row in self.get("deliverables") or [])
-		total_delivery_pending = sum(flt(row.pending_quantity) for row in self.get("deliverables") or [])
+		# Per-row floor at 0: excess delivery drives a row's pending NEGATIVE
+		# (2026-07-10) — a raw sum would let one excess row mask another row's
+		# genuinely-owed pending and flip the WO to a false "Fully Delivered".
+		total_delivery_pending = sum(max(flt(row.pending_quantity), 0) for row in self.get("deliverables") or [])
 		if total_deliverable_qty:
 			if total_delivery_pending <= 0:
 				status = "Fully Delivered"
@@ -323,7 +331,9 @@ class WorkOrder(Document):
 				status = "Partially Delivered"
 
 		total_receivable_qty = sum(flt(row.qty) for row in self.get("receivables") or [])
-		total_received_pending = sum(flt(row.pending_quantity) for row in self.get("receivables") or [])
+		# Same floor as deliverables: GRN's allowance-governed excess receipt
+		# can push a row's pending negative — don't let it mask other rows.
+		total_received_pending = sum(max(flt(row.pending_quantity), 0) for row in self.get("receivables") or [])
 		if total_receivable_qty:
 			received_qty = total_receivable_qty - total_received_pending
 			if received_qty > 0:
