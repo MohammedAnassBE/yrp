@@ -6,15 +6,20 @@ from frappe.utils import flt, nowdate, nowtime
 
 class DeliveryChallan(Document):
 	def onload(self):
-		from yrp.stock.save_stock_items import group_items_for_ui
+		from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 
 		self.set_onload(
 			"item_details",
 			group_items_for_ui(self.get("items") or [], "Delivery Challan"),
 		)
+		self.set_onload(
+			"correction_item_details",
+			group_correction_items_for_ui(self.get("correction_items") or [], "Delivery Challan"),
+		)
 
 	def before_validate(self):
 		self.sync_vue_item_details()
+		self.sync_vue_correction_item_details()
 		self.set_missing_values()
 		self.apply_dimensions()
 		self.set_item_defaults()
@@ -26,6 +31,9 @@ class DeliveryChallan(Document):
 		# untouched so the user can come back and re-edit.
 		if self.docstatus == 1:
 			self.items = [it for it in self.get("items") or [] if (it.qty or 0) > 0]
+			self.correction_items = [
+				it for it in self.get("correction_items") or [] if (it.qty or 0) > 0
+			]
 
 	def validate(self):
 		self.validate_work_order()
@@ -70,10 +78,11 @@ class DeliveryChallan(Document):
 		self.make_repost_action()
 
 	def set_missing_values(self):
-		if not self.posting_date:
-			self.posting_date = nowdate()
-		if not self.posting_time:
-			self.posting_time = nowtime()
+		from yrp.stock.utils import apply_posting_datetime
+
+		# Posting date/time follow the "Edit Posting Date and Time" checkbox
+		# (stamped to now unless ticked) — ERPNext set_posting_time semantics.
+		apply_posting_datetime(self)
 		if not self.work_order:
 			return
 
@@ -103,14 +112,26 @@ class DeliveryChallan(Document):
 		for row in rows:
 			self.append("items", row)
 
+	def sync_vue_correction_item_details(self):
+		if self.docstatus != 0 or not self.get("correction_item_details"):
+			return
+		from yrp.stock.save_stock_items import ungroup_correction_items_from_ui
+
+		rows = ungroup_correction_items_from_ui(
+			self.correction_item_details, "Delivery Challan", keep_zero=True
+		)
+		self.set("correction_items", [])
+		for row in rows:
+			self.append("correction_items", row)
+
 	def apply_dimensions(self):
 		_copy_header_dimensions_to_items(self)
 		from yrp.stock.dimensions import apply_dimension_defaults
 
-		apply_dimension_defaults(self.get("items") or [])
+		apply_dimension_defaults((self.get("items") or []) + (self.get("correction_items") or []))
 
 	def set_item_defaults(self):
-		for row in self.get("items") or []:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			row.delivered_quantity = flt(row.qty)
 			row.conversion_factor = flt(row.conversion_factor) or 1
 			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
@@ -141,8 +162,10 @@ class DeliveryChallan(Document):
 			frappe.throw(_("Work Order {0} is closed.").format(self.work_order))
 
 	def validate_items(self):
-		if not self.get("items"):
-			frappe.throw(_("At least one item is required."))
+		# Correction-only DCs are valid: a fully-delivered WO can still owe its
+		# Work Order Correction quantities (user, 2026-07-09).
+		if not (self.get("items") or self.get("correction_items")):
+			frappe.throw(_("At least one deliverable or correction item is required."))
 		if self.from_warehouse == self.to_warehouse:
 			frappe.throw(_("From Warehouse and To Warehouse must be different."))
 		# qty=0 rows are kept across draft saves so the user can re-edit later;
@@ -150,7 +173,7 @@ class DeliveryChallan(Document):
 		# the time validate_items runs on submit the items list is already
 		# clean. Skip the qty>0 check on draft saves only.
 		check_qty = self.docstatus == 1
-		for row in self.items:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			if not row.item_variant:
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if check_qty and flt(row.delivered_quantity or row.qty) <= 0:
@@ -159,9 +182,10 @@ class DeliveryChallan(Document):
 				frappe.throw(_("Row {0}: UOM is required.").format(row.idx))
 
 	def calculate_totals(self):
-		self.total_delivered_qty = sum(flt(row.delivered_quantity or row.qty) for row in self.items)
-		self.stock_value = sum(flt(row.stock_qty) * flt(row.valuation_rate or row.rate) for row in self.items)
-		self.total_value = sum(flt(row.amount) for row in self.items)
+		all_rows = (self.get("items") or []) + (self.get("correction_items") or [])
+		self.total_delivered_qty = sum(flt(row.delivered_quantity or row.qty) for row in all_rows)
+		self.stock_value = sum(flt(row.stock_qty) * flt(row.valuation_rate or row.rate) for row in all_rows)
+		self.total_value = sum(flt(row.amount) for row in all_rows)
 
 	def validate_against_work_order_pending(self):
 		wo = frappe.get_doc("Work Order", self.work_order)
@@ -170,6 +194,32 @@ class DeliveryChallan(Document):
 			if not target:
 				frappe.throw(
 					_("Row {0}: no matching Work Order Deliverable found for {1}.").format(
+						row.idx, row.item_variant
+					)
+				)
+			row.ref_doctype = "Work Order Deliverables"
+			row.ref_docname = target.name
+			row.pending_quantity = target.pending_quantity
+
+		corr_cache = {}
+		for row in self.get("correction_items") or []:
+			name = row.work_order_correction
+			if not name:
+				frappe.throw(
+					_("Row {0}: correction item missing Work Order Correction.").format(row.idx)
+				)
+			corr = corr_cache.get(name) or frappe.get_doc("Work Order Correction", name)
+			corr_cache[name] = corr
+			if corr.work_order != self.work_order:
+				frappe.throw(
+					_("Row {0}: Work Order Correction {1} belongs to Work Order {2}, not {3}.").format(
+						row.idx, name, corr.work_order, self.work_order
+					)
+				)
+			target = _find_matching_row(corr.deliverables, row, "Work Order Deliverables")
+			if not target:
+				frappe.throw(
+					_("Row {0}: no matching correction deliverable for {1}.").format(
 						row.idx, row.item_variant
 					)
 				)
@@ -187,7 +237,7 @@ class DeliveryChallan(Document):
 		is_rework = _is_rework_work_order(self.work_order)
 		dim_fields = get_dimension_fieldnames()
 		required_by_bucket = {}
-		for row in self.items:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			qty = flt(row.stock_qty) or flt(row.delivered_quantity or row.qty)
 			if qty <= 0:
 				continue
@@ -248,6 +298,23 @@ class DeliveryChallan(Document):
 		if changed:
 			_update_work_order_status(self.work_order)
 
+		by_corr = {}
+		for row in self.get("correction_items") or []:
+			by_corr.setdefault(row.work_order_correction, []).append(row)
+		for name, rows in by_corr.items():
+			corr = frappe.get_doc("Work Order Correction", name)
+			touched = False
+			for row in rows:
+				target = _find_matching_row(corr.deliverables, row, "Work Order Deliverables")
+				if not target:
+					continue
+				qty = flt(row.delivered_quantity or row.qty)
+				pending = flt(target.pending_quantity) + qty if cancel else flt(target.pending_quantity) - qty
+				target.db_set("pending_quantity", flt(pending), update_modified=False)
+				touched = True
+			if touched:
+				_update_work_order_correction_status(name)
+
 	def update_work_order_reservations(self, cancel=False):
 		# Applies to ANY Work Order, not just rework. If a Stock Reservation
 		# Entry exists against the WO+deliverable (auto-created for rework,
@@ -277,7 +344,7 @@ class DeliveryChallan(Document):
 				)
 
 		entries = []
-		for row in self.items:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			qty = flt(row.stock_qty) or flt(row.delivered_quantity or row.qty)
 			if qty <= 0:
 				continue
@@ -331,7 +398,7 @@ def _copy_header_dimensions_to_items(doc):
 	for fn in get_dimension_fieldnames():
 		if not doc.meta.get_field(fn) or not doc.get(fn):
 			continue
-		for row in doc.get("items") or []:
+		for row in (doc.get("items") or []) + (doc.get("correction_items") or []):
 			if row.meta.get_field(fn) and not row.get(fn):
 				row.set(fn, doc.get(fn))
 
@@ -420,9 +487,15 @@ def _update_work_order_status(work_order):
 	wo.db_set("is_delivered", wo.is_delivered, update_modified=False)
 
 
+def _update_work_order_correction_status(name):
+	corr = frappe.get_doc("Work Order Correction", name)
+	corr.set_status()
+	corr.db_set("status", corr.status, update_modified=False)
+
+
 @frappe.whitelist()
 def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
-	from yrp.stock.save_stock_items import group_items_for_ui
+	from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 	from yrp.stock.dimensions import apply_dimension_defaults
 
 	wo = frappe.get_doc("Work Order", work_order)
@@ -432,6 +505,21 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 	apply_dimension_defaults(items)
 	from_warehouse = _get_warehouse_for_supplier(wo.delivery_location)
 	for row in items:
+		rate = get_delivery_row_valuation_rate(
+			row,
+			from_warehouse,
+			posting_date or nowdate(),
+			posting_time or nowtime(),
+			child_doctype="Delivery Challan Item",
+		)
+		row["rate"] = flt(rate)
+		row["valuation_rate"] = flt(rate)
+		row["amount"] = flt(row.get("stock_qty") or row.get("delivered_quantity") or row.get("qty")) * flt(rate)
+
+	correction_items = _pending_correction_deliverable_rows(wo)
+	_apply_dimension_values_to_rows(correction_items, dimensions)
+	apply_dimension_defaults(correction_items)
+	for row in correction_items:
 		rate = get_delivery_row_valuation_rate(
 			row,
 			from_warehouse,
@@ -453,6 +541,8 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 		"to_warehouse": _get_warehouse_for_supplier(wo.supplier),
 		"items": items,
 		"item_details": group_items_for_ui(items, "Delivery Challan"),
+		"correction_items": correction_items,
+		"correction_item_details": group_correction_items_for_ui(correction_items, "Delivery Challan"),
 	}
 	defaults.update(dimensions)
 	return defaults
@@ -465,12 +555,15 @@ def _pending_deliverable_rows(wo):
 	rows = []
 	for row in wo.get("deliverables") or []:
 		pending = flt(row.pending_quantity)
-		if pending <= 0:
-			continue
+		# Zero-pending rows are STILL offered (qty prefilled 0) so the user can
+		# deliver EXCESS against a fully-delivered Work Order (2026-07-10):
+		# submit strips qty=0 rows, and update_work_order_deliverables lets
+		# pending go negative — the excess-delivered signal.
+		prefill = pending if pending > 0 else 0
 		out = {
 			"item_variant": row.item_variant,
-			"qty": pending,
-			"delivered_quantity": pending,
+			"qty": prefill,
+			"delivered_quantity": prefill,
 			"uom": row.uom,
 			"pending_quantity": pending,
 			"ref_doctype": "Work Order Deliverables",
@@ -483,6 +576,42 @@ def _pending_deliverable_rows(wo):
 			if row.meta.get_field(fn) and row.get(fn):
 				out[fn] = row.get(fn)
 		rows.append(out)
+	return rows
+
+
+def _pending_correction_deliverable_rows(wo):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dim_fields = get_dimension_fieldnames()
+	rows = []
+	names = frappe.get_all(
+		"Work Order Correction",
+		filters={"work_order": wo.name, "docstatus": 1},
+		pluck="name",
+	)
+	for name in names:
+		corr = frappe.get_doc("Work Order Correction", name)
+		for row in corr.get("deliverables") or []:
+			pending = flt(row.pending_quantity)
+			if pending <= 0:
+				continue
+			out = {
+				"item_variant": row.item_variant,
+				"qty": pending,
+				"delivered_quantity": pending,
+				"uom": row.uom,
+				"pending_quantity": pending,
+				"ref_doctype": "Work Order Deliverables",
+				"ref_docname": row.name,
+				"work_order_correction": name,
+				"table_index": row.table_index,
+				"row_index": row.row_index,
+				"set_combination": row.set_combination,
+			}
+			for fn in dim_fields:
+				if row.meta.get_field(fn) and row.get(fn):
+					out[fn] = row.get(fn)
+			rows.append(out)
 	return rows
 
 
@@ -545,7 +674,13 @@ def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delt
 		frappe.throw(_(
 			"Stock Reservation Entry {0} has been closed; cannot update delivered qty."
 		).format(sre.name))
+	# Clamp into [0, reserved_qty]: excess delivery (2026-07-10) can exceed the
+	# reservation — delivered_qty beyond reserved_qty would drive the SRE's
+	# remaining negative and INFLATE apparent availability downstream
+	# (get_sre_reserved_qty). The excess itself still ships; only the
+	# reservation consumption is capped at what was actually reserved.
 	delivered_qty = max(flt(sre.delivered_qty) + flt(qty_delta), 0)
+	delivered_qty = min(delivered_qty, flt(sre.reserved_qty))
 	sre.delivered_qty = delivered_qty
 	sre.set_status()
 	frappe.db.set_value(

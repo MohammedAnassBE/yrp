@@ -15,7 +15,7 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 )
 from yrp.yrp.doctype.supplier.test_supplier_notification import _contact_for
 
-GET = "requests.get"
+POST = "requests.post"
 
 
 def _resp(status, payload=None, text=None):
@@ -107,32 +107,33 @@ class TestYRPSMSSettings(FrappeTestCase):
 
 	def test_deliver_success(self):
 		from yrp.sms import deliver_flow_sms
-		with patch(GET, return_value=_resp(200, {"type": "success", "message": "req-123"})) as p:
+		with patch(POST, return_value=_resp(200, {"type": "success", "message": "req-123"})) as p:
 			result = deliver_flow_sms(reference_doctype="Purchase Order", mobile_no="9944405056",
 				params={"VAR1": "Acme"})
 		self.assertTrue(result["ok"])
 		self.assertEqual(result["request_id"], "req-123")
 		self.assertEqual(result["response_type"], "success")
 		self.assertIsNone(result["error"])
-		# request shape (F15-style GET): authkey + mobile + template_id + params as query
-		query = p.call_args.kwargs["params"]
-		self.assertEqual(query["template_id"], "tmpl-PO")
-		self.assertEqual(query["mobile"], "919944405056")
-		self.assertEqual(query["authkey"], "secret-key")
-		self.assertEqual(query["VAR1"], "Acme")
+		# request shape (MSG91 Flow): authkey header + JSON body {template_id, recipients:[{mobiles, **vars}]}
+		body = p.call_args.kwargs["json"]
+		self.assertEqual(body["template_id"], "tmpl-PO")
+		recipient = body["recipients"][0]
+		self.assertEqual(recipient["mobiles"], "919944405056")
+		self.assertEqual(recipient["VAR1"], "Acme")
+		self.assertEqual(p.call_args.kwargs["headers"]["authkey"], "secret-key")
 
-	def test_deliver_success_reads_request_id_field(self):
-		"""OTP endpoint returns the id in `request_id`, not `message`."""
+	def test_deliver_success_reads_message_field(self):
+		"""Flow returns the request id in `message`; a bare `request_id` still works as fallback."""
 		from yrp.sms import deliver_flow_sms
-		with patch(GET, return_value=_resp(200, {"type": "success", "request_id": "otp-req-77"})):
+		with patch(POST, return_value=_resp(200, {"type": "success", "request_id": "flow-req-77"})):
 			result = deliver_flow_sms(reference_doctype="Purchase Order", mobile_no="9944405056")
 		self.assertTrue(result["ok"])
-		self.assertEqual(result["request_id"], "otp-req-77")
+		self.assertEqual(result["request_id"], "flow-req-77")
 
 	def test_deliver_http200_but_type_error_is_not_sent(self):
 		"""The incident: MSG91 returns HTTP 200 but rejects the message."""
 		from yrp.sms import deliver_flow_sms
-		with patch(GET, return_value=_resp(200, {"type": "error", "message": "template not found"})):
+		with patch(POST, return_value=_resp(200, {"type": "error", "message": "template not found"})):
 			result = deliver_flow_sms(reference_doctype="Purchase Order", mobile_no="9944405056")
 		self.assertFalse(result["ok"])
 		self.assertIsNone(result["request_id"])
@@ -141,7 +142,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 
 	def test_deliver_no_config_captured_as_failure(self):
 		from yrp.sms import deliver_flow_sms
-		with patch(GET) as p:
+		with patch(POST) as p:
 			result = deliver_flow_sms(reference_doctype="Stock Entry", mobile_no="9944405056")
 		self.assertFalse(result["ok"])
 		self.assertIn("No SMS template configured", result["error"])
@@ -149,7 +150,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 
 	def test_deliver_non_json_response_is_failure(self):
 		from yrp.sms import deliver_flow_sms
-		with patch(GET, return_value=_resp(502, payload=None, text="<html>Bad Gateway</html>")):
+		with patch(POST, return_value=_resp(502, payload=None, text="<html>Bad Gateway</html>")):
 			result = deliver_flow_sms(reference_doctype="Purchase Order", mobile_no="9944405056")
 		self.assertFalse(result["ok"])
 		self.assertIsNone(result["request_id"])
@@ -165,7 +166,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 	def test_send_writes_sent_log(self):
 		po = self._po_with_contact()
 		from yrp.notification import send_flow_sms_notification
-		with patch(GET, return_value=_resp(200, {"type": "success", "message": "req-999"})):
+		with patch(POST, return_value=_resp(200, {"type": "success", "message": "req-999"})):
 			send_flow_sms_notification("Purchase Order", po.name, template_name="PO Reminder",
 				mobile_no="9944405056", params={"supplier": "X"})
 		log = frappe.get_last_doc("SMS Notification Log",
@@ -180,7 +181,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 	def test_send_failure_writes_failed_log_and_does_not_throw(self):
 		po = self._po_with_contact()
 		from yrp.notification import send_flow_sms_notification
-		with patch(GET, return_value=_resp(200, {"type": "error", "message": "DND"})):
+		with patch(POST, return_value=_resp(200, {"type": "error", "message": "DND"})):
 			send_flow_sms_notification("Purchase Order", po.name, template_name="PO Reminder",
 				mobile_no="9944405056")
 		log = frappe.get_last_doc("SMS Notification Log",
@@ -194,18 +195,18 @@ class TestYRPSMSSettings(FrappeTestCase):
 		flips to Sent, and never falls through to the legacy free-text path."""
 		po = self._po_with_contact()
 		from yrp.notification import send_flow_sms_notification, resend_sms_notification_log
-		with patch(GET, return_value=_resp(200, {"type": "error", "message": "temporary"})):
+		with patch(POST, return_value=_resp(200, {"type": "error", "message": "temporary"})):
 			send_flow_sms_notification("Purchase Order", po.name, template_name="PO Reminder",
 				mobile_no="9944405056", params={"supplier": "Acme"})
 		log = frappe.get_last_doc("SMS Notification Log",
 			filters={"reference_doctype": "Purchase Order", "reference_name": po.name})
 		self.assertEqual(log.status, "Failed")
-		with patch(GET, return_value=_resp(200, {"type": "success", "message": "req-resend"})) as p:
+		with patch(POST, return_value=_resp(200, {"type": "success", "message": "req-resend"})) as p:
 			resend_sms_notification_log(log.name)
 		log.reload()
 		self.assertEqual(log.status, "Sent")
 		self.assertEqual(log.request_id, "req-resend")
-		# resent down the Flow path with the stored template + params
-		query = p.call_args.kwargs["params"]
-		self.assertEqual(query["template_id"], "tmpl-PO")
-		self.assertEqual(query["supplier"], "Acme")
+		# resent down the Flow path with the stored template + params in the JSON body
+		body = p.call_args.kwargs["json"]
+		self.assertEqual(body["template_id"], "tmpl-PO")
+		self.assertEqual(body["recipients"][0]["supplier"], "Acme")

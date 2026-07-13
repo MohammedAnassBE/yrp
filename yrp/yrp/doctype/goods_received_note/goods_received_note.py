@@ -4,7 +4,7 @@ import json
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, nowdate, nowtime
+from frappe.utils import flt
 
 from yrp.yrp.doctype.delivery_challan.delivery_challan import (
 	_apply_dimension_values_to_rows,
@@ -14,6 +14,7 @@ from yrp.yrp.doctype.delivery_challan.delivery_challan import (
 	_get_warehouse_for_supplier,
 	_normal_json,
 	_sle_base,
+	_update_work_order_correction_status,
 	_update_work_order_status,
 )
 
@@ -49,7 +50,7 @@ def _strip_zero_entries(item_details):
 
 class GoodsReceivedNote(Document):
 	def onload(self):
-		from yrp.stock.save_stock_items import group_items_for_ui
+		from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 
 		rows = self.get("items") or []
 		if self.docstatus == 0 and self.against == "Work Order" and self.against_id and rows:
@@ -75,9 +76,14 @@ class GoodsReceivedNote(Document):
 			"item_details",
 			group_items_for_ui(rows, "Goods Received Note"),
 		)
+		self.set_onload(
+			"correction_item_details",
+			group_correction_items_for_ui(self.get("correction_items") or [], "Goods Received Note"),
+		)
 
 	def before_validate(self):
 		self.sync_vue_item_details()
+		self.sync_vue_correction_item_details()
 		self.set_missing_values()
 		self.apply_dimensions()
 		self.set_item_defaults()
@@ -128,10 +134,11 @@ class GoodsReceivedNote(Document):
 			self.db_set("transfer_complete", 0)
 
 	def set_missing_values(self):
-		if not self.posting_date:
-			self.posting_date = nowdate()
-		if not self.posting_time:
-			self.posting_time = nowtime()
+		from yrp.stock.utils import apply_posting_datetime
+
+		# Posting date/time follow the "Edit Posting Date and Time" checkbox
+		# (stamped to now unless ticked) — ERPNext set_posting_time semantics.
+		apply_posting_datetime(self)
 		if not self.against_id:
 			return
 
@@ -167,11 +174,30 @@ class GoodsReceivedNote(Document):
 		# they aren't real receipts (ungroup already dropped them from `items`).
 		self.item_details = _strip_zero_entries(self.item_details)
 
+	def sync_vue_correction_item_details(self):
+		if self.docstatus != 0 or not self.get("correction_item_details"):
+			return
+		from yrp.stock.save_stock_items import ungroup_correction_items_from_ui
+
+		rows = ungroup_correction_items_from_ui(self.correction_item_details, "Goods Received Note")
+		self.set("correction_items", [])
+		for row in rows:
+			self.append("correction_items", row)
+
 	def apply_dimensions(self):
 		_copy_header_dimensions_to_items(self)
-		from yrp.stock.dimensions import apply_dimension_defaults
+		from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldnames
 
+		correction_items = self.get("correction_items") or []
+		if correction_items:
+			header_dims = {
+				fn: self.get(fn)
+				for fn in get_dimension_fieldnames()
+				if self.meta.get_field(fn) and self.get(fn)
+			}
+			_apply_dimension_values_to_rows(correction_items, header_dims)
 		apply_dimension_defaults(self.get("items") or [])
+		apply_dimension_defaults(correction_items)
 
 	def set_item_defaults(self):
 		wo = frappe.get_doc("Work Order", self.against_id) if self.against == "Work Order" and self.against_id else None
@@ -179,14 +205,18 @@ class GoodsReceivedNote(Document):
 			frappe.get_doc("Delivery Challan", self.delivery_challan)
 			if self.delivery_challan else None
 		)
-		for row in self.get("items") or []:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			row.conversion_factor = flt(row.conversion_factor) or 1
 			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
 			default_uom = frappe.get_cached_value("Item", parent_item, "default_unit_of_measure") if parent_item else None
 			row.uom = row.uom or default_uom
 			row.stock_uom = row.stock_uom or row.uom or default_uom
 			row.stock_qty = flt(row.quantity) * flt(row.conversion_factor)
-			if wo:
+			if row.get("work_order_correction"):
+				# Correction receivables keep their own receivable cost as rate;
+				# no DC material-rate blend in v1.
+				row.amount = flt(row.stock_qty or row.quantity) * flt(row.rate)
+			elif wo:
 				row.rate = get_work_order_grn_rate(wo, delivery_challan, row)
 				row.amount = flt(row.stock_qty or row.quantity) * flt(row.rate)
 			else:
@@ -218,15 +248,17 @@ class GoodsReceivedNote(Document):
 				frappe.throw(_("Delivery Challan must belong to the same Work Order."))
 
 	def validate_items(self):
-		if not self.get("items"):
-			frappe.throw(_("At least one item is required."))
+		# Correction-only GRNs are valid: a fully-received WO can still owe its
+		# Work Order Correction quantities (user, 2026-07-09).
+		if not (self.get("items") or self.get("correction_items")):
+			frappe.throw(_("At least one receivable or correction item is required."))
 		if self.against == "Work Order" and not self.from_warehouse:
 			frappe.throw(_("From Warehouse is required."))
 		if not self.to_warehouse:
 			frappe.throw(_("To Warehouse is required."))
 		if self.from_warehouse and self.from_warehouse == self.to_warehouse:
 			frappe.throw(_("From Warehouse and To Warehouse must be different."))
-		for row in self.items:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			if not row.item_variant:
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if flt(row.quantity) <= 0:
@@ -235,8 +267,9 @@ class GoodsReceivedNote(Document):
 				frappe.throw(_("Row {0}: UOM is required.").format(row.idx))
 
 	def calculate_totals(self):
-		self.total_received_quantity = sum(flt(row.quantity) for row in self.items)
-		self.total = sum(flt(row.amount) for row in self.items)
+		all_rows = (self.get("items") or []) + (self.get("correction_items") or [])
+		self.total_received_quantity = sum(flt(row.quantity) for row in all_rows)
+		self.total = sum(flt(row.amount) for row in all_rows)
 
 	def apply_freight_allocation(self):
 		"""D-012: fold self.freight_charges into row.rate at submit so the SLE
@@ -487,6 +520,57 @@ class GoodsReceivedNote(Document):
 				if _find_matching_receivable([target], row):
 					row.max_receivable_quantity = max(flt(allowance), 0)
 
+		self.validate_against_correction_pending(excess_pct)
+
+	def validate_against_correction_pending(self, excess_pct):
+		# Correction receivables: same matching + excess-allowance gate as the WO's
+		# own receivables, but each row is scoped to its own Work Order Correction
+		# (row.work_order_correction) and matched against that correction's
+		# receivables rather than the WO's.
+		corr_cache = {}
+		totals_by_receivable = defaultdict(float)
+		receivable_by_name = {}
+		for row in self.get("correction_items") or []:
+			name = row.work_order_correction
+			if not name:
+				frappe.throw(_("Row {0}: correction item missing Work Order Correction.").format(row.idx))
+			corr = corr_cache.get(name)
+			if corr is None:
+				corr = frappe.get_doc("Work Order Correction", name)
+				corr_cache[name] = corr
+			if corr.work_order != self.against_id:
+				frappe.throw(
+					_("Row {0}: Work Order Correction {1} belongs to Work Order {2}, not {3}.").format(
+						row.idx, name, corr.work_order, self.against_id
+					)
+				)
+			target = _find_matching_receivable(corr.receivables, row)
+			if not target:
+				frappe.throw(
+					_("Row {0}: no matching correction receivable found for {1}.").format(
+						row.idx, row.item_variant
+					)
+				)
+			totals_by_receivable[(name, target.name)] += flt(row.quantity)
+			receivable_by_name[(name, target.name)] = target
+			row.ref_doctype = "Work Order Receivables"
+			row.ref_docname = target.name
+			row.pending_quantity = target.pending_quantity
+
+		for (name, receivable_name), total_qty in totals_by_receivable.items():
+			target = receivable_by_name[(name, receivable_name)]
+			ordered = flt(target.qty)
+			allowance = _remaining_receivable_allowance(ordered, target.pending_quantity, excess_pct)
+			if total_qty > allowance + 0.0001:
+				frappe.throw(
+					_("Received qty {0} exceeds allowance {1} for {2} (ordered {3}, excess allowance {4}%).").format(
+						flt(total_qty), flt(allowance), target.item_variant, ordered, flt(excess_pct)
+					)
+				)
+			for row in self.get("correction_items") or []:
+				if row.work_order_correction == name and _find_matching_receivable([target], row):
+					row.max_receivable_quantity = max(flt(allowance), 0)
+
 	def validate_rework_delivery_challan_pending(self):
 		if not _is_rework_work_order(self.against_id):
 			return
@@ -610,6 +694,30 @@ class GoodsReceivedNote(Document):
 		if changed:
 			_update_work_order_status(self.against_id)
 
+		self.update_correction_receivables(cancel=cancel)
+
+	def update_correction_receivables(self, cancel=False):
+		# Draw down (or restore, on cancel) each correction's own receivable
+		# pending, routed by row.work_order_correction. Negative pending is allowed
+		# when an excess receipt was permitted — no clamp, mirroring the WO branch.
+		by_corr = {}
+		for row in self.get("correction_items") or []:
+			if row.work_order_correction:
+				by_corr.setdefault(row.work_order_correction, []).append(row)
+		for name, rows in by_corr.items():
+			corr = frappe.get_doc("Work Order Correction", name)
+			touched = False
+			for row in rows:
+				target = _find_matching_receivable(corr.receivables, row)
+				if not target:
+					continue
+				qty = flt(row.quantity)
+				pending = flt(target.pending_quantity) + qty if cancel else flt(target.pending_quantity) - qty
+				target.db_set("pending_quantity", flt(pending), update_modified=False)
+				touched = True
+			if touched:
+				_update_work_order_correction_status(name)
+
 	def update_purchase_order_items(self, cancel=False):
 		# Note: pending_quantity may go negative when an excess receipt is allowed
 		# (Item.po_excess_allowed_percentage > 0). This is intentional — the
@@ -642,12 +750,15 @@ class GoodsReceivedNote(Document):
 				)
 
 		entries = []
-		for row in self.items:
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			qty = flt(row.stock_qty) or flt(row.quantity)
 			if qty <= 0:
 				continue
 			base = _sle_base(self, row)
-			if _is_rework_work_order(self.against_id):
+			# Correction receivables always post a plain destination-warehouse
+			# receipt, even on a rework WO — the rework input-return SLE applies
+			# only to the WO's own returned deliverables (v1).
+			if _is_rework_work_order(self.against_id) and not row.get("work_order_correction"):
 				dc_item = _get_delivery_challan_item(row.delivery_challan_item)
 				entries.append({
 					**_rework_input_sle_base(self, row, dc_item),
@@ -849,7 +960,7 @@ def _update_purchase_order_status(purchase_order):
 
 @frappe.whitelist()
 def get_work_order_defaults(work_order, delivery_challan=None):
-	from yrp.stock.save_stock_items import group_items_for_ui
+	from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 	from yrp.stock.dimensions import apply_dimension_defaults
 
 	wo = frappe.get_doc("Work Order", work_order)
@@ -858,6 +969,9 @@ def get_work_order_defaults(work_order, delivery_challan=None):
 	dimensions = _get_production_group_dimensions(wo)
 	_apply_dimension_values_to_rows(items, dimensions)
 	apply_dimension_defaults(items)
+	correction_items = _pending_correction_receivable_rows(wo)
+	_apply_dimension_values_to_rows(correction_items, dimensions)
+	apply_dimension_defaults(correction_items)
 	defaults = {
 		"process_name": wo.process_name,
 		"item": wo.item,
@@ -869,6 +983,8 @@ def get_work_order_defaults(work_order, delivery_challan=None):
 		"to_warehouse": _get_warehouse_for_supplier(wo.delivery_location),
 		"items": items,
 		"item_details": group_items_for_ui(items, "Goods Received Note"),
+		"correction_items": correction_items,
+		"correction_item_details": group_correction_items_for_ui(correction_items, "Goods Received Note"),
 	}
 	defaults.update(dimensions)
 	return defaults
@@ -945,6 +1061,44 @@ def _pending_receivable_rows(wo, existing_rows=None, delivery_challan=None):
 			if received_type:
 				out["received_type"] = received_type
 			rows.append(out)
+	return rows
+
+
+def _pending_correction_receivable_rows(wo):
+	# v1: correction receivables use a single default Received Type (applied later
+	# by apply_dimension_defaults); the per-RT split UI used for WO receivables is
+	# NOT applied to corrections.
+	excess_pct = _wo_excess_percentage(wo.name)
+	rows = []
+	names = frappe.get_all(
+		"Work Order Correction",
+		filters={"work_order": wo.name, "docstatus": 1},
+		pluck="name",
+	)
+	for name in names:
+		corr = frappe.get_doc("Work Order Correction", name)
+		for row in corr.get("receivables") or []:
+			pending = flt(row.pending_quantity)
+			if pending <= 0:
+				continue
+			max_receivable = max(
+				flt(_remaining_receivable_allowance(row.qty, pending, excess_pct)),
+				0,
+			)
+			rows.append({
+				"item_variant": row.item_variant,
+				"quantity": pending,
+				"uom": row.uom,
+				"pending_quantity": pending,
+				"max_receivable_quantity": max_receivable,
+				"ref_doctype": "Work Order Receivables",
+				"ref_docname": row.name,
+				"work_order_correction": name,
+				"table_index": row.table_index,
+				"row_index": row.row_index,
+				"set_combination": row.set_combination,
+				"rate": row.cost,
+			})
 	return rows
 
 

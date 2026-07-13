@@ -19,6 +19,11 @@ class StockEntry(Document):
 	def before_validate(self):
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
 		from yrp.stock.dimensions import apply_dimension_defaults
+		from yrp.stock.utils import apply_posting_datetime
+
+		# Posting date/time follow the "Edit Posting Date and Time" checkbox
+		# (stamped to now unless ticked) — ERPNext set_posting_time semantics.
+		apply_posting_datetime(self)
 
 		if self.get("item_details") and self._action != "submit":
 			rows = ungroup_items_from_ui(self.item_details, "Stock Entry")

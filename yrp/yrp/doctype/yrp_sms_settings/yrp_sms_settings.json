@@ -7,7 +7,7 @@
  "fields": [
   {"fieldname": "enabled", "fieldtype": "Check", "label": "Enabled", "default": "1"},
   {"fieldname": "column_break_head", "fieldtype": "Column Break"},
-  {"fieldname": "sms_gateway_url", "fieldtype": "Data", "label": "SMS Gateway URL", "default": "https://api.msg91.com/api/v5/otp/", "reqd": 1, "description": "MSG91 v5 endpoint; called as GET with authkey + mobile + template_id + params (same as the working essdee_attendance OTP call)"},
+  {"fieldname": "sms_gateway_url", "fieldtype": "Data", "label": "SMS Gateway URL", "default": "https://control.msg91.com/api/v5/flow/", "reqd": 1, "description": "MSG91 Flow API v5 endpoint. Called as POST with the authkey header + a JSON body (template_id + recipients). This URL is the single source of truth for where SMS is sent."},
   {"fieldname": "country_code", "fieldtype": "Data", "label": "Country Code", "default": "91", "description": "Prefixed to 10-digit mobile numbers before sending"},
   {"fieldname": "section_break_templates", "fieldtype": "Section Break", "label": "Per-DocType Templates"},
   {"fieldname": "templates_help", "fieldtype": "HTML", "options": "<div class='text-muted small'>Map each DocType to its MSG91 registered Template ID and Auth Key. The document's Send SMS button uses the row matching its DocType.</div>"},

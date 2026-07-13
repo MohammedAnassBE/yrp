@@ -343,6 +343,36 @@ def _get_item_group_index(item_details, attr_details):
 	return -1
 
 
+def group_correction_items_for_ui(child_rows, parent_doctype):
+	"""Partition a flat correction-row list by `work_order_correction` and group
+	each subset with group_items_for_ui. Returns per-correction blocks.
+
+	Output shape (the `correction_item_details` JSON that flows server → editor → server):
+	  [
+	    { "work_order_correction": "WOC-2026-00001",
+	      "title": "Correction WOC-2026-00001",
+	      "item_details": [ /* exact group_items_for_ui(...) output for that correction */ ] },
+	    ...
+	  ]
+	"""
+	from collections import OrderedDict
+	buckets = OrderedDict()
+	for r in child_rows or []:
+		d = dict(r) if isinstance(r, dict) else r.as_dict()
+		key = d.get("work_order_correction")
+		if not key:
+			continue
+		buckets.setdefault(key, []).append(d)
+	out = []
+	for name, rows in buckets.items():
+		out.append({
+			"work_order_correction": name,
+			"title": _("Correction {0}").format(name),
+			"item_details": group_items_for_ui(rows, parent_doctype),
+		})
+	return out
+
+
 # ====================================================================
 # Ungroup: grouped JSON → flat rows for self.set("items", ...)
 # ====================================================================
@@ -447,6 +477,24 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
 			# Increment AFTER all variants of this logical item
 			row_index += 1
 
+	return out
+
+
+def ungroup_correction_items_from_ui(correction_details, parent_doctype, keep_zero=False):
+	"""Inverse of group_correction_items_for_ui: flatten per-correction blocks to
+	flat child rows, stamping `work_order_correction` on every emitted row."""
+	if isinstance(correction_details, str):
+		try:
+			correction_details = json.loads(correction_details or "[]")
+		except (ValueError, json.JSONDecodeError):
+			frappe.throw(_("Invalid correction item details format — please refresh and try again"))
+	out = []
+	for block in correction_details or []:
+		name = block.get("work_order_correction")
+		rows = ungroup_items_from_ui(block.get("item_details") or [], parent_doctype, keep_zero=keep_zero)
+		for row in rows:
+			row["work_order_correction"] = name
+		out.extend(rows)
 	return out
 
 

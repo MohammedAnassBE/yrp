@@ -62,18 +62,21 @@ def _normalise_number(mobile_no, country_code):
 
 
 def _send_flow(gateway_url, authkey, template_id, mobile, params):
-	"""Replicates the proven F15 essdee_attendance MSG91 call byte-for-byte: a
-	GET to the configured endpoint with authkey + mobile + template_id (and any
-	template variables) as query params. MSG91 returns a JSON body carrying
-	`type` (success|error) even on HTTP 200."""
+	"""Send one SMS via the MSG91 Flow API v5: a POST to the configured gateway
+	URL with `authkey` in the header and a JSON body carrying the template_id and
+	a single recipient (the mobile plus any template variables as sibling keys).
+	MSG91 returns a JSON body carrying `type` (success|error) even on HTTP 200, so
+	the status code alone is not proof of acceptance; on success the request id is
+	the `message` field."""
 	import requests
 
-	query = {"authkey": authkey, "mobile": mobile, "template_id": template_id}
+	recipient = {"mobiles": mobile}
 	for key, value in (params or {}).items():
-		query[key] = value
-	headers = {"Content-Type": "application/json", "Accept": "application/json"}
+		recipient[key] = value
+	body = {"template_id": template_id, "recipients": [recipient]}
+	headers = {"authkey": authkey, "Content-Type": "application/json", "Accept": "application/json"}
 
-	response = requests.get(gateway_url, params=query, headers=headers, timeout=30)
+	response = requests.post(gateway_url, json=body, headers=headers, timeout=30)
 	raw = (response.text or "").strip()
 	status = response.status_code
 	response_type, request_id, error = None, None, None
@@ -81,8 +84,8 @@ def _send_flow(gateway_url, authkey, template_id, mobile, params):
 		data = response.json()
 		response_type = data.get("type")
 		if response_type == "success":
-			# OTP endpoint returns the id in `request_id`; Flow returns it in `message`.
-			request_id = data.get("request_id") or data.get("message")
+			# Flow returns the request id in `message` (kept `request_id` as a fallback).
+			request_id = data.get("message") or data.get("request_id")
 		else:
 			error = data.get("message") or raw
 	except ValueError:

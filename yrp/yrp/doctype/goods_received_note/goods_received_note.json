@@ -32,6 +32,10 @@
   "items",
   "item_html",
   "item_details",
+  "correction_items_section",
+  "correction_items",
+  "correction_item_html",
+  "correction_item_details",
   "totals_section",
   "total_received_quantity",
   "total",
@@ -109,9 +113,11 @@
   },
   {
    "default": "0",
+   "depends_on": "eval:doc.docstatus==0",
    "fieldname": "edit_posting_date_and_time",
    "fieldtype": "Check",
-   "label": "Edit Posting Date and Time"
+   "label": "Edit Posting Date and Time",
+   "print_hide": 1
   },
   {
    "fieldname": "column_break_header",
@@ -147,23 +153,23 @@
    "label": "Movement"
   },
   {
+   "fetch_from": "from_warehouse.supplier",
+   "fetch_if_empty": 0,
    "fieldname": "supplier",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Supplier / Sender",
    "options": "Supplier",
-   "reqd": 1,
-   "fetch_from": "from_warehouse.supplier",
-   "fetch_if_empty": 0
+   "reqd": 1
   },
   {
+   "fetch_from": "to_warehouse.supplier",
+   "fetch_if_empty": 0,
    "fieldname": "delivery_location",
    "fieldtype": "Link",
    "label": "Delivery Location",
-   "options": "Supplier",
-   "fetch_from": "to_warehouse.supplier",
-   "fetch_if_empty": 0
+   "options": "Supplier"
   },
   {
    "fieldname": "column_break_supplier",
@@ -213,8 +219,7 @@
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
-   "options": "Goods Received Note Item",
-   "reqd": 1
+   "options": "Goods Received Note Item"
   },
   {
    "fieldname": "item_html",
@@ -226,6 +231,32 @@
    "fieldtype": "Long Text",
    "hidden": 1,
    "label": "Item Details",
+   "no_copy": 1,
+   "print_hide": 1
+  },
+  {
+   "depends_on": "eval:doc.correction_items && doc.correction_items.length",
+   "fieldname": "correction_items_section",
+   "fieldtype": "Section Break",
+   "label": "Correction Items"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "correction_items",
+   "fieldtype": "Table",
+   "label": "Correction Items",
+   "options": "Goods Received Note Item"
+  },
+  {
+   "fieldname": "correction_item_html",
+   "fieldtype": "HTML",
+   "label": "Correction Item HTML"
+  },
+  {
+   "fieldname": "correction_item_details",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Correction Item Details",
    "no_copy": 1,
    "print_hide": 1
   },
@@ -249,10 +280,10 @@
   },
   {
    "default": "0",
+   "description": "Total freight on this receipt. Allocated across items in before_submit using YRP Stock Settings.freight_allocation_method.",
    "fieldname": "freight_charges",
    "fieldtype": "Currency",
-   "label": "Freight Charges",
-   "description": "Total freight on this receipt. Allocated across items in before_submit using YRP Stock Settings.freight_allocation_method."
+   "label": "Freight Charges"
   },
   {
    "allow_on_submit": 1,
@@ -320,7 +351,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-07 00:00:00.000000",
+ "modified": "2026-07-10 19:04:22.364595",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "Goods Received Note",

@@ -57,6 +57,17 @@ frappe.ui.form.on("Delivery Challan", {
 				if (frm.itemEditor) {
 					frm.itemEditor.load_data(r.message.item_details || []);
 				}
+
+				frm.clear_table("correction_items");
+				for (const row of r.message.correction_items || []) {
+					const child = frm.add_child("correction_items");
+					Object.assign(child, row);
+				}
+				frm.refresh_field("correction_items");
+				frm.doc.correction_item_details = JSON.stringify(r.message.correction_item_details || []);
+				if (frm.correctionEditor) {
+					frm.correctionEditor.load_data(r.message.correction_item_details || []);
+				}
 			},
 		});
 	},
@@ -66,15 +77,19 @@ frappe.ui.form.on("Delivery Challan", {
 			return;
 		}
 		const items = frm.itemEditor.get_items();
-		if (!has_delivery_qty(items)) {
+		const correction_items = frm.correctionEditor ? frm.correctionEditor.get_items() : [];
+		if (!has_delivery_qty(items) && !has_correction_delivery_qty(correction_items)) {
 			frappe.throw(__("Enter Delivery Qty to continue"));
 		}
 		frm.doc.item_details = JSON.stringify(items);
+		if (frm.correctionEditor) {
+			frm.doc.correction_item_details = JSON.stringify(correction_items);
+		}
 	},
 });
 
 function apply_response_values(frm, message, base_fields) {
-	const ignore = new Set(["items", "item_details"]);
+	const ignore = new Set(["items", "item_details", "correction_items", "correction_item_details"]);
 	const fields = new Set(base_fields);
 	for (const field of Object.keys(message || {})) {
 		if (!ignore.has(field) && frm.fields_dict[field]) {
@@ -110,7 +125,28 @@ function mount_dc_editor(frm) {
 	const data = get_item_details(frm);
 	frm.itemEditor.load_data(data);
 	frm.itemEditor.update_status();
+	mount_dc_correction_editor(frm);
 	bind_dc_dirty_handler(frm);
+}
+
+function mount_dc_correction_editor(frm) {
+	if (!frappe.yrp.work_order.CorrectionItemEditor || !frm.fields_dict.correction_item_html) {
+		return;
+	}
+	if (frm.correctionEditor) {
+		frm.correctionEditor.app.unmount();
+	}
+	frm.set_df_property("correction_items", "hidden", 1);
+	frm.set_df_property("correction_item_html", "hidden", 0);
+	$(frm.fields_dict.correction_item_html.wrapper).html("");
+	frm.correctionEditor = new frappe.yrp.work_order.CorrectionItemEditor(frm.fields_dict.correction_item_html.wrapper, {
+		editorType: "delivery_challan",
+		allowEdit: true,
+		showDimensions: true,
+		showSecondary: true,
+	});
+	frm.correctionEditor.load_data(get_correction_item_details(frm));
+	frm.correctionEditor.update_status();
 }
 
 function get_item_details(frm) {
@@ -122,6 +158,22 @@ function get_item_details(frm) {
 	}
 	try {
 		return typeof frm.doc.item_details === "string" ? JSON.parse(frm.doc.item_details) : frm.doc.item_details;
+	} catch (e) {
+		return [];
+	}
+}
+
+function get_correction_item_details(frm) {
+	if (frm.doc.__onload && frm.doc.__onload.correction_item_details) {
+		return frm.doc.__onload.correction_item_details;
+	}
+	if (!frm.doc.correction_item_details) {
+		return [];
+	}
+	try {
+		return typeof frm.doc.correction_item_details === "string"
+			? JSON.parse(frm.doc.correction_item_details)
+			: frm.doc.correction_item_details;
 	} catch (e) {
 		return [];
 	}
@@ -160,6 +212,15 @@ function has_delivery_qty(item_details) {
 					return true;
 				}
 			}
+		}
+	}
+	return false;
+}
+
+function has_correction_delivery_qty(correction_blocks) {
+	for (const block of correction_blocks || []) {
+		if (has_delivery_qty(block.item_details)) {
+			return true;
 		}
 	}
 	return false;

@@ -8,7 +8,7 @@ import datetime
 
 import frappe
 from frappe import _
-from frappe.utils import flt, get_time, getdate, nowdate, nowtime
+from frappe.utils import flt, get_time, getdate, now_datetime, nowdate, nowtime
 
 from yrp.stock.dimensions import (
 	assert_safe_fieldname,
@@ -351,9 +351,13 @@ def get_sre_reserved_qty(
 		values.extend([exclude_voucher_type, exclude_voucher_name])
 
 	where_sql = " AND ".join(conds)
+	# Per-row floor at 0: a row whose delivered/closed total ever exceeds its
+	# reserved_qty (e.g. excess delivery, 2026-07-10) must count as 0 remaining
+	# — a raw SUM would let that negative remainder INFLATE the apparent
+	# availability contributed by other reservations.
 	row = frappe.db.sql(
 		f"""
-		SELECT COALESCE(SUM(reserved_qty - delivered_qty - COALESCE(closed_qty, 0)), 0) AS qty
+		SELECT COALESCE(SUM(GREATEST(reserved_qty - delivered_qty - COALESCE(closed_qty, 0), 0)), 0) AS qty
 		FROM `tabStock Reservation Entry`
 		WHERE {where_sql}
 		""",
@@ -433,3 +437,26 @@ def get_incoming_outgoing_rate_for_cancel(item, voucher_type, voucher_no, vouche
 		(voucher_type, voucher_no, item, voucher_detail_no),
 	)
 	return rows[0][0] if rows else 0.0
+
+
+def apply_posting_datetime(doc):
+	"""ERPNext ``set_posting_time`` semantics for the stock vouchers (DC / GRN / Stock Entry).
+
+	Unless "Edit Posting Date and Time" is ticked, ``posting_date``/``posting_time``
+	are stamped to NOW on every validate (draft saves and submit) so a stale client
+	value can never backdate a voucher silently. Data import / restore auto-tick the
+	flag so migrated documents keep their source dates (mirrors erpnext
+	``TransactionBase.validate_posting_time``).
+	"""
+	if (frappe.flags.in_import or doc.flags.get("from_restore")) and doc.get("posting_date"):
+		doc.edit_posting_date_and_time = 1
+
+	if not doc.get("edit_posting_date_and_time"):
+		now = now_datetime()
+		doc.posting_date = now.strftime("%Y-%m-%d")
+		doc.posting_time = now.strftime("%H:%M:%S.%f")
+	elif doc.get("posting_time"):
+		try:
+			get_time(doc.posting_time)
+		except ValueError:
+			frappe.throw(_("Invalid Posting Time"))
