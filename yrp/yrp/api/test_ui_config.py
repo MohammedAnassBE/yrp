@@ -814,10 +814,14 @@ class TestUIConfigShellKeys(IntegrationTestCase):
 	a layout carrying them saves warning-free — while genuinely-dead keys keep
 	warning, and the personal overrides layer still filters all three."""
 
-	# The live Demo 7 shapes, verbatim (chrome strip, Live indicator, dd-mm-yyyy).
+	# The live Demo 7 shapes (chrome strip, Live indicator, dd-mm-yyyy). Since
+	# item 17, realtime carries only `enabled` here: intervalMs/toast are
+	# RESERVED knob names whose presence now draws the explicit notice — the
+	# Demo 7 record was cleaned of them the same day (they were dead keys).
+	# The reserved-notice family has its own tests in TestUIConfigItem17*.
 	DEMO7_SHELL = {
 		"chrome": {"themeToggle": True, "search": True},
-		"realtime": {"enabled": True, "intervalMs": 10000, "toast": True},
+		"realtime": {"enabled": True},
 		"dateFormat": "dd-mm-yyyy",
 	}
 
@@ -865,7 +869,6 @@ class TestUIConfigShellKeys(IntegrationTestCase):
 			"unknown key 'sparkles' inside chrome": {"chrome": {"sparkles": True}},
 			"realtime must be an object": {"realtime": 1},
 			"realtime.enabled should be a boolean": {"realtime": {"enabled": "on"}},
-			"realtime.intervalMs should be a number": {"realtime": {"intervalMs": "fast"}},
 			"unknown key 'pulse' inside realtime": {"realtime": {"pulse": 1}},
 			"dateFormat 'mm/dd/yyyy' is not one of": {"dateFormat": "mm/dd/yyyy"},
 		}
@@ -873,6 +876,12 @@ class TestUIConfigShellKeys(IntegrationTestCase):
 			warnings = self._layout_warnings(extra)
 			self.assertEqual(len(warnings), 1, f"{extra}: {warnings}")
 			self.assertIn(fragment, warnings[0])
+		# A mis-typed RESERVED knob still gets its type check — alongside the
+		# item-17 reserved notice (two warnings, both true).
+		warnings = self._layout_warnings({"realtime": {"intervalMs": "fast"}})
+		self.assertEqual(len(warnings), 2, warnings)
+		self.assertTrue(any("realtime.intervalMs should be a number" in w for w in warnings))
+		self.assertTrue(any("realtime.intervalMs is RESERVED" in w for w in warnings))
 
 	def test_overrides_layer_still_rejects_the_shell_keys(self):
 		# NOT overridable: one unknown-key warning each (no duplicate shape
@@ -896,14 +905,16 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 	personal overrides layer still warns on + filters all four (they are
 	deliberately NOT in OVERRIDABLE_KEYS this iteration)."""
 
-	# A fully-populated, all-valid structural config (every enum exercised).
+	# A fully-populated, all-valid structural config (every CONSUMED enum
+	# exercised). `actions.dialogPosition` left out deliberately: it is a
+	# RESERVED knob since item 17 — carrying it draws the explicit notice
+	# (covered below and in TestUIConfigItem17ReservedKnobs).
 	VALID_STRUCTURAL: ClassVar[dict] = {
 		"detail": {"position": "right"},
 		"entry": {"mode": "popup", "popupPosition": "top-right"},
 		"dcEntry": {"variant": "size-matrix", "qtyControl": "input", "supplierPicker": "chips"},
 		"actions": {
 			"placement": "floating",
-			"dialogPosition": "bottom",
 			"items": [
 				"create_grn",
 				"create_dc",
@@ -936,9 +947,11 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 				[],
 				anchor,
 			)
-			self.assertEqual(
-				self._layout_warnings({"actions": {"dialogPosition": anchor}}), [], anchor
-			)
+			# dialogPosition: every anchor is vocabulary-ACCEPTED (no off-form
+			# warning) but the knob is RESERVED — exactly one item-17 notice.
+			warnings = self._layout_warnings({"actions": {"dialogPosition": anchor}})
+			self.assertEqual(len(warnings), 1, f"{anchor}: {warnings}")
+			self.assertIn("actions.dialogPosition is RESERVED", warnings[0])
 		for variant in ui_config.DC_ENTRY_VARIANTS:
 			self.assertEqual(self._layout_warnings({"dcEntry": {"variant": variant}}), [], variant)
 		for picker in ui_config.DC_ENTRY_SUPPLIER_PICKERS:
@@ -979,14 +992,17 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 				"dcEntry": {"supplierPicker": "dropdown"}
 			},
 			"actions.placement 'sidebar' is not one of": {"actions": {"placement": "sidebar"}},
-			"actions.dialogPosition 'top-center' is not one of": {
-				"actions": {"dialogPosition": "top-center"}
-			},
 		}
 		for fragment, extra in cases.items():
 			warnings = self._layout_warnings(extra)
 			self.assertEqual(len(warnings), 1, f"{extra}: {warnings}")
 			self.assertIn(fragment, warnings[0])
+		# dialogPosition is RESERVED: an off-form value draws BOTH the item-17
+		# notice and the vocabulary warning.
+		warnings = self._layout_warnings({"actions": {"dialogPosition": "top-center"}})
+		self.assertEqual(len(warnings), 2, warnings)
+		self.assertTrue(any("actions.dialogPosition 'top-center' is not one of" in w for w in warnings))
+		self.assertTrue(any("actions.dialogPosition is RESERVED" in w for w in warnings))
 
 	def test_unknown_action_item_names_warn_softly_and_never_block(self):
 		warnings = self._layout_warnings(
@@ -1154,7 +1170,6 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 				"line": "rgba(38, 24, 13, 0.12)",
 				"surface2": "#f7ede1",
 				"radius": 14,
-				"density": "comfortable",
 				"fontScale": 1,
 				"font": "Inter, 'Segoe UI', sans-serif",
 				"dark": {
@@ -1189,11 +1204,24 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 				"font": "Inter; } body { display: none",
 			}
 		)
-		self.assertEqual(len(warnings), 5)  # one per bad token, nothing raised
+		# One per bad token, nothing raised — density draws its inert notice
+		# PLUS the vocabulary warning (house style: realtime.intervalMs et al).
+		self.assertEqual(len(warnings), 6, warnings)
 		for fragment in ("theme.bg", "theme.radius", "theme.density", "theme.fontScale", "theme.font"):
 			self.assertTrue(
 				any(fragment in w for w in warnings), f"missing soft warning for {fragment}"
 			)
+
+	def test_density_present_draws_the_inert_notice(self):
+		# 2026-07-17 drill: density is accepted but visually inert (Track 1
+		# item 10) — CATALOG says "don't author it", so lint must say so too.
+		warnings = self._warnings({"density": "compact"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.density is accepted but visually INERT", warnings[0])
+		# Same notice for the dark-overlay spelling.
+		warnings = self._warnings({"dark": {"density": "compact"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.dark.density is accepted but visually INERT", warnings[0])
 
 	def test_numeric_strings_pass_like_the_engines_number_coercion(self):
 		# Number("14") is finite in the client — the server must not warn on it.
@@ -1265,8 +1293,9 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		)
 
 	def test_non_color_tokens_alone_never_trigger_the_dark_palette_warning(self):
-		# radius/density/fontScale/font carry into .dark safely — no palette, no warning.
-		self.assertEqual(self._warnings({"mode": "user", "radius": 14, "density": "compact"}), [])
+		# radius/fontScale/font carry into .dark safely — no palette, no warning.
+		# (density is deliberately absent: it draws the inert notice now.)
+		self.assertEqual(self._warnings({"mode": "user", "radius": 14, "fontScale": 1.1}), [])
 
 	def test_unicode_font_warns_like_the_clients_ascii_regex(self):
 		# JS \w is ASCII-only: the client drops "Ariál" at render. Python \w is
@@ -1292,19 +1321,28 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 
 	def test_existing_and_unknown_types_stay_warning_free(self):
 		for block in (
-			{"id": "q", "type": "home-queues", "props": {"maxCards": 4}},
+			{"id": "q", "type": "home-queues", "props": {"stats": ["open_lots", "draft_dcs"]}},
 			{"id": "q2", "type": "home-queues"},  # no props at all
 			{"id": "g", "type": "home-greeting", "props": {"greetingName": "Anna"}},
 			{"id": "x", "type": "some-future-block", "props": {"anything": ["goes"]}},
 		):
 			self.assertEqual(self._block_warnings(block), [], block["id"])
 
-	def test_home_queues_max_cards_soft_warning_unchanged(self):
+	def test_home_queues_max_cards_is_reserved_and_bounds_checked(self):
+		# maxCards has been validated since day one but is consumed by NOTHING
+		# (HomeQueues reads only `stats`) — item 17 makes it a RESERVED knob:
+		# presence always draws the notice, the bounds check stays on top.
+		warnings = self._block_warnings(
+			{"id": "q", "type": "home-queues", "props": {"maxCards": 4}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("maxCards is RESERVED", warnings[0])
 		warnings = self._block_warnings(
 			{"id": "q", "type": "home-queues", "props": {"maxCards": 99}}
 		)
-		self.assertEqual(len(warnings), 1)
-		self.assertIn("maxCards", warnings[0])
+		self.assertEqual(len(warnings), 2, warnings)
+		self.assertTrue(any("maxCards is RESERVED" in w for w in warnings))
+		self.assertTrue(any("maxCards must be an integer between 1 and 10" in w for w in warnings))
 
 	def test_non_object_props_warn_once_and_skip_per_type_checks(self):
 		warnings = self._block_warnings(
@@ -1361,16 +1399,19 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 	# ── record-list ───────────────────────────────────────────────────────
 
 	def test_record_list_full_valid_props_is_warning_free(self):
+		# NOTE deliberately RENDERABLE meta fields only: "name" is NOT legal —
+		# neither client resolves it as a column/titleField (RecordList byName
+		# misses it, the routed page always shows Name first anyway).
 		block = {
 			"id": "r",
 			"type": "record-list",
 			"props": {
 				"doctype": "Work Order",
 				"variant": "kanban",
-				"columns": ["name", "status"],
+				"columns": ["item", "status"],
 				"pageSize": 25,
 				"groupBy": "status",
-				"titleField": "name",
+				"titleField": "item",
 				"title": "Orders",
 			},
 		}
@@ -1401,13 +1442,102 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("variant", warnings[0])
 
-	def test_record_list_columns_must_be_a_list_of_strings(self):
-		for bad in ("name,status", ["name", 7]):
-			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "columns": bad}}
+	def test_record_list_columns_shape_families_warn(self):
+		# Non-list → one shape warning; list with a non-string/non-object entry
+		# → one per-entry warning. Both messages now name the {field,label}
+		# object form the client ALSO accepts (item 17 mismatch fix).
+		warnings = self._block_warnings(
+			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "columns": "name,status"}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("columns must be a list of fieldname strings or {field, label} objects", warnings[0])
+		warnings = self._block_warnings(
+			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "columns": ["status", 7]}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("neither a fieldname string nor a {field, label} object", warnings[0])
+
+	def test_record_list_accepts_field_label_column_objects(self):
+		# The client/server mismatch item 17 closes: RecordList.vue accepts
+		# {field,label} objects; the server used to warn on them.
+		block = {
+			"id": "r",
+			"type": "record-list",
+			"props": {
+				"doctype": "Work Order",
+				"columns": ["status", {"field": "item", "label": "Item"}],
+			},
+		}
+		self.assertEqual(self._block_warnings(block), [])
+
+	def test_record_list_column_fieldnames_checked_against_meta(self):
+		warnings = self._block_warnings(
+			{
+				"id": "r",
+				"type": "record-list",
+				"props": {
+					"doctype": "Work Order",
+					"columns": ["status", "no_such_field", {"field": "also_missing"}],
+				},
+			}
+		)
+		self.assertEqual(len(warnings), 2, warnings)
+		for fragment in ("no_such_field", "also_missing"):
+			self.assertTrue(
+				any(fragment in w and "is not a field on 'Work Order'" in w for w in warnings),
+				fragment,
 			)
-			self.assertEqual(len(warnings), 1, bad)
-			self.assertIn("columns must be a list of strings", warnings[0])
+
+	def test_record_list_unrenderable_columns_warn(self):
+		# 2026-07-17 review: frappe default fields (modified/owner/name) and
+		# hidden/non-listable meta fields lint-passed but render nothing —
+		# RecordList.vue resolves columns strictly against visible meta fields.
+		for field in ("modified", "owner", "name"):
+			warnings = self._block_warnings(
+				{"id": "r", "type": "record-list", "props": {"doctype": "Work Order", "columns": [field]}}
+			)
+			self.assertEqual(len(warnings), 1, f"{field}: {warnings}")
+			self.assertIn(f"column '{field}' is not a field on 'Work Order'", warnings[0])
+		# groupBy on a default field silently regroups by status client-side.
+		warnings = self._block_warnings(
+			{"id": "r", "type": "record-list", "props": {"doctype": "Work Order", "groupBy": "owner"}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("groupBy 'owner' is not a field on 'Work Order'", warnings[0])
+
+	def test_record_list_group_by_and_title_field_checked_against_meta(self):
+		for key in ("groupBy", "titleField"):
+			warnings = self._block_warnings(
+				{
+					"id": "r",
+					"type": "record-list",
+					"props": {"doctype": "Work Order", key: "no_such_field"},
+				}
+			)
+			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
+			self.assertIn("is not a field on 'Work Order'", warnings[0])
+		# `title` is a free heading — never meta-checked.
+		self.assertEqual(
+			self._block_warnings(
+				{
+					"id": "r",
+					"type": "record-list",
+					"props": {"doctype": "Work Order", "title": "Anything Goes"},
+				}
+			),
+			[],
+		)
+
+	def test_record_list_unknown_doctype_warns_and_skips_field_checks(self):
+		warnings = self._block_warnings(
+			{
+				"id": "r",
+				"type": "record-list",
+				"props": {"doctype": "No Such DocType", "columns": ["whatever"]},
+			}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("doctype 'No Such DocType' does not exist as a DocType", warnings[0])
 
 	def test_record_list_page_size_bounds(self):
 		for bad in (0, 51, True, "10"):
@@ -1463,3 +1593,569 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("params must be an object", warnings[0])
+
+
+class TestUIConfigItem17ReservedKnobs(IntegrationTestCase):
+	"""USE_CASE §4 item 17: every knob that is stored/validated but consumed by
+	NO client gets an explicit RESERVED notice — an authoring agent must never
+	emit a knob that silently does nothing. The notice is SOFT: it never blocks
+	a save, and Track 1 item 11 later wires-or-deletes each of these names."""
+
+	@staticmethod
+	def _layout_warnings(extra):
+		return ui_config.validate_config(dict(LAYOUT_CONFIG, **extra), layer="layout")
+
+	def test_every_reserved_knob_draws_exactly_one_notice(self):
+		cases = {
+			"realtime.intervalMs": {"realtime": {"enabled": True, "intervalMs": 10000}},
+			"realtime.toast": {"realtime": {"enabled": True, "toast": True}},
+			"actions.dialogPosition": {"actions": {"dialogPosition": "bottom"}},
+			"detail.rich": {"detail": {"position": "page", "rich": True}},
+			"nav.home": {
+				"nav": dict(
+					LAYOUT_CONFIG["nav"],
+					home={"label": "Home", "icon": "pi pi-th-large", "view": "home"},
+				)
+			},
+		}
+		for path, extra in cases.items():
+			warnings = self._layout_warnings(extra)
+			self.assertEqual(len(warnings), 1, f"{path}: {warnings}")
+			self.assertIn(f"{path} is RESERVED", warnings[0])
+			self.assertIn("does nothing today", warnings[0])
+
+	def test_reserved_notices_never_block_the_save(self):
+		# All five reserved names together: five notices, zero exceptions.
+		cfg = dict(
+			LAYOUT_CONFIG,
+			realtime={"enabled": True, "intervalMs": 10000, "toast": True},
+			actions={"placement": "header", "dialogPosition": "bottom"},
+			detail={"position": "page", "rich": True},
+			nav=dict(LAYOUT_CONFIG["nav"], home={"view": "home"}),
+		)
+		warnings = ui_config.validate_config(cfg, layer="layout")
+		self.assertEqual(len([w for w in warnings if "RESERVED" in w]), 5, warnings)
+		self.assertEqual(len(warnings), 5, warnings)
+
+
+class TestUIConfigItem17HomeQueuesStats(IntegrationTestCase):
+	"""The 2026-07-17 owner bite: home-queues renders ONLY the four queue-backed
+	metrics (HomeQueues.vue METRIC_TO_QUEUE). A registered KPI key placed there
+	rendered NOTHING with zero warnings; a typo likewise. Both warn now."""
+
+	@staticmethod
+	def _block_warnings(block):
+		cfg = dict(LAYOUT_CONFIG, screens={"home": {"blocks": [block], "hidden": {}}})
+		return ui_config.validate_config(cfg, layer="layout")
+
+	def test_all_four_queue_metrics_stay_warning_free(self):
+		block = {
+			"id": "q",
+			"type": "home-queues",
+			"props": {"stats": list(ui_config.HOME_QUEUE_METRICS)},
+		}
+		self.assertEqual(self._block_warnings(block), [])
+
+	def test_registered_kpi_metric_in_home_queues_warns_with_guidance(self):
+		# The literal Cutting Supervisor defect: delayed/completion are real
+		# registry metrics but NOT queues — the cards rendered nothing.
+		warnings = self._block_warnings(
+			{
+				"id": "q",
+				"type": "home-queues",
+				"props": {"stats": ["open_lots", "delayed", "completion"]},
+			}
+		)
+		self.assertEqual(len(warnings), 2, warnings)
+		for name in ("delayed", "completion"):
+			match = [w for w in warnings if f"'{name}'" in w]
+			self.assertEqual(len(match), 1, name)
+			self.assertIn("is not a home-queue metric", match[0])
+			self.assertIn("renders NOTHING", match[0])
+			self.assertIn("summary-tiles", match[0])
+
+	def test_unregistered_stat_name_warns_as_typo(self):
+		warnings = self._block_warnings(
+			{"id": "q", "type": "home-queues", "props": {"stats": ["delayed_wos"]}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'delayed_wos' is not a registered metric", warnings[0])
+
+	def test_stats_must_be_a_list_of_strings(self):
+		for bad in ("open_lots", {"a": 1}, ["open_lots", 7]):
+			warnings = self._block_warnings(
+				{"id": "q", "type": "home-queues", "props": {"stats": bad}}
+			)
+			self.assertEqual(len(warnings), 1, bad)
+			self.assertIn("stats must be a list of metric names", warnings[0])
+
+	def test_registry_outage_still_flags_non_queue_names(self):
+		# METRICS import broken → the typo/KPI distinction collapses but the
+		# non-queue name STILL warns (never silent, never a hard failure).
+		with patch.object(ui_config, "_known_metric_keys", return_value=None):
+			warnings = self._block_warnings(
+				{"id": "q", "type": "home-queues", "props": {"stats": ["delayed_wos"]}}
+			)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("is not a home-queue metric", warnings[0])
+
+
+class TestUIConfigItem17CalculatorRegistry(IntegrationTestCase):
+	"""calculator-panel `calculation` validated against the CALCULATIONS
+	registry (item 17) — same lazy fail-safe contract as the metrics check."""
+
+	@staticmethod
+	def _block_warnings(block):
+		cfg = dict(LAYOUT_CONFIG, screens={"home": {"blocks": [block], "hidden": {}}})
+		return ui_config.validate_config(cfg, layer="layout")
+
+	def test_registered_calculation_stays_warning_free(self):
+		block = {"id": "c", "type": "calculator-panel", "props": {"calculation": "lot_balance"}}
+		self.assertEqual(self._block_warnings(block), [])
+
+	def test_unregistered_calculation_warns_softly(self):
+		warnings = self._block_warnings(
+			{"id": "c", "type": "calculator-panel", "props": {"calculation": "rate_estimate"}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'rate_estimate' is not a registered calculation", warnings[0])
+
+	def test_registry_check_never_hard_fails_validation(self):
+		with patch.object(ui_config, "_known_calculation_keys", return_value=None):
+			warnings = self._block_warnings(
+				{"id": "c", "type": "calculator-panel", "props": {"calculation": "anything"}}
+			)
+		self.assertEqual(warnings, [])
+
+	def test_known_calculation_keys_helper_reflects_the_registry(self):
+		from yrp.yrp.api.ui_metrics import CALCULATIONS
+
+		self.assertEqual(ui_config._known_calculation_keys(), set(CALCULATIONS))
+
+
+class TestUIConfigItem17ListViews(IntegrationTestCase):
+	"""Deep listViews validation (item 17): doctype keys vs site + catalog,
+	object shape, variant vocabulary, columns/groupBy/titleField vs DocType
+	meta — every family the client silently drops now warns at save."""
+
+	@staticmethod
+	def _warnings(list_views, layer="layout"):
+		if layer == "layout":
+			return ui_config.validate_config(
+				dict(LAYOUT_CONFIG, listViews=list_views), layer="layout"
+			)
+		return ui_config.validate_config(
+			{"schema_version": 1, "listViews": list_views}, layer="overrides"
+		)
+
+	def test_fully_valid_deep_list_view_is_warning_free(self):
+		# {field, label} objects ONLY — the routed list page drops bare strings
+		# (string entries have their own warning test below).
+		self.assertEqual(
+			self._warnings(
+				{
+					"Work Order": {
+						"variant": "kanban",
+						"columns": [{"field": "item"}, {"field": "supplier", "label": "Job-worker"}],
+						"groupBy": "process_name",
+						"titleField": "item",
+					}
+				}
+			),
+			[],
+		)
+
+	def test_string_column_entries_warn_as_dropped(self):
+		# 2026-07-17 review (CRITICAL): DynamicListPage.layoutColumns iterates
+		# `if (!lc || !lc.field) continue` — a plain string has no .field, so
+		# EVERY string entry is skipped and an all-string list silently falls
+		# back to the meta defaults. The validator used to certify strings here.
+		warnings = self._warnings({"Work Order": {"columns": ["lot", "item", "status"]}})
+		self.assertEqual(len(warnings), 3, warnings)
+		for w in warnings:
+			self.assertIn("DROPS string entries", w)
+		# The {field, label} spelling of the same columns is clean.
+		self.assertEqual(
+			self._warnings(
+				{"Work Order": {"columns": [{"field": "lot"}, {"field": "item"}, {"field": "status"}]}}
+			),
+			[],
+		)
+		# A string entry that is ALSO a fieldname typo draws both warnings.
+		warnings = self._warnings({"Work Order": {"columns": ["no_such_field"]}})
+		self.assertEqual(len(warnings), 2, warnings)
+
+	def test_default_and_unrenderable_fields_warn_as_columns(self):
+		# 2026-07-17 review flip: name/modified/owner are real row keys but NOT
+		# renderable columns — both clients build their column maps strictly
+		# from visible meta fields, so every one of these renders nothing.
+		warnings = self._warnings(
+			{
+				"Work Order": {
+					"columns": [{"field": "name"}, {"field": "modified"}, {"field": "owner"}]
+				}
+			}
+		)
+		self.assertEqual(len(warnings), 3, warnings)
+		for fragment in ("'name'", "'modified'", "'owner'"):
+			self.assertTrue(
+				any(fragment in w and "is not a field on 'Work Order'" in w for w in warnings),
+				fragment,
+			)
+
+	def test_hidden_and_non_listable_meta_fields_warn_as_columns(self):
+		# Item Production Detail: `version` is a hidden meta field, and
+		# `item_details_tab` is a Tab Break (NON_LISTABLE_FIELDTYPES) — the
+		# routed list drops both, so the save must warn (2026-07-17 review).
+		warnings = self._warnings(
+			{
+				"Item Production Detail": {
+					"columns": [{"field": "version"}, {"field": "item_details_tab"}]
+				}
+			}
+		)
+		self.assertEqual(len(warnings), 2, warnings)
+		for fragment in ("'version'", "'item_details_tab'"):
+			self.assertTrue(
+				any(fragment in w and "is not a field on 'Item Production Detail'" in w for w in warnings),
+				fragment,
+			)
+		# groupBy on a default field falls back to status client-side — warns.
+		warnings = self._warnings({"Work Order": {"groupBy": "owner"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("groupBy 'owner' is not a field on 'Work Order'", warnings[0])
+
+	def test_unknown_doctype_key_warns_and_skips_field_checks(self):
+		warnings = self._warnings({"No Such DocType": {"columns": [{"field": "whatever"}]}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'No Such DocType' does not exist as a DocType", warnings[0])
+
+	def test_off_catalog_doctype_key_warns(self):
+		# Catalog keeps the base config's nav doctypes so ONLY the listViews
+		# key under test ("Item" — real, off-catalog) warns.
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+			warnings = self._warnings({"Item": {"variant": "cards"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
+
+	def test_no_catalog_hook_skips_the_catalog_check_only(self):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value=None):
+			self.assertEqual(self._warnings({"Work Order": {"variant": "cards"}}), [])
+			warnings = self._warnings({"No Such DocType": {}})
+		self.assertEqual(len(warnings), 1, warnings)  # existence check still runs
+
+	def test_non_object_value_warns_and_null_stays_silent(self):
+		warnings = self._warnings({"Lot": "cards"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("listViews['Lot'] must be an object", warnings[0])
+		self.assertEqual(self._warnings({"Lot": None}), [])  # null = no opinion
+
+	def test_unknown_key_inside_a_list_view_warns(self):
+		warnings = self._warnings({"Lot": {"pageSize": 5}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'pageSize' inside listViews['Lot']", warnings[0])
+
+	def test_variant_vocabulary(self):
+		for good in ui_config.LIST_VIEW_VARIANTS:
+			self.assertEqual(self._warnings({"Lot": {"variant": good}}), [], good)
+		warnings = self._warnings({"Lot": {"variant": "grid"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("listViews['Lot'].variant 'grid' is not one of", warnings[0])
+
+	def test_column_fieldname_typo_warns(self):
+		warnings = self._warnings(
+			{"Lot": {"columns": [{"field": "lot_name"}, {"field": "no_such_field"}]}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("column 'no_such_field' is not a field on 'Lot'", warnings[0])
+
+	def test_column_object_families(self):
+		# Dead annotation key ("type" — the client reads only field/label).
+		warnings = self._warnings(
+			{"Lot": {"columns": [{"field": "lot_name", "label": "Lot", "type": "Date"}]}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("key 'type' is ignored", warnings[0])
+		# Object without a usable field.
+		warnings = self._warnings({"Lot": {"columns": [{"label": "X"}]}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("needs a non-empty string 'field'", warnings[0])
+		# Non-string label.
+		warnings = self._warnings({"Lot": {"columns": [{"field": "lot_name", "label": 7}]}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("label must be a string", warnings[0])
+
+	def test_group_by_and_title_field_checked_against_meta(self):
+		for key in ("groupBy", "titleField"):
+			warnings = self._warnings({"Lot": {key: "no_such_field"}})
+			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
+			self.assertIn(f"listViews['Lot'].{key} 'no_such_field' is not a field on 'Lot'", warnings[0])
+			warnings = self._warnings({"Lot": {key: 7}})
+			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
+			self.assertIn(f"listViews['Lot'].{key} must be a fieldname string", warnings[0])
+
+	def test_overrides_layer_gets_the_same_deep_checks(self):
+		warnings = self._warnings({"Lot": {"variant": "grid"}}, layer="overrides")
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("overrides: listViews['Lot'].variant 'grid'", warnings[0])
+
+
+class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
+	"""Nav deep checks (item 17): doctypes vs the consumer-declared /web
+	catalog, the {view:'home'} special case, duplicate detection, unknown-key
+	warnings at every level, and dead nav.hidden targets."""
+
+	@staticmethod
+	def _nav_warnings(nav, layer="layout"):
+		if layer == "layout":
+			return ui_config.validate_config(dict(LAYOUT_CONFIG, nav=nav), layer="layout")
+		return ui_config.validate_config({"schema_version": 1, "nav": nav}, layer="overrides")
+
+	@staticmethod
+	def _items_nav(items, hidden=None):
+		return {
+			"groups": [{"id": "G", "label": "G", "items": items}],
+			"hidden": hidden or {},
+		}
+
+	def test_web_doctype_catalog_helper_reads_the_hook_fail_safe(self):
+		with patch.object(frappe, "get_hooks", return_value=["Lot", "Item"]):
+			self.assertEqual(ui_config._web_doctype_catalog(), {"Lot", "Item"})
+		with patch.object(frappe, "get_hooks", return_value=[]):
+			self.assertIsNone(ui_config._web_doctype_catalog())
+		with patch.object(frappe, "get_hooks", side_effect=RuntimeError):
+			self.assertIsNone(ui_config._web_doctype_catalog())
+
+	def test_site_catalog_hook_is_declared_on_this_bench(self):
+		# essdee_yrp declares yrp_web_doctype_catalog (hooks.py) — the nine
+		# /web doctypes. On a bare-yrp site this returns None and checks skip.
+		catalog = ui_config._web_doctype_catalog()
+		if catalog is None:
+			self.skipTest("no yrp_web_doctype_catalog hook on this site")
+		self.assertIn("Lot", catalog)
+		self.assertIn("Terms and Condition", catalog)
+
+	def test_existing_but_off_catalog_nav_doctype_warns(self):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot"}):
+			warnings = self._nav_warnings(
+				self._items_nav([{"doctype": "Lot"}, {"doctype": "Work Order"}])
+			)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("nav doctype 'Work Order' is not in the /web doctype catalog", warnings[0])
+
+	def test_view_home_item_is_soft_not_a_hard_error(self):
+		warnings = self._nav_warnings(
+			self._items_nav([{"view": "home"}, {"doctype": "Lot"}])
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("{'view': 'home'} is redundant", warnings[0])
+		# Any OTHER doctype-less item keeps the pre-existing hard error.
+		with self.assertRaises(frappe.ValidationError):
+			self._nav_warnings(self._items_nav([{"icon": "pi pi-th-large"}]))
+
+	def test_duplicate_nav_doctypes_and_group_ids_warn(self):
+		nav = {
+			"groups": [
+				{"id": "A", "label": "A", "items": [{"doctype": "Lot"}, {"doctype": "Lot"}]},
+				{"id": "A", "label": "Again", "items": [{"doctype": "Lot"}]},
+			],
+			"hidden": {},
+		}
+		warnings = self._nav_warnings(nav)
+		self.assertEqual(len(warnings), 2, warnings)
+		self.assertTrue(any("nav doctype 'Lot' appears 3 times" in w for w in warnings))
+		self.assertTrue(any("nav group id 'A' appears 2 times" in w for w in warnings))
+
+	def test_unknown_keys_warn_at_every_nav_level(self):
+		nav = {
+			"position": "sidebar",
+			"sparkles": 1,
+			"groups": [
+				{
+					"id": "G",
+					"label": "G",
+					"colour": "red",
+					"items": [{"doctype": "Lot", "label": "My Lots"}],
+				}
+			],
+			"hidden": {},
+		}
+		warnings = self._nav_warnings(nav)
+		self.assertEqual(len(warnings), 3, warnings)
+		self.assertTrue(any("unknown key 'sparkles' inside nav" in w for w in warnings))
+		self.assertTrue(any("unknown key 'colour' inside nav group" in w for w in warnings))
+		self.assertTrue(
+			any(
+				"unknown key 'label' inside nav item 'Lot' — the client reads only doctype/icon" in w
+				for w in warnings
+			)
+		)
+
+	def test_dead_nav_hidden_target_warns_on_layout_layer_only(self):
+		nav = self._items_nav([{"doctype": "Lot"}], hidden={"Delivery Challan": True})
+		warnings = self._nav_warnings(nav)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn(
+			"nav.hidden['Delivery Challan'] matches no nav item doctype", warnings[0]
+		)
+		# Overrides legitimately hide doctypes that live in the LAYOUT's groups.
+		self.assertEqual(
+			self._nav_warnings({"hidden": {"Delivery Challan": True}}, layer="overrides"), []
+		)
+
+	def test_quick_create_off_catalog_warns(self):
+		# Catalog keeps the base config's nav doctypes (Lot, Work Order) so
+		# only the off-catalog quickCreate entry warns.
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+			warnings = ui_config.validate_config(
+				dict(LAYOUT_CONFIG, quickCreate=["Lot", "Item"]), layer="layout"
+			)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("quickCreate doctype 'Item' is not in the /web doctype catalog", warnings[0])
+
+
+class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
+	"""Screens/blocks deep checks (item 17): unknown screen keys, unknown keys
+	inside screens.home/blocks, off-vocabulary block size, duplicate block ids,
+	dead hidden targets, unknown props on known block types, and the
+	doctype-naming props (home-recent doctypes, home-greeting newCta)."""
+
+	@staticmethod
+	def _screens_warnings(screens, layer="layout"):
+		if layer == "layout":
+			return ui_config.validate_config(dict(LAYOUT_CONFIG, screens=screens), layer="layout")
+		return ui_config.validate_config(
+			{"schema_version": 1, "screens": screens}, layer="overrides"
+		)
+
+	def _block_warnings(self, block):
+		return self._screens_warnings({"home": {"blocks": [block], "hidden": {}}})
+
+	def test_unknown_screen_key_warns(self):
+		warnings = self._screens_warnings(
+			{"home": {"blocks": [], "hidden": {}}, "hme": {"blocks": []}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("screens['hme'] is not rendered by any client today", warnings[0])
+
+	def test_unknown_key_inside_screens_home_warns(self):
+		warnings = self._screens_warnings({"home": {"blocks": [], "hidden": {}, "layout": "grid"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'layout' inside screens.home", warnings[0])
+
+	def test_block_size_vocabulary(self):
+		for good in ui_config.BLOCK_SIZES:
+			block = {"id": "g", "type": "home-greeting", "size": good, "props": {}}
+			self.assertEqual(self._block_warnings(block), [], good)
+		warnings = self._block_warnings(
+			{"id": "g", "type": "home-greeting", "size": "wide", "props": {}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("size 'wide' is not one of full, half, third", warnings[0])
+
+	def test_unknown_key_inside_a_block_warns(self):
+		warnings = self._block_warnings(
+			{"id": "g", "type": "home-greeting", "span": "full", "props": {}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'span' inside block 'g'", warnings[0])
+
+	def test_duplicate_block_ids_warn(self):
+		warnings = self._screens_warnings(
+			{
+				"home": {
+					"blocks": [
+						{"id": "greet", "type": "home-greeting", "props": {}},
+						{"id": "greet", "type": "home-queues", "props": {}},
+					],
+					"hidden": {},
+				}
+			}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("block id 'greet' appears 2 times", warnings[0])
+
+	def test_dead_home_hidden_target_warns_on_layout_layer_only(self):
+		screens = {
+			"home": {
+				"blocks": [{"id": "greet", "type": "home-greeting", "props": {}}],
+				"hidden": {"queues": True},
+			}
+		}
+		warnings = self._screens_warnings(screens)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("screens.home.hidden['queues'] matches no block id", warnings[0])
+		# Overrides legitimately hide LAYOUT block ids (no blocks of their own).
+		self.assertEqual(
+			self._screens_warnings({"home": {"hidden": {"queues": True}}}, layer="overrides"), []
+		)
+
+	def test_unknown_prop_on_a_known_block_type_warns(self):
+		warnings = self._block_warnings(
+			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "pagesize": 8}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn(
+			"prop 'pagesize' is not a prop of block type 'record-list'", warnings[0]
+		)
+		# Unknown block types still skip prop validation (client may be newer).
+		self.assertEqual(
+			self._block_warnings(
+				{"id": "x", "type": "some-future-block", "props": {"anything": 1}}
+			),
+			[],
+		)
+
+	def test_home_recent_doctypes_checked_against_site_and_catalog(self):
+		warnings = self._block_warnings(
+			{
+				"id": "recent",
+				"type": "home-recent",
+				"props": {"doctypes": ["Work Order", "No Such DocType"]},
+			}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'No Such DocType' does not exist as a DocType", warnings[0])
+		# Catalog keeps the base config's nav doctypes so only the block warns.
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+			warnings = self._block_warnings(
+				{"id": "recent", "type": "home-recent", "props": {"doctypes": ["Item"]}}
+			)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
+
+	def test_new_cta_deep_checks(self):
+		# Valid shape (the live Demo 7 / Warm Tiles form) stays warning-free.
+		self.assertEqual(
+			self._block_warnings(
+				{
+					"id": "g",
+					"type": "home-greeting",
+					"props": {"newCta": {"primary": "Lot", "menu": ["Work Order"]}},
+				}
+			),
+			[],
+		)
+		cases = {
+			"newCta.primary must be a DocType name": {"primary": 7},
+			"'No Such DocType' does not exist as a DocType": {"primary": "No Such DocType"},
+			"newCta.menu must be a list of DocType names": {"menu": "Work Order"},
+			"unknown key 'colour' inside newCta": {"primary": "Lot", "colour": "red"},
+		}
+		for fragment, new_cta in cases.items():
+			warnings = self._block_warnings(
+				{"id": "g", "type": "home-greeting", "props": {"newCta": new_cta}}
+			)
+			self.assertEqual(len(warnings), 1, f"{new_cta}: {warnings}")
+			self.assertIn(fragment, warnings[0])
+		# Catalog keeps the base config's nav doctypes so only newCta warns.
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+			warnings = self._block_warnings(
+				{
+					"id": "g",
+					"type": "home-greeting",
+					"props": {"newCta": {"primary": "Lot", "menu": ["Item"]}},
+				}
+			)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("newCta doctype 'Item' is not in the /web doctype catalog", warnings[0])

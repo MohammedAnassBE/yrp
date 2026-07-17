@@ -67,11 +67,103 @@ NAV_POSITIONS = ("sidebar", "topbar")
 DATE_FORMATS = ("dd-mm-yyyy", "yyyy-mm-dd")
 CHROME_KEYS = ("search", "themeToggle")
 REALTIME_KEYS = ("enabled", "intervalMs", "toast")
+# realtime knobs that NO client consumes yet (ChromeBar reads only `enabled`).
+# Presence gets the explicit RESERVED notice (USE_CASE §4 item 17).
+REALTIME_RESERVED_KEYS = ("intervalMs", "toast")
+
+# ── Deep-vocabulary constants (USE_CASE §4 item 17: no silent drops) ────────
+# Every constant here mirrors EXACTLY what a client consumes today; an
+# off-vocabulary value is silently dropped/defaulted client-side, so the save
+# must say so out loud. All checks below are SOFT — hard errors stay hard only
+# where they already were.
+
+# nav object vocabulary (store.navGroups + AppSidebar/NavTopbar consumption).
+# `home` is RESERVED: Demo-7-style {label, icon, view: "home"} is stored but
+# no client reads it — Home is always rendered first, unconditionally.
+NAV_KEYS = ("position", "groups", "hidden", "home")
+NAV_RESERVED_KEYS = ("home",)
+NAV_GROUP_KEYS = ("id", "label", "items")
+# Nav items: the clients read ONLY doctype (catalog route/label) + icon.
+NAV_ITEM_KEYS = ("doctype", "icon")
+
+# screens: uiConfig store exposes only screens.home; every other screen key
+# (incl. the §2.1-reserved list:<DocType>/detail:<DocType>) renders nothing.
+KNOWN_SCREEN_KEYS = ("home",)
+SCREEN_KEYS = ("blocks", "hidden")
+BLOCK_KEYS = ("id", "type", "size", "props")
+# ScreenRenderer spanClass: anything else silently renders full-width.
+BLOCK_SIZES = ("full", "half", "third")
+
+# Metric names the home-queues block can actually render — the server mirror
+# of HomeQueues.vue METRIC_TO_QUEUE. A REGISTERED but non-queue metric (a KPI
+# like "completion") in home-queues stats renders NOTHING with zero warnings —
+# the 2026-07-17 owner bite this whole item exists to kill.
+HOME_QUEUE_METRICS = ("open_lots", "open_wos", "draft_dcs", "draft_grns")
+
+# Per-block-type prop vocabulary (the defineProps list of every registered
+# block). Unknown block types stay unvalidated (the client bundle may be
+# newer than this server); unknown props on a KNOWN type are silently ignored
+# by Vue, so they warn here. `maxCards` is RESERVED (validated since day one,
+# consumed by nothing — HomeQueues reads only `stats`).
+BLOCK_PROP_KEYS = {
+	"home-greeting": ("greetingName", "sub", "newCta"),
+	"home-queues": ("stats", "maxCards"),
+	"home-recent": ("doctypes", "recentStyle"),
+	"home-quick-create": ("doctypes",),
+	"summary-tiles": ("metrics",),
+	"record-list": ("doctype", "variant", "columns", "groupBy", "titleField", "pageSize", "title"),
+	"calculator-panel": ("calculation", "params"),
+}
+NEWCTA_KEYS = ("primary", "menu")
+
+# listViews[<DocType>] vocabulary (DynamicListPage + store.listColumns).
+LIST_VIEW_KEYS = ("variant", "columns", "groupBy", "titleField")
+LIST_VIEW_VARIANTS = ("table", "cards", "kanban")
+# Column entries: {field, label} objects work EVERYWHERE; bare "fieldname"
+# strings work ONLY in record-list home blocks (RecordList.vue colDescs
+# accepts both forms) — the ROUTED list page (DynamicListPage layoutColumns)
+# reads only `.field` and silently skips string entries, so the listViews
+# path warns on every string (2026-07-17 review: the validator used to
+# certify strings there while the client dropped the whole columns override).
+# The clients read only field + label.
+COLUMN_KEYS = ("field", "label")
+
+# Fieldtypes NO list renderer shows as a column — the server mirror of
+# DynamicListPage.vue NON_LISTABLE. Routed lists additionally exclude hidden
+# fields and 'name' (always the first column); RecordList's meta-default path
+# filters the same way. A column/groupBy/titleField naming one of these (or a
+# hidden field, or a Frappe default field like modified/owner) lint-passed
+# before 2026-07-17 yet rendered nothing — _doctype_fieldnames now excludes
+# them all so the save warns instead.
+NON_LISTABLE_FIELDTYPES = (
+	"Table",
+	"Table MultiSelect",
+	"Text Editor",
+	"Long Text",
+	"Small Text",
+	"Text",
+	"HTML",
+	"HTML Editor",
+	"Code",
+	"Markdown Editor",
+	"Section Break",
+	"Column Break",
+	"Tab Break",
+	"Fold",
+	"Heading",
+	"Button",
+	"Image",
+	"Geolocation",
+	"Signature",
+)
 
 # Soft-checked vocabularies for the structural knobs. An off-vocabulary value
 # never blocks a save — the client warns/ignores it and keeps today's
 # behaviour (PARITY: every knob's absence/default = the current UI).
 DETAIL_KEYS = ("position",)
+# `rich` is a RESERVED detail knob name (USE_CASE item 17 vocabulary): stored,
+# consumed by nothing yet — presence gets the explicit RESERVED notice.
+DETAIL_RESERVED_KEYS = ("rich",)
 DETAIL_POSITIONS = ("page", "right", "center", "bottom-sheet")
 ENTRY_KEYS = ("mode", "popupPosition")
 ENTRY_MODES = ("page", "popup")
@@ -210,10 +302,11 @@ def validate_config(config, layer):
 
 	_validate_schema_version(cfg, layer)
 	_warn_unknown_top_level_keys(cfg, layer, warnings)
-	_validate_nav(cfg.get("nav"), layer, warnings)
-	_validate_screens(cfg.get("screens"), layer, warnings)
-	_validate_list_views(cfg.get("listViews"), layer)
-	_validate_quick_create(cfg.get("quickCreate"), layer, warnings)
+	catalog = _web_doctype_catalog()
+	_validate_nav(cfg.get("nav"), layer, warnings, catalog)
+	_validate_screens(cfg.get("screens"), layer, warnings, catalog)
+	_validate_list_views(cfg.get("listViews"), layer, warnings, catalog)
+	_validate_quick_create(cfg.get("quickCreate"), layer, warnings, catalog)
 	_validate_theme(cfg.get("theme"), layer, warnings)
 	if layer == "layout":
 		# Layout-tier-only shell knobs; in an overrides delta these keys already
@@ -269,11 +362,91 @@ def _warn_unknown_top_level_keys(cfg, layer, warnings):
 				warnings.append(_("{0}: unknown top-level key '{1}'").format(layer, key))
 
 
-def _validate_nav(nav, layer, warnings):
+def _web_doctype_catalog():
+	"""DocTypes the consumer /web SPA can actually route — declared by the
+	customization app via the ``yrp_web_doctype_catalog`` hook (essdee_yrp
+	mirrors its frontend ``doctypes.js`` GROUPS / ``www/web.py`` WEB_DOCTYPES).
+	``None`` = no catalog declared (bare-yrp site) or the hook read failed:
+	catalog checks are skipped, the site-existence check still runs. Lazy +
+	fail-safe like ``_known_metric_keys`` — a hooks defect can NEVER hard-fail
+	config validation."""
+	try:
+		names = frappe.get_hooks("yrp_web_doctype_catalog")
+	except Exception:
+		return None
+	return set(names) if names else None
+
+
+def _doctype_fieldnames(doctype):
+	"""Fieldnames a list column/groupBy/titleField may legally name for
+	``doctype``: the RENDERABLE meta fields only — hidden fields and the
+	client's non-listable fieldtypes (``NON_LISTABLE_FIELDTYPES``) are
+	excluded, and Frappe's default fields (name/modified/owner/…) are NOT
+	included. Both list consumers build their column maps strictly from
+	visible DocType meta fields (RecordList.vue colDescs/byName + its
+	``in_list_view && !hidden`` default path, DynamicListPage
+	``eligibleColumns``), so naming anything outside this set renders nothing
+	— it must warn at save instead (2026-07-17 review; the old
+	meta-plus-default-fields set certified columns both clients drop).
+	``None`` = meta unavailable — field-level checks are skipped (the doctype
+	itself already warned; a meta defect must never hard-fail validation,
+	same contract as ``_known_metric_keys``)."""
+	try:
+		meta = frappe.get_meta(doctype)
+		return {
+			df.fieldname
+			for df in meta.fields
+			if not df.hidden and df.fieldtype not in NON_LISTABLE_FIELDTYPES
+		}
+	except Exception:
+		return None
+
+
+def _warn_reserved(layer, path, warnings):
+	"""USE_CASE §4 item 17 rule: a knob that is stored and shape-validated but
+	consumed by NO client yet must say so out loud — an authoring agent must
+	never ship a knob that silently does nothing (Track 1 item 11 later wires
+	or deletes every one of these)."""
+	warnings.append(
+		_(
+			"{0}: {1} is RESERVED — accepted and stored, but no client consumes it yet; it does nothing today"
+		).format(layer, path)
+	)
+
+
+def _warn_unusable_doctype(layer, path, doctype, warnings, catalog):
+	"""Shared soft check for every config value that NAMES a DocType the /web
+	client must route (nav items, quickCreate, home-block doctype lists,
+	newCta entries, listViews keys). The client catalog is the real gate — a
+	typo or an off-catalog name is silently dropped at render, so the save
+	must surface it. Returns True when a warning was emitted (callers skip
+	their deeper per-doctype checks)."""
+	if not frappe.db.exists("DocType", doctype):
+		warnings.append(
+			_("{0}: {1} doctype '{2}' does not exist as a DocType").format(layer, path, doctype)
+		)
+		return True
+	if catalog is not None and doctype not in catalog:
+		warnings.append(
+			_(
+				"{0}: {1} doctype '{2}' is not in the /web doctype catalog — the client cannot route it and drops it"
+			).format(layer, path, doctype)
+		)
+		return True
+	return False
+
+
+def _validate_nav(nav, layer, warnings, catalog=None):
 	if nav is None:
 		return
 	if not isinstance(nav, dict):
 		_hard(layer, _("nav must be an object"))
+
+	for key in nav:
+		if key in NAV_RESERVED_KEYS:
+			_warn_reserved(layer, "nav.{0}".format(key), warnings)
+		elif key not in NAV_KEYS:
+			warnings.append(_("{0}: unknown key '{1}' inside nav").format(layer, key))
 
 	# Soft: the engine treats anything other than "topbar" as the sidebar shell
 	# (AppLayout.vue topbarNav === strict compare), so an off-vocabulary value
@@ -297,6 +470,8 @@ def _validate_nav(nav, layer, warnings):
 	if not isinstance(groups, list):
 		_hard(layer, _("nav.groups must be a list"))
 
+	seen_doctypes = {}  # doctype -> occurrence count (duplicate detection)
+	seen_group_ids = {}
 	for group in groups:
 		if not isinstance(group, dict):
 			_hard(layer, _("every nav group must be an object"))
@@ -309,6 +484,15 @@ def _validate_nav(nav, layer, warnings):
 					layer, group.get("label") or group_id
 				)
 			)
+		else:
+			seen_group_ids[group_id] = seen_group_ids.get(group_id, 0) + 1
+		for key in group:
+			if key not in NAV_GROUP_KEYS:
+				warnings.append(
+					_("{0}: unknown key '{1}' inside nav group {2!r}").format(
+						layer, key, group_id or group.get("label")
+					)
+				)
 		items = group.get("items")
 		if items is None:
 			continue
@@ -317,6 +501,16 @@ def _validate_nav(nav, layer, warnings):
 		for item in items:
 			if not isinstance(item, dict):
 				_hard(layer, _("every nav item must be an object"))
+			if item.get("view") == "home" and "doctype" not in item:
+				# The demo-vocab home entry, special-cased so it never trips
+				# the doctype hard error — but the client always renders Home
+				# first on its own and IGNORES such an item entirely.
+				warnings.append(
+					_(
+						"{0}: nav item {{'view': 'home'}} is redundant — the client always renders Home first and ignores the item"
+					).format(layer)
+				)
+				continue
 			doctype = item.get("doctype")
 			if not isinstance(doctype, str) or not doctype.strip():
 				_hard(layer, _("every nav item must carry a non-empty string 'doctype'"))
@@ -326,10 +520,45 @@ def _validate_nav(nav, layer, warnings):
 					layer,
 					_("nav item icon '{0}' must match '^pi pi-[a-z0-9-]+$'").format(icon),
 				)
-			# Soft: the client catalog is the real gate; a typo just drops the item.
-			if not frappe.db.exists("DocType", doctype):
+			for key in item:
+				if key not in NAV_ITEM_KEYS:
+					warnings.append(
+						_(
+							"{0}: unknown key '{1}' inside nav item '{2}' — the client reads only doctype/icon"
+						).format(layer, key, doctype)
+					)
+			if doctype not in seen_doctypes:
+				# Soft: the client catalog is the real gate; a typo or an
+				# off-catalog doctype just drops the item (checked once per
+				# unique doctype — the duplicate warning covers repeats).
+				_warn_unusable_doctype(layer, "nav", doctype, warnings, catalog)
+			seen_doctypes[doctype] = seen_doctypes.get(doctype, 0) + 1
+
+	for doctype, count in seen_doctypes.items():
+		if count > 1:
+			warnings.append(
+				_("{0}: nav doctype '{1}' appears {2} times across nav groups").format(
+					layer, doctype, count
+				)
+			)
+	for group_id, count in seen_group_ids.items():
+		if count > 1:
+			warnings.append(
+				_(
+					"{0}: nav group id '{1}' appears {2} times — collapse state and rendering keys collide"
+				).format(layer, group_id, count)
+			)
+
+	# Layout layer only: hidden keys that target no nav item are dead — a
+	# doctype typo silently fails to hide anything. The overrides layer stays
+	# unchecked (it legitimately hides items that live in the layout's groups).
+	if layer == "layout" and isinstance(hidden, dict):
+		for key in hidden:
+			if key not in seen_doctypes:
 				warnings.append(
-					_("{0}: nav doctype '{1}' does not exist as a DocType").format(layer, doctype)
+					_(
+						"{0}: nav.hidden['{1}'] matches no nav item doctype in this layout — it hides nothing"
+					).format(layer, key)
 				)
 
 
@@ -350,19 +579,32 @@ def _warn_non_boolean_hidden(hidden, path, layer, warnings):
 			)
 
 
-def _validate_screens(screens, layer, warnings):
+def _validate_screens(screens, layer, warnings, catalog=None):
 	if screens is None:
 		return
 	if not isinstance(screens, dict):
 		_hard(layer, _("screens must be an object"))
 
+	# Item 17 supersedes the old §2.1 silence: a screen key other than "home"
+	# (incl. the reserved list:<DocType>/detail:<DocType> forms) renders
+	# NOTHING today — a typo like "hme" must not die silently.
+	for key in screens:
+		if key not in KNOWN_SCREEN_KEYS:
+			warnings.append(
+				_("{0}: screens['{1}'] is not rendered by any client today (only 'home' is)").format(
+					layer, key
+				)
+			)
+
 	home = screens.get("home")
 	if home is None:
-		# Unknown/reserved screen keys (list:<DocType>, detail:<DocType>) are
-		# ignored by the renderer — no validation, no warning (§2.1).
 		return
 	if not isinstance(home, dict):
 		_hard(layer, _("screens.home must be an object"))
+
+	for key in home:
+		if key not in SCREEN_KEYS:
+			warnings.append(_("{0}: unknown key '{1}' inside screens.home").format(layer, key))
 
 	hidden = home.get("hidden")
 	if hidden is not None and not isinstance(hidden, dict):
@@ -375,6 +617,7 @@ def _validate_screens(screens, layer, warnings):
 	if not isinstance(blocks, list):
 		_hard(layer, _("screens.home.blocks must be a list"))
 
+	seen_ids = {}
 	for block in blocks:
 		if not isinstance(block, dict):
 			_hard(layer, _("every home block must be an object"))
@@ -382,7 +625,41 @@ def _validate_screens(screens, layer, warnings):
 			value = block.get(key)
 			if not isinstance(value, str) or not value.strip():
 				_hard(layer, _("every home block must carry a non-empty string '{0}'").format(key))
-		_check_block_props(block, layer, warnings)
+		block_id = block["id"]
+		seen_ids[block_id] = seen_ids.get(block_id, 0) + 1
+		for key in block:
+			if key not in BLOCK_KEYS:
+				warnings.append(
+					_("{0}: unknown key '{1}' inside block '{2}'").format(layer, key, block_id)
+				)
+		size = block.get("size")
+		if size is not None and size not in BLOCK_SIZES:
+			warnings.append(
+				_("{0}: block '{1}' size {2!r} is not one of {3} — the client renders it full-width").format(
+					layer, block_id, size, ", ".join(BLOCK_SIZES)
+				)
+			)
+		_check_block_props(block, layer, warnings, catalog)
+
+	for block_id, count in seen_ids.items():
+		if count > 1:
+			warnings.append(
+				_(
+					"{0}: block id '{1}' appears {2} times — ids must be unique (hidden targeting and rendering keys collide)"
+				).format(layer, block_id, count)
+			)
+
+	# Layout layer only: a hidden key that names no block id is dead (an id
+	# typo silently fails to hide). Overrides legitimately hide LAYOUT blocks,
+	# so that layer stays unchecked.
+	if layer == "layout" and isinstance(hidden, dict):
+		for key in hidden:
+			if key not in seen_ids:
+				warnings.append(
+					_(
+						"{0}: screens.home.hidden['{1}'] matches no block id in this layout — it hides nothing"
+					).format(layer, key)
+				)
 
 
 def _known_metric_keys():
@@ -396,11 +673,90 @@ def _known_metric_keys():
 	return set(METRICS)
 
 
-def _check_block_props(block, layer, warnings):
+def _known_calculation_keys():
+	"""Calculation names ``run_ui_calculation`` accepts, for the
+	calculator-panel soft check. Same lazy fail-safe contract as
+	``_known_metric_keys`` — ``None`` = skip the registry check."""
+	try:
+		from yrp.yrp.api.ui_metrics import CALCULATIONS
+	except Exception:
+		return None
+	return set(CALCULATIONS)
+
+
+def _validate_columns(columns, fieldnames, doctype, path, layer, warnings, strings_legal=True):
+	"""Column lists (``listViews[dt].columns`` / record-list ``props.columns``).
+
+	The two consumers differ (2026-07-17 review correction): the record-list
+	HOME BLOCK accepts "fieldname" strings AND ``{field, label}`` objects
+	(RecordList.vue colDescs handles both), but the ROUTED list page reads
+	ONLY objects — DynamicListPage ``layoutColumns`` skips any entry without a
+	``.field`` property, so a bare string there is silently dropped (and an
+	all-string list collapses the whole columns override back to the meta
+	defaults). The listViews path passes ``strings_legal=False`` and every
+	string entry warns. Both clients silently drop a column whose field is
+	not a renderable meta field, so the fieldname typo must die here instead.
+	All soft."""
+	if not isinstance(columns, list):
+		warnings.append(
+			_("{0}: {1} columns must be a list of fieldname strings or {{field, label}} objects").format(
+				layer, path
+			)
+		)
+		return
+	for entry in columns:
+		if isinstance(entry, str):
+			field = entry
+			if not strings_legal:
+				warnings.append(
+					_(
+						"{0}: {1} column '{2}' is a bare fieldname string — the routed list page reads only {{field, label}} objects and DROPS string entries (write {{\"field\": \"{2}\"}}; strings work only in record-list block columns)"
+					).format(layer, path, entry)
+				)
+		elif isinstance(entry, dict):
+			field = entry.get("field")
+			if not isinstance(field, str) or not field.strip():
+				warnings.append(
+					_("{0}: {1} column {2!r} needs a non-empty string 'field'").format(
+						layer, path, entry
+					)
+				)
+				continue
+			label = entry.get("label")
+			if label is not None and not isinstance(label, str):
+				warnings.append(
+					_("{0}: {1} column '{2}' label must be a string").format(layer, path, field)
+				)
+			for key in entry:
+				if key not in COLUMN_KEYS:
+					warnings.append(
+						_(
+							"{0}: {1} column '{2}' key '{3}' is ignored — the client reads only field/label"
+						).format(layer, path, field, key)
+					)
+		else:
+			warnings.append(
+				_(
+					"{0}: {1} column entry {2!r} is neither a fieldname string nor a {{field, label}} object"
+				).format(layer, path, entry)
+			)
+			continue
+		if fieldnames is not None and field not in fieldnames:
+			warnings.append(
+				_("{0}: {1} column '{2}' is not a field on '{3}' — the client drops the column").format(
+					layer, path, field, doctype
+				)
+			)
+
+
+def _check_block_props(block, layer, warnings, catalog=None):
 	"""Per-type prop schemas for the shipped block types (§15 item 3c).
 
 	Failures are soft warnings; unknown block types skip prop validation
-	entirely (the client bundle may be newer than this server).
+	entirely (the client bundle may be newer than this server). Item 17
+	deepened the checks: unknown props on a KNOWN type warn (Vue silently
+	ignores them), registry names are checked against their registries, and
+	doctype-naming props go through the shared catalog gate.
 	"""
 	block_type = block["type"]
 	props = block.get("props")
@@ -415,16 +771,60 @@ def _check_block_props(block, layer, warnings):
 		# calculation) must still run — continue over an empty dict.
 		props = {}
 
+	known_props = BLOCK_PROP_KEYS.get(block_type)
+	if known_props is not None:
+		for key in props:
+			if key not in known_props:
+				warnings.append(
+					_(
+						"{0}: block '{1}' prop '{2}' is not a prop of block type '{3}' — the client ignores it"
+					).format(layer, block["id"], key, block_type)
+				)
+
 	if block_type == "home-queues":
 		max_cards = props.get("maxCards")
-		if max_cards is not None and (
-			isinstance(max_cards, bool) or not isinstance(max_cards, int) or not (1 <= max_cards <= 10)
+		if max_cards is not None:
+			# Validated since day one, consumed by nothing (HomeQueues reads
+			# only `stats`) — RESERVED until Track 1 item 11 wires or deletes it.
+			_warn_reserved(layer, _("block '{0}' maxCards").format(block["id"]), warnings)
+			if (
+				isinstance(max_cards, bool)
+				or not isinstance(max_cards, int)
+				or not (1 <= max_cards <= 10)
+			):
+				warnings.append(
+					_("{0}: block '{1}' maxCards must be an integer between 1 and 10").format(
+						layer, block["id"]
+					)
+				)
+		stats = props.get("stats")
+		if stats is not None and (
+			not isinstance(stats, list) or not all(isinstance(s, str) for s in stats)
 		):
 			warnings.append(
-				_("{0}: block '{1}' maxCards must be an integer between 1 and 10").format(
-					layer, block["id"]
-				)
+				_("{0}: block '{1}' stats must be a list of metric names").format(layer, block["id"])
 			)
+		elif stats:
+			# The 2026-07-17 owner bite: home-queues renders ONLY the four
+			# queue-backed metrics (HOME_QUEUE_METRICS = HomeQueues.vue
+			# METRIC_TO_QUEUE). A registered KPI key here renders nothing; an
+			# unregistered name is a typo. Both must warn, never drop silently.
+			known = _known_metric_keys()
+			for name in stats:
+				if name in HOME_QUEUE_METRICS:
+					continue
+				if known is not None and name not in known:
+					warnings.append(
+						_("{0}: block '{1}' stat '{2}' is not a registered metric").format(
+							layer, block["id"], name
+						)
+					)
+				else:
+					warnings.append(
+						_(
+							"{0}: block '{1}' stat '{2}' is not a home-queue metric ({3}) — home-queues renders NOTHING for it; put KPI metrics in a summary-tiles block"
+						).format(layer, block["id"], name, ", ".join(HOME_QUEUE_METRICS))
+					)
 	elif block_type in ("home-recent", "home-quick-create"):
 		doctypes = props.get("doctypes")
 		if doctypes is not None and (
@@ -433,6 +833,11 @@ def _check_block_props(block, layer, warnings):
 			warnings.append(
 				_("{0}: block '{1}' doctypes must be a list of strings").format(layer, block["id"])
 			)
+		elif doctypes:
+			for name in doctypes:
+				_warn_unusable_doctype(
+					layer, _("block '{0}'").format(block["id"]), name, warnings, catalog
+				)
 		if block_type == "home-recent":
 			recent_style = props.get("recentStyle")
 			if recent_style is not None and recent_style not in ("table", "tiles"):
@@ -453,6 +858,42 @@ def _check_block_props(block, layer, warnings):
 			warnings.append(
 				_("{0}: block '{1}' newCta must be an object").format(layer, block["id"])
 			)
+		elif isinstance(new_cta, dict):
+			# newCta names route through the same catalog gate as quickCreate
+			# (HomeGreeting drops entries without a catalog route silently).
+			for key in new_cta:
+				if key not in NEWCTA_KEYS:
+					warnings.append(
+						_("{0}: block '{1}' unknown key '{2}' inside newCta").format(
+							layer, block["id"], key
+						)
+					)
+			primary = new_cta.get("primary")
+			if primary is not None:
+				if not isinstance(primary, str) or not primary.strip():
+					warnings.append(
+						_("{0}: block '{1}' newCta.primary must be a DocType name").format(
+							layer, block["id"]
+						)
+					)
+				else:
+					_warn_unusable_doctype(
+						layer, _("block '{0}' newCta").format(block["id"]), primary, warnings, catalog
+					)
+			menu = new_cta.get("menu")
+			if menu is not None and (
+				not isinstance(menu, list) or not all(isinstance(m, str) for m in menu)
+			):
+				warnings.append(
+					_("{0}: block '{1}' newCta.menu must be a list of DocType names").format(
+						layer, block["id"]
+					)
+				)
+			elif menu:
+				for name in menu:
+					_warn_unusable_doctype(
+						layer, _("block '{0}' newCta").format(block["id"]), name, warnings, catalog
+					)
 	elif block_type == "summary-tiles":
 		metrics = props.get("metrics")
 		if metrics is not None and (
@@ -472,12 +913,24 @@ def _check_block_props(block, layer, warnings):
 					)
 	elif block_type == "record-list":
 		doctype = props.get("doctype")
+		fieldnames = None
 		if not isinstance(doctype, str) or not doctype.strip():
 			warnings.append(
 				_("{0}: block '{1}' requires a non-empty string 'doctype'").format(
 					layer, block["id"]
 				)
 			)
+			doctype = None
+		elif not frappe.db.exists("DocType", doctype):
+			# No catalog check here — record-list renders any readable DocType
+			# (an off-catalog one just loses its "View all" link).
+			warnings.append(
+				_("{0}: block '{1}' doctype '{2}' does not exist as a DocType").format(
+					layer, block["id"], doctype
+				)
+			)
+		else:
+			fieldnames = _doctype_fieldnames(doctype)
 		variant = props.get("variant")
 		if variant is not None and variant not in ("table", "cards", "kanban"):
 			warnings.append(
@@ -486,11 +939,9 @@ def _check_block_props(block, layer, warnings):
 				)
 			)
 		columns = props.get("columns")
-		if columns is not None and (
-			not isinstance(columns, list) or not all(isinstance(c, str) for c in columns)
-		):
-			warnings.append(
-				_("{0}: block '{1}' columns must be a list of strings").format(layer, block["id"])
+		if columns is not None:
+			_validate_columns(
+				columns, fieldnames, doctype, _("block '{0}'").format(block["id"]), layer, warnings
 			)
 		page_size = props.get("pageSize")
 		if page_size is not None and (
@@ -503,9 +954,20 @@ def _check_block_props(block, layer, warnings):
 			)
 		for key in ("groupBy", "titleField", "title"):
 			value = props.get(key)
-			if value is not None and not isinstance(value, str):
+			if value is None:
+				continue
+			if not isinstance(value, str):
 				warnings.append(
 					_("{0}: block '{1}' {2} must be a string").format(layer, block["id"], key)
+				)
+			elif key != "title" and fieldnames is not None and value not in fieldnames:
+				# groupBy/titleField silently fall back client-side when they
+				# name no meta field (kanban regroups by status, title falls
+				# to meta title_field) — the typo must warn here.
+				warnings.append(
+					_("{0}: block '{1}' {2} '{3}' is not a field on '{4}' — the client falls back").format(
+						layer, block["id"], key, value, doctype
+					)
 				)
 	elif block_type == "calculator-panel":
 		calculation = props.get("calculation")
@@ -515,6 +977,14 @@ def _check_block_props(block, layer, warnings):
 					layer, block["id"]
 				)
 			)
+		else:
+			known = _known_calculation_keys()
+			if known is not None and calculation not in known:
+				warnings.append(
+					_("{0}: block '{1}' calculation '{2}' is not a registered calculation").format(
+						layer, block["id"], calculation
+					)
+				)
 		params = props.get("params")
 		if params is not None and not isinstance(params, dict):
 			warnings.append(
@@ -522,12 +992,78 @@ def _check_block_props(block, layer, warnings):
 			)
 
 
-def _validate_list_views(list_views, layer):
-	if list_views is not None and not isinstance(list_views, dict):
+def _validate_list_views(list_views, layer, warnings, catalog=None):
+	"""Deep listViews validation (item 17). The client resolves
+	``listViews[<DocType>]`` per catalog route and silently drops anything it
+	cannot use (unknown doctype key, non-object value, off-vocabulary variant,
+	columns/groupBy/titleField naming no meta field) — every one of those
+	families warns here now. Hard error only for the pre-existing shape rule."""
+	if list_views is None:
+		return
+	if not isinstance(list_views, dict):
 		_hard(layer, _("listViews must be an object keyed by DocType"))
 
+	for doctype, view in list_views.items():
+		if _warn_unusable_doctype(layer, "listViews", doctype, warnings, catalog):
+			fieldnames = None
+		else:
+			fieldnames = _doctype_fieldnames(doctype)
+		if view is None:
+			continue  # null = no opinion (the merge skips it)
+		if not isinstance(view, dict):
+			warnings.append(
+				_("{0}: listViews['{1}'] must be an object — the client ignores it").format(
+					layer, doctype
+				)
+			)
+			continue
+		for key in view:
+			if key not in LIST_VIEW_KEYS:
+				warnings.append(
+					_("{0}: unknown key '{1}' inside listViews['{2}']").format(layer, key, doctype)
+				)
+		variant = view.get("variant")
+		if variant is not None and variant not in LIST_VIEW_VARIANTS:
+			_warn_off_vocabulary(
+				layer,
+				"listViews['{0}'].variant".format(doctype),
+				variant,
+				LIST_VIEW_VARIANTS,
+				"table",
+				warnings,
+			)
+		columns = view.get("columns")
+		if columns is not None:
+			# strings_legal=False: DynamicListPage.layoutColumns drops bare
+			# string entries — only {field, label} objects render here.
+			_validate_columns(
+				columns,
+				fieldnames,
+				doctype,
+				"listViews['{0}']".format(doctype),
+				layer,
+				warnings,
+				strings_legal=False,
+			)
+		for key in ("groupBy", "titleField"):
+			value = view.get(key)
+			if value is None:
+				continue
+			if not isinstance(value, str) or not value.strip():
+				warnings.append(
+					_("{0}: listViews['{1}'].{2} must be a fieldname string").format(
+						layer, doctype, key
+					)
+				)
+			elif fieldnames is not None and value not in fieldnames:
+				warnings.append(
+					_(
+						"{0}: listViews['{1}'].{2} '{3}' is not a field on '{1}' — the client falls back"
+					).format(layer, doctype, key, value)
+				)
 
-def _validate_quick_create(quick_create, layer, warnings):
+
+def _validate_quick_create(quick_create, layer, warnings, catalog=None):
 	if quick_create is None:
 		return
 	if not isinstance(quick_create, list):
@@ -535,12 +1071,11 @@ def _validate_quick_create(quick_create, layer, warnings):
 	for entry in quick_create:
 		if not isinstance(entry, str):
 			warnings.append(_("{0}: quickCreate entry {1!r} is not a string").format(layer, entry))
-		# Soft, same rule as nav items: the client catalog is the real gate; a
-		# typo just drops the entry — but the SM should hear about it at save.
-		elif not frappe.db.exists("DocType", entry):
-			warnings.append(
-				_("{0}: quickCreate doctype '{1}' does not exist as a DocType").format(layer, entry)
-			)
+		else:
+			# Soft, same rule as nav items: the client catalog is the real
+			# gate; a typo or off-catalog name just drops the entry — but the
+			# SM should hear about it at save.
+			_warn_unusable_doctype(layer, "quickCreate", entry, warnings, catalog)
 
 
 def _validate_chrome(chrome, layer, warnings):
@@ -567,14 +1102,17 @@ def _validate_chrome(chrome, layer, warnings):
 
 def _validate_realtime(realtime, layer, warnings):
 	"""Soft shape checks for the `realtime` knob (ChromeBar.vue Live indicator
-	consumes `enabled` today; `intervalMs`/`toast` are reserved knob names)."""
+	consumes `enabled` today; `intervalMs`/`toast` are RESERVED knob names —
+	their presence gets the explicit item-17 notice on top of the type check)."""
 	if realtime is None:
 		return
 	if not isinstance(realtime, dict):
 		warnings.append(_("{0}: realtime must be an object — the client ignores it").format(layer))
 		return
-	for key, value in realtime.items():
-		if key not in REALTIME_KEYS:
+	for key in realtime:
+		if key in REALTIME_RESERVED_KEYS:
+			_warn_reserved(layer, "realtime.{0}".format(key), warnings)
+		elif key not in REALTIME_KEYS:
 			warnings.append(_("{0}: unknown key '{1}' inside realtime").format(layer, key))
 	enabled = realtime.get("enabled")
 	if enabled is not None and not isinstance(enabled, bool):
@@ -631,7 +1169,9 @@ def _validate_detail(detail, layer, warnings):
 		_warn_off_vocabulary(layer, "detail.position", position, DETAIL_POSITIONS, "page", warnings)
 
 	for key in detail:
-		if key not in DETAIL_KEYS:
+		if key in DETAIL_RESERVED_KEYS:
+			_warn_reserved(layer, "detail.{0}".format(key), warnings)
+		elif key not in DETAIL_KEYS:
 			warnings.append(_("{0}: unknown key '{1}' inside detail").format(layer, key))
 
 
@@ -720,10 +1260,14 @@ def _validate_actions(actions, layer, warnings):
 		)
 
 	dialog_position = actions.get("dialogPosition")
-	if dialog_position is not None and dialog_position not in OVERLAY_POSITIONS:
-		_warn_off_vocabulary(
-			layer, "actions.dialogPosition", dialog_position, OVERLAY_POSITIONS, "center", warnings
-		)
+	if dialog_position is not None:
+		# RESERVED (see ACTIONS_KEYS comment): vocabulary-checked so layouts
+		# can already carry it, but consumed by no client — say so (item 17).
+		_warn_reserved(layer, "actions.dialogPosition", warnings)
+		if dialog_position not in OVERLAY_POSITIONS:
+			_warn_off_vocabulary(
+				layer, "actions.dialogPosition", dialog_position, OVERLAY_POSITIONS, "center", warnings
+			)
 
 	items = actions.get("items")
 	if items is not None:
@@ -850,8 +1394,17 @@ def _soft_validate_theme_tokens(t, path, layer, warnings):
 			warn("radius", radius, _("a number between 0 and 60"))
 
 	density = t.get("density")
-	if density is not None and density not in THEME_DENSITIES:
-		warn("density", density, _("one of {0}").format(", ".join(THEME_DENSITIES)))
+	if density is not None:
+		# Inert-knob notice (2026-07-17 drill): the engine emits the token but
+		# NO host CSS consumes it (Track 1 item 10) — same say-it-out-loud rule
+		# as the RESERVED knobs. The vocabulary check still runs on top.
+		warnings.append(
+			_(
+				"{0}: {1}.density is accepted but visually INERT today — no host CSS consumes the density token (Track 1 item 10); it changes nothing"
+			).format(layer, path)
+		)
+		if density not in THEME_DENSITIES:
+			warn("density", density, _("one of {0}").format(", ".join(THEME_DENSITIES)))
 
 	font_scale = t.get("fontScale")
 	if font_scale is not None:
