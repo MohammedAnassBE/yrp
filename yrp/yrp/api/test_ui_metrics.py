@@ -142,6 +142,34 @@ class TestGetUIMetrics(IntegrationTestCase):
 		self.assertEqual(out["metrics"], [])
 		self.assertEqual(len(out["warnings"]), 1)
 
+	def test_active_lots_goto_deep_links_the_exact_counted_lots(self):
+		"""2026-07-16 cleanup: the tile used to deep-link the open-WO list; it
+		must land on the LOT list showing exactly the lots the metric counted
+		(a name-in filter mirroring the compute's own open-WO query)."""
+		out = get_ui_metrics(["active_lots"])
+		self.assertEqual(out["warnings"], [])
+		metric = out["metrics"][0]
+		self.assertEqual(metric["key"], "active_lots")
+
+		goto = metric["goto"]
+		self.assertEqual(goto["doctype"], "Lot")
+		self.assertEqual(len(goto["filters"]), 1)
+		field, operator, lots = goto["filters"][0]
+		self.assertEqual((field, operator), ("name", "in"))
+
+		# Independent recomputation of the compute's query — same filters.
+		expected = frappe.get_list(
+			"Work Order",
+			filters=OPEN_WO_FILTERS + [["lot", "is", "set"]],
+			pluck="lot",
+			distinct=True,
+			limit=0,
+		)
+		self.assertEqual(sorted(lots), sorted(expected))
+		# Tile count == deep-linked list count, by construction.
+		self.assertEqual(metric["value"], len(lots))
+		json.dumps(goto)  # must ride to the client
+
 	def test_permission_gating_omits_unreadable_doctypes_silently(self):
 		def deny_lot(doctype, ptype="read", *args, **kwargs):
 			return doctype != "Lot"

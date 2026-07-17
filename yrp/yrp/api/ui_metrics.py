@@ -201,21 +201,28 @@ def _delayed():
 	return _count("Work Order", _delayed_wo_filters())
 
 
-def _active_lots():
+def _active_lot_names():
 	"""Distinct lots referenced by open WOs (demo semantics: lots that still
-	have unfinished work). ``lot`` on Work Order is the stock-dimension
-	Custom Field — absent when the site has no production-group dimension,
-	in which case the metric degrades to 0 instead of erroring."""
+	have unfinished work), via permission-aware ``frappe.get_list`` — the
+	caller only ever counts/sees lots from Work Orders they may read. ``lot``
+	on Work Order is the stock-dimension Custom Field — absent when the site
+	has no production-group dimension, in which case the metric degrades to
+	an empty list (count 0) instead of erroring. Shared by the compute AND
+	the tile's goto, so the deep-linked list always shows exactly the counted
+	lots."""
 	if not frappe.get_meta("Work Order").has_field("lot"):
-		return 0
-	lots = frappe.get_list(
+		return []
+	return frappe.get_list(
 		"Work Order",
 		filters=deepcopy(OPEN_WO_FILTERS) + [["lot", "is", "set"]],
 		pluck="lot",
 		distinct=True,
 		limit=0,
 	)
-	return len(lots)
+
+
+def _active_lots():
+	return len(_active_lot_names())
 
 
 # ── METRICS registry ─────────────────────────────────────────────────────────
@@ -285,12 +292,19 @@ METRICS = {
 		"goto": lambda: {"doctype": "Work Order", "filters": _delayed_wo_filters()},
 	},
 	"active_lots": {
-		# goto points at the open Work Order list — "lots with open WOs" is not
-		# expressible as a Lot-list filter, and the open-WO list shows the lots.
+		# goto lands on the LOT list (2026-07-16 cleanup — the tile used to
+		# deep-link the open-WO list). "lots with open WOs" is not a static
+		# Lot-list filter, so the callable mirrors the metric's own query into
+		# a name-in filter: tile count == list count for the same user (the
+		# names come from Work Orders the caller may read; goto is built per
+		# call, like _delayed_wo_filters). doctypes gates BOTH sides of the
+		# tile: Work Order (what the compute queries) AND Lot (where the goto
+		# lands) — a user who can't read Lot must not get a tile whose click
+		# deep-links a list they can't open.
 		"label": "Active Lots",
-		"doctypes": ["Work Order"],
+		"doctypes": ["Work Order", "Lot"],
 		"compute": _active_lots,
-		"goto": lambda: {"doctype": "Work Order", "filters": deepcopy(OPEN_WO_FILTERS)},
+		"goto": lambda: {"doctype": "Lot", "filters": [["name", "in", _active_lot_names()]]},
 	},
 }
 

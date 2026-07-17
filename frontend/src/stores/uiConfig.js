@@ -52,6 +52,7 @@ export const useUiConfigStore = defineStore("yrpUiConfig", {
 		meta: null, // { layout, has_preference, schema_version, warnings } | null
 		fallback: null, // compiled-in Default (host-supplied via loadFromBoot, §12.3)
 		previewUser: null, // §10 View-as — target user while previewing, else null
+		previewLayout: null, // §10 sandbox — bare layout name while previewing, else null
 		previewPermHints: null, // { can_read, can_create } computed AS the target
 		stash: null, // SM's own {config, meta} parked during preview
 	}),
@@ -60,6 +61,11 @@ export const useUiConfigStore = defineStore("yrpUiConfig", {
 		/** The config every consumer renders from — never null once hydrated. */
 		active(state) {
 			return state.config || state.fallback || {}
+		},
+
+		/** True while ANY §10 preview (user or bare layout) is active. */
+		previewing(state) {
+			return Boolean(state.previewUser || state.previewLayout)
 		},
 
 		/** Nav groups with hidden items filtered out; empty groups dropped. */
@@ -138,10 +144,20 @@ export const useUiConfigStore = defineStore("yrpUiConfig", {
 		 * reconciliation — a degraded resolution (kill-switch skeleton, empty
 		 * nav+home) must never blank the rendered UI just because it arrived via
 		 * a save response instead of boot. Returns true when applied.
+		 *
+		 * No-op during §10 preview: any own-config payload arriving mid-preview
+		 * (a racing realtime ui-config refresh, a stray save response) must not
+		 * clobber the previewed config — it lands in the STASH instead, so the
+		 * fresher own config is what Exit restores.
 		 */
 		applyServerPayload(payload, source = "server payload") {
 			const guarded = guardPayload(payload, source)
 			if (!guarded) return false
+			if (this.previewing) {
+				this.stash = { config: guarded.config, meta: guarded.meta || null }
+				console.warn(`[yrp-web] ${source}: preview active — stashed, not applied`)
+				return false
+			}
 			this.config = guarded.config
 			this.meta = guarded.meta || null
 			return true
@@ -149,7 +165,7 @@ export const useUiConfigStore = defineStore("yrpUiConfig", {
 
 		/** Re-fetch the session user's config ("Refresh UI"). No-op in preview. */
 		async refresh() {
-			if (this.previewUser) return
+			if (this.previewing) return
 			const result = await getContext().callMethod("yrp.yrp.api.ui_config.get_my_ui_config", {})
 			const payload = guardPayload(result, "refresh")
 			if (!payload) return
@@ -158,29 +174,43 @@ export const useUiConfigStore = defineStore("yrpUiConfig", {
 		},
 
 		/**
-		 * §10 View-as: swap in `user`'s resolved config + perm hints (computed
-		 * server-side AS the target). Appearance only — session, data and real
-		 * permissions stay the SM's. Throws through to the caller on
-		 * PermissionError/unknown user: nothing changes on failure.
+		 * §10 View-as: swap in the target's resolved config + perm hints.
+		 * `target` is either a user id string (back-compat) or `{ user }` /
+		 * `{ layout }` — exactly one, mirroring the server's mutually-exclusive
+		 * params. `user=` previews a person (their layers, hints computed AS
+		 * them); `layout=` previews a bare layout with no overrides (sandbox
+		 * mode; hints = the caller's own). Appearance only — session, data and
+		 * real permissions stay the SM's. The previewed config is applied even
+		 * when meta.warnings is non-empty: preview is diagnostic, the SM must
+		 * SEE what a warned layout renders. Throws through to the caller on
+		 * PermissionError / unknown user / unknown-disabled-broken layout:
+		 * nothing changes on failure.
 		 */
-		async previewAs(user) {
-			const result = await getContext().callMethod("yrp.yrp.api.ui_config.get_ui_config_for", {
-				user,
-			})
-			if (!this.previewUser) this.stash = { config: this.config, meta: this.meta }
+		async previewAs(target) {
+			const opts = typeof target === "string" ? { user: target } : target || {}
+			const args = opts.layout ? { layout: opts.layout } : { user: opts.user }
+			const result = await getContext().callMethod(
+				"yrp.yrp.api.ui_config.get_ui_config_for",
+				args
+			)
+			// Stash the SM's own config only when ENTERING preview — switching
+			// target mid-preview must keep the original stash intact.
+			if (!this.previewing) this.stash = { config: this.config, meta: this.meta }
 			this.config = result?.config || null
 			this.meta = result?.meta || null
-			this.previewUser = user
+			this.previewUser = opts.layout ? null : opts.user || null
+			this.previewLayout = opts.layout || null
 			this.previewPermHints = result?.perm_hints || null
 		},
 
 		/** Restore the SM's own config. Memory-only — a full reload also exits. */
 		exitPreview() {
-			if (!this.previewUser) return
+			if (!this.previewing) return
 			this.config = this.stash?.config ?? null
 			this.meta = this.stash?.meta ?? null
 			this.stash = null
 			this.previewUser = null
+			this.previewLayout = null
 			this.previewPermHints = null
 		},
 	},

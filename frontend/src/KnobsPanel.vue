@@ -23,10 +23,11 @@
      Defaults mirror the ACTIVE layout: until the user touches a knob nothing
      is written and nothing changes (parity law). Reset calls
      reset_my_ui_overrides and restores the pure layout. Errors surface as a
-     small toast, never a crash. Hidden during §10 View-as preview — a save
-     there would write the SM's own record while showing someone else's UI. -->
+     small toast, never a crash. Hidden during ANY §10 preview (user OR bare
+     layout) — a save there would write the SM's own record while showing a
+     config that isn't theirs. -->
 <template>
-	<div v-if="!ui.previewUser" class="yrp-knobs">
+	<div v-if="!ui.previewing" class="yrp-knobs">
 		<div v-if="open" class="yrp-knobs__panel" role="dialog" aria-label="My UI settings">
 			<div class="yrp-knobs__title">
 				<span aria-hidden="true">🎛</span>
