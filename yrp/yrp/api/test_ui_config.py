@@ -1223,6 +1223,32 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("theme.dark.density is accepted but visually INERT", warnings[0])
 
+	def test_arrows_enum_soft_validation(self):
+		# DESIGN_PREMIUM §4(i) item 1: both enum values are silent, an off-enum
+		# value warns softly (never blocks), and the dark-overlay spelling is
+		# called out as doing nothing (scheme-neutral, top level only).
+		self.assertEqual(self._warnings({"arrows": "quiet"}), [])
+		self.assertEqual(self._warnings({"arrows": "default"}), [])
+		warnings = self._warnings({"arrows": "loud"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.arrows", warnings[0])
+		self.assertIn("default, quiet", warnings[0])
+		warnings = self._warnings({"dark": {"arrows": "quiet"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.dark.arrows does nothing", warnings[0])
+
+	def test_section_headers_enum_soft_validation(self):
+		# DESIGN_PREMIUM §4(i) item 2 — identical contract to theme.arrows.
+		self.assertEqual(self._warnings({"sectionHeaders": "plain"}), [])
+		self.assertEqual(self._warnings({"sectionHeaders": "banded"}), [])
+		warnings = self._warnings({"sectionHeaders": "boxed"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.sectionHeaders", warnings[0])
+		self.assertIn("banded, plain", warnings[0])
+		warnings = self._warnings({"dark": {"sectionHeaders": "plain"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.dark.sectionHeaders does nothing", warnings[0])
+
 	def test_numeric_strings_pass_like_the_engines_number_coercion(self):
 		# Number("14") is finite in the client — the server must not warn on it.
 		self.assertEqual(self._warnings({"radius": "14", "fontScale": "1.1"}), [])

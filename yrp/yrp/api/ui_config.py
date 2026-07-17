@@ -222,6 +222,8 @@ THEME_KEYS = (
 	"density",
 	"fontScale",
 	"font",
+	"arrows",  # soft enum THEME_ARROWS — presentation mode, TOP level only
+	"sectionHeaders",  # soft enum THEME_SECTION_HEADERS — presentation mode, TOP level only
 	"dark",  # overlay palette for the .dark scheme: {...theme, ...theme.dark}
 )
 THEME_MODES = ("user", "light", "dark")
@@ -229,6 +231,14 @@ THEME_MODES = ("user", "light", "dark")
 # Soft-checked token groups (engine applyTheme.js guards, mirrored).
 THEME_COLOR_KEYS = ("bg", "surface", "text", "muted", "line", "surface2")
 THEME_DENSITIES = ("compact", "comfortable", "spacious")
+
+# Presentation-mode enums (2026-07-17, DESIGN_PREMIUM §4(i)): scheme-neutral
+# data-attribute knobs (html[data-yrp-arrows] / html[data-yrp-section-headers])
+# applied by the engine's applyTheme from the TOP-level theme only. First value
+# = the shipped default (attribute absent, byte-identical rendering); only the
+# second is ever worth authoring. Inside theme.dark they do nothing and warn.
+THEME_ARROWS = ("default", "quiet")
+THEME_SECTION_HEADERS = ("banded", "plain")
 
 # Security-labeled formats (spec §15) — checked with re.fullmatch, never
 # re.match + '$' (Python '$' also matches before a trailing newline, so
@@ -1307,6 +1317,23 @@ def _validate_theme(theme, layer, warnings):
 
 	_soft_validate_theme_tokens(theme, "theme", layer, warnings)
 
+	# Presentation modes (DESIGN_PREMIUM §4(i)) — soft enum checks, top level
+	# only (the engine reads them from the base theme; scheme-neutral).
+	arrows = theme.get("arrows")
+	if arrows is not None and arrows not in THEME_ARROWS:
+		warnings.append(
+			_("{0}: theme.arrows {1!r} is not one of {2} — the client will ignore it").format(
+				layer, arrows, ", ".join(THEME_ARROWS)
+			)
+		)
+	section_headers = theme.get("sectionHeaders")
+	if section_headers is not None and section_headers not in THEME_SECTION_HEADERS:
+		warnings.append(
+			_("{0}: theme.sectionHeaders {1!r} is not one of {2} — the client will ignore it").format(
+				layer, section_headers, ", ".join(THEME_SECTION_HEADERS)
+			)
+		)
+
 	# dark overlay: the engine builds the effective dark theme as
 	# {...theme, ...theme.dark} and silently ignores a non-object — soft here.
 	dark = theme.get("dark")
@@ -1325,6 +1352,15 @@ def _validate_theme(theme, layer, warnings):
 				)
 			)
 		_soft_validate_theme_tokens(dark, "theme.dark", layer, warnings)
+		# Scheme-neutral presentation modes are read from the TOP level only —
+		# say it out loud instead of silently dropping (item-17 posture).
+		for key in ("arrows", "sectionHeaders"):
+			if dark.get(key) is not None:
+				warnings.append(
+					_(
+						"{0}: theme.dark.{1} does nothing — {1} is scheme-neutral; set theme.{1} instead"
+					).format(layer, key)
+				)
 		for key in dark:
 			# Overlay vocabulary = the theme's own; a nested dark is meaningless.
 			if key == "dark" or key not in THEME_KEYS:

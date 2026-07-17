@@ -50,6 +50,15 @@ const DENSITIES = {
 	spacious: { pad: 18, gap: 18, row: 58 },
 }
 
+// Presentation-mode attribute knobs (DESIGN_PREMIUM §4(i), mirrored by
+// THEME_ARROWS / THEME_SECTION_HEADERS in ui_config.py). [0] is the shipped
+// default (attribute ABSENT — zero selectors match, parity law); only [1]
+// ever writes the html data-attribute the opt-in CSS gates key on.
+const ATTR_MODES = {
+	arrows: { datasetKey: "yrpArrows", values: ["default", "quiet"] },
+	sectionHeaders: { datasetKey: "yrpSectionHeaders", values: ["banded", "plain"] },
+}
+
 const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
 const isColor = (v) => typeof v === "string" && (HEX_RE.test(v) || RGBA_RE.test(v))
 
@@ -187,6 +196,23 @@ export function applyTheme(theme) {
 	//    can't pollute the SM's. Anything else = "user": the host re-applies
 	//    the stored/OS choice (§9 item 1, §19 nit 2).
 	getContext().applyMode(t.mode === "light" || t.mode === "dark" ? t.mode : "user")
+
+	// 1b. Presentation-mode data attributes (theme.arrows / theme.sectionHeaders,
+	//     scheme-neutral — read from the TOP-level theme only). Same idempotent
+	//     wholesale-rebuild contract as the token <style>: every run recomputes
+	//     the attribute state, so a removed knob also removes its attribute and
+	//     the absent-knob path stays byte-identical (no selector can match).
+	//     Runs BEFORE the early return below — attribute cleanup must happen
+	//     even for an all-default theme.
+	for (const [key, { datasetKey, values }] of Object.entries(ATTR_MODES)) {
+		const v = t[key]
+		if (v === values[1]) {
+			document.documentElement.dataset[datasetKey] = v
+		} else {
+			if (v != null && v !== values[0]) warnInvalid(key, v)
+			delete document.documentElement.dataset[datasetKey]
+		}
+	}
 
 	// 2. Per-scheme token maps. WITH a dark{} overlay the .dark block is the
 	//    OVERLAID theme (demo effTheme()): dark{} keys win, un-overridden keys

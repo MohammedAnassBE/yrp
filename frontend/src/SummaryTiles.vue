@@ -227,3 +227,15 @@ onMounted(load)
 	}
 }
 </style>
+
+<!-- theme.arrows="quiet" gate (DESIGN_PREMIUM §4(i) item 1). UN-scoped on
+     purpose: the data attribute lives on <html>, outside this component's
+     scope tree, so a scoped rule could never key on it. Parity law holds by
+     construction — the attribute exists ONLY when a layout authors the knob,
+     so for every other layout this selector matches nothing. The tile hover
+     ring/shadow remains the goto affordance. -->
+<style>
+html[data-yrp-arrows="quiet"] .yrp-tile__arrow {
+	display: none;
+}
+</style>

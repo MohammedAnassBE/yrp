@@ -68,11 +68,13 @@ from yrp.yrp.api.ui_config import (
 	OVERLAY_POSITIONS,
 	OVERRIDABLE_KEYS,
 	STRUCTURAL_KEYS,
+	THEME_ARROWS,
 	THEME_COLOR_KEYS,
 	THEME_DENSITIES,
 	THEME_FONT_RE,
 	THEME_MODES,
 	THEME_RGBA_RE,
+	THEME_SECTION_HEADERS,
 	_web_doctype_catalog,
 )
 from yrp.yrp.api.ui_metrics import CALCULATIONS, METRICS
@@ -587,6 +589,25 @@ def build_catalog():
 					"effect": "Light-scheme accent (#rrggbb). The engine derives the hover/tint family.",
 				},
 				**_theme_token_keys(),
+				"arrows": _enum(
+					THEME_ARROWS,
+					"Decorative-arrow presentation (DESIGN_PREMIUM §4(i) item 1). 'quiet' mutes/hides "
+					"the decorative arrows (queue-card + KPI-tile arrows, 'View all' arrows, Submit "
+					"trailing arrow, row chevrons, linked-doc arrows) and makes LinkField-goto + sort "
+					"icons hover-OR-focus revealed (~40% opacity on touch, never removed). Functional "
+					"arrows (prev/next record, dropdown caret) are untouched. TOP level only — inside "
+					"theme.dark it does nothing and warns. Absent = shipped look, byte-identical.",
+					fallback="default",
+				),
+				"sectionHeaders": _enum(
+					THEME_SECTION_HEADERS,
+					"Detail-card section-header presentation (DESIGN_PREMIUM §4(i) item 2). 'plain' "
+					"retires the accent-tinted band + leading dot + accent uppercase title on "
+					".esd-card__head: transparent head, muted title, hairline border-bottom stays. "
+					"TOP level only — inside theme.dark it does nothing and warns. Absent = shipped "
+					"banded look, byte-identical.",
+					fallback="banded",
+				),
 				"dark": {
 					"type": "object",
 					"validation": "soft",
@@ -754,6 +775,11 @@ def build_catalog():
 			"do_not_edit": "GENERATED FILE — edit ui_config.py/ui_metrics.py/ui_catalog.py and regenerate.",
 			"schema_version": CURRENT_SCHEMA_VERSION,
 			"default_layout": DEFAULT_LAYOUT_NAME,
+			"renderer_agnostic": "This schema is RENDERER-AGNOSTIC (STACK_DECISION.md §4): layout "
+			"JSON names, arranges and parameterizes code-owned registry entries and validated "
+			"tokens — it never encodes a framework or component detail (no component names, no "
+			"third-party prop surfaces, no HTML/CSS/JS). A second renderer (e.g. React Native) "
+			"may bind the same JSON contract without any schema change.",
 			"sources": [
 				"apps/yrp/yrp/yrp/api/ui_config.py (constants + validate_config rules)",
 				"apps/yrp/yrp/yrp/api/ui_metrics.py (METRICS + CALCULATIONS registries)",
