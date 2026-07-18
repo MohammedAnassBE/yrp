@@ -12,6 +12,7 @@ state re-asserted in ``setUp``.
 """
 
 import json
+from copy import deepcopy
 from typing import ClassVar
 from unittest.mock import patch
 
@@ -1588,6 +1589,50 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			self.assertEqual(len(warnings), 1, key)
 			self.assertIn(f"{key} must be a string", warnings[0])
 
+	# ── record-list cardTemplate (Track 1 item 2) ─────────────────────────
+
+	def test_record_list_card_template_with_cards_or_kanban_is_warning_free(self):
+		# The per-row seam: a composite-tree cardTemplate is a legal record-list
+		# prop (BLOCK_PROP_KEYS mirror) whenever a card variant renders it.
+		tree = {"type": "stack", "children": [{"type": "text", "props": {"value": {"bind": "item"}}}]}
+		for variant in ("cards", "kanban"):
+			block = {
+				"id": "r",
+				"type": "record-list",
+				"props": {"doctype": "Work Order", "variant": variant, "cardTemplate": tree},
+			}
+			self.assertEqual(self._block_warnings(block), [], variant)
+
+	def test_record_list_card_template_must_be_a_tree_object(self):
+		# Non-object → the client ignores it (default card); object without a
+		# string `type` root → the engine renders its honest fallback in every
+		# card. Both are authoring mistakes that must warn EXACTLY ONCE — a
+		# shape-defective root never reaches the deep tree validator (item 3).
+		for bad in ("stack", ["stack"], 7, {}, {"type": 3}):
+			warnings = self._block_warnings(
+				{
+					"id": "r",
+					"type": "record-list",
+					"props": {"doctype": "Work Order", "variant": "cards", "cardTemplate": bad},
+				}
+			)
+			self.assertEqual(len(warnings), 1, bad)
+			self.assertIn(
+				"cardTemplate must be a composite tree object with a string 'type' root node",
+				warnings[0],
+			)
+
+	def test_record_list_card_template_is_dead_without_a_card_variant(self):
+		# The clients render the template only in the cards/kanban variants —
+		# a template on the (default) table presentation is dead config.
+		for props in (
+			{"doctype": "Work Order", "cardTemplate": {"type": "stack"}},  # variant absent → table
+			{"doctype": "Work Order", "variant": "table", "cardTemplate": {"type": "stack"}},
+		):
+			warnings = self._block_warnings({"id": "r", "type": "record-list", "props": props})
+			self.assertEqual(len(warnings), 1, props)
+			self.assertIn("cardTemplate does nothing without variant 'cards' or 'kanban'", warnings[0])
+
 	# ── calculator-panel ──────────────────────────────────────────────────
 
 	def test_calculator_panel_valid_props_is_warning_free(self):
@@ -1619,6 +1664,1011 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("params must be an object", warnings[0])
+
+
+class TestUIConfigCompositeBlock(IntegrationTestCase):
+	"""Track 1 item 1: `composite` block source/tree SHAPE checks (all SOFT).
+	Deep tree validation — primitive whitelist, token enums, bind grammar,
+	node/depth caps — is LIVE (Track 1 item 3) and tested per validation
+	family in the TestUIConfigCompositeTree* classes below."""
+
+	@staticmethod
+	def _block_warnings(block):
+		cfg = dict(LAYOUT_CONFIG, screens={"home": {"blocks": [block], "hidden": {}}})
+		return ui_config.validate_config(cfg, layer="layout")
+
+	@staticmethod
+	def _tree():
+		return {
+			"type": "card",
+			"children": [
+				{"type": "heading", "props": {"text": "Latest WO"}},
+				{
+					"type": "kv-row",
+					"props": {"label": "Item", "value": {"bind": "rows.0.item"}},
+					"showIf": {"field": "rows.0.name", "op": "set"},
+				},
+				{
+					"type": "badge",
+					"props": {"status": {"bind": "rows.0.status", "format": "status-label"}},
+				},
+				{"type": "stat", "props": {"value": {"bind": "metrics.open_wos.value"}, "label": "Open WOs"}},
+			],
+		}
+
+	def test_full_valid_composite_block_is_warning_free(self):
+		block = {
+			"id": "cmp",
+			"type": "composite",
+			"props": {
+				"source": {"metrics": ["open_wos"], "doctype": "Work Order", "limit": 3},
+				"tree": self._tree(),
+			},
+		}
+		self.assertEqual(self._block_warnings(block), [])
+
+	def test_composite_without_a_tree_warns(self):
+		for props in (None, {}, {"source": {"metrics": ["open_wos"]}}):
+			block = {"id": "cmp", "type": "composite"}
+			if props is not None:
+				block["props"] = props
+			warnings = self._block_warnings(block)
+			self.assertEqual(len(warnings), 1, props)
+			self.assertIn("renders nothing", warnings[0])
+
+	def test_composite_tree_must_be_an_object_with_a_type_root(self):
+		for bad in ([{"type": "stack"}], "stack", {"props": {}}, {"type": 7}):
+			warnings = self._block_warnings(
+				{"id": "cmp", "type": "composite", "props": {"tree": bad}}
+			)
+			self.assertEqual(len(warnings), 1, bad)
+			self.assertIn("string 'type' root node", warnings[0])
+
+	def test_composite_source_shape_checks(self):
+		# A binding-FREE tree: this test is about the source shape only. (The
+		# item-3 deep validator cross-checks bindings against the source —
+		# a bind-carrying tree with a broken source now draws dead-binding
+		# warnings, tested in TestUIConfigCompositeTreeBindPathFamily.)
+		tree = {"type": "heading", "props": {"text": "Latest WO"}}
+		# non-object source
+		warnings = self._block_warnings(
+			{"id": "cmp", "type": "composite", "props": {"source": "rows", "tree": tree}}
+		)
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("source must be an object", warnings[0])
+		# unknown source key
+		warnings = self._block_warnings(
+			{
+				"id": "cmp",
+				"type": "composite",
+				"props": {"source": {"filters": {"status": "Open"}}, "tree": tree},
+			}
+		)
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("source key 'filters' is ignored", warnings[0])
+		# metrics must be a list of strings
+		warnings = self._block_warnings(
+			{"id": "cmp", "type": "composite", "props": {"source": {"metrics": "open_wos"}, "tree": tree}}
+		)
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("source.metrics must be a list of strings", warnings[0])
+		# unregistered metric name
+		warnings = self._block_warnings(
+			{
+				"id": "cmp",
+				"type": "composite",
+				"props": {"source": {"metrics": ["no_such_metric"]}, "tree": tree},
+			}
+		)
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("no_such_metric", warnings[0])
+		# nonexistent doctype
+		warnings = self._block_warnings(
+			{
+				"id": "cmp",
+				"type": "composite",
+				"props": {"source": {"doctype": "No Such DocType"}, "tree": tree},
+			}
+		)
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("does not exist as a DocType", warnings[0])
+		# limit bounds + limit-without-doctype
+		warnings = self._block_warnings(
+			{"id": "cmp", "type": "composite", "props": {"source": {"limit": 99}, "tree": tree}}
+		)
+		self.assertEqual(len(warnings), 2, warnings)
+		self.assertTrue(any("between 1 and 20" in w for w in warnings))
+		self.assertTrue(any("does nothing without source.doctype" in w for w in warnings))
+
+	def test_composite_unknown_prop_warns_via_the_generic_check(self):
+		# Binding-free tree — the block-prop check is the one under test (a
+		# bind-carrying tree without a source draws dead-binding warnings,
+		# covered in TestUIConfigCompositeTreeBindPathFamily).
+		warnings = self._block_warnings(
+			{
+				"id": "cmp",
+				"type": "composite",
+				"props": {"tree": {"type": "divider"}, "cardTemplate": {}},
+			}
+		)
+		self.assertEqual(len(warnings), 1)
+		self.assertIn("'cardTemplate' is not a prop of block type 'composite'", warnings[0])
+
+	def test_composite_caps_constants_are_declared(self):
+		# The engine grammar caps are mirrored server-side (enforced HARD by
+		# the item-3 validator); the essdee_yrp client-mirror test guards the
+		# values against apps/yrp/frontend/src/composite/grammar.js.
+		self.assertEqual(ui_config.COMPOSITE_MAX_NODES, 100)
+		self.assertEqual(ui_config.COMPOSITE_MAX_DEPTH, 6)
+
+
+# ═══ Track 1 item 3 — the DEEP composite-tree validator, one class per ═══
+# validation family. Shared ground: HARD = injection-shaped values + the
+# node/depth caps (the save blocks); SOFT = taste mistakes (the client keeps
+# its honest fallback, the save warns). The SAME validator runs on all three
+# seams — composite block `tree`, record-list `cardTemplate`,
+# listViews[<DocType>].cardTemplate — so most families test the block seam
+# and prove seam parity once.
+
+
+class CompositeTreeTestBase(IntegrationTestCase):
+	"""Helpers only — no tests of its own."""
+
+	# Work Order source: item/supplier/status/lot/process_name/planned_quantity/
+	# wo_date are real visible fields; total_quantity is a real HIDDEN field
+	# (fetchable but not renderable — the distinction under test).
+	SOURCE = {"metrics": ["open_wos", "open_lots"], "doctype": "Work Order", "limit": 5}
+
+	@staticmethod
+	def _composite_warnings(tree, source=None, layer="layout"):
+		block = {"id": "cmp", "type": "composite", "props": {"tree": tree}}
+		if source is not None:
+			block["props"]["source"] = source
+		screens = {"home": {"blocks": [block], "hidden": {}}}
+		if layer == "overrides":
+			return ui_config.validate_config(
+				{"schema_version": 1, "screens": screens}, layer="overrides"
+			)
+		return ui_config.validate_config(
+			dict(LAYOUT_CONFIG, screens=screens), layer="layout"
+		)
+
+	@staticmethod
+	def _record_list_template_warnings(tree, doctype="Work Order"):
+		block = {
+			"id": "r",
+			"type": "record-list",
+			"props": {"doctype": doctype, "variant": "cards", "cardTemplate": tree},
+		}
+		return ui_config.validate_config(
+			dict(LAYOUT_CONFIG, screens={"home": {"blocks": [block], "hidden": {}}}),
+			layer="layout",
+		)
+
+	@staticmethod
+	def _list_view_template_warnings(tree, doctype="Work Order"):
+		return ui_config.validate_config(
+			dict(LAYOUT_CONFIG, listViews={doctype: {"variant": "cards", "cardTemplate": tree}}),
+			layer="layout",
+		)
+
+	@staticmethod
+	def _chain(depth, node_type="stack"):
+		"""A linear children chain `depth` nodes deep."""
+		root = {"type": node_type}
+		node = root
+		for _ in range(depth - 1):
+			child = {"type": node_type}
+			node["children"] = [child]
+			node = child
+		return root
+
+	@staticmethod
+	def _flat(nodes):
+		"""A stack root with ``nodes - 1`` text children (depth 2)."""
+		return {
+			"type": "stack",
+			"children": [{"type": "text", "props": {"value": "x"}} for _ in range(nodes - 1)],
+		}
+
+
+class TestUIConfigCompositeTreeValidFamily(CompositeTreeTestBase):
+	"""Family 1 — valid trees: the full grammar passes warning-free on every
+	seam; every token enum member, boundary int and formatter is accepted."""
+
+	def test_full_grammar_tree_is_warning_free_on_the_block_seam(self):
+		# All 13 primitives, bindings with formats, literal scalars, showIf
+		# triples, a version field and both scope roots in ONE tree.
+		tree = {
+			"type": "card",
+			"version": 1,
+			"props": {"padding": "lg", "tone": "tint"},
+			"children": [
+				{"type": "heading", "props": {"text": "Production", "level": 1, "align": "center"}},
+				{"type": "divider"},
+				{
+					"type": "grid",
+					"props": {"columns": 3, "gap": "sm"},
+					"children": [
+						{
+							"type": "stat",
+							"props": {
+								"value": {"bind": "metrics.open_wos.value", "format": "number"},
+								"label": {"bind": "metrics.open_wos.label"},
+								"align": "center",
+							},
+						},
+						{"type": "stat", "props": {"value": {"bind": "metrics.open_lots.value"}, "label": "Lots"}},
+						{"type": "progress", "props": {"value": {"bind": "rows.0.planned_quantity"}, "tone": "muted"}},
+					],
+				},
+				{
+					"type": "stack",
+					"props": {
+						"direction": "row",
+						"gap": "xs",
+						"align": "center",
+						"justify": "between",
+						"wrap": True,
+					},
+					"children": [
+						{"type": "icon", "props": {"name": "pi pi-box", "size": "lg", "tone": "accent"}},
+						{
+							"type": "text",
+							"props": {
+								"value": {"bind": "rows.0.name"},
+								"mono": True,
+								"size": "sm",
+								"weight": "bold",
+								"tone": "accent",
+							},
+						},
+						{"type": "badge", "props": {"status": {"bind": "rows.0.status", "format": "status-label"}}},
+						{"type": "spacer", "props": {"size": "xs"}},
+					],
+				},
+				{
+					"type": "kv-row",
+					"props": {"label": "Qty", "value": {"bind": "rows.0.planned_quantity", "format": "qty"}, "mono": True},
+					"showIf": {"field": "rows.0.planned_quantity", "op": ">", "value": 0},
+				},
+				{
+					"type": "kv-row",
+					"props": {"label": "Date", "value": {"bind": "rows.0.wo_date", "format": "date"}},
+					"showIf": {"field": "rows.0.status", "op": "!=", "value": "Cancelled"},
+				},
+				{"type": "image", "props": {"src": "/files/logo.png", "alt": "Logo", "height": 120, "fit": "contain"}},
+			],
+		}
+		self.assertEqual(self._composite_warnings(tree, source=self.SOURCE), [])
+
+	def test_full_row_scope_tree_is_warning_free_on_both_card_template_seams(self):
+		# Row scope: bind paths are plain fieldnames; name/docstatus/modified
+		# (the hosts' base fetch) are legal alongside meta fields.
+		tree = {
+			"type": "stack",
+			"children": [
+				{"type": "text", "props": {"value": {"bind": "name"}, "mono": True}},
+				{"type": "badge", "props": {"status": {"bind": "docstatus", "format": "status-label"}}},
+				{"type": "kv-row", "props": {"label": "Qty", "value": {"bind": "planned_quantity", "format": "qty"}}},
+				{
+					"type": "kv-row",
+					"props": {"label": "Updated", "value": {"bind": "modified", "format": "date"}},
+					"showIf": {"field": "supplier", "op": "set"},
+				},
+			],
+		}
+		self.assertEqual(self._record_list_template_warnings(tree), [])
+		self.assertEqual(self._list_view_template_warnings(tree), [])
+
+	def test_every_enum_member_of_every_primitive_is_accepted(self):
+		nodes = []
+		for name in sorted(ui_config.COMPOSITE_PRIMITIVES):
+			spec = ui_config.COMPOSITE_PRIMITIVES[name]
+			for prop, pspec in spec["props"].items():
+				if pspec["kind"] != "enum":
+					continue
+				for value in pspec["values"]:
+					nodes.append({"type": name, "props": {prop: value}})
+		self.assertLess(len(nodes) + 1, ui_config.COMPOSITE_MAX_NODES)
+		tree = {"type": "stack", "children": nodes}
+		self.assertEqual(self._composite_warnings(tree), [])
+
+	def test_boolean_and_boundary_int_props_are_accepted(self):
+		tree = {
+			"type": "stack",
+			"props": {"wrap": False},
+			"children": [
+				{"type": "grid", "props": {"columns": 1}},
+				{"type": "grid", "props": {"columns": 6}},
+				{"type": "heading", "props": {"text": "t", "level": 3}},
+				{"type": "text", "props": {"value": "v", "mono": True}},
+				{"type": "image", "props": {"src": "/private/files/a.png", "height": 16}},
+				{"type": "image", "props": {"src": "/files/sub dir/b (1).png", "height": 480}},
+			],
+		}
+		self.assertEqual(self._composite_warnings(tree), [])
+
+	def test_literal_scalars_are_legal_bindable_values(self):
+		tree = {
+			"type": "stack",
+			"children": [
+				{"type": "text", "props": {"value": 42}},
+				{"type": "stat", "props": {"value": 3.14, "label": "Pi"}},
+				{"type": "progress", "props": {"value": 75}},
+				{"type": "kv-row", "props": {"label": "On", "value": True}},
+			],
+		}
+		self.assertEqual(self._composite_warnings(tree), [])
+
+	def test_at_cap_tree_is_accepted(self):
+		# Exactly 100 nodes and exactly depth 6 — the caps are inclusive.
+		wide = self._flat(ui_config.COMPOSITE_MAX_NODES)
+		self.assertEqual(self._composite_warnings(wide), [])
+		deep = self._chain(ui_config.COMPOSITE_MAX_DEPTH)
+		self.assertEqual(self._composite_warnings(deep), [])
+
+	def test_all_showif_ops_are_accepted(self):
+		nodes = [
+			{
+				"type": "text",
+				"props": {"value": "x"},
+				"showIf": {"field": "status", "op": op, "value": "Draft" if op in ("=", "!=") else 1},
+			}
+			for op in ui_config.COMPOSITE_SHOWIF_OPS
+		]
+		tree = {"type": "stack", "children": nodes}
+		self.assertEqual(self._record_list_template_warnings(tree), [])
+
+
+class TestUIConfigCompositeTreeUnknownPrimitiveFamily(CompositeTreeTestBase):
+	"""Family 2 — unknown primitives and broken node shapes: SOFT,
+	path-labelled (the engine renders the same path-labelled honest
+	fallback), never a blocked save."""
+
+	def test_unknown_primitive_warns_path_labelled(self):
+		tree = {"type": "stack", "children": [{"type": "story-scroller"}]}
+		warnings = self._composite_warnings(tree)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown primitive 'story-scroller'", warnings[0])
+		self.assertIn("tree.children.0", warnings[0])
+		self.assertIn("honest fallback", warnings[0])
+
+	def test_missing_or_non_string_type_on_a_child_warns(self):
+		for bad in ({}, {"props": {}}, {"type": 7}, {"type": "  "}):
+			tree = {"type": "stack", "children": [bad]}
+			warnings = self._composite_warnings(tree)
+			self.assertEqual(len(warnings), 1, bad)
+			self.assertIn("has no string 'type'", warnings[0])
+			self.assertIn("tree.children.0", warnings[0])
+
+	def test_non_object_child_warns(self):
+		for bad in ("text", 7, ["text"], None):
+			tree = {"type": "stack", "children": [bad]}
+			warnings = self._composite_warnings(tree)
+			self.assertEqual(len(warnings), 1, repr(bad))
+			self.assertIn("is not a node object", warnings[0])
+
+	def test_unknown_node_key_warns(self):
+		tree = {"type": "stack", "children": [{"type": "text", "class": "x"}]}
+		warnings = self._composite_warnings(tree)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'class' at", warnings[0])
+		self.assertIn("type/props/children/showIf", warnings[0])
+
+	def test_unknown_primitive_props_are_not_prop_checked(self):
+		# No vocabulary to check against — exactly ONE warning (the unknown
+		# primitive), not a cascade of prop noise.
+		tree = {"type": "widgetx", "props": {"anything": 1, "other": "plain text"}}
+		warnings = self._composite_warnings(tree)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown primitive 'widgetx'", warnings[0])
+
+	def test_unknown_primitives_never_block_the_save(self):
+		tree = {"type": "stack", "children": [{"type": "nope"}]}
+		self._composite_warnings(tree)  # no exception = pass
+		self._record_list_template_warnings(tree)
+		self._list_view_template_warnings(tree)
+
+
+class TestUIConfigCompositeTreePropViolationsFamily(CompositeTreeTestBase):
+	"""Family 3 — per-primitive prop schema violations: all SOFT (the client
+	falls back to the token default / renders nothing for that prop)."""
+
+	def _one(self, node, fragment):
+		warnings = self._composite_warnings(node)
+		self.assertEqual(len(warnings), 1, f"{node} -> {warnings}")
+		self.assertIn(fragment, warnings[0])
+
+	def test_off_enum_token_warns_with_fallback(self):
+		self._one(
+			{"type": "card", "props": {"tone": "danger"}},
+			"tree.props.tone 'danger' is not one of default, tint, muted",
+		)
+		self._one({"type": "spacer", "props": {"size": "xl"}}, "falls back to 'md'")
+
+	def test_boolean_prop_violations_warn(self):
+		self._one(
+			{"type": "text", "props": {"mono": "yes"}},
+			"tree.props.mono should be a boolean, got str",
+		)
+
+	def test_int_prop_violations_warn(self):
+		for props, node_type in (
+			({"columns": 0}, "grid"),
+			({"columns": 7}, "grid"),
+			({"columns": True}, "grid"),
+			({"columns": "2"}, "grid"),
+		):
+			self._one({"type": node_type, "props": props}, "must be an integer between 1 and 6")
+		self._one(
+			{"type": "heading", "props": {"level": 4}}, "must be an integer between 1 and 3"
+		)
+		self._one(
+			{"type": "image", "props": {"src": "/files/a.png", "height": 8}},
+			"must be an integer between 16 and 480",
+		)
+
+	def test_unknown_prop_on_known_primitive_warns(self):
+		self._one(
+			{"type": "text", "props": {"huge": True}},
+			"'huge' is not a prop of primitive 'text'",
+		)
+
+	def test_non_object_props_warn(self):
+		self._one({"type": "text", "props": ["value"]}, "tree.props must be an object")
+
+	def test_icon_violations_warn_softly(self):
+		self._one(
+			{"type": "icon", "props": {"name": "pi pi-Box"}},
+			"must match '^pi pi-[a-z0-9-]+$' — the client renders nothing",
+		)
+		self._one({"type": "icon", "props": {"name": 7}}, "must be an icon class string")
+
+	def test_image_src_taste_mistakes_warn_softly(self):
+		# Wrong prefix / bad charset but NO scheme, traversal or '//' — the
+		# client refuses with its honest fallback; the save warns, not blocks.
+		for src in ("/assets/logo.png", "files/logo.png", "/files/", "/files/`x`.png"):
+			self._one(
+				{"type": "image", "props": {"src": src}},
+				"is not a site /files/ path — the client renders its honest fallback",
+			)
+
+	def test_image_src_binding_is_refused_softly(self):
+		self._one(
+			{"type": "image", "props": {"src": {"bind": "rows.0.image"}}},
+			"STATIC only — bindings are refused",
+		)
+		self._one({"type": "image", "props": {"src": 7}}, "must be a static site-file path string")
+
+	def test_string_prop_violations_warn(self):
+		self._one(
+			{"type": "image", "props": {"src": "/files/a.png", "alt": 7}},
+			"tree.props.alt must be a string",
+		)
+
+	def test_children_on_a_leaf_warn(self):
+		self._one(
+			{"type": "text", "children": [{"type": "divider"}]},
+			"is not a container (stack/grid/card) — the client ignores its children",
+		)
+
+	def test_non_list_children_warn(self):
+		self._one(
+			{"type": "stack", "children": {"type": "text"}},
+			"tree.children must be a list of nodes",
+		)
+
+	def test_prop_violations_never_block_the_save(self):
+		tree = {"type": "card", "props": {"tone": "danger", "padding": 9}}
+		self.assertEqual(len(self._composite_warnings(tree)), 2)
+
+
+class TestUIConfigCompositeTreeCapsFamily(CompositeTreeTestBase):
+	"""Family 4 — node/depth caps: HARD errors (the engine renders NOTHING
+	over-cap; an over-cap tree in a save can only be hostile or broken)."""
+
+	def test_over_node_cap_hard_fails(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(self._flat(ui_config.COMPOSITE_MAX_NODES + 1))
+
+	def test_over_depth_cap_hard_fails(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(self._chain(ui_config.COMPOSITE_MAX_DEPTH + 1))
+
+	def test_hostile_mega_trees_fail_fast_not_recursively(self):
+		# A 500-deep chain must die on the CAP (never a RecursionError — the
+		# stats walk is iterative and the deep walk only runs under the caps).
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(self._chain(500))
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(self._flat(5000))
+
+	def test_caps_apply_to_both_card_template_seams(self):
+		over = self._flat(ui_config.COMPOSITE_MAX_NODES + 1)
+		with self.assertRaises(frappe.ValidationError):
+			self._record_list_template_warnings(over)
+		with self.assertRaises(frappe.ValidationError):
+			self._list_view_template_warnings(over)
+
+	def test_leaf_children_still_count_toward_the_caps(self):
+		# The engine's treeStats counts children of NON-containers too — the
+		# server mirrors it, so the cap cannot be dodged by nesting under a
+		# leaf. (The leaf-children soft warning fires alongside — the tree is
+		# over-cap first, hard.)
+		tree = {
+			"type": "text",
+			"children": [{"type": "text", "props": {"value": "x"}} for _ in range(ui_config.COMPOSITE_MAX_NODES)],
+		}
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(tree)
+
+
+class TestUIConfigCompositeTreeBindPathFamily(CompositeTreeTestBase):
+	"""Family 5 — bind-path grammar + scope checks: SOFT (the client resolves
+	nothing and renders the em-dash; the save says so). The HARD path families
+	(prototype/expression-shaped) live in the injection class."""
+
+	def _text_bind(self, path):
+		return {"type": "text", "props": {"value": {"bind": path}}}
+
+	def test_malformed_dot_paths_warn(self):
+		for path in ("rows..item", ".rows.0", "rows.0.", "..", "-"):
+			if path == "-":
+				# single '-' IS a legal path segment per the grammar — control.
+				continue
+			warnings = self._composite_warnings(self._text_bind(path), source=self.SOURCE)
+			self.assertEqual(len(warnings), 1, f"{path}: {warnings}")
+			self.assertIn("malformed dot-path", warnings[0])
+
+	def test_block_scope_requires_metrics_or_rows_roots(self):
+		warnings = self._composite_warnings(self._text_bind("doc.name"), source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("only metrics.* and rows.* roots", warnings[0])
+
+	def test_metric_path_shape_and_leaves(self):
+		for path in ("metrics.open_wos", "metrics.open_wos.raw", "metrics.a.b.c"):
+			warnings = self._composite_warnings(self._text_bind(path), source=self.SOURCE)
+			self.assertEqual(len(warnings), 1, f"{path}: {warnings}")
+			self.assertIn("metrics.<name>.value or metrics.<name>.label", warnings[0])
+
+	def test_metric_not_in_source_metrics_warns_as_dead(self):
+		warnings = self._composite_warnings(
+			self._text_bind("metrics.draft_dcs.value"), source=self.SOURCE
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("metric 'draft_dcs' is not in source.metrics", warnings[0])
+		# No source at all → every metric binding is dead.
+		warnings = self._composite_warnings(self._text_bind("metrics.open_wos.value"))
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("not in source.metrics", warnings[0])
+
+	def test_rows_without_source_doctype_warns_as_dead(self):
+		warnings = self._composite_warnings(
+			self._text_bind("rows.0.item"), source={"metrics": ["open_wos"]}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("source.doctype is not set", warnings[0])
+
+	def test_row_path_shape_violations_warn(self):
+		for path in ("rows.first.item", "rows.0", "rows.0.item.name", "rows.-1.item"):
+			warnings = self._composite_warnings(self._text_bind(path), source=self.SOURCE)
+			self.assertEqual(len(warnings), 1, f"{path}: {warnings}")
+			self.assertIn("rows.<index>.<fieldname>", warnings[0])
+
+	def test_row_index_beyond_source_limit_warns(self):
+		source = dict(self.SOURCE, limit=3)
+		warnings = self._composite_warnings(self._text_bind("rows.3.item"), source=source)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("row index 3 is beyond source.limit (3)", warnings[0])
+		self.assertEqual(
+			self._composite_warnings(self._text_bind("rows.2.item"), source=source), []
+		)
+		# Default limit is 5 when source.limit is absent.
+		source_no_limit = {"metrics": ["open_wos"], "doctype": "Work Order"}
+		warnings = self._composite_warnings(self._text_bind("rows.5.item"), source=source_no_limit)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("(5)", warnings[0])
+		self.assertEqual(
+			self._composite_warnings(self._text_bind("rows.4.item"), source=source_no_limit), []
+		)
+
+	def test_row_fieldname_typo_warns_against_meta(self):
+		warnings = self._composite_warnings(self._text_bind("rows.0.no_such_field"), source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'no_such_field' is not a fetchable field on 'Work Order'", warnings[0])
+
+	def test_hidden_fields_are_fetchable_unlike_columns(self):
+		# Work Order.total_quantity is HIDDEN meta — illegal as a listViews
+		# column (renderable set) but LEGAL as a binding (fetchable set): the
+		# hosts' getList fetches it fine.
+		self.assertEqual(
+			self._composite_warnings(self._text_bind("rows.0.total_quantity"), source=self.SOURCE),
+			[],
+		)
+		self.assertEqual(
+			self._list_view_template_warnings(
+				{"type": "text", "props": {"value": {"bind": "total_quantity"}}}
+			),
+			[],
+		)
+
+	def test_row_scope_paths_are_flat_fieldnames(self):
+		warnings = self._list_view_template_warnings(
+			{"type": "text", "props": {"value": {"bind": "supplier.name"}}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("row records are flat", warnings[0])
+		# rows./metrics. roots do NOT exist in row scope (CATALOG rule) — they
+		# fall out of the same flatness rule.
+		warnings = self._record_list_template_warnings(
+			{"type": "text", "props": {"value": {"bind": "rows.0.item"}}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("row records are flat", warnings[0])
+
+	def test_row_scope_fieldname_typo_warns(self):
+		warnings = self._record_list_template_warnings(
+			{"type": "text", "props": {"value": {"bind": "no_such_field"}}}
+		)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("'no_such_field' is not a fetchable field on 'Work Order'", warnings[0])
+
+	def test_showif_field_gets_the_same_path_checks(self):
+		tree = {
+			"type": "text",
+			"props": {"value": "x"},
+			"showIf": {"field": "rows.0.no_such_field", "op": "set"},
+		}
+		warnings = self._composite_warnings(tree, source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("showIf.field", warnings[0])
+		self.assertIn("not a fetchable field", warnings[0])
+
+
+class TestUIConfigCompositeTreeFormatterFamily(CompositeTreeTestBase):
+	"""Family 6 — named formatters and binding-object shape: SOFT (the client
+	warns and renders the raw value / nothing)."""
+
+	def test_all_four_formats_are_accepted(self):
+		nodes = [
+			{"type": "text", "props": {"value": {"bind": "rows.0.wo_date", "format": fmt}}}
+			for fmt in ui_config.COMPOSITE_FORMATS
+		]
+		self.assertEqual(
+			self._composite_warnings({"type": "stack", "children": nodes}, source=self.SOURCE),
+			[],
+		)
+
+	def test_unknown_format_warns(self):
+		tree = {"type": "text", "props": {"value": {"bind": "rows.0.item", "format": "money"}}}
+		warnings = self._composite_warnings(tree, source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("format 'money' is not one of date, qty, number, status-label", warnings[0])
+		self.assertIn("renders the raw value", warnings[0])
+
+	def test_non_string_format_warns(self):
+		tree = {"type": "text", "props": {"value": {"bind": "rows.0.item", "format": 7}}}
+		warnings = self._composite_warnings(tree, source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("format 7 is not one of", warnings[0])
+
+	def test_unknown_binding_key_warns(self):
+		tree = {"type": "text", "props": {"value": {"bind": "rows.0.item", "expr": "x + 1"}}}
+		warnings = self._composite_warnings(tree, source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'expr'", warnings[0])
+		self.assertIn("only bind/format", warnings[0])
+
+	def test_binding_object_without_bind_warns(self):
+		for value in ({}, {"format": "date"}, {"bind": 7}, {"bind": ""}):
+			tree = {"type": "text", "props": {"value": value}}
+			warnings = self._composite_warnings(tree, source=self.SOURCE)
+			self.assertTrue(
+				any("needs a string 'bind' dot-path" in w for w in warnings), f"{value}: {warnings}"
+			)
+
+	def test_array_bindable_value_warns_as_unrenderable(self):
+		tree = {"type": "text", "props": {"value": [1, 2]}}
+		warnings = self._composite_warnings(tree, source=self.SOURCE)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("literal scalar or a {bind} object", warnings[0])
+
+
+class TestUIConfigCompositeTreeShowIfFamily(CompositeTreeTestBase):
+	"""Family 7 — showIf triples: SOFT (presentation, never permission — the
+	engine FAILS OPEN on malformed triples, so the node always renders and the
+	save says so)."""
+
+	def _showif_warnings(self, show_if, source=None):
+		tree = {"type": "text", "props": {"value": "x"}, "showIf": show_if}
+		return self._composite_warnings(tree, source=source or self.SOURCE)
+
+	def test_unknown_op_warns_as_fail_open(self):
+		warnings = self._showif_warnings({"field": "rows.0.status", "op": ">=", "value": 1})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("op '>=' is not one of", warnings[0])
+		self.assertIn("fails OPEN", warnings[0])
+
+	def test_missing_op_warns(self):
+		warnings = self._showif_warnings({"field": "rows.0.status"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("op None is not one of", warnings[0])
+
+	def test_non_dict_showif_warns(self):
+		for bad in ("rows.0.status", ["set"], 7):
+			warnings = self._showif_warnings(bad)
+			self.assertEqual(len(warnings), 1, repr(bad))
+			self.assertIn("must be a {field, op, value} triple", warnings[0])
+
+	def test_missing_or_non_string_field_warns(self):
+		for show_if in ({"op": "set"}, {"field": 7, "op": "set"}, {"field": "", "op": "set"}):
+			warnings = self._showif_warnings(show_if)
+			self.assertEqual(len(warnings), 1, show_if)
+			self.assertIn("showIf.field must be a dot-path string", warnings[0])
+
+	def test_non_scalar_value_warns(self):
+		for value in ({"a": 1}, [1]):
+			warnings = self._showif_warnings({"field": "rows.0.status", "op": "=", "value": value})
+			self.assertEqual(len(warnings), 1, repr(value))
+			self.assertIn("showIf.value must be a scalar", warnings[0])
+
+	def test_unknown_key_inside_showif_warns(self):
+		warnings = self._showif_warnings({"field": "rows.0.status", "op": "set", "else": "hide"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'else'", warnings[0])
+		self.assertIn("only field/op/value", warnings[0])
+
+	def test_showif_never_blocks_the_save(self):
+		self._showif_warnings({"field": "rows.0.status", "op": "nope", "value": None, "x": 1})
+
+
+class TestUIConfigCompositeTreeInjectionFamily(CompositeTreeTestBase):
+	"""Family 8 — injection-shaped values HARD-FAIL the save (§3(d): a layout
+	may never contain HTML/CSS/JS strings; the client would render them inert,
+	but they have no legitimate authoring purpose). Applies identically on
+	every seam and BOTH layers — the self-service overrides endpoint is
+	reachable by any authenticated user."""
+
+	def _hard(self, tree, source=None):
+		with self.assertRaises(frappe.ValidationError, msg=str(tree)):
+			self._composite_warnings(tree, source=source)
+
+	def test_markup_shaped_literal_strings_hard_fail(self):
+		for value in (
+			"<script>alert(1)</script>",
+			"</div>",
+			"<b>bold",
+			"<!-- x -->",
+			"javascript:alert(1)",
+			"JavaScript : alert(1)",
+		):
+			self._hard({"type": "text", "props": {"value": value}})
+
+	def test_plain_prose_with_spaced_angle_brackets_stays_legal(self):
+		# The markup gate must not eat legitimate prose — an HTML tag never
+		# has whitespace (or a digit) after '<'.
+		for value in ("qty < 5 pieces", "a < b", "5<6", "< 10%"):
+			self.assertEqual(
+				self._composite_warnings({"type": "text", "props": {"value": value}}), [], value
+			)
+
+	def test_markup_hard_fails_in_every_string_slot(self):
+		self._hard({"type": "heading", "props": {"text": "<img src=x onerror=alert(1)>"}})
+		self._hard({"type": "kv-row", "props": {"label": "<style>*{}</style>", "value": "x"}})
+		self._hard({"type": "image", "props": {"src": "/files/a.png", "alt": "<svg/onload=x>"}})
+		self._hard({"type": "<script>"})  # node type
+		self._hard(
+			{"type": "text", "props": {"value": "x"}, "showIf": {"field": "status", "op": "=", "value": "<b>x"}}
+		)
+
+	def test_prototype_shaped_bind_paths_hard_fail(self):
+		for path in ("__proto__.x", "a.constructor.b", "prototype", "rows.0.__proto__"):
+			self._hard({"type": "text", "props": {"value": {"bind": path}}})
+		# showIf.field goes through the same gate.
+		self._hard(
+			{"type": "text", "props": {"value": "x"}, "showIf": {"field": "constructor.x", "op": "set"}}
+		)
+
+	def test_expression_shaped_bind_paths_hard_fail(self):
+		for path in ("rows[0].item", "metrics.open_wos.value || 1", "fn()", "a b", "a;b", "${x}"):
+			self._hard({"type": "text", "props": {"value": {"bind": path}}})
+
+	def test_injection_shaped_image_srcs_hard_fail(self):
+		for src in (
+			"https://evil.example/x.png",
+			"javascript:alert(1)",
+			"data:text/html;base64,x",
+			"//evil.example/x.png",
+			"/files/../private/files/secret.png",
+			"C:\\x.png",
+		):
+			self._hard({"type": "image", "props": {"src": src}})
+
+	def test_unknown_props_are_no_smuggling_lane(self):
+		# Unknown prop on a KNOWN primitive, unknown primitive's props, and
+		# nested structures all stay under the markup + prototype gates.
+		self._hard({"type": "text", "props": {"custom": "<script>x</script>", "value": "v"}})
+		self._hard({"type": "widgetx", "props": {"x": "<script>a</script>"}})
+		self._hard({"type": "text", "props": {"custom": {"deep": ["<img src=x>"]}}})
+		self._hard({"type": "widgetx", "props": {"x": {"bind": "__proto__.polluted"}}})
+
+	def test_injection_hard_fails_on_every_seam_and_both_layers(self):
+		bad = {"type": "text", "props": {"value": "<script>x</script>"}}
+		with self.assertRaises(frappe.ValidationError):
+			self._record_list_template_warnings(bad)
+		with self.assertRaises(frappe.ValidationError):
+			self._list_view_template_warnings(bad)
+		# screens is OVERRIDABLE — the self-service layer runs the same gate.
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(bad, layer="overrides")
+
+
+class TestUIConfigCompositeGrammarVersionFamily(CompositeTreeTestBase):
+	"""Family 9 — the composite grammar's own version field + upgrader
+	scaffold (§3(d) / review amendment 4). Save-time: newer-than-server or
+	malformed versions HARD-fail (never guess-interpreted forward). Read-time:
+	``_upgrade_composite_trees`` runs inside ``_prepare_layer`` on every seam;
+	a tree that cannot reach the current grammar is dropped ALONE."""
+
+	@staticmethod
+	def _layer_with_trees(tree):
+		"""One layer carrying the SAME tree in all three seams."""
+		return {
+			"schema_version": 1,
+			"screens": {
+				"home": {
+					"blocks": [
+						{"id": "cmp", "type": "composite", "props": {"tree": deepcopy(tree)}},
+						{
+							"id": "rl",
+							"type": "record-list",
+							"props": {
+								"doctype": "Work Order",
+								"variant": "cards",
+								"cardTemplate": deepcopy(tree),
+							},
+						},
+					]
+				}
+			},
+			"listViews": {"Work Order": {"variant": "cards", "cardTemplate": deepcopy(tree)}},
+		}
+
+	@staticmethod
+	def _trees_of(cfg):
+		blocks = cfg["screens"]["home"]["blocks"]
+		return [
+			blocks[0]["props"]["tree"],
+			blocks[1]["props"]["cardTemplate"],
+			cfg["listViews"]["Work Order"]["cardTemplate"],
+		]
+
+	def test_current_constants(self):
+		self.assertEqual(ui_config.COMPOSITE_GRAMMAR_VERSION, 1)
+		self.assertEqual(ui_config.COMPOSITE_TREE_UPGRADERS, {})
+
+	def test_version_1_and_absent_are_clean_at_save(self):
+		self.assertEqual(self._composite_warnings({"type": "stack", "version": 1}), [])
+		self.assertEqual(self._composite_warnings({"type": "stack"}), [])
+
+	def test_malformed_versions_hard_fail_at_save(self):
+		for version in (0, -1, True, "1", 1.5):
+			with self.assertRaises(frappe.ValidationError, msg=repr(version)):
+				self._composite_warnings({"type": "stack", "version": version})
+
+	def test_newer_version_hard_fails_at_save_on_every_seam(self):
+		newer = {"type": "stack", "version": ui_config.COMPOSITE_GRAMMAR_VERSION + 1}
+		with self.assertRaises(frappe.ValidationError):
+			self._composite_warnings(newer)
+		with self.assertRaises(frappe.ValidationError):
+			self._record_list_template_warnings(deepcopy(newer))
+		with self.assertRaises(frappe.ValidationError):
+			self._list_view_template_warnings(deepcopy(newer))
+
+	def test_version_is_a_root_only_key(self):
+		tree = {"type": "stack", "children": [{"type": "text", "version": 1}]}
+		warnings = self._composite_warnings(tree)
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("unknown key 'version'", warnings[0])
+
+	def test_prepare_layer_leaves_current_trees_byte_identical(self):
+		# Parity: with the grammar at version 1 and no upgraders, resolution
+		# must not touch a stored tree (no version stamping, no mutation).
+		layer = self._layer_with_trees({"type": "stack", "children": [{"type": "divider"}]})
+		warnings = []
+		out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(warnings, [])
+		self.assertEqual(out, layer)
+
+	def test_registered_upgrader_never_runs_for_current_version(self):
+		def boom(tree):
+			raise AssertionError("upgrader must not run for a current-version tree")
+
+		layer = self._layer_with_trees({"type": "stack", "version": 1})
+		warnings = []
+		with patch.dict(ui_config.COMPOSITE_TREE_UPGRADERS, {1: boom}):
+			out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(warnings, [])
+		self.assertEqual(out, layer)
+
+	def test_upgrader_scaffold_upgrades_every_seam_at_read_time(self):
+		# The wiring a FUTURE grammar change relies on, proven now: bump the
+		# version, register an upgrader, and every stored v1 tree in every
+		# seam is upgraded in memory and stamped.
+		def upgrade_v1(tree):
+			out = deepcopy(tree)
+			out["props"] = {**(out.get("props") or {}), "upgraded": True}
+			return out
+
+		layer = self._layer_with_trees({"type": "stack", "props": {"gap": "sm"}})
+		warnings = []
+		with (
+			patch.object(ui_config, "COMPOSITE_GRAMMAR_VERSION", 2),
+			patch.dict(ui_config.COMPOSITE_TREE_UPGRADERS, {1: upgrade_v1}),
+		):
+			out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(warnings, [])
+		for tree in self._trees_of(out):
+			self.assertEqual(tree["version"], 2)
+			self.assertEqual(tree["props"], {"gap": "sm", "upgraded": True})
+
+	def test_missing_upgrader_drops_the_tree_alone_with_trace(self):
+		layer = self._layer_with_trees({"type": "stack"})
+		warnings = []
+		before = _ui_error_log_count()
+		with patch.object(ui_config, "COMPOSITE_GRAMMAR_VERSION", 2):
+			out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(len(warnings), 3, warnings)
+		for w in warnings:
+			self.assertIn("no composite upgrader from version 1", w)
+		# The trees are dropped (null = "no opinion" in the merge) — the rest
+		# of the layer survives untouched.
+		for tree in self._trees_of(out):
+			self.assertIsNone(tree)
+		self.assertEqual(out["schema_version"], 1)
+		self.assertEqual(out["listViews"]["Work Order"]["variant"], "cards")
+		self.assertGreater(_ui_error_log_count(), before)
+
+	def test_failing_upgrader_drops_the_tree_alone(self):
+		def broken(tree):
+			raise ValueError("boom")
+
+		layer = self._layer_with_trees({"type": "stack"})
+		warnings = []
+		with (
+			patch.object(ui_config, "COMPOSITE_GRAMMAR_VERSION", 2),
+			patch.dict(ui_config.COMPOSITE_TREE_UPGRADERS, {1: broken}),
+		):
+			out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(len(warnings), 3, warnings)
+		for w in warnings:
+			self.assertIn("composite upgrader from version 1 failed", w)
+		for tree in self._trees_of(out):
+			self.assertIsNone(tree)
+
+	def test_too_new_tree_at_read_time_is_dropped_alone(self):
+		# Never guess-interpreted forward — same posture as schema_version,
+		# one tier down: the TREE drops, the layer survives.
+		layer = self._layer_with_trees({"type": "stack", "version": 99})
+		warnings = []
+		out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(len(warnings), 3, warnings)
+		for w in warnings:
+			self.assertIn("composite version 99 is newer than this server understands (1)", w)
+		for tree in self._trees_of(out):
+			self.assertIsNone(tree)
+		self.assertEqual(out["schema_version"], 1)
+
+	def test_malformed_version_at_read_time_is_dropped_alone(self):
+		layer = self._layer_with_trees({"type": "stack", "version": "one"})
+		warnings = []
+		out = ui_config._prepare_layer(json.dumps(layer), "layout 'X'", warnings)
+		self.assertEqual(len(warnings), 3, warnings)
+		for w in warnings:
+			self.assertIn("composite version 'one' is not a positive integer", w)
+		for tree in self._trees_of(out):
+			self.assertIsNone(tree)
 
 
 class TestUIConfigItem17ReservedKnobs(IntegrationTestCase):
@@ -1919,6 +2969,47 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 			warnings = self._warnings({"Lot": {key: 7}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
 			self.assertIn(f"listViews['Lot'].{key} must be a fieldname string", warnings[0])
+
+	# ── listViews cardTemplate (Track 1 item 2) ───────────────────────────
+
+	def test_card_template_with_cards_or_kanban_is_warning_free(self):
+		# The routed-list-page side of the per-row seam: LIST_VIEW_KEYS grew
+		# 'cardTemplate' (it must NOT draw the unknown-key warning) and a
+		# tree on a card variant is clean shape-wise.
+		tree = {
+			"type": "stack",
+			"children": [
+				{"type": "text", "props": {"value": {"bind": "item"}}},
+				{"type": "badge", "props": {"status": {"bind": "status"}}},
+			],
+		}
+		for variant in ("cards", "kanban"):
+			self.assertEqual(
+				self._warnings({"Work Order": {"variant": variant, "cardTemplate": tree}}),
+				[],
+				variant,
+			)
+
+	def test_card_template_must_be_a_tree_object(self):
+		for bad in ("stack", ["stack"], 7, {}, {"type": 3}):
+			warnings = self._warnings({"Work Order": {"variant": "cards", "cardTemplate": bad}})
+			self.assertEqual(len(warnings), 1, bad)
+			self.assertIn(
+				"listViews['Work Order'] cardTemplate must be a composite tree object "
+				"with a string 'type' root node",
+				warnings[0],
+			)
+
+	def test_card_template_is_dead_without_a_card_variant(self):
+		# DynamicListPage renders the template only in the cards/kanban
+		# variants — on the default table presentation it is dead config.
+		for view in (
+			{"cardTemplate": {"type": "stack"}},  # variant absent → table
+			{"variant": "table", "cardTemplate": {"type": "stack"}},
+		):
+			warnings = self._warnings({"Work Order": view})
+			self.assertEqual(len(warnings), 1, view)
+			self.assertIn("cardTemplate does nothing without variant 'cards' or 'kanban'", warnings[0])
 
 	def test_overrides_layer_gets_the_same_deep_checks(self):
 		warnings = self._warnings({"Lot": {"variant": "grid"}}, layer="overrides")

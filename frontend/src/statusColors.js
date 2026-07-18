@@ -33,9 +33,18 @@ export const STATUS_COLORS = {
 	Delayed: RED,
 }
 
-/** Ink colour for a status chip/tile. `dark` = the active scheme is dark. */
+/** Ink colour for a status chip/tile. `dark` = the active scheme is dark.
+ *  Own-property lookup only: a status equal to an inherited Object.prototype
+ *  member ('constructor', 'toString', '__proto__', …) must NOT resolve to the
+ *  prototype function — it falls back to grey like any other unknown status.
+ *  (Reachable in the composite layer where badge.status binds arbitrary DB
+ *  data; the plain `STATUS_COLORS[status]` lookup would otherwise return a
+ *  truthy inherited function and crash statusTint's hex.slice.) */
 export function statusColor(status, dark = false) {
-	return (STATUS_COLORS[status] || STATUS_FALLBACK)[dark ? "dark" : "light"]
+	const family = Object.prototype.hasOwnProperty.call(STATUS_COLORS, status)
+		? STATUS_COLORS[status]
+		: STATUS_FALLBACK
+	return family[dark ? "dark" : "light"]
 }
 
 // Demo chip wash: rgba(colour, .14) — same alpha on light and dark surfaces.

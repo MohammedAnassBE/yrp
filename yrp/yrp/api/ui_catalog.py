@@ -49,6 +49,16 @@ from yrp.yrp.api.ui_config import (
 	BLOCK_PROP_KEYS,
 	BLOCK_SIZES,
 	CHROME_KEYS,
+	COMPOSITE_BIND_PATH_RE,
+	COMPOSITE_FORBIDDEN_PATH_SEGMENTS,
+	COMPOSITE_FORMATS,
+	COMPOSITE_GRAMMAR_VERSION,
+	COMPOSITE_MAX_DEPTH,
+	COMPOSITE_MAX_NODES,
+	COMPOSITE_PRIMITIVES,
+	COMPOSITE_SHOWIF_OPS,
+	COMPOSITE_SITE_FILE_RE,
+	COMPOSITE_SOURCE_KEYS,
 	CONFIG_SIZE_WARN_BYTES,
 	CURRENT_SCHEMA_VERSION,
 	DATE_FORMATS,
@@ -98,6 +108,29 @@ _CALC_PARAMS_DOC = {
 		}
 	},
 }
+
+
+# cardTemplate (Track 1 item 2) — the SAME doc text everywhere the knob
+# appears (record-list block props + listViews[<DocType>]), so the two
+# catalog spots can never drift apart.
+def _card_template_doc():
+	return {
+		"type": "object",
+		"validation": "deep composite-tree validation (Track 1 item 3, see top-level "
+		"composite_grammar): caps + injection-shaped values HARD; taste mistakes soft",
+		"effect": "OPTIONAL composite tree rendered as EACH card's interior in the "
+		"cards/kanban variants (per-row cardTemplate seam, Track 1 item 2). Binding "
+		"scope = the ROW record: bind paths are PLAIN fieldnames (e.g. {bind: "
+		"'planned_quantity', format: 'qty'}) validated against the doctype's "
+		"fetchable fields — no rows./metrics. roots here; extra bound fields are "
+		"meta-checked and added to the fetch — the JSON names fields, never a query. "
+		"Same grammar, formatters, showIf triples and caps as the composite block's "
+		f"`tree` (see top-level composite_grammar; {COMPOSITE_MAX_NODES} nodes / depth "
+		f"{COMPOSITE_MAX_DEPTH}). ABSENT → the shipped card look, byte-identical "
+		"(parity law). Does nothing on the table variant (lint warns). The card "
+		"SHELL — status tint, click-to-open, kanban lanes — stays host-owned; the "
+		"template shapes only the interior.",
+	}
 
 
 def _color_token(effect):
@@ -318,6 +351,7 @@ def _block_type_specs():
 				"validation": "soft",
 				"effect": "Card heading text (default: the DocType's plural label).",
 			},
+			"cardTemplate": _card_template_doc(),
 		},
 		"calculator-panel": {
 			"calculation": {
@@ -334,6 +368,66 @@ def _block_type_specs():
 				"for each calculation's params).",
 			},
 		},
+		"composite": {
+			"source": {
+				"type": "object",
+				"validation": "soft",
+				"keys": {
+					"metrics": {
+						"type": "array",
+						"items": _enum(
+							tuple(sorted(METRICS)),
+							"Registered ui_metrics names feeding the binding scope at "
+							"metrics.<name>.value / metrics.<name>.label. Per-metric "
+							"permission-gated server-side; omitted metrics leave their "
+							"bindings at the honest em-dash.",
+						),
+						"validation": "soft",
+						"effect": "Metric registry names this block fetches into scope.",
+					},
+					"doctype": {
+						"type": "string",
+						"validation": "soft",
+						"values": "any DocType existing on the site (record-list parity)",
+						"effect": "Recent records of this doctype (newest modified first) feed the "
+						"binding scope at rows.<index>.<fieldname>. Fetched fields are DERIVED "
+						"from the tree's own bind paths — the JSON names fields, never a query. "
+						"Without read permission the whole block renders NOTHING.",
+					},
+					"limit": {
+						"type": "integer",
+						"validation": "soft",
+						"range": {"min": 1, "max": 20},
+						"fallback": 5,
+						"effect": "How many recent records to fetch (with source.doctype only).",
+					},
+				},
+				"effect": "Which permission-gated registry data feeds the tree's binding scope. "
+				"Keys outside " + "/".join(COMPOSITE_SOURCE_KEYS) + " warn and are ignored.",
+			},
+			"tree": {
+				"type": "object",
+				"required": True,
+				"validation": "deep composite-tree validation (Track 1 item 3, see top-level "
+				"composite_grammar): caps + injection-shaped values HARD; taste mistakes soft",
+				"effect": "Validated tree of the 13 code-owned primitives (stack, grid, card, "
+				"heading, text, kv-row, badge, stat, divider, icon, progress, image[site "
+				"/files/ paths only], spacer). Node shape: {type, props, children, showIf} "
+				"(+ optional int `version` at the ROOT — the composite grammar version, "
+				"absent = 1). Bindable props take a literal scalar or {bind: '<dot-path>', "
+				"format: 'date'|'qty'|'number'|'status-label'}; showIf is a declarative "
+				"{field, op, value} triple (ops: =, !=, >, <, set, not-set). Bind paths are "
+				"cross-checked against source at save time: metrics.<name>.value|label must "
+				"name a source.metrics entry; rows.<index>.<fieldname> needs source.doctype, "
+				"index < limit and a fetchable fieldname — dead bindings warn. NO HTML/CSS/JS "
+				"strings, no expressions, no queries (USE_CASE §3(d) boundary — "
+				"injection-shaped values HARD-fail the save). Caps (HARD at save): "
+				f"{COMPOSITE_MAX_NODES} nodes / depth {COMPOSITE_MAX_DEPTH}; unknown nodes "
+				"render path-labelled honest fallbacks. Full machine-readable grammar: "
+				"top-level composite_grammar (engine ground truth: "
+				"apps/yrp/frontend/src/composite/grammar.js).",
+			},
+		},
 	}
 
 	out = {}
@@ -348,6 +442,86 @@ def _block_type_specs():
 			"props": props,
 		}
 	return out
+
+
+def _composite_grammar_section():
+	"""The composite grammar as machine-readable ground truth (Track 1
+	item 3). Every enum value, cap, regex and prop spec is IMPORTED from the
+	``ui_config`` server mirror (which the essdee_yrp client-mirror test
+	drift-guards against the engine's grammar.js) — never retyped here."""
+	primitives = {}
+	for name in sorted(COMPOSITE_PRIMITIVES):
+		spec = COMPOSITE_PRIMITIVES[name]
+		props = {}
+		for prop_name, pspec in spec["props"].items():
+			entry = {"kind": pspec["kind"]}
+			if "values" in pspec:
+				entry["enum"] = list(pspec["values"])
+			if "min" in pspec:
+				entry["range"] = {"min": pspec["min"], "max": pspec["max"]}
+			if "default" in pspec:
+				entry["default"] = pspec["default"]
+			props[prop_name] = entry
+		primitives[name] = {"container": spec["container"], "props": props}
+
+	return {
+		"version": COMPOSITE_GRAMMAR_VERSION,
+		"version_field": "Optional int `version` on the ROOT node only (absent = 1). A save "
+		"with a version newer than this server HARD-fails; at read time such a tree is "
+		"dropped alone (never guess-interpreted forward). Any BREAKING grammar change bumps "
+		"the version and ships a COMPOSITE_TREE_UPGRADERS entry + re-validation of stored "
+		"layouts (USE_CASE review amendment 4); additive growth needs no upgrader.",
+		"node_shape": "{type: '<primitive>', props: {...}, children: [...], showIf: {field, "
+		"op, value}} — children on the container primitives only (stack/grid/card); "
+		"anything else in a node warns.",
+		"primitives": primitives,
+		"prop_kinds": {
+			"enum": "one token from the prop's enum list; off-vocabulary warns and the "
+			"client falls back to the default",
+			"bindable": "literal scalar OR {bind: '<dot-path>', format: '<name>'}",
+			"bindable-number": "same as bindable, rendered as a number (progress clamps 0-100)",
+			"boolean": "true/false; anything else warns and the client keeps the default",
+			"int": "integer within the prop's range; out-of-range warns",
+			"string": "plain text — NEVER HTML (markup-shaped strings hard-fail)",
+			"icon": f"must fullmatch '{ICON_RE.pattern}'; off-form warns (renders nothing)",
+			"site-file": "STATIC same-origin site-file path (bindings refused): must "
+			f"fullmatch '{COMPOSITE_SITE_FILE_RE.pattern}' with no '..'; schemes, '..' "
+			"and '//' HARD-fail, other off-form paths warn (honest fallback)",
+		},
+		"binding": {
+			"path_pattern": COMPOSITE_BIND_PATH_RE.pattern,
+			"forbidden_segments": list(COMPOSITE_FORBIDDEN_PATH_SEGMENTS),
+			"formats": list(COMPOSITE_FORMATS),
+			"scope_roots": {
+				"composite_block": "metrics.<name>.value|label (name must be listed in "
+				"source.metrics) and rows.<index>.<fieldname> (needs source.doctype; index < "
+				"source.limit; fieldname fetchable on the doctype) — dead bindings warn",
+				"cardTemplate": "PLAIN fieldnames of the list's doctype (the ROW record is "
+				"the scope; rows are flat — multi-segment paths warn). name/docstatus/"
+				"modified are always fetched and legal; hidden fields are fetchable too",
+			},
+			"hard_rules": "prototype-shaped segments (__proto__/prototype/constructor) and "
+			"characters outside the dot-path alphabet (expression shapes) HARD-fail the save",
+		},
+		"showIf": {
+			"ops": list(COMPOSITE_SHOWIF_OPS),
+			"shape": "{field: '<dot-path>', op: '<op>', value: <scalar>} — declarative only, "
+			"no expressions. Malformed triples fail OPEN client-side (presentation, never "
+			"permission) and warn at save.",
+		},
+		"caps": {
+			"max_nodes": COMPOSITE_MAX_NODES,
+			"max_depth": COMPOSITE_MAX_DEPTH,
+			"validation": "HARD — an over-cap save is refused (the engine renders NOTHING "
+			"over-cap)",
+		},
+		"boundary": "USE_CASE §3(d): no HTML/CSS/selector/JS strings (markup-shaped literals "
+		"HARD-fail), no queries, no loops, no server-method names. Bindings only READ what "
+		"the permissioned host fetched — arrangement never grants capability.",
+		"ground_truth": "apps/yrp/frontend/src/composite/grammar.js (engine); "
+		"yrp.yrp.api.ui_config COMPOSITE_* constants (server mirror, drift-guarded by "
+		"essdee_yrp.api.test_ui_mirror)",
+	}
 
 
 def _metrics_registry():
@@ -556,6 +730,7 @@ def build_catalog():
 							"values": "a renderable fieldname on the doctype",
 							"effect": "Card/row title field (falls back to meta title_field).",
 						},
+						"cardTemplate": _card_template_doc(),
 					},
 				}
 			},
@@ -785,6 +960,7 @@ def build_catalog():
 				"apps/yrp/yrp/yrp/api/ui_metrics.py (METRICS + CALCULATIONS registries)",
 				"apps/essdee_yrp/essdee_yrp/hooks.py (yrp_web_doctype_catalog hook)",
 				"apps/essdee_yrp/frontend/src/blocks/index.js (block registrations, mirrored by BLOCK_PROP_KEYS)",
+				"apps/yrp/frontend/src/composite/grammar.js (composite grammar, mirrored by COMPOSITE_PRIMITIVES et al.)",
 			],
 			"reading_rules": [
 				"NEVER read custom ui/demos/ for vocabulary — demo vocab != live vocab.",
@@ -819,6 +995,7 @@ def build_catalog():
 		},
 		"keys": keys,
 		"block_types": _block_type_specs(),
+		"composite_grammar": _composite_grammar_section(),
 		"registries": {
 			"metrics": _metrics_registry(),
 			"home_queue_metrics": list(HOME_QUEUE_METRICS),

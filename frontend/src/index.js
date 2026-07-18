@@ -23,6 +23,21 @@ export { default as KnobsPanel } from "./KnobsPanel.vue"
 //   registerBlock("calculator-panel", { component: CalculatorPanel, label: "Calculator" })
 export { default as SummaryTiles } from "./SummaryTiles.vue"
 export { default as CalculatorPanel } from "./CalculatorPanel.vue"
+// Bounded composition layer (USE_CASE §3(c)/(d), Track 1 item 1). The host
+// registers a `composite` block that wires its own permission-gated data
+// fetch into CompositeTree's `scope`; the grammar/binding exports are the
+// ground truth the server-side validator (item 3) and the host mirror.
+export { default as CompositeTree } from "./composite/CompositeTree.vue"
+export {
+	COMPOSITE_PRIMITIVES,
+	COMPOSITE_MAX_NODES,
+	COMPOSITE_MAX_DEPTH,
+	COMPOSITE_FORMATS,
+	SHOWIF_OPS,
+	isContainerPrimitive,
+	isSiteFileSrc,
+} from "./composite/grammar.js"
+export { collectBindPaths, treeStats, resolvePath, evalShowIf } from "./composite/binding.js"
 export { getContext }
 
 /** Injection key for components that prefer inject() over getContext(). */

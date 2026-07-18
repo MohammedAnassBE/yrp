@@ -18,6 +18,7 @@ from copy import deepcopy
 
 import frappe
 from frappe import _
+from frappe.model import no_value_fields
 from frappe.rate_limiter import rate_limit
 
 CURRENT_SCHEMA_VERSION = 1
@@ -111,13 +112,236 @@ BLOCK_PROP_KEYS = {
 	"home-recent": ("doctypes", "recentStyle"),
 	"home-quick-create": ("doctypes",),
 	"summary-tiles": ("metrics",),
-	"record-list": ("doctype", "variant", "columns", "groupBy", "titleField", "pageSize", "title"),
+	# `cardTemplate` (Track 1 item 2): an optional composite tree rendered as
+	# each card's interior in the cards/kanban variants — scope = the ROW
+	# record, same grammar as the composite block's `tree`. Absent → the
+	# shipped card look, byte-identical (parity law).
+	"record-list": (
+		"doctype",
+		"variant",
+		"columns",
+		"groupBy",
+		"titleField",
+		"pageSize",
+		"title",
+		"cardTemplate",
+	),
 	"calculator-panel": ("calculation", "params"),
+	# Bounded composition layer (USE_CASE §3(c)/(d), Track 1 item 1). `source`
+	# declares which permission-gated registry data feeds the binding scope
+	# (metrics via ui_metrics + recent records of one doctype via the list
+	# API); `tree` is the validated primitive tree the engine renders. Deep
+	# TREE validation (primitive whitelist, token enums, bind grammar, caps)
+	# is LIVE since Track 1 item 3 — see _validate_composite_tree.
+	"composite": ("source", "tree"),
 }
 NEWCTA_KEYS = ("primary", "menu")
+# composite.source vocabulary (Composite.vue reads exactly these keys).
+COMPOSITE_SOURCE_KEYS = ("metrics", "doctype", "limit")
+# Engine grammar caps (apps/yrp/frontend/src/composite/grammar.js mirror —
+# enforced as HARD errors by the item-3 tree validator below; the engine
+# re-enforces them at render, where an over-cap tree draws the honest card).
+COMPOSITE_MAX_NODES = 100
+COMPOSITE_MAX_DEPTH = 6
+
+# ── Composite grammar server mirror (USE_CASE §4 Track 1 item 3) ────────────
+# The deep-tree vocabulary of the `composite` block and BOTH cardTemplate
+# seams (record-list block props + listViews[<DocType>]) — a hand-maintained
+# mirror of the ENGINE grammar (apps/yrp/frontend/src/composite/grammar.js,
+# the single ground truth; essdee_yrp/api/test_ui_mirror.py drift-guards every
+# constant in this section against the parsed grammar.js). validate_config
+# enforces it at save time wherever a composite tree can appear.
+#
+# HARD vs SOFT (the item-3 rule): the node/depth caps and injection-shaped
+# values — markup/script-shaped literal strings, prototype-shaped or
+# expression-shaped bind paths, scheme/traversal image srcs — BLOCK the save;
+# taste mistakes (unknown primitive, off-vocabulary token, bad formatter name,
+# malformed showIf, dead bindings) warn softly and the client keeps its honest
+# path-labelled fallback.
+
+COMPOSITE_GRAMMAR_VERSION = 1
+# Grammar upgraders (§3(d) / review amendment 4 — the composite twin of
+# UPGRADERS above). A BREAKING grammar change (prop rename, enum-member
+# removal, node-shape change) bumps COMPOSITE_GRAMMAR_VERSION and registers
+# ONE pure function here: ``COMPOSITE_TREE_UPGRADERS[N]`` takes a version-N
+# tree ROOT and returns its version-N+1 shape (the machinery stamps the new
+# ``version`` after each step — upgraders never write it), then every stored
+# layout is re-validated before shipping. Purely ADDITIVE growth (a new
+# primitive, a new enum member) needs NO upgrader — old trees render
+# identically. Trees carry the grammar version as an OPTIONAL root-node
+# ``version`` int (absent = 1); ``_upgrade_composite_trees`` applies pending
+# upgraders at read time in every seam; stored records are rewritten only
+# when an SM next saves them (same contract as the schema upgraders).
+COMPOSITE_TREE_UPGRADERS = {}
+
+COMPOSITE_SHOWIF_OPS = ("=", "!=", ">", "<", "set", "not-set")
+COMPOSITE_FORMATS = ("date", "qty", "number", "status-label")
+COMPOSITE_NODE_KEYS = ("type", "props", "children", "showIf")
+COMPOSITE_ROOT_KEYS = (*COMPOSITE_NODE_KEYS, "version")
+COMPOSITE_BINDING_KEYS = ("bind", "format")
+COMPOSITE_SHOWIF_KEYS = ("field", "op", "value")
+COMPOSITE_CONTAINER_PRIMITIVES = ("stack", "grid", "card")
+
+# Dot-path grammar (grammar.js BIND_PATH_RE / FORBIDDEN_PATH_SEGMENTS).
+# Checked with re.fullmatch, never match + '$' (house security-format rule).
+COMPOSITE_BIND_PATH_RE = re.compile(r"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*")
+# Charset probe ABOVE the path grammar: a path outside this alphabet carries
+# expression/markup machinery — (), [], quotes, spaces, '<' — and hard-fails
+# as injection-shaped. Inside the alphabet but failing COMPOSITE_BIND_PATH_RE
+# (empty segment, leading/trailing dot) is a typo — soft, the client resolves
+# nothing and renders the em-dash.
+COMPOSITE_BIND_CHARSET_RE = re.compile(r"[A-Za-z0-9_.-]*")
+COMPOSITE_FORBIDDEN_PATH_SEGMENTS = ("__proto__", "prototype", "constructor")
+
+# image.src (grammar.js SITE_FILE_RE): same-origin /files/ or /private/files/
+# paths ONLY — private files still 403 server-side without permission.
+COMPOSITE_SITE_FILE_RE = re.compile(r"/(?:private/)?files/[A-Za-z0-9][A-Za-z0-9 ._()/-]*")
+
+# Markup/script-shaped literal strings — the §3(d) "no HTML/CSS/JS strings"
+# boundary enforced at save time. The engine renders every value through text
+# interpolation (inert), but such strings have NO legitimate place in a
+# layout: '<tag' / '</' / a javascript: scheme hard-fails wherever a literal
+# string lands in a tree. Plain prose with a spaced '<' ("qty < 5") stays
+# legal (an HTML tag never has whitespace after '<').
+COMPOSITE_MARKUP_RE = re.compile(r"</?[A-Za-z!]|javascript\s*:", re.IGNORECASE)
+
+# The primitive registry — names, container-ness and the full token-typed prop
+# vocabulary of each (grammar.js COMPOSITE_PRIMITIVES, kind-for-kind):
+#   {"kind": "enum", "values": (...), "default": ...}  token enum
+#   {"kind": "bindable"}                literal scalar OR {bind, format}
+#   {"kind": "bindable-number"}         same, rendered as a number
+#   {"kind": "boolean", "default": ...}
+#   {"kind": "int", "min": .., "max": .., "default": ...}
+#   {"kind": "string"}                  plain text (never HTML)
+#   {"kind": "icon"}                    must fullmatch ICON_RE
+#   {"kind": "site-file"}               static site-file path (bindings refused)
+_COMPOSITE_GAP = {"kind": "enum", "values": ("none", "xs", "sm", "md", "lg"), "default": "md"}
+_COMPOSITE_ALIGN = {"kind": "enum", "values": ("start", "center", "end"), "default": "start"}
+
+COMPOSITE_PRIMITIVES = {
+	# containers (the only nodes whose children the engine renders)
+	"stack": {
+		"container": True,
+		"props": {
+			"direction": {"kind": "enum", "values": ("column", "row"), "default": "column"},
+			"gap": _COMPOSITE_GAP,
+			"align": {
+				"kind": "enum",
+				"values": ("start", "center", "end", "stretch"),
+				"default": "stretch",
+			},
+			"justify": {
+				"kind": "enum",
+				"values": ("start", "center", "end", "between"),
+				"default": "start",
+			},
+			"wrap": {"kind": "boolean", "default": False},
+		},
+	},
+	"grid": {
+		"container": True,
+		"props": {
+			"columns": {"kind": "int", "min": 1, "max": 6, "default": 2},
+			"gap": _COMPOSITE_GAP,
+		},
+	},
+	"card": {
+		"container": True,
+		"props": {
+			"padding": {"kind": "enum", "values": ("none", "sm", "md", "lg"), "default": "md"},
+			"tone": {"kind": "enum", "values": ("default", "tint", "muted"), "default": "default"},
+		},
+	},
+	# leaves
+	"heading": {
+		"container": False,
+		"props": {
+			"text": {"kind": "bindable"},
+			"level": {"kind": "int", "min": 1, "max": 3, "default": 2},
+			"align": _COMPOSITE_ALIGN,
+		},
+	},
+	"text": {
+		"container": False,
+		"props": {
+			"value": {"kind": "bindable"},
+			"tone": {
+				"kind": "enum",
+				"values": ("default", "muted", "accent", "danger"),
+				"default": "default",
+			},
+			"size": {"kind": "enum", "values": ("xs", "sm", "md", "lg"), "default": "md"},
+			"weight": {
+				"kind": "enum",
+				"values": ("regular", "medium", "bold"),
+				"default": "regular",
+			},
+			"mono": {"kind": "boolean", "default": False},
+			"align": _COMPOSITE_ALIGN,
+		},
+	},
+	"kv-row": {
+		"container": False,
+		"props": {
+			"label": {"kind": "bindable"},
+			"value": {"kind": "bindable"},
+			"mono": {"kind": "boolean", "default": False},
+		},
+	},
+	"badge": {
+		"container": False,
+		"props": {
+			"text": {"kind": "bindable"},
+			"status": {"kind": "bindable"},
+			"tone": {"kind": "enum", "values": ("neutral", "accent"), "default": "neutral"},
+		},
+	},
+	"stat": {
+		"container": False,
+		"props": {
+			"value": {"kind": "bindable"},
+			"label": {"kind": "bindable"},
+			"align": _COMPOSITE_ALIGN,
+		},
+	},
+	"divider": {"container": False, "props": {}},
+	"icon": {
+		"container": False,
+		"props": {
+			"name": {"kind": "icon"},
+			"size": {"kind": "enum", "values": ("sm", "md", "lg"), "default": "md"},
+			"tone": {"kind": "enum", "values": ("default", "muted", "accent"), "default": "default"},
+		},
+	},
+	"progress": {
+		"container": False,
+		"props": {
+			"value": {"kind": "bindable-number"},
+			"tone": {"kind": "enum", "values": ("accent", "muted"), "default": "accent"},
+		},
+	},
+	"image": {
+		"container": False,
+		"props": {
+			"src": {"kind": "site-file"},
+			"alt": {"kind": "string"},
+			"height": {"kind": "int", "min": 16, "max": 480, "default": None},
+			"fit": {"kind": "enum", "values": ("cover", "contain"), "default": "cover"},
+		},
+	},
+	"spacer": {
+		"container": False,
+		"props": {
+			"size": {"kind": "enum", "values": ("xs", "sm", "md", "lg"), "default": "md"},
+		},
+	},
+}
 
 # listViews[<DocType>] vocabulary (DynamicListPage + store.listColumns).
-LIST_VIEW_KEYS = ("variant", "columns", "groupBy", "titleField")
+# `cardTemplate` (Track 1 item 2): optional composite tree rendered as each
+# card's interior on the routed list page's cards/kanban variants — scope =
+# the ROW record; absent → the shipped card markup, byte-identical.
+LIST_VIEW_KEYS = ("variant", "columns", "groupBy", "titleField", "cardTemplate")
 LIST_VIEW_VARIANTS = ("table", "cards", "kanban")
 # Column entries: {field, label} objects work EVERYWHERE; bare "fieldname"
 # strings work ONLY in record-list home blocks (RecordList.vue colDescs
@@ -979,6 +1203,125 @@ def _check_block_props(block, layer, warnings, catalog=None):
 						layer, block["id"], key, value, doctype
 					)
 				)
+		_check_card_template(
+			props.get("cardTemplate"),
+			props.get("variant"),
+			_("block '{0}'").format(block["id"]),
+			layer,
+			warnings,
+			doctype=doctype,
+		)
+	elif block_type == "composite":
+		# Source shape checks, then the DEEP tree validator (Track 1 item 3):
+		# primitive whitelist, token enums, bind grammar, caps — see
+		# _validate_composite_tree for the hard/soft split.
+		source = props.get("source")
+		if source is not None and not isinstance(source, dict):
+			warnings.append(
+				_("{0}: block '{1}' source must be an object").format(layer, block["id"])
+			)
+		elif isinstance(source, dict):
+			for key in source:
+				if key not in COMPOSITE_SOURCE_KEYS:
+					warnings.append(
+						_(
+							"{0}: block '{1}' source key '{2}' is ignored — the client reads only {3}"
+						).format(layer, block["id"], key, ", ".join(COMPOSITE_SOURCE_KEYS))
+					)
+			metrics = source.get("metrics")
+			if metrics is not None and (
+				not isinstance(metrics, list) or not all(isinstance(m, str) for m in metrics)
+			):
+				warnings.append(
+					_("{0}: block '{1}' source.metrics must be a list of strings").format(
+						layer, block["id"]
+					)
+				)
+			elif metrics:
+				known = _known_metric_keys()
+				for name in metrics:
+					if known is not None and name not in known:
+						warnings.append(
+							_("{0}: block '{1}' source metric '{2}' is not a registered metric").format(
+								layer, block["id"], name
+							)
+						)
+			doctype = source.get("doctype")
+			if doctype is not None:
+				if not isinstance(doctype, str) or not doctype.strip():
+					warnings.append(
+						_("{0}: block '{1}' source.doctype must be a DocType name").format(
+							layer, block["id"]
+						)
+					)
+				elif not frappe.db.exists("DocType", doctype):
+					# record-list parity: any readable site doctype is legal
+					# (no catalog gate — there is no "View all" link here).
+					warnings.append(
+						_("{0}: block '{1}' source.doctype '{2}' does not exist as a DocType").format(
+							layer, block["id"], doctype
+						)
+					)
+			limit = source.get("limit")
+			if limit is not None and (
+				isinstance(limit, bool) or not isinstance(limit, int) or not (1 <= limit <= 20)
+			):
+				warnings.append(
+					_("{0}: block '{1}' source.limit must be an integer between 1 and 20").format(
+						layer, block["id"]
+					)
+				)
+			if limit is not None and not source.get("doctype"):
+				warnings.append(
+					_(
+						"{0}: block '{1}' source.limit does nothing without source.doctype"
+					).format(layer, block["id"])
+				)
+		tree = props.get("tree")
+		if tree is None:
+			warnings.append(
+				_("{0}: block '{1}' has no 'tree' — the composite block renders nothing").format(
+					layer, block["id"]
+				)
+			)
+		elif not isinstance(tree, dict) or not isinstance(tree.get("type"), str):
+			warnings.append(
+				_(
+					"{0}: block '{1}' tree must be an object with a string 'type' root node"
+				).format(layer, block["id"])
+			)
+		else:
+			# Deep tree validation against the block's own source: the scope
+			# roots are metrics.<name>.value|label and rows.<index>.<fieldname>
+			# (Composite.vue), so dead bindings are checkable at save time.
+			src = source if isinstance(source, dict) else {}
+			src_doctype = src.get("doctype")
+			if not isinstance(src_doctype, str) or not src_doctype.strip():
+				src_doctype = None
+			row_fieldnames = None
+			if src_doctype and frappe.db.exists("DocType", src_doctype):
+				row_fieldnames = _composite_fetchable_fieldnames(src_doctype)
+			metrics_val = src.get("metrics")
+			if isinstance(metrics_val, list):
+				metric_names = {m for m in metrics_val if isinstance(m, str)}
+			elif "metrics" in src:
+				metric_names = None  # garbage shape already warned — skip the check
+			else:
+				metric_names = set()  # no metrics fetched — metric binds are dead
+			limit = src.get("limit")
+			row_limit = limit if isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 20 else 5
+			_validate_composite_tree(
+				tree,
+				_("block '{0}'").format(block["id"]),
+				"tree",
+				layer,
+				warnings,
+				scope="block",
+				doctype=src_doctype,
+				fieldnames=row_fieldnames,
+				metric_names=metric_names,
+				row_limit=row_limit,
+			)
 	elif block_type == "calculator-panel":
 		calculation = props.get("calculation")
 		if not isinstance(calculation, str) or not calculation.strip():
@@ -1000,6 +1343,543 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			warnings.append(
 				_("{0}: block '{1}' params must be an object").format(layer, block["id"])
 			)
+
+
+def _check_card_template(card_template, variant, context, layer, warnings, doctype=None):
+	"""``cardTemplate`` (Track 1 item 2) — the per-row composite tree of the
+	record-list block and ``listViews[<DocType>]``. A non-object template is
+	ignored by the clients (default card look); an object without a string
+	``type`` root renders the engine's honest can't-render fallback in EVERY
+	card — both warn. The clients render the template only in the cards/kanban
+	variants, so a template on a (default) table-variant list is dead config.
+	A shape-valid root then goes through the DEEP tree validator (Track 1
+	item 3) with the ROW record as binding scope: bind paths are plain
+	fieldnames, checked against ``doctype``'s fetchable fields — no
+	``rows.<i>.`` / ``metrics.`` roots exist here.
+	"""
+	if card_template is None:
+		return
+	if not isinstance(card_template, dict) or not isinstance(card_template.get("type"), str):
+		warnings.append(
+			_(
+				"{0}: {1} cardTemplate must be a composite tree object with a string 'type' root node"
+			).format(layer, context)
+		)
+		return
+	if variant not in ("cards", "kanban"):
+		warnings.append(
+			_("{0}: {1} cardTemplate does nothing without variant 'cards' or 'kanban'").format(
+				layer, context
+			)
+		)
+	row_fieldnames = None
+	if doctype and frappe.db.exists("DocType", doctype):
+		row_fieldnames = _composite_fetchable_fieldnames(doctype)
+	_validate_composite_tree(
+		card_template,
+		context,
+		"cardTemplate",
+		layer,
+		warnings,
+		scope="row",
+		doctype=doctype,
+		fieldnames=row_fieldnames,
+	)
+
+
+def _composite_fetchable_fieldnames(doctype):
+	"""Fieldnames a composite/cardTemplate binding may name for ``doctype``:
+	every meta field with a real DB column (``no_value_fields`` excluded — a
+	Table/layout fieldname in the fields param would break the host's getList
+	fetch) plus the three fields every host fetch always includes — ``name``,
+	``docstatus``, ``modified`` (Composite.vue / RecordList.vue /
+	DynamicListPage.vue base fields). Hidden fields ARE fetchable, unlike the
+	renderable-column set of ``_doctype_fieldnames``. ``None`` = meta
+	unavailable; field-level checks are skipped (same fail-safe contract as
+	``_doctype_fieldnames``)."""
+	try:
+		meta = frappe.get_meta(doctype)
+		fields = {df.fieldname for df in meta.fields if df.fieldtype not in no_value_fields}
+		return fields | {"name", "docstatus", "modified"}
+	except Exception:
+		return None
+
+
+def _composite_tree_stats(tree):
+	"""Node count + max depth of a tree, mirroring the engine's treeStats walk
+	(binding.js): only plain objects count; every ``children`` array is walked
+	regardless of the parent's container-ness. Iterative (never recursive) and
+	early-exiting once both caps are exceeded, so a hostile mega-tree cannot
+	spin the validator before the hard error fires."""
+	nodes = 0
+	depth = 0
+	stack = [(tree, 1)]
+	while stack:
+		node, d = stack.pop()
+		if not isinstance(node, dict):
+			continue
+		nodes += 1
+		if d > depth:
+			depth = d
+		if nodes > COMPOSITE_MAX_NODES and depth > COMPOSITE_MAX_DEPTH:
+			break  # both caps already blown — the caller hard-errors anyway
+		children = node.get("children")
+		if isinstance(children, list):
+			stack.extend((child, d + 1) for child in children)
+	return nodes, depth
+
+
+def _hard_if_injection_string(value, path, layer):
+	"""HARD gate for markup/script-shaped literal strings (§3(d): a layout may
+	never contain HTML/CSS/JS strings). The engine would render them inert via
+	text interpolation — they are refused anyway because they can only be an
+	injection attempt or a copy-paste accident, never authoring."""
+	if isinstance(value, str) and COMPOSITE_MARKUP_RE.search(value):
+		_hard(
+			layer,
+			_(
+				"{0} {1!r} is markup/script-shaped — HTML/CSS/JS strings are never legal in a layout (§3(d) boundary)"
+			).format(path, value),
+		)
+
+
+def _check_composite_path(path_value, path_label, layer, warnings, scope, doctype, fieldnames, metric_names, row_limit):
+	"""Dot-path grammar + scope checks for bind paths and showIf fields.
+
+	HARD: prototype-shaped segments (__proto__/prototype/constructor) and
+	expression-shaped characters outside the dot-path alphabet — the injection
+	families the client resolver refuses. SOFT: everything that merely
+	resolves nothing client-side (malformed dot-path, a root outside the
+	host-supplied scope, a dead metric/row binding, a fieldname typo) — the
+	client renders the honest em-dash, but the save must say so."""
+	segments = path_value.split(".")
+	if any(seg in COMPOSITE_FORBIDDEN_PATH_SEGMENTS for seg in segments):
+		_hard(
+			layer,
+			_(
+				"{0} '{1}' contains a prototype-shaped segment ({2}) — refused"
+			).format(path_label, path_value, "/".join(COMPOSITE_FORBIDDEN_PATH_SEGMENTS)),
+		)
+	if not COMPOSITE_BIND_CHARSET_RE.fullmatch(path_value):
+		_hard(
+			layer,
+			_(
+				"{0} '{1}' is expression-shaped — a dot-path may only carry letters, digits, '_', '-' and '.'"
+			).format(path_label, path_value),
+		)
+	if not COMPOSITE_BIND_PATH_RE.fullmatch(path_value):
+		warnings.append(
+			_(
+				"{0}: {1} '{2}' is a malformed dot-path — the client resolves nothing (em-dash)"
+			).format(layer, path_label, path_value)
+		)
+		return
+
+	if scope == "row":
+		# cardTemplate scope = the flat ROW record: bind fieldnames directly.
+		if len(segments) > 1:
+			warnings.append(
+				_(
+					"{0}: {1} '{2}' — row records are flat; bind the fieldname directly (no rows./metrics. roots here)"
+				).format(layer, path_label, path_value)
+			)
+		elif fieldnames is not None and segments[0] not in fieldnames:
+			warnings.append(
+				_(
+					"{0}: {1} '{2}' is not a fetchable field on '{3}' — the binding renders the em-dash"
+				).format(layer, path_label, path_value, doctype)
+			)
+		return
+
+	# Composite-block scope: metrics.<name>.value|label and rows.<i>.<field>.
+	root = segments[0]
+	if root == "metrics":
+		if len(segments) != 3 or segments[2] not in ("value", "label"):
+			warnings.append(
+				_(
+					"{0}: {1} '{2}' — metric paths are metrics.<name>.value or metrics.<name>.label; anything else resolves nothing"
+				).format(layer, path_label, path_value)
+			)
+		elif metric_names is not None and segments[1] not in metric_names:
+			warnings.append(
+				_(
+					"{0}: {1} metric '{2}' is not in source.metrics — the binding always renders the em-dash"
+				).format(layer, path_label, segments[1])
+			)
+	elif root == "rows":
+		if doctype is None:
+			warnings.append(
+				_(
+					"{0}: {1} '{2}' binds rows.* but source.doctype is not set — no rows are fetched; the binding renders the em-dash"
+				).format(layer, path_label, path_value)
+			)
+		if len(segments) != 3 or not segments[1].isdigit():
+			warnings.append(
+				_(
+					"{0}: {1} '{2}' — row paths are rows.<index>.<fieldname> (rows are flat); anything else resolves nothing"
+				).format(layer, path_label, path_value)
+			)
+		else:
+			if int(segments[1]) >= row_limit:
+				warnings.append(
+					_(
+						"{0}: {1} row index {2} is beyond source.limit ({3}) — the binding always renders the em-dash"
+					).format(layer, path_label, segments[1], row_limit)
+				)
+			if doctype is not None and fieldnames is not None and segments[2] not in fieldnames:
+				warnings.append(
+					_(
+						"{0}: {1} '{2}' is not a fetchable field on '{3}' — the binding renders the em-dash"
+					).format(layer, path_label, segments[2], doctype)
+				)
+	else:
+		warnings.append(
+			_(
+				"{0}: {1} '{2}' — the composite scope has only metrics.* and rows.* roots; the binding resolves nothing"
+			).format(layer, path_label, path_value)
+		)
+
+
+def _check_composite_bindable(value, prop_path, layer, warnings, path_kwargs):
+	"""One bindable/bindable-number prop value: literal scalars pass (markup
+	strings hard-fail); a {bind, format} object gets the path grammar + named
+	formatter checks; any other object renders nothing and warns."""
+	if isinstance(value, dict):
+		bind = value.get("bind")
+		if not isinstance(bind, str) or not bind:
+			warnings.append(
+				_(
+					"{0}: {1} object needs a string 'bind' dot-path — the client renders nothing for it"
+				).format(layer, prop_path)
+			)
+		else:
+			_check_composite_path(bind, _("{0}.bind").format(prop_path), layer, warnings, **path_kwargs)
+		fmt = value.get("format")
+		if fmt is not None:
+			_hard_if_injection_string(fmt, _("{0}.format").format(prop_path), layer)
+			if fmt not in COMPOSITE_FORMATS:
+				warnings.append(
+					_(
+						"{0}: {1} format {2!r} is not one of {3} — the client renders the raw value"
+					).format(layer, prop_path, fmt, ", ".join(COMPOSITE_FORMATS))
+				)
+		for key in value:
+			if key not in COMPOSITE_BINDING_KEYS:
+				warnings.append(
+					_("{0}: unknown key '{1}' inside {2} binding — the client reads only bind/format").format(
+						layer, key, prop_path
+					)
+				)
+	elif isinstance(value, str):
+		_hard_if_injection_string(value, prop_path, layer)
+	elif isinstance(value, list):
+		warnings.append(
+			_(
+				"{0}: {1} must be a literal scalar or a {{bind}} object — the client renders nothing for it"
+			).format(layer, prop_path)
+		)
+
+
+def _injection_scan(value, path, layer, budget=100):
+	"""Bounded recursive scan of an UNKNOWN prop's value: every literal string
+	still hard-fails on markup shapes and every {bind: ...} path still gets the
+	prototype/expression hard gates — an unknown prop name must never become a
+	smuggling lane past the injection posture (the client ignores the prop, but
+	the §3(d) boundary is about what a layout may CONTAIN)."""
+	stack = [(value, path)]
+	seen = 0
+	while stack and seen < budget:
+		current, current_path = stack.pop()
+		seen += 1
+		if isinstance(current, str):
+			_hard_if_injection_string(current, current_path, layer)
+		elif isinstance(current, dict):
+			bind = current.get("bind")
+			if isinstance(bind, str):
+				segments = bind.split(".")
+				if any(seg in COMPOSITE_FORBIDDEN_PATH_SEGMENTS for seg in segments):
+					_hard(
+						layer,
+						_("{0}.bind '{1}' contains a prototype-shaped segment — refused").format(
+							current_path, bind
+						),
+					)
+			for key, val in current.items():
+				stack.append((val, _("{0}.{1}").format(current_path, key)))
+		elif isinstance(current, list):
+			for i, item in enumerate(current):
+				stack.append((item, _("{0}.{1}").format(current_path, i)))
+
+
+def _validate_composite_tree(
+	tree,
+	context,
+	root_label,
+	layer,
+	warnings,
+	scope,
+	doctype=None,
+	fieldnames=None,
+	metric_names=None,
+	row_limit=5,
+):
+	"""Deep composite-tree validation (USE_CASE §4 Track 1 item 3), applied to
+	every seam a tree can appear in: the composite block's ``tree`` and both
+	``cardTemplate`` seams. The caller has already checked the root shape
+	(object with a string ``type``).
+
+	HARD (blocks the save): grammar version newer than this server, node/depth
+	caps, and every injection-shaped value — markup/script literal strings,
+	prototype/expression-shaped paths, scheme/traversal/protocol-relative
+	image srcs. SOFT (client keeps its honest fallback): unknown primitives,
+	off-vocabulary tokens, bad formatter names, malformed showIf triples,
+	dead bindings. ``scope`` is ``"block"`` (metrics.*/rows.* roots) or
+	``"row"`` (flat row record)."""
+	# Grammar version — root-node only, mirroring the schema_version posture:
+	# never guess-interpreted forward.
+	version = tree.get("version")
+	if version is not None:
+		if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+			_hard(
+				layer,
+				_(
+					"{0} {1}.version must be a positive integer (current composite grammar: {2})"
+				).format(context, root_label, COMPOSITE_GRAMMAR_VERSION),
+			)
+		if version > COMPOSITE_GRAMMAR_VERSION:
+			_hard(
+				layer,
+				_(
+					"{0} {1}.version {2} is newer than this server's composite grammar ({3})"
+				).format(context, root_label, version, COMPOSITE_GRAMMAR_VERSION),
+			)
+
+	# Caps BEFORE the deep walk (hard — the engine renders NOTHING over-cap),
+	# via a bounded iterative count so hostile trees cannot recurse or spin.
+	nodes, depth = _composite_tree_stats(tree)
+	if nodes > COMPOSITE_MAX_NODES:
+		_hard(
+			layer,
+			_(
+				"{0} {1} has more than {2} nodes — over the composite cap; the engine renders NOTHING over-cap"
+			).format(context, root_label, COMPOSITE_MAX_NODES),
+		)
+	if depth > COMPOSITE_MAX_DEPTH:
+		_hard(
+			layer,
+			_(
+				"{0} {1} is nested deeper than {2} levels — over the composite cap; the engine renders NOTHING over-cap"
+			).format(context, root_label, COMPOSITE_MAX_DEPTH),
+		)
+
+	path_kwargs = {
+		"scope": scope,
+		"doctype": doctype,
+		"fieldnames": fieldnames,
+		"metric_names": metric_names,
+		"row_limit": row_limit,
+	}
+	prefix = _("{0} ").format(context) if context else ""
+	# Recursion is safe here: the depth cap above bounds the walk at
+	# COMPOSITE_MAX_DEPTH + 1 frames.
+	_walk_composite_node(tree, prefix + root_label, True, layer, warnings, path_kwargs)
+
+
+def _walk_composite_node(node, path, is_root, layer, warnings, path_kwargs):
+	if not isinstance(node, dict):
+		warnings.append(
+			_(
+				"{0}: {1} is not a node object — the client renders a path-labelled honest fallback"
+			).format(layer, path)
+		)
+		return
+
+	allowed_keys = COMPOSITE_ROOT_KEYS if is_root else COMPOSITE_NODE_KEYS
+	for key in node:
+		if key not in allowed_keys:
+			warnings.append(
+				_("{0}: unknown key '{1}' at {2} — nodes carry only {3}").format(
+					layer, key, path, "/".join(allowed_keys)
+				)
+			)
+
+	ntype = node.get("type")
+	spec = None
+	if not isinstance(ntype, str) or not ntype.strip():
+		warnings.append(
+			_(
+				"{0}: {1} has no string 'type' — the client renders a path-labelled honest fallback"
+			).format(layer, path)
+		)
+	else:
+		_hard_if_injection_string(ntype, _("{0}.type").format(path), layer)
+		spec = COMPOSITE_PRIMITIVES.get(ntype)
+		if spec is None:
+			warnings.append(
+				_(
+					"{0}: unknown primitive '{1}' at {2} — the client renders a path-labelled honest fallback"
+				).format(layer, ntype, path)
+			)
+
+	props = node.get("props")
+	if props is not None and not isinstance(props, dict):
+		warnings.append(_("{0}: {1}.props must be an object").format(layer, path))
+		props = None
+	if isinstance(props, dict):
+		for name, value in props.items():
+			prop_path = _("{0}.props.{1}").format(path, name)
+			if spec is None:
+				# Unknown primitive: no prop vocabulary to check against, but
+				# the injection posture still applies to everything inside.
+				_injection_scan(value, prop_path, layer)
+				continue
+			pspec = spec["props"].get(name)
+			if pspec is None:
+				warnings.append(
+					_(
+						"{0}: '{1}' is not a prop of primitive '{2}' at {3} — the client ignores it"
+					).format(layer, name, ntype, path)
+				)
+				_injection_scan(value, prop_path, layer)
+				continue
+			_validate_composite_prop(value, pspec, prop_path, layer, warnings, path_kwargs)
+
+	children = node.get("children")
+	if children is not None:
+		if not isinstance(children, list):
+			warnings.append(_("{0}: {1}.children must be a list of nodes").format(layer, path))
+		else:
+			if spec is not None and not spec["container"]:
+				warnings.append(
+					_(
+						"{0}: '{1}' at {2} is not a container ({3}) — the client ignores its children"
+					).format(layer, ntype, path, "/".join(COMPOSITE_CONTAINER_PRIMITIVES))
+				)
+			for i, child in enumerate(children):
+				_walk_composite_node(
+					child, _("{0}.children.{1}").format(path, i), False, layer, warnings, path_kwargs
+				)
+
+	_check_composite_showif(node.get("showIf"), _("{0}.showIf").format(path), layer, warnings, path_kwargs)
+
+
+def _validate_composite_prop(value, pspec, prop_path, layer, warnings, path_kwargs):
+	kind = pspec["kind"]
+	if kind in ("bindable", "bindable-number"):
+		_check_composite_bindable(value, prop_path, layer, warnings, path_kwargs)
+	elif kind == "enum":
+		if value not in pspec["values"]:
+			_hard_if_injection_string(value, prop_path, layer)
+			warnings.append(
+				_("{0}: {1} {2!r} is not one of {3} — the client falls back to {4!r}").format(
+					layer, prop_path, value, ", ".join(pspec["values"]), pspec["default"]
+				)
+			)
+	elif kind == "boolean":
+		if not isinstance(value, bool):
+			warnings.append(
+				_("{0}: {1} should be a boolean, got {2} — the client keeps the default").format(
+					layer, prop_path, type(value).__name__
+				)
+			)
+	elif kind == "int":
+		if isinstance(value, bool) or not isinstance(value, int) or not (
+			pspec["min"] <= value <= pspec["max"]
+		):
+			warnings.append(
+				_(
+					"{0}: {1} must be an integer between {2} and {3} — the client falls back"
+				).format(layer, prop_path, pspec["min"], pspec["max"])
+			)
+	elif kind == "string":
+		if not isinstance(value, str):
+			warnings.append(_("{0}: {1} must be a string").format(layer, prop_path))
+		else:
+			_hard_if_injection_string(value, prop_path, layer)
+	elif kind == "icon":
+		if not isinstance(value, str):
+			warnings.append(_("{0}: {1} must be an icon class string").format(layer, prop_path))
+		else:
+			_hard_if_injection_string(value, prop_path, layer)
+			if not ICON_RE.fullmatch(value):
+				warnings.append(
+					_(
+						"{0}: {1} '{2}' must match '^pi pi-[a-z0-9-]+$' — the client renders nothing for it"
+					).format(layer, prop_path, value)
+				)
+	elif kind == "site-file":
+		if isinstance(value, dict):
+			warnings.append(
+				_(
+					"{0}: {1} is STATIC only — bindings are refused; the client renders its honest fallback"
+				).format(layer, prop_path)
+			)
+			_injection_scan(value, prop_path, layer)
+		elif not isinstance(value, str):
+			warnings.append(
+				_("{0}: {1} must be a static site-file path string").format(layer, prop_path)
+			)
+		elif ":" in value or ".." in value or "\\" in value or value.startswith("//"):
+			# Scheme, traversal, backslash or protocol-relative — the injection
+			# shapes: an external/derived URL can never be a site file.
+			_hard(
+				layer,
+				_(
+					"{0} '{1}' is not a site file — schemes, '..' and '//' are refused; use a static /files/ or /private/files/ path"
+				).format(prop_path, value),
+			)
+		elif not COMPOSITE_SITE_FILE_RE.fullmatch(value):
+			warnings.append(
+				_(
+					"{0}: {1} '{2}' is not a site /files/ path — the client renders its honest fallback"
+				).format(layer, prop_path, value)
+			)
+
+
+def _check_composite_showif(show_if, path, layer, warnings, path_kwargs):
+	"""showIf triples are presentation, never permission — the engine FAILS
+	OPEN on malformed ones (renders the node + console.warn), so malformed
+	shapes are soft; the field's path still gets the hard injection gates."""
+	if show_if is None:
+		return
+	if not isinstance(show_if, dict):
+		warnings.append(
+			_(
+				"{0}: {1} must be a {{field, op, value}} triple — malformed showIf fails OPEN (the node always renders)"
+			).format(layer, path)
+		)
+		return
+	for key in show_if:
+		if key not in COMPOSITE_SHOWIF_KEYS:
+			warnings.append(
+				_("{0}: unknown key '{1}' inside {2} — showIf reads only field/op/value").format(
+					layer, key, path
+				)
+			)
+	field = show_if.get("field")
+	if not isinstance(field, str) or not field:
+		warnings.append(
+			_(
+				"{0}: {1}.field must be a dot-path string — malformed showIf fails OPEN (the node always renders)"
+			).format(layer, path)
+		)
+	else:
+		_check_composite_path(field, _("{0}.field").format(path), layer, warnings, **path_kwargs)
+	op = show_if.get("op")
+	if op not in COMPOSITE_SHOWIF_OPS:
+		_hard_if_injection_string(op, _("{0}.op").format(path), layer)
+		warnings.append(
+			_(
+				"{0}: {1}.op {2!r} is not one of {3} — malformed showIf fails OPEN (the node always renders)"
+			).format(layer, path, op, ", ".join(COMPOSITE_SHOWIF_OPS))
+		)
+	value = show_if.get("value")
+	if isinstance(value, str):
+		_hard_if_injection_string(value, _("{0}.value").format(path), layer)
+	elif value is not None and not isinstance(value, (int, float, bool)):
+		warnings.append(
+			_("{0}: {1}.value must be a scalar — the comparison never matches").format(layer, path)
+		)
 
 
 def _validate_list_views(list_views, layer, warnings, catalog=None):
@@ -1071,6 +1951,14 @@ def _validate_list_views(list_views, layer, warnings, catalog=None):
 						"{0}: listViews['{1}'].{2} '{3}' is not a field on '{1}' — the client falls back"
 					).format(layer, doctype, key, value)
 				)
+		_check_card_template(
+			view.get("cardTemplate"),
+			view.get("variant"),
+			"listViews['{0}']".format(doctype),
+			layer,
+			warnings,
+			doctype=doctype,
+		)
 
 
 def _validate_quick_create(quick_create, layer, warnings, catalog=None):
@@ -1605,7 +2493,121 @@ def _prepare_layer(raw, label, warnings, required=False):
 		version += 1
 		cfg["schema_version"] = version
 
+	_upgrade_composite_trees(cfg, label, warnings)
+
 	return cfg
+
+
+def _iter_composite_tree_sites(cfg):
+	"""Yield ``(holder_dict, key, context_label)`` for every slot in a config
+	layer that may carry a composite tree: the composite block's ``tree``, the
+	record-list block's ``cardTemplate`` and ``listViews[<DocType>].cardTemplate``.
+	Shape-tolerant walking only — resolver inputs are unvalidated data and this
+	runs inside the never-raises path."""
+	screens = cfg.get("screens")
+	home = screens.get("home") if isinstance(screens, dict) else None
+	blocks = home.get("blocks") if isinstance(home, dict) else None
+	if isinstance(blocks, list):
+		for block in blocks:
+			if not isinstance(block, dict) or not isinstance(block.get("props"), dict):
+				continue
+			block_type = block.get("type")
+			if block_type == "composite" and "tree" in block["props"]:
+				yield block["props"], "tree", _("block '{0}' tree").format(block.get("id"))
+			elif block_type == "record-list" and "cardTemplate" in block["props"]:
+				yield (
+					block["props"],
+					"cardTemplate",
+					_("block '{0}' cardTemplate").format(block.get("id")),
+				)
+	list_views = cfg.get("listViews")
+	if isinstance(list_views, dict):
+		for doctype, view in list_views.items():
+			if isinstance(view, dict) and "cardTemplate" in view:
+				yield view, "cardTemplate", _("listViews['{0}'] cardTemplate").format(doctype)
+
+
+def _drop_composite_tree(holder, key, label, context, reason, warnings, sample=None):
+	"""Drop ONE composite tree (set to null — the merge treats null as "no
+	opinion", so the client renders the shipped default look / nothing for
+	that slot) with a ``meta.warnings`` entry + Error Log trace. The rest of
+	the layer survives — the layer-drop posture, one tier down."""
+	holder[key] = None
+	message = _("{0}: {1} dropped: {2}").format(label, context, reason)
+	warnings.append(message)
+	_log_degradation(_("UI config: {0}").format(message), sample)
+
+
+def _upgrade_composite_trees(cfg, label, warnings):
+	"""Composite-grammar version gate + upgrade at read time (§3(d) / review
+	amendment 4 — the composite twin of the schema_version loop above, run on
+	every prepared layer). Today ``COMPOSITE_GRAMMAR_VERSION`` is 1 and no
+	upgraders exist, so every stored tree passes through UNTOUCHED (parity:
+	resolution output is byte-identical); the machinery and its tests exist
+	NOW so the first real grammar change only has to bump the version and
+	register ``COMPOSITE_TREE_UPGRADERS[N]``. A tree that cannot be brought to
+	the current grammar is dropped ALONE — never guess-interpreted forward,
+	never the whole layer."""
+	for holder, key, context in _iter_composite_tree_sites(cfg):
+		tree = holder.get(key)
+		if not isinstance(tree, dict):
+			continue  # save-time validation already warns on shape defects
+
+		version = tree.get("version")
+		if version is None:
+			version = 1  # absent = the grammar's first version (§2.3 rule 5 posture)
+		elif isinstance(version, bool) or not isinstance(version, int) or version < 1:
+			_drop_composite_tree(
+				holder,
+				key,
+				label,
+				context,
+				_("composite version {0!r} is not a positive integer").format(version),
+				warnings,
+			)
+			continue
+
+		if version > COMPOSITE_GRAMMAR_VERSION:
+			_drop_composite_tree(
+				holder,
+				key,
+				label,
+				context,
+				_("composite version {0} is newer than this server understands ({1})").format(
+					version, COMPOSITE_GRAMMAR_VERSION
+				),
+				warnings,
+			)
+			continue
+
+		while version < COMPOSITE_GRAMMAR_VERSION:
+			upgrader = COMPOSITE_TREE_UPGRADERS.get(version)
+			if upgrader is None:
+				_drop_composite_tree(
+					holder,
+					key,
+					label,
+					context,
+					_("no composite upgrader from version {0}").format(version),
+					warnings,
+				)
+				break
+			try:
+				tree = upgrader(tree)
+			except Exception:
+				_drop_composite_tree(
+					holder,
+					key,
+					label,
+					context,
+					_("composite upgrader from version {0} failed").format(version),
+					warnings,
+					sample=frappe.get_traceback(),
+				)
+				break
+			version += 1
+			tree["version"] = version
+			holder[key] = tree
 
 
 def _meta(layout, has_preference, warnings):
