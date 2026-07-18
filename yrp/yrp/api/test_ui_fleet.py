@@ -1,13 +1,16 @@
 # Copyright (c) 2026, Essdee and contributors
 # For license information, please see license.txt
 
-"""Colocated tests for ``yrp.yrp.api.ui_fleet`` (bulk layout assignment).
+"""Colocated tests for ``yrp.yrp.api.ui_fleet`` (bulk layout assignment +
+the floor-role verify user's DB helpers).
 
 House rule: NO ``frappe.db.commit()`` anywhere in this file; the test runner
-rolls everything back. ``seed_verify_user`` is deliberately NOT exercised
-here — it writes a credentials file OUTSIDE the transaction (the file write
+rolls everything back. The top-level seeders ``seed_verify_user`` /
+``seed_floor_verify_user`` are deliberately NOT exercised here — they write a
+credentials file (and set a password) OUTSIDE the transaction (the file write
 would survive the DB rollback and desync from the rolled-back password), and
-it is run for real via ``bench execute`` as its own deliverable.
+are run for real via ``bench execute`` as their own deliverables. Their
+transaction-safe DB helpers (role + permission + user wiring) ARE tested.
 """
 
 import json
@@ -16,7 +19,15 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from yrp.yrp.api.ui_config import DEFAULT_LAYOUT_NAME, get_skeleton
-from yrp.yrp.api.ui_fleet import assign_layout
+from yrp.yrp.api.ui_fleet import (
+	FLOOR_ROLE,
+	FLOOR_VERIFY_USER,
+	_ensure_floor_role,
+	_ensure_floor_user,
+	_floor_catalog_doctypes,
+	_repair_floor_user,
+	assign_layout,
+)
 
 FLEET_USERS = (
 	"yrp-ui-fleet-a@essdee.local",
@@ -185,3 +196,121 @@ class TestAssignLayout(IntegrationTestCase):
 		self.assertEqual(row.layout, SECOND_LAYOUT)
 		self.assertEqual(json.loads(row.overrides), overrides)
 		self.assertEqual(row.notes, "hand-tuned by SM")
+
+
+class TestFloorVerifyRole(IntegrationTestCase):
+	"""Transaction-safe tests for ``seed_floor_verify_user``'s DB helpers.
+
+	The floor verify user exists so a layout can be checked AS a permission-
+	restricted assignee — the emptier reality an SM verification is blind to.
+	These tests cover the role/permission/user wiring (pure DB writes the
+	runner rolls back); the file-write + password path is bench-execute only.
+	"""
+
+	def _user_roles(self):
+		# Read Has Role straight from the DB — authoritative, no role cache.
+		return set(
+			frappe.get_all(
+				"Has Role",
+				filters={"parent": FLOOR_VERIFY_USER, "parenttype": "User"},
+				pluck="role",
+			)
+		)
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		# Order-independent methods: reset the floor user + role + its grants.
+		# Drop the user first so no Has Role blocks deleting the role.
+		if frappe.db.exists("YRP UI Preference", FLOOR_VERIFY_USER):
+			frappe.delete_doc(
+				"YRP UI Preference", FLOOR_VERIFY_USER, ignore_permissions=True, force=True
+			)
+		if frappe.db.exists("User", FLOOR_VERIFY_USER):
+			frappe.delete_doc("User", FLOOR_VERIFY_USER, ignore_permissions=True, force=True)
+		for name in frappe.get_all("Custom DocPerm", filters={"role": FLOOR_ROLE}, pluck="name"):
+			frappe.delete_doc("Custom DocPerm", name, ignore_permissions=True, force=True)
+		if frappe.db.exists("Role", FLOOR_ROLE):
+			frappe.delete_doc("Role", FLOOR_ROLE, ignore_permissions=True, force=True)
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+
+	# ── the role: read-only over every catalog doctype, nothing else ──────
+
+	def test_catalog_covers_the_sm_only_doctype(self):
+		dts = _floor_catalog_doctypes()
+		if not dts:
+			self.skipTest("no /web catalog declared on this site (bare-yrp)")
+		# Item Production Detail grants read to System Manager ONLY today — the
+		# very reason a bespoke read-only floor role is required.
+		self.assertIn("Item Production Detail", dts)
+
+	def test_ensure_floor_role_grants_readonly_over_every_catalog_doctype(self):
+		dts = _floor_catalog_doctypes()
+		if not dts:
+			self.skipTest("no /web catalog declared on this site (bare-yrp)")
+		self.assertTrue(_ensure_floor_role())  # created
+		self.assertTrue(frappe.db.exists("Role", FLOOR_ROLE))
+		self.assertFalse(frappe.db.get_value("Role", FLOOR_ROLE, "disabled"))
+		for dt in dts:
+			perm = frappe.db.get_value(
+				"Custom DocPerm",
+				{"parent": dt, "role": FLOOR_ROLE, "permlevel": 0},
+				["read", "write", "create", "delete", "submit"],
+				as_dict=True,
+			)
+			self.assertIsNotNone(perm, f"no floor grant on {dt}")
+			self.assertEqual(perm.read, 1, f"floor role must READ {dt}")
+			for ptype in ("write", "create", "delete", "submit"):
+				self.assertFalse(perm.get(ptype), f"floor role must NOT {ptype} {dt}")
+
+	def test_ensure_floor_role_is_idempotent(self):
+		dts = _floor_catalog_doctypes()
+		if not dts:
+			self.skipTest("no /web catalog declared on this site (bare-yrp)")
+		self.assertTrue(_ensure_floor_role())  # first: created
+		self.assertFalse(_ensure_floor_role())  # second: already exists
+		for dt in dts:
+			rows = frappe.get_all(
+				"Custom DocPerm",
+				filters={"parent": dt, "role": FLOOR_ROLE, "permlevel": 0},
+			)
+			self.assertEqual(len(rows), 1, f"duplicate floor grant on {dt}")
+
+	# ── the user: floor role, System User, NEVER System Manager ───────────
+
+	def test_floor_user_holds_floor_role_never_system_manager(self):
+		_ensure_floor_role()
+		self.assertTrue(_ensure_floor_user())  # created
+		self.assertEqual(
+			frappe.db.get_value("User", FLOOR_VERIFY_USER, "user_type"), "System User"
+		)
+		self.assertTrue(frappe.db.get_value("User", FLOOR_VERIFY_USER, "enabled"))
+		roles = self._user_roles()
+		self.assertIn(FLOOR_ROLE, roles)
+		self.assertNotIn("System Manager", roles)
+
+	def test_repair_strips_a_stray_system_manager_grant(self):
+		_ensure_floor_role()
+		_ensure_floor_user()
+		doc = frappe.get_doc("User", FLOOR_VERIFY_USER)
+		doc.append("roles", {"role": "System Manager"})
+		doc.save(ignore_permissions=True)
+		self.assertIn("System Manager", self._user_roles())
+
+		_repair_floor_user()
+		roles = self._user_roles()
+		self.assertNotIn("System Manager", roles)  # the whole point
+		self.assertIn(FLOOR_ROLE, roles)
+
+	def test_repair_re_enables_and_restores_the_floor_role(self):
+		_ensure_floor_role()
+		_ensure_floor_user()
+		doc = frappe.get_doc("User", FLOOR_VERIFY_USER)
+		doc.enabled = 0
+		doc.set("roles", [])
+		doc.save(ignore_permissions=True)
+
+		_repair_floor_user()
+		self.assertTrue(frappe.db.get_value("User", FLOOR_VERIFY_USER, "enabled"))
+		self.assertIn(FLOOR_ROLE, self._user_roles())

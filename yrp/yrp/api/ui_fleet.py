@@ -2,9 +2,10 @@
 # For license information, please see license.txt
 
 """Fleet tooling for the per-user /web UI — bulk layout assignment + the
-dedicated verification user ("custom ui/BASE_FINALIZATION_PLAN.md" §5 item 7).
+dedicated verification users ("custom ui/BASE_FINALIZATION_PLAN.md" §5 item 7;
+floor user per USE_CASE review amendment 1).
 
-Two affordances, both SM-territory, neither touching any real user's personal
+Three affordances, all SM-territory, none touching any real user's personal
 layer (the LIVE-site rule: the owner switches his own YRP UI Preference at
 will — tooling must never write records it wasn't explicitly pointed at):
 
@@ -13,8 +14,13 @@ will — tooling must never write records it wasn't explicitly pointed at):
   single call (kills the per-user Desk clicking). Each user's ``overrides``
   and ``notes`` stay untouched — ONLY the ``layout`` field is written.
 - ``seed_verify_user`` — NOT whitelisted (bench execute only): idempotent
-  seeder for the dedicated verification user, so layout verification never
+  seeder for the dedicated SM verification user, so layout verification never
   has to log in as (or mutate) a real person.
+- ``seed_floor_verify_user`` — NOT whitelisted (bench execute only):
+  idempotent seeder for a PERMISSION-RESTRICTED verification user (read-only
+  floor role over the 9 catalog doctypes, never System Manager), so a layout
+  can be verified AS a restricted assignee — the emptier reality an SM
+  verification is structurally blind to.
 
 PERMISSION RULE (spec §15): arrangement never grants capability — assigning
 a layout changes what a user's /web LOOKS like, never what they may read or
@@ -29,10 +35,11 @@ import os
 
 import frappe
 from frappe import _
+from frappe.permissions import add_permission
 from frappe.rate_limiter import rate_limit
 from frappe.utils.password import update_password
 
-from yrp.yrp.api.ui_config import DEFAULT_LAYOUT_NAME
+from yrp.yrp.api.ui_config import DEFAULT_LAYOUT_NAME, _web_doctype_catalog
 
 # Rate limit for the assign endpoint (house style: frappe.rate_limiter,
 # per-IP, like ui_config's save endpoints). Assignment is a deliberate SM
@@ -46,6 +53,22 @@ VERIFY_USER = "ui-verify@essdee.fit"
 # Credentials land ONLY here (two lines: email, password; chmod 600) — never
 # in any repo file, never in a return value, never in a log.
 VERIFY_CREDS_FILE = "~/.frappe-ui-verify-creds"
+
+# The dedicated PERMISSION-RESTRICTED verification user (USE_CASE review
+# amendment 1, 2026-07-17). The System-Manager ``VERIFY_USER`` above is blind
+# to the assignee's emptier reality — "arrangement never grants capability",
+# so SM verification cannot show what a restricted user will NOT see. This
+# second user holds ONLY a read-only floor role over the /web catalog
+# doctypes (never System Manager), so verify-ui can shoot a layout AS a
+# floor worker and reveal every canRead-gated surface an SM would still see.
+FLOOR_VERIFY_USER = "ui-floor-verify@essdee.fit"
+# Its credentials land ONLY here (separate from VERIFY_CREDS_FILE; two lines,
+# chmod 600). Same hard rule: never in a repo file, return value, or log.
+FLOOR_VERIFY_CREDS_FILE = "~/.frappe-ui-floor-creds"
+# The dedicated read-only role granted to FLOOR_VERIFY_USER. A bespoke role
+# is required because no shipped non-SM role grants read over all catalog
+# doctypes (e.g. Item Production Detail grants read to System Manager only).
+FLOOR_ROLE = "YRP Floor Verify"
 
 
 # ── bulk layout assignment (whitelisted, SM-only) ────────────────────────────
@@ -225,8 +248,9 @@ def seed_verify_user():
 	  Work Order Correction, Delivery Challan, Goods Received Note, Stock
 	  Entry, Item, Item Production Detail, Terms and Condition) so every
 	  layout's nav/list/detail render is exercisable; no narrower shipped
-	  role covers that set today. Tightening to a dedicated floor-role
-	  profile (read-only over exactly those 9) is a future kit item.
+	  role covers that set today. For a PERMISSION-RESTRICTED render (what a
+	  real floor worker actually sees), use ``seed_floor_verify_user`` below,
+	  which seeds a read-only, non-SM floor user over exactly those 9.
 	- A fresh random password, written ONLY to ``~/.frappe-ui-verify-creds``
 	  (two lines: email, password; chmod 600). Never into a repo file, never
 	  returned, never logged. Existing sessions are logged out on refresh.
@@ -257,7 +281,7 @@ def seed_verify_user():
 	update_password(VERIFY_USER, password, logout_all_sessions=True)
 	creds_file = _write_creds_file(VERIFY_USER, password)
 
-	preference_created = _ensure_verify_preference()
+	preference_created = _ensure_preference(VERIFY_USER)
 
 	# NEVER include the password here — bench execute prints the return value.
 	return {
@@ -287,28 +311,193 @@ def _repair_verify_user():
 		doc.save(ignore_permissions=True)
 
 
-def _ensure_verify_preference():
-	"""Create the verify user's YRP UI Preference if missing (layout Default,
-	guarded on the record existing so a fixture-less site still seeds); an
-	existing preference is kept verbatim. Returns whether it was created."""
-	if frappe.db.exists("YRP UI Preference", VERIFY_USER):
+def _ensure_preference(user):
+	"""Create ``user``'s YRP UI Preference if missing (layout Default, guarded
+	on the record existing so a fixture-less site still seeds); an existing
+	preference is kept verbatim. Returns whether it was created. Shared by
+	both verification-user seeders."""
+	if frappe.db.exists("YRP UI Preference", user):
 		return False
 	layout = (
 		DEFAULT_LAYOUT_NAME if frappe.db.exists("UI Layout", DEFAULT_LAYOUT_NAME) else None
 	)
 	frappe.get_doc(
-		{"doctype": "YRP UI Preference", "user": VERIFY_USER, "layout": layout}
+		{"doctype": "YRP UI Preference", "user": user, "layout": layout}
 	).insert(ignore_permissions=True)
 	return True
 
 
-def _write_creds_file(email, password):
-	"""Two lines (email, password), owner-read/write only. The fd is opened
-	0o600 so the secret never has a wider-mode window; the explicit chmod
-	covers a pre-existing file that carried a looser mode."""
-	path = os.path.expanduser(VERIFY_CREDS_FILE)
+def _write_creds_file(email, password, creds_file=VERIFY_CREDS_FILE):
+	"""Two lines (email, password), owner-read/write only, to ``creds_file``
+	(defaults to the SM verify user's file; the floor seeder passes its own).
+	The fd is opened 0o600 so the secret never has a wider-mode window; the
+	explicit chmod covers a pre-existing file that carried a looser mode."""
+	path = os.path.expanduser(creds_file)
 	fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 	with os.fdopen(fd, "w") as handle:
 		handle.write(f"{email}\n{password}\n")
 	os.chmod(path, 0o600)
 	return path
+
+
+# ── floor-role verify user (NOT whitelisted — bench execute only) ───────────
+
+
+def seed_floor_verify_user():
+	"""Create/refresh the PERMISSION-RESTRICTED layout-verification user (USE_CASE
+	review amendment 1). NOT whitelisted — run it from the bench:
+
+	    bench --site <site> execute yrp.yrp.api.ui_fleet.seed_floor_verify_user
+
+	(``bench execute`` runs as Administrator and commits on success.)
+
+	Why it exists: ``seed_verify_user`` above is a System Manager, so its /web
+	render sees every catalog surface. A layout assigned to a real floor worker
+	renders an EMPTIER reality — every nav item / list / home card is canRead-
+	gated (``_apply_accurate_web_perms`` re-runs the authoritative
+	``has_permission`` for exactly the catalog doctypes), and User Permissions /
+	permlevel / if_owner further trim it. SM verification is structurally blind
+	to that gap ("arrangement never grants capability"). This user reproduces
+	it: a plain System User that holds ONLY a read-only floor role and NEVER
+	System Manager, so verify-ui can shoot a layout AS a restricted assignee.
+
+	What it guarantees, idempotently (re-runs refresh the password + file):
+
+	- Role ``YRP Floor Verify`` exists, granting **read only** (no write /
+	  create / delete / submit) at permlevel 0 over every /web catalog doctype
+	  (the ``yrp_web_doctype_catalog`` hook — Lot, Work Order, Work Order
+	  Correction, Delivery Challan, Goods Received Note, Stock Entry, Item, Item
+	  Production Detail, Terms and Condition). The grant uses Frappe's own
+	  ``add_permission`` (the Role Permission Manager mechanism) — SIDE EFFECT:
+	  as with any Role-Permission-Manager edit, a doctype that had no Custom
+	  DocPerm yet is converted to custom-perm management (its shipped DocPerms
+	  are copied first, so no existing role loses access). Reversible per
+	  doctype via ``frappe.permissions.reset_perms``.
+	- ``User`` ``ui-floor-verify@essdee.fit`` exists, enabled, System User,
+	  named "UI Floor Verify", holding ``YRP Floor Verify`` and — enforced on
+	  every re-run — **never** System Manager (which would defeat the purpose).
+	  Being non-SM, ``www_home`` routes it to /web like a real worker.
+	- A fresh random password, written ONLY to ``~/.frappe-ui-floor-creds``
+	  (two lines: email, password; chmod 600) — separate from the SM verify
+	  user's file. Never into a repo file, never returned, never logged.
+	- A ``YRP UI Preference`` exists for it (layout Default on creation); an
+	  existing preference is kept verbatim (a layout under verification
+	  survives a password refresh).
+	"""
+	frappe.only_for("System Manager")
+
+	role_created = _ensure_floor_role()
+	user_created = _ensure_floor_user()
+
+	password = frappe.generate_hash(length=32)
+	update_password(FLOOR_VERIFY_USER, password, logout_all_sessions=True)
+	creds_file = _write_creds_file(FLOOR_VERIFY_USER, password, FLOOR_VERIFY_CREDS_FILE)
+
+	preference_created = _ensure_preference(FLOOR_VERIFY_USER)
+
+	# NEVER include the password here — bench execute prints the return value.
+	return {
+		"user": FLOOR_VERIFY_USER,
+		"role": FLOOR_ROLE,
+		"role_created": role_created,
+		"user_created": user_created,
+		"catalog_doctypes": _floor_catalog_doctypes(),
+		"preference_created": preference_created,
+		"creds_file": creds_file,
+	}
+
+
+def _floor_catalog_doctypes():
+	"""The /web catalog doctypes the floor role must be able to read, from the
+	same ``yrp_web_doctype_catalog`` hook ``ui_config`` validates against —
+	sorted for deterministic grant order. Empty on a bare-yrp site with no
+	catalog declared (the floor user is then read-restricted to nothing extra,
+	which is safe: it simply can render no catalog list)."""
+	catalog = _web_doctype_catalog()
+	return sorted(catalog) if catalog else []
+
+
+def _ensure_floor_role():
+	"""Create the ``YRP Floor Verify`` role if missing and grant it read-only
+	over every catalog doctype. Idempotent. Returns whether the role was
+	created (the grants are re-checked either way)."""
+	created = not frappe.db.exists("Role", FLOOR_ROLE)
+	if created:
+		frappe.get_doc(
+			{
+				"doctype": "Role",
+				"role_name": FLOOR_ROLE,
+				# Desk access on so the floor user traverses the same
+				# /api/resource path as the SM verify user (apples-to-apples
+				# shots); the restriction under test is doctype scope, not
+				# desk-vs-website. It is still non-SM, so /web is its home.
+				"desk_access": 1,
+				"disabled": 0,
+			}
+		).insert(ignore_permissions=True)
+	_grant_floor_reads()
+	return created
+
+
+def _grant_floor_reads():
+	"""Grant the floor role read (permlevel 0) over each catalog doctype that
+	exists, exactly once. ``add_permission`` defaults ptype to ``read`` and
+	sets nothing else, so the floor role is strictly read-only; the pre-check
+	keeps the re-run silent (no duplicate-rule msgprint)."""
+	for doctype in _floor_catalog_doctypes():
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		existing = frappe.db.get_value(
+			"Custom DocPerm",
+			{"parent": doctype, "role": FLOOR_ROLE, "permlevel": 0, "if_owner": 0},
+		)
+		if not existing:
+			add_permission(doctype, FLOOR_ROLE, permlevel=0)
+
+
+def _ensure_floor_user():
+	"""Create the floor verify user (System User, enabled, holding ONLY the
+	floor role) if missing, else repair it back to the guaranteed state.
+	Returns whether it was created."""
+	created = not frappe.db.exists("User", FLOOR_VERIFY_USER)
+	if created:
+		frappe.get_doc(
+			{
+				"doctype": "User",
+				"email": FLOOR_VERIFY_USER,
+				"first_name": "UI",
+				"last_name": "Floor Verify",
+				"user_type": "System User",
+				"enabled": 1,
+				"send_welcome_email": 0,
+				"roles": [{"role": FLOOR_ROLE}],
+			}
+		).insert(ignore_permissions=True)
+	else:
+		_repair_floor_user()
+	return created
+
+
+def _repair_floor_user():
+	"""Idempotent re-run path: put an existing floor user back into the
+	guaranteed state — enabled System User, holding the floor role and,
+	critically, NEVER System Manager (a stray SM grant would mask exactly the
+	restricted reality this user exists to expose)."""
+	doc = frappe.get_doc("User", FLOOR_VERIFY_USER)
+	dirty = False
+	if not doc.enabled:
+		doc.enabled = 1
+		dirty = True
+	if doc.user_type != "System User":
+		doc.user_type = "System User"
+		dirty = True
+	roles = {row.role for row in doc.roles}
+	if "System Manager" in roles:
+		doc.set("roles", [row for row in doc.roles if row.role != "System Manager"])
+		roles.discard("System Manager")
+		dirty = True
+	if FLOOR_ROLE not in roles:
+		doc.append("roles", {"role": FLOOR_ROLE})
+		dirty = True
+	if dirty:
+		doc.save(ignore_permissions=True)

@@ -3276,3 +3276,201 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("newCta doctype 'Item' is not in the /web doctype catalog", warnings[0])
+
+
+class TestUIConfigTrack1NavFamily(IntegrationTestCase):
+	"""Nav family (USE_CASE §4 Track 1 item 4): the new nav.position shells
+	(bottom-tabs / sidebar-right / icon-rail), nav.sidebar 'pinned', nav.shell
+	'mobile-shell', nav.footer and nav.overflow. SOFT for taste (off-vocabulary
+	value, dead knob); HARD only for structurally-invalid footer shapes. The
+	base nav-family checks run on the overrides layer too (nav is overridable)."""
+
+	@staticmethod
+	def _nav_warnings(extra, layer="layout"):
+		nav = dict(LAYOUT_CONFIG["nav"], **extra)
+		if layer == "layout":
+			return ui_config.validate_config(dict(LAYOUT_CONFIG, nav=nav), layer="layout")
+		return ui_config.validate_config({"schema_version": 1, "nav": nav}, layer="overrides")
+
+	# ── valid ──────────────────────────────────────────────────────────────
+	def test_new_nav_positions_save_warning_free(self):
+		for pos in ("bottom-tabs", "sidebar-right", "icon-rail"):
+			self.assertEqual(self._nav_warnings({"position": pos}), [], pos)
+
+	def test_sidebar_pinned_on_the_sidebar_family_is_clean(self):
+		for pos in ("sidebar", "sidebar-right", "icon-rail"):
+			self.assertEqual(self._nav_warnings({"position": pos, "sidebar": "pinned"}), [], pos)
+		# position absent defaults to the sidebar shell — pinned is legal there.
+		self.assertEqual(self._nav_warnings({"sidebar": "pinned"}), [])
+
+	def test_shell_footer_overflow_valid_shapes_are_clean(self):
+		self.assertEqual(self._nav_warnings({"shell": "mobile-shell"}), [])
+		self.assertEqual(
+			self._nav_warnings(
+				{"footer": [{"doctype": "Lot", "icon": "pi pi-cog"}, {"doctype": "Work Order"}]}
+			),
+			[],
+		)
+		self.assertEqual(self._nav_warnings({"position": "bottom-tabs", "overflow": 5}), [])
+
+	# ── unknown value soft-warns ─────────────────────────────────────────────
+	def test_off_vocabulary_position_soft_warn(self):
+		warnings = self._nav_warnings({"position": "bottom"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("nav.position 'bottom' is not one of", warnings[0])
+		self.assertIn("the client renders the sidebar shell", warnings[0])
+
+	def test_off_vocabulary_sidebar_and_shell_soft_warn(self):
+		warnings = self._nav_warnings({"sidebar": "docked"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("nav.sidebar 'docked' is not one of", warnings[0])
+		warnings = self._nav_warnings({"shell": "desktop"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("nav.shell 'desktop' is not one of", warnings[0])
+
+	def test_sidebar_mode_is_dead_on_non_sidebar_shells(self):
+		for pos in ("topbar", "bottom-tabs"):
+			warnings = self._nav_warnings({"position": pos, "sidebar": "pinned"})
+			self.assertEqual(len(warnings), 1, f"{pos}: {warnings}")
+			self.assertIn("nav.sidebar has no effect with nav.position", warnings[0])
+
+	def test_overflow_range_and_dead_off_bottom_tabs(self):
+		# Out of range (soft) AND dead off bottom-tabs (position sidebar here).
+		warnings = self._nav_warnings({"position": "sidebar", "overflow": 99})
+		self.assertEqual(len(warnings), 2, warnings)
+		self.assertTrue(any("nav.overflow must be an integer between 2 and 8" in w for w in warnings))
+		self.assertTrue(
+			any("nav.overflow has no effect unless nav.position is 'bottom-tabs'" in w for w in warnings)
+		)
+		# In range but on the sidebar shell → just the dead-knob warning.
+		warnings = self._nav_warnings({"position": "sidebar", "overflow": 5})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("no effect unless nav.position is 'bottom-tabs'", warnings[0])
+		# A bool is not an int → just the range/type warning (on bottom-tabs).
+		warnings = self._nav_warnings({"position": "bottom-tabs", "overflow": True})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("nav.overflow must be an integer", warnings[0])
+
+	def test_footer_off_catalog_unknown_key_and_duplicate_soft_warn(self):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+			warnings = self._nav_warnings(
+				{"footer": [{"doctype": "Item", "label": "x"}, {"doctype": "Lot"}, {"doctype": "Lot"}]}
+			)
+		self.assertEqual(len(warnings), 3, warnings)
+		self.assertTrue(
+			any("nav.footer doctype 'Item' is not in the /web doctype catalog" in w for w in warnings)
+		)
+		self.assertTrue(any("unknown key 'label' inside nav.footer item 'Item'" in w for w in warnings))
+		self.assertTrue(any("nav.footer doctype 'Lot' appears 2 times" in w for w in warnings))
+
+	# ── structurally-bad hard ────────────────────────────────────────────────
+	def test_footer_structural_shapes_hard_error(self):
+		for bad in ({"footer": "Lot"}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
+			with self.assertRaises(frappe.ValidationError):
+				self._nav_warnings(bad)
+		# A malformed footer icon is a hard error (same rule as group items).
+		with self.assertRaises(frappe.ValidationError):
+			self._nav_warnings({"footer": [{"doctype": "Lot", "icon": "cog"}]})
+
+	def test_new_nav_family_checks_run_on_overrides_layer_too(self):
+		warnings = self._nav_warnings({"sidebar": "docked"}, layer="overrides")
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("overrides: nav.sidebar 'docked'", warnings[0])
+
+
+class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
+	"""listViews table-renderer flags (USE_CASE §4 Track 1 item 6): rowSize,
+	colourBy, monoId, chipStyle, headerBand, edgeStatus. ALL SOFT — absent =
+	today's table (parity law); off-vocabulary values warn and the client falls
+	back; a flag set on a card variant is dead config and warns. The only HARD
+	case is the pre-existing listViews-not-an-object shape rule."""
+
+	@staticmethod
+	def _warnings(list_views, layer="layout"):
+		if layer == "layout":
+			return ui_config.validate_config(dict(LAYOUT_CONFIG, listViews=list_views), layer="layout")
+		return ui_config.validate_config(
+			{"schema_version": 1, "listViews": list_views}, layer="overrides"
+		)
+
+	# ── valid ──────────────────────────────────────────────────────────────
+	def test_all_flags_on_a_table_variant_are_warning_free(self):
+		self.assertEqual(
+			self._warnings(
+				{
+					"Work Order": {
+						"variant": "table",
+						"rowSize": "compact",
+						"colourBy": "status",
+						"monoId": True,
+						"chipStyle": "tabs",
+						"headerBand": True,
+						"edgeStatus": True,
+					}
+				}
+			),
+			[],
+		)
+		# colourBy may also name a real renderable field.
+		self.assertEqual(self._warnings({"Work Order": {"colourBy": "process_name"}}), [])
+		# Flags with variant absent (defaults to table) are clean too.
+		self.assertEqual(self._warnings({"Lot": {"rowSize": "comfortable", "monoId": True}}), [])
+
+	def test_flag_keys_are_not_unknown_keys(self):
+		# LIST_VIEW_KEYS grew the six flags — none draws the unknown-key warning.
+		for flag, value in (
+			("rowSize", "cozy"),
+			("colourBy", "status"),
+			("monoId", True),
+			("chipStyle", "chip"),
+			("headerBand", True),
+			("edgeStatus", True),
+		):
+			self.assertEqual(self._warnings({"Lot": {flag: value}}), [], flag)
+
+	# ── unknown value soft-warns ─────────────────────────────────────────────
+	def test_rowsize_and_chipstyle_off_vocabulary_soft_warn(self):
+		warnings = self._warnings({"Lot": {"rowSize": "huge"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("listViews['Lot'].rowSize 'huge' is not one of", warnings[0])
+		warnings = self._warnings({"Lot": {"chipStyle": "pills"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("listViews['Lot'].chipStyle 'pills' is not one of", warnings[0])
+
+	def test_colour_by_fieldname_typo_warns_and_status_keyword_is_clean(self):
+		warnings = self._warnings({"Work Order": {"colourBy": "no_such_field"}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("colourBy 'no_such_field' is not a field on 'Work Order'", warnings[0])
+		self.assertIn("'status' keyword", warnings[0])
+		# A non-string colourBy warns as a shape error.
+		warnings = self._warnings({"Work Order": {"colourBy": 7}})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("colourBy must be a fieldname string or 'status'", warnings[0])
+
+	def test_boolean_flags_reject_non_booleans_softly(self):
+		for flag in ("monoId", "headerBand", "edgeStatus"):
+			warnings = self._warnings({"Lot": {flag: "yes"}})
+			self.assertEqual(len(warnings), 1, f"{flag}: {warnings}")
+			self.assertIn(f"listViews['Lot'].{flag} should be a boolean", warnings[0])
+
+	def test_table_flags_are_dead_on_card_variants(self):
+		for variant in ("cards", "kanban"):
+			warnings = self._warnings(
+				{"Work Order": {"variant": variant, "rowSize": "compact", "monoId": True}}
+			)
+			self.assertEqual(len(warnings), 1, f"{variant}: {warnings}")
+			self.assertIn(
+				"table flags (rowSize, monoId) apply to the table renderer only", warnings[0]
+			)
+			self.assertIn(f"the '{variant}' variant", warnings[0])
+
+	def test_overrides_layer_gets_the_same_flag_checks(self):
+		warnings = self._warnings({"Lot": {"rowSize": "huge"}}, layer="overrides")
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("overrides: listViews['Lot'].rowSize 'huge'", warnings[0])
+
+	# ── structurally-bad hard ────────────────────────────────────────────────
+	def test_listviews_non_object_still_hard_errors(self):
+		# The family's only HARD rule (pre-existing): listViews must be a dict.
+		with self.assertRaises(frappe.ValidationError):
+			self._warnings([{"variant": "table"}])

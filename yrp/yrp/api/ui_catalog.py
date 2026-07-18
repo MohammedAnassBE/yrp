@@ -72,9 +72,19 @@ from yrp.yrp.api.ui_config import (
 	ICON_RE,
 	LAYOUT_KEYS,
 	LAYOUT_ONLY_KEYS,
+	LIST_CHIP_STYLES,
+	LIST_COLOUR_STATUS,
+	LIST_ROW_SIZES,
+	LIST_TABLE_FLAGS,
 	LIST_VIEW_VARIANTS,
 	MAX_OVERRIDES_BYTES,
+	NAV_OVERFLOW_DEFAULT,
+	NAV_OVERFLOW_MAX,
+	NAV_OVERFLOW_MIN,
 	NAV_POSITIONS,
+	NAV_SHELLS,
+	NAV_SIDEBAR_MODES,
+	NAV_SIDEBAR_POSITIONS,
 	OVERLAY_POSITIONS,
 	OVERRIDABLE_KEYS,
 	STRUCTURAL_KEYS,
@@ -576,13 +586,65 @@ def build_catalog():
 			"tier": "overridable",
 			"status": "consumed",
 			"validation": "hard shape; soft vocabulary",
-			"effect": "Navigation shell: position, grouped doctype items, per-doctype hiding.",
+			"effect": "Navigation shell: position/shell, sidebar resting state, grouped doctype "
+			"items, a pinned footer region, bottom-tabs overflow, and per-doctype hiding.",
 			"keys": {
 				"position": _enum(
 					NAV_POSITIONS,
-					"Which nav shell renders. Anything except 'topbar' renders the sidebar (strict compare).",
+					"Which nav shell renders. An unrecognised value renders the sidebar shell "
+					"(strict compare). bottom-tabs/sidebar-right/icon-rail are the Track 1 item 4 "
+					"desktop/mobile shells added to the original sidebar/topbar pair.",
 					fallback="sidebar",
 				),
+				"sidebar": _enum(
+					NAV_SIDEBAR_MODES,
+					"Resting state of the sidebar-family shells ({0}): 'flyout' (default) = today's "
+					"slim icon rail that expands on hover; 'pinned' = the opt-in always-expanded "
+					"labelled sidebar (Claude-style). No effect on topbar / bottom-tabs (warns).".format(
+						", ".join(NAV_SIDEBAR_POSITIONS)
+					),
+					fallback="flyout",
+				),
+				"shell": _enum(
+					NAV_SHELLS,
+					"Overall app chrome. 'standard' (default) = the desktop chrome; 'mobile-shell' = "
+					"the compact phone-chrome anchor (pairs naturally with position 'bottom-tabs').",
+					fallback="standard",
+				),
+				"footer": {
+					"type": "array",
+					"validation": "hard shape (doctype/icon); soft existence/catalog",
+					"items": {
+						"type": "object",
+						"keys": {
+							"doctype": {
+								"type": "string",
+								"required": True,
+								"validation": "hard presence; soft existence/catalog",
+								"values": "a DocType name from web_doctype_catalog",
+								"effect": "The routed list this footer item opens. Off-catalog names are "
+								"dropped by the client; a duplicate footer doctype warns.",
+							},
+							"icon": {
+								"type": "string",
+								"validation": "hard",
+								"pattern": "icon",
+								"effect": "PrimeIcons class ('pi pi-...') for the footer item.",
+							},
+						},
+					},
+					"effect": "Pinned footer region of the sidebar / nav shell — {doctype, icon} nav "
+					"items with the same grammar as nav.groups items, rendered below the groups.",
+				},
+				"overflow": {
+					"type": "integer",
+					"validation": "soft",
+					"range": {"min": NAV_OVERFLOW_MIN, "max": NAV_OVERFLOW_MAX},
+					"fallback": NAV_OVERFLOW_DEFAULT,
+					"effect": "Max PRIMARY tabs the bottom-tabs shell shows before the rest collapse "
+					"behind a trailing 'More' tab (first N + More). Only meaningful with position "
+					"'bottom-tabs' (warns otherwise).",
+				},
 				"groups": {
 					"type": "array",
 					"validation": "hard shape; soft vocabulary",
@@ -698,7 +760,9 @@ def build_catalog():
 			"validation": "hard shape; soft vocabulary",
 			"values": "keyed by DocType name (must exist on site + be in web_doctype_catalog)",
 			"effect": "Per-doctype list presentation for the routed /web list pages. Precedence: "
-			"the user's own saved User Listview record > this config > DocType meta.",
+			"the user's own saved User Listview record > this config > DocType meta. Table-renderer "
+			"flags (rowSize/colourBy/monoId/chipStyle/headerBand/edgeStatus) shape the table variant "
+			"only — cards/kanban absorb those looks via cardTemplate.",
 			"keys": {
 				"<DocType>": {
 					"type": "object",
@@ -708,6 +772,44 @@ def build_catalog():
 							"List presentation for this doctype's routed list page.",
 							fallback="table",
 						),
+						"rowSize": _enum(
+							LIST_ROW_SIZES,
+							"Table row height (table renderer only). 'cozy' == today's rows; absent = "
+							"byte-identical.",
+							fallback="cozy",
+						),
+						"colourBy": {
+							"type": "string",
+							"validation": "soft",
+							"values": "a renderable fieldname on the doctype, or the '{0}' keyword".format(
+								LIST_COLOUR_STATUS
+							),
+							"effect": "Tints each table row by this field's value, or by document status "
+							"(registry colour map) when set to '{0}'. Table renderer only.".format(
+								LIST_COLOUR_STATUS
+							),
+						},
+						"monoId": {
+							"type": "boolean",
+							"validation": "soft",
+							"effect": "Render the id/name column in a monospace face. Table renderer only.",
+						},
+						"chipStyle": _enum(
+							LIST_CHIP_STYLES,
+							"Status/filter chip presentation: 'chip' (default pills) or 'tabs' (a tab "
+							"bar). Table renderer only.",
+							fallback="chip",
+						),
+						"headerBand": {
+							"type": "boolean",
+							"validation": "soft",
+							"effect": "Tinted header band above the table. Table renderer only.",
+						},
+						"edgeStatus": {
+							"type": "boolean",
+							"validation": "soft",
+							"effect": "Status-coloured stripe on each row's leading edge. Table renderer only.",
+						},
 						"columns": {
 							"type": "array",
 							"items": "{field, label} objects ONLY — the routed list page DROPS bare "

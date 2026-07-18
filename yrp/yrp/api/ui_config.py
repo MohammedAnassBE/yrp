@@ -64,7 +64,31 @@ LAYOUT_KEYS = ("schema_version", *LAYOUT_ONLY_KEYS, *STRUCTURAL_KEYS, *OVERRIDAB
 
 # Soft-checked vocabularies for the shell knobs (engine consumption mirrored:
 # AppLayout.vue topbarNav, format.js formatDate, ChromeBar.vue chrome knobs).
-NAV_POSITIONS = ("sidebar", "topbar")
+# nav.position — which nav shell the engine renders. "sidebar" is the shipped
+# default; a value the client doesn't recognise renders the sidebar shell
+# (AppLayout.vue strict compare), so an off-vocabulary value warns softly.
+# USE_CASE §4 Track 1 item 4 grew the original sidebar/topbar pair with the
+# desktop/mobile shells bottom-tabs, sidebar-right and icon-rail.
+NAV_POSITIONS = ("sidebar", "topbar", "bottom-tabs", "sidebar-right", "icon-rail")
+# The sidebar-FAMILY positions nav.sidebar ("pinned") actually modifies — the
+# three left/right rail shells (a position of None also means "sidebar"). On
+# topbar / bottom-tabs a sidebar mode does nothing (soft "no effect" warning).
+NAV_SIDEBAR_POSITIONS = ("sidebar", "sidebar-right", "icon-rail")
+# nav.sidebar — resting state of the sidebar-family shells. "flyout" (default)
+# = today's slim icon rail that expands on hover; "pinned" = the opt-in
+# always-expanded labelled sidebar (USE_CASE 2026-07-17 Track 1 item 4,
+# Claude-style). Soft: an off-vocabulary value keeps today's flyout.
+NAV_SIDEBAR_MODES = ("flyout", "pinned")
+# nav.shell — overall app chrome. "standard" (default) = the desktop chrome;
+# "mobile-shell" = the compact phone-chrome anchor (USE_CASE §4 item 4 / review
+# amendment 8), which pairs naturally with nav.position "bottom-tabs". Soft.
+NAV_SHELLS = ("standard", "mobile-shell")
+# nav.overflow — max PRIMARY tabs the bottom-tabs shell shows before the rest
+# collapse behind a trailing "More" tab (first N + More). Soft int; only
+# meaningful with nav.position "bottom-tabs" (soft "no effect" warning else).
+NAV_OVERFLOW_MIN = 2
+NAV_OVERFLOW_MAX = 8
+NAV_OVERFLOW_DEFAULT = 5
 DATE_FORMATS = ("dd-mm-yyyy", "yyyy-mm-dd")
 CHROME_KEYS = ("search", "themeToggle")
 REALTIME_KEYS = ("enabled", "intervalMs", "toast")
@@ -81,7 +105,8 @@ REALTIME_RESERVED_KEYS = ("intervalMs", "toast")
 # nav object vocabulary (store.navGroups + AppSidebar/NavTopbar consumption).
 # `home` is RESERVED: Demo-7-style {label, icon, view: "home"} is stored but
 # no client reads it — Home is always rendered first, unconditionally.
-NAV_KEYS = ("position", "groups", "hidden", "home")
+# `sidebar`/`shell`/`footer`/`overflow` are the Track 1 item 4 nav-family knobs.
+NAV_KEYS = ("position", "sidebar", "shell", "footer", "overflow", "groups", "hidden", "home")
 NAV_RESERVED_KEYS = ("home",)
 NAV_GROUP_KEYS = ("id", "label", "items")
 # Nav items: the clients read ONLY doctype (catalog route/label) + icon.
@@ -341,7 +366,20 @@ COMPOSITE_PRIMITIVES = {
 # `cardTemplate` (Track 1 item 2): optional composite tree rendered as each
 # card's interior on the routed list page's cards/kanban variants — scope =
 # the ROW record; absent → the shipped card markup, byte-identical.
-LIST_VIEW_KEYS = ("variant", "columns", "groupBy", "titleField", "cardTemplate")
+# ── listViews table-renderer flags (USE_CASE §4 Track 1 item 6) ─────────────
+# Presentation flags the ROUTED list page's TABLE renderer honours. ALL SOFT:
+# absent = today's table, byte-identical (parity law); an off-vocabulary value
+# is ignored client-side and the shipped look is kept. cards/kanban absorb the
+# same looks via cardTemplate, so a table flag set on those variants is dead
+# config and warns (item-17 no-silent-drop posture).
+LIST_TABLE_FLAGS = ("rowSize", "colourBy", "monoId", "chipStyle", "headerBand", "edgeStatus")
+LIST_ROW_SIZES = ("compact", "cozy", "comfortable")  # "cozy" == today's row height
+LIST_CHIP_STYLES = ("chip", "tabs")  # "chip" == today's status pills
+# colourBy names the field whose value tints each row, OR the "status" keyword
+# (colour by document status via the registry status-colour map). A fieldname
+# is meta-checked against the doctype's renderable fields, same as groupBy.
+LIST_COLOUR_STATUS = "status"
+LIST_VIEW_KEYS = ("variant", "columns", "groupBy", "titleField", "cardTemplate", *LIST_TABLE_FLAGS)
 LIST_VIEW_VARIANTS = ("table", "cards", "kanban")
 # Column entries: {field, label} objects work EVERYWHERE; bare "fieldname"
 # strings work ONLY in record-list home blocks (RecordList.vue colDescs
@@ -682,9 +720,9 @@ def _validate_nav(nav, layer, warnings, catalog=None):
 		elif key not in NAV_KEYS:
 			warnings.append(_("{0}: unknown key '{1}' inside nav").format(layer, key))
 
-	# Soft: the engine treats anything other than "topbar" as the sidebar shell
-	# (AppLayout.vue topbarNav === strict compare), so an off-vocabulary value
-	# silently renders the sidebar — warn the author instead of ignoring.
+	# Soft: an unrecognised shell renders the sidebar (AppLayout.vue strict
+	# compare), so an off-vocabulary value silently renders the sidebar — warn
+	# the author instead of ignoring.
 	position = nav.get("position")
 	if position is not None and position not in NAV_POSITIONS:
 		warnings.append(
@@ -692,6 +730,48 @@ def _validate_nav(nav, layer, warnings, catalog=None):
 				layer, position, ", ".join(NAV_POSITIONS)
 			)
 		)
+
+	# nav.sidebar — the sidebar-family resting state (flyout | pinned). Soft:
+	# the client falls back to today's flyout on an off-vocabulary value; the
+	# knob is dead on the non-sidebar shells (topbar / bottom-tabs), so say so.
+	sidebar_mode = nav.get("sidebar")
+	if sidebar_mode is not None:
+		if sidebar_mode not in NAV_SIDEBAR_MODES:
+			_warn_off_vocabulary(
+				layer, "nav.sidebar", sidebar_mode, NAV_SIDEBAR_MODES, "flyout", warnings
+			)
+		if position is not None and position not in NAV_SIDEBAR_POSITIONS:
+			warnings.append(
+				_(
+					"{0}: nav.sidebar has no effect with nav.position {1!r} — it modifies the sidebar shells ({2}) only"
+				).format(layer, position, ", ".join(NAV_SIDEBAR_POSITIONS))
+			)
+
+	# nav.shell — overall app chrome (standard | mobile-shell). Soft enum.
+	shell = nav.get("shell")
+	if shell is not None and shell not in NAV_SHELLS:
+		_warn_off_vocabulary(layer, "nav.shell", shell, NAV_SHELLS, "standard", warnings)
+
+	# nav.overflow — max primary bottom-tabs before the trailing More tab. Soft
+	# int; only meaningful with nav.position "bottom-tabs" (dead otherwise).
+	overflow = nav.get("overflow")
+	if overflow is not None:
+		if (
+			isinstance(overflow, bool)
+			or not isinstance(overflow, int)
+			or not (NAV_OVERFLOW_MIN <= overflow <= NAV_OVERFLOW_MAX)
+		):
+			warnings.append(
+				_(
+					"{0}: nav.overflow must be an integer between {1} and {2} (max primary bottom-tabs before the More tab) — the client falls back to {3}"
+				).format(layer, NAV_OVERFLOW_MIN, NAV_OVERFLOW_MAX, NAV_OVERFLOW_DEFAULT)
+			)
+		if position != "bottom-tabs":
+			warnings.append(
+				_("{0}: nav.overflow has no effect unless nav.position is 'bottom-tabs'").format(layer)
+			)
+
+	_validate_nav_footer(nav.get("footer"), layer, warnings, catalog)
 
 	hidden = nav.get("hidden")
 	if hidden is not None and not isinstance(hidden, dict):
@@ -794,6 +874,45 @@ def _validate_nav(nav, layer, warnings, catalog=None):
 						"{0}: nav.hidden['{1}'] matches no nav item doctype in this layout — it hides nothing"
 					).format(layer, key)
 				)
+
+
+def _validate_nav_footer(footer, layer, warnings, catalog=None):
+	"""nav.footer (USE_CASE §4 Track 1 item 4) — a pinned footer region of the
+	sidebar / nav shell: a list of ``{doctype, icon}`` nav items with the SAME
+	grammar as nav.groups items (doctype required = HARD, icon must fullmatch
+	ICON_RE = HARD), catalog-gated softly. A duplicate footer doctype warns.
+	Absent → no footer, byte-identical (parity law)."""
+	if footer is None:
+		return
+	if not isinstance(footer, list):
+		_hard(layer, _("nav.footer must be a list of nav items"))
+
+	seen = {}
+	for item in footer:
+		if not isinstance(item, dict):
+			_hard(layer, _("every nav.footer item must be an object"))
+		doctype = item.get("doctype")
+		if not isinstance(doctype, str) or not doctype.strip():
+			_hard(layer, _("every nav.footer item must carry a non-empty string 'doctype'"))
+		icon = item.get("icon")
+		if icon is not None and (not isinstance(icon, str) or not ICON_RE.fullmatch(icon)):
+			_hard(layer, _("nav.footer item icon '{0}' must match '^pi pi-[a-z0-9-]+$'").format(icon))
+		for key in item:
+			if key not in NAV_ITEM_KEYS:
+				warnings.append(
+					_(
+						"{0}: unknown key '{1}' inside nav.footer item '{2}' — the client reads only doctype/icon"
+					).format(layer, key, doctype)
+				)
+		if doctype not in seen:
+			_warn_unusable_doctype(layer, "nav.footer", doctype, warnings, catalog)
+		seen[doctype] = seen.get(doctype, 0) + 1
+
+	for doctype, count in seen.items():
+		if count > 1:
+			warnings.append(
+				_("{0}: nav.footer doctype '{1}' appears {2} times").format(layer, doctype, count)
+			)
 
 
 def _warn_non_boolean_hidden(hidden, path, layer, warnings):
@@ -1882,6 +2001,69 @@ def _check_composite_showif(show_if, path, layer, warnings, path_kwargs):
 		)
 
 
+def _validate_list_table_flags(view, variant, fieldnames, doctype, layer, warnings):
+	"""listViews table-renderer flags (USE_CASE §4 Track 1 item 6). ALL SOFT:
+	absent = today's table (parity law); an off-vocabulary value is ignored
+	client-side and the shipped look kept. cards/kanban absorb these looks via
+	cardTemplate, so a flag set on those variants is dead config and warns
+	(item-17 no-silent-drop). ``fieldnames`` is the doctype's renderable meta
+	set (None = meta unavailable → the colourBy field check is skipped)."""
+	present = [flag for flag in LIST_TABLE_FLAGS if view.get(flag) is not None]
+	if not present:
+		return
+
+	# The table flags only shape the TABLE renderer; on an explicit card variant
+	# they do nothing (cardTemplate is the seam there). variant absent/off-vocab
+	# resolves to the table, so only the explicit card variants warn.
+	if variant in ("cards", "kanban"):
+		warnings.append(
+			_(
+				"{0}: listViews['{1}'] table flags ({2}) apply to the table renderer only — the '{3}' variant absorbs these looks via cardTemplate"
+			).format(layer, doctype, ", ".join(present), variant)
+		)
+
+	row_size = view.get("rowSize")
+	if row_size is not None and row_size not in LIST_ROW_SIZES:
+		_warn_off_vocabulary(
+			layer, "listViews['{0}'].rowSize".format(doctype), row_size, LIST_ROW_SIZES, "cozy", warnings
+		)
+
+	chip_style = view.get("chipStyle")
+	if chip_style is not None and chip_style not in LIST_CHIP_STYLES:
+		_warn_off_vocabulary(
+			layer,
+			"listViews['{0}'].chipStyle".format(doctype),
+			chip_style,
+			LIST_CHIP_STYLES,
+			"chip",
+			warnings,
+		)
+
+	colour_by = view.get("colourBy")
+	if colour_by is not None:
+		if not isinstance(colour_by, str) or not colour_by.strip():
+			warnings.append(
+				_("{0}: listViews['{1}'].colourBy must be a fieldname string or 'status'").format(
+					layer, doctype
+				)
+			)
+		elif colour_by != LIST_COLOUR_STATUS and fieldnames is not None and colour_by not in fieldnames:
+			warnings.append(
+				_(
+					"{0}: listViews['{1}'].colourBy '{2}' is not a field on '{1}' (or the 'status' keyword) — the client falls back to no row colour"
+				).format(layer, doctype, colour_by)
+			)
+
+	for flag in ("monoId", "headerBand", "edgeStatus"):
+		value = view.get(flag)
+		if value is not None and not isinstance(value, bool):
+			warnings.append(
+				_(
+					"{0}: listViews['{1}'].{2} should be a boolean, got {3} — the client keeps the default"
+				).format(layer, doctype, flag, type(value).__name__)
+			)
+
+
 def _validate_list_views(list_views, layer, warnings, catalog=None):
 	"""Deep listViews validation (item 17). The client resolves
 	``listViews[<DocType>]`` per catalog route and silently drops anything it
@@ -1951,6 +2133,7 @@ def _validate_list_views(list_views, layer, warnings, catalog=None):
 						"{0}: listViews['{1}'].{2} '{3}' is not a field on '{1}' — the client falls back"
 					).format(layer, doctype, key, value)
 				)
+		_validate_list_table_flags(view, variant, fieldnames, doctype, layer, warnings)
 		_check_card_template(
 			view.get("cardTemplate"),
 			view.get("variant"),
