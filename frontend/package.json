@@ -1,0 +1,11 @@
+{
+	"name": "@yrp/web-engine",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"main": "src/index.js",
+	"peerDependencies": {
+		"vue": "^3.4",
+		"pinia": "^2.2"
+	}
+}

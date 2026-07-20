@@ -167,6 +167,13 @@ doc_events = {
 	"YRP Stock Settings": {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
+	"User": {
+		# Per-user UI storage lifecycle (PER_USER_UI_SPEC.md §3.3): the YRP UI
+		# Preference docname == user; keep it in sync on offboarding/rename.
+		"on_trash": "yrp.yrp.api.ui_config.delete_ui_preference_for_user",
+		"before_rename": "yrp.yrp.api.ui_config.merge_ui_preference_for_user",
+		"after_rename": "yrp.yrp.api.ui_config.rename_ui_preference_for_user",
+	},
 }
 
 after_migrate = [
