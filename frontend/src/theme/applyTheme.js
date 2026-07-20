@@ -165,6 +165,20 @@ function tokenVars(t, dark) {
 		else warnInvalid("font", t.font)
 	}
 
+	// focus — the focus-ring colour token (USE_CASE §4 item 10). Scheme-neutral
+	// (a saturated ring reads on both light and dark), so it is NOT stripped for
+	// the dark-without-overlay scheme (withoutColorTokens only strips the palette
+	// COLOR_TOKEN_KEYS) — it carries into .dark like radius/fontScale, unless a
+	// dark{} overlay names its own focus. Emits a low-alpha companion (--yrp-focus-
+	// soft, demo's --focus-soft) for the input focus wash: a hex derives rgba@.30;
+	// an explicit rgba focus is reused as-is (the author already chose its alpha).
+	if (t.focus != null) {
+		if (isColor(t.focus)) {
+			vars["--yrp-focus"] = t.focus
+			vars["--yrp-focus-soft"] = HEX_RE.test(t.focus) ? rgba(t.focus, 0.3) : t.focus
+		} else warnInvalid("focus", t.focus)
+	}
+
 	return vars
 }
 
@@ -226,6 +240,19 @@ export function applyTheme(theme) {
 	const overlay = isPlainObject(t.dark) ? t.dark : null
 	const lightVars = tokenVars(t, false)
 	const darkVars = tokenVars(overlay ? { ...t, ...overlay } : withoutColorTokens(t), true)
+
+	// 2b. Presence flag for the broad focus-ring gate (host CSS:
+	//     html[data-yrp-focus] :focus-visible). Set only while a --yrp-focus lands
+	//     in EITHER scheme; absent otherwise → the gated outline matches NOTHING,
+	//     so a focus-less theme keeps today's focus behaviour byte-identical
+	//     (parity law, same wholesale-rebuild contract as ATTR_MODES above). The
+	//     input focus ring recolours via the --yrp-focus var-fallback in
+	//     global.css and needs no attribute. Runs BEFORE the early return.
+	if (lightVars["--yrp-focus"] || darkVars["--yrp-focus"]) {
+		document.documentElement.dataset.yrpFocus = ""
+	} else {
+		delete document.documentElement.dataset.yrpFocus
+	}
 
 	// 3. Accent families (§9): absent/null/shipped stays a strict no-op for the
 	//    light family; an explicit dark{} accent replaces the derived dark one.

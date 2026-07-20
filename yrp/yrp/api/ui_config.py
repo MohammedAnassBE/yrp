@@ -159,7 +159,18 @@ BLOCK_PROP_KEYS = {
 	# TREE validation (primitive whitelist, token enums, bind grammar, caps)
 	# is LIVE since Track 1 item 3 — see _validate_composite_tree.
 	"composite": ("source", "tree"),
+	# story-scroller (USE_CASE §4 Track 1 item 7): the last missing demo
+	# topology — a horizontal/vertical rail of recent records of ONE doctype,
+	# each a "story" chip (name + a few fields + status dot). Same host-owned
+	# getList + subscribeList + statusColors plumbing as record-list; the JSON
+	# names `source` (doctype), `fields`, `limit`, `orientation` — never a query.
+	"story-scroller": ("source", "fields", "limit", "orientation"),
 }
+# story-scroller prop vocabulary (StoryScroller.vue defineProps mirror).
+STORY_SCROLLER_ORIENTATIONS = ("horizontal", "vertical")
+STORY_SCROLLER_LIMIT_MIN = 1
+STORY_SCROLLER_LIMIT_MAX = 30
+STORY_SCROLLER_LIMIT_DEFAULT = 12
 NEWCTA_KEYS = ("primary", "menu")
 # composite.source vocabulary (Composite.vue reads exactly these keys).
 COMPOSITE_SOURCE_KEYS = ("metrics", "doctype", "limit")
@@ -443,15 +454,37 @@ OVERLAY_POSITIONS = (
 	"bottom-right",
 )
 DC_ENTRY_KEYS = ("variant", "qtyControl", "supplierPicker")
-DC_ENTRY_VARIANTS = ("form-grid", "size-matrix", "inline-grid")
-DC_ENTRY_QTY_CONTROLS = ("input",)
-DC_ENTRY_SUPPLIER_PICKERS = ("select", "chips")
-# `dialogPosition` is a RESERVED knob name (same status as realtime.intervalMs/
-# toast): validated against OVERLAY_POSITIONS so layouts can already carry it,
-# but NO client consumes it yet — all action dialogs open center today. Wire a
-# consumer (the actions dialog/drawer anchor) before documenting it as live.
+# DC entry presentation variants. USE_CASE §4 Track 1 item 5 grew the original
+# three with the entry-side mobile/touch topologies (STACK_DECISION: a Stepper
+# IS wizard-steps, a bottom Drawer IS sheet-tiles — but the layout JSON names
+# only the SEMANTIC variant, never a PrimeVue prop). Every variant is a NEW
+# presentation over the SAME embedded-DocDetail + get_work_order_defaults +
+# buildPayload/onSave save path — never a new save path.
+DC_ENTRY_VARIANTS = (
+	"form-grid",
+	"size-matrix",
+	"inline-grid",
+	"wizard-steps",
+	"sheet-tiles",
+	"touch-rows",
+)
+# Quantity-input control. USE_CASE §4 item 5 grew the original input-only
+# vocabulary with the touch controls: "stepper" (InputNumber showButtons — a
+# +/- stepper) and "big-touch" (large finger-target field for the floor).
+DC_ENTRY_QTY_CONTROLS = ("input", "stepper", "big-touch")
+# Supplier/job-worker picker control. USE_CASE §4 item 5 added "buttons" (a
+# button group) alongside the select dropdown and the chips.
+DC_ENTRY_SUPPLIER_PICKERS = ("select", "chips", "buttons")
+# `dialogPosition` anchors the action dialog/drawer on the 9-position overlay
+# grid (OVERLAY_POSITIONS). USE_CASE §4 item 9 promoted it from RESERVED to
+# CONSUMED (the actions dialog/drawer anchor now reads it), so it no longer
+# draws the item-17 reserved notice — an off-vocabulary value soft-warns.
 ACTIONS_KEYS = ("placement", "dialogPosition", "items")
-ACTIONS_PLACEMENTS = ("header", "inline", "floating")
+# Action-bar placement. USE_CASE §4 item 9 grew the original three with
+# "action-sheet" (a bottom sheet/drawer of the same existing affordances —
+# STACK_DECISION: Drawer-bottom IS action-sheet; still a FILTER over capability,
+# never a grant).
+ACTIONS_PLACEMENTS = ("header", "inline", "floating", "action-sheet")
 # actions.items is a FILTER over the EXISTING header affordances only (§15:
 # arrangement never grants capability — every listed item still renders
 # through the client's canRead/canCreate/canSubmit/canCancel gates, and an
@@ -482,6 +515,7 @@ THEME_KEYS = (
 	"surface2",
 	"radius",
 	"density",
+	"focus",  # soft color — focus-ring token (USE_CASE §4 item 10; live — emits --yrp-focus)
 	"fontScale",
 	"font",
 	"arrows",  # soft enum THEME_ARROWS — presentation mode, TOP level only
@@ -1462,6 +1496,62 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			warnings.append(
 				_("{0}: block '{1}' params must be an object").format(layer, block["id"])
 			)
+	elif block_type == "story-scroller":
+		# USE_CASE §4 item 7. Same soft posture as record-list: a required
+		# `source` doctype (exist-checked, no catalog gate — an off-catalog
+		# doctype only loses its tap-through route), optional `fields`
+		# (meta-checked fieldnames), `limit` (int range), `orientation` (enum).
+		source = props.get("source")
+		src_fieldnames = None
+		if not isinstance(source, str) or not source.strip():
+			warnings.append(
+				_("{0}: block '{1}' requires a non-empty string 'source' (the DocType to scroll)").format(
+					layer, block["id"]
+				)
+			)
+			source = None
+		elif not frappe.db.exists("DocType", source):
+			warnings.append(
+				_("{0}: block '{1}' source '{2}' does not exist as a DocType").format(
+					layer, block["id"], source
+				)
+			)
+		else:
+			src_fieldnames = _doctype_fieldnames(source)
+		fields = props.get("fields")
+		if fields is not None:
+			if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+				warnings.append(
+					_("{0}: block '{1}' fields must be a list of fieldname strings").format(
+						layer, block["id"]
+					)
+				)
+			elif src_fieldnames is not None:
+				for field in fields:
+					if field not in src_fieldnames:
+						warnings.append(
+							_(
+								"{0}: block '{1}' field '{2}' is not a renderable field on '{3}' — the client drops it"
+							).format(layer, block["id"], field, source)
+						)
+		limit = props.get("limit")
+		if limit is not None and (
+			isinstance(limit, bool)
+			or not isinstance(limit, int)
+			or not (STORY_SCROLLER_LIMIT_MIN <= limit <= STORY_SCROLLER_LIMIT_MAX)
+		):
+			warnings.append(
+				_("{0}: block '{1}' limit must be an integer between {2} and {3}").format(
+					layer, block["id"], STORY_SCROLLER_LIMIT_MIN, STORY_SCROLLER_LIMIT_MAX
+				)
+			)
+		orientation = props.get("orientation")
+		if orientation is not None and orientation not in STORY_SCROLLER_ORIENTATIONS:
+			warnings.append(
+				_(
+					"{0}: block '{1}' orientation '{2}' is not one of {3} — the client falls back to horizontal"
+				).format(layer, block["id"], orientation, ", ".join(STORY_SCROLLER_ORIENTATIONS))
+			)
 
 
 def _check_card_template(card_template, variant, context, layer, warnings, doctype=None):
@@ -2327,8 +2417,9 @@ def _validate_actions(actions, layer, warnings):
 	affordances show. ``items`` is a FILTER only (§15: arrangement never grants
 	capability — every item still passes the client's permission gates; an
 	unknown name is ignored client-side, so it soft-warns here).
-	``dialogPosition`` is reserved: accepted + vocabulary-checked, not yet
-	consumed by any client (see the ACTIONS_KEYS comment)."""
+	``dialogPosition`` is CONSUMED (USE_CASE §4 item 9 wired the actions
+	dialog/drawer anchor): vocabulary-checked against the 9-position overlay
+	grid, an off-vocabulary value soft-warns (client centers the dialog)."""
 	if actions is None:
 		return
 	if not isinstance(actions, dict):
@@ -2341,14 +2432,10 @@ def _validate_actions(actions, layer, warnings):
 		)
 
 	dialog_position = actions.get("dialogPosition")
-	if dialog_position is not None:
-		# RESERVED (see ACTIONS_KEYS comment): vocabulary-checked so layouts
-		# can already carry it, but consumed by no client — say so (item 17).
-		_warn_reserved(layer, "actions.dialogPosition", warnings)
-		if dialog_position not in OVERLAY_POSITIONS:
-			_warn_off_vocabulary(
-				layer, "actions.dialogPosition", dialog_position, OVERLAY_POSITIONS, "center", warnings
-			)
+	if dialog_position is not None and dialog_position not in OVERLAY_POSITIONS:
+		_warn_off_vocabulary(
+			layer, "actions.dialogPosition", dialog_position, OVERLAY_POSITIONS, "center", warnings
+		)
 
 	items = actions.get("items")
 	if items is not None:
@@ -2500,18 +2587,25 @@ def _soft_validate_theme_tokens(t, path, layer, warnings):
 		if number is None or not (0 <= number <= 60):
 			warn("radius", radius, _("a number between 0 and 60"))
 
+	# theme.density (USE_CASE §4 item 10, un-inerted 2026-07-18): the engine emits
+	# --yrp-pad/--yrp-gap/--yrp-row and the host now consumes them (card padding +
+	# stack gaps + table row height). A valid value is silent; only an off-vocab
+	# value warns softly.
 	density = t.get("density")
-	if density is not None:
-		# Inert-knob notice (2026-07-17 drill): the engine emits the token but
-		# NO host CSS consumes it (Track 1 item 10) — same say-it-out-loud rule
-		# as the RESERVED knobs. The vocabulary check still runs on top.
-		warnings.append(
-			_(
-				"{0}: {1}.density is accepted but visually INERT today — no host CSS consumes the density token (Track 1 item 10); it changes nothing"
-			).format(layer, path)
-		)
-		if density not in THEME_DENSITIES:
-			warn("density", density, _("one of {0}").format(", ".join(THEME_DENSITIES)))
+	if density is not None and density not in THEME_DENSITIES:
+		warn("density", density, _("one of {0}").format(", ".join(THEME_DENSITIES)))
+
+	# theme.focus — the focus-ring colour token (USE_CASE §4 item 10, un-inerted
+	# 2026-07-18): the engine emits --yrp-focus (+ --yrp-focus-soft) and the host
+	# recolours the input focus ring + a gated :focus-visible outline. Validated
+	# as a colour (same forms as the palette tokens); works inside theme.dark too.
+	# A valid colour is silent; an off-form value warns softly (never blocks).
+	focus = t.get("focus")
+	if focus is not None and (
+		not isinstance(focus, str)
+		or not (ACCENT_RE.fullmatch(focus) or THEME_RGBA_RE.fullmatch(focus))
+	):
+		warn("focus", focus, _("'#rrggbb' or 'rgba(r, g, b[, a])'"))
 
 	font_scale = t.get("fontScale")
 	if font_scale is not None:

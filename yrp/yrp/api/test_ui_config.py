@@ -907,15 +907,15 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 	deliberately NOT in OVERRIDABLE_KEYS this iteration)."""
 
 	# A fully-populated, all-valid structural config (every CONSUMED enum
-	# exercised). `actions.dialogPosition` left out deliberately: it is a
-	# RESERVED knob since item 17 — carrying it draws the explicit notice
-	# (covered below and in TestUIConfigItem17ReservedKnobs).
+	# exercised, incl. the item-5 touch variants, item-9 action-sheet placement
+	# and the now-CONSUMED actions.dialogPosition).
 	VALID_STRUCTURAL: ClassVar[dict] = {
 		"detail": {"position": "right"},
 		"entry": {"mode": "popup", "popupPosition": "top-right"},
-		"dcEntry": {"variant": "size-matrix", "qtyControl": "input", "supplierPicker": "chips"},
+		"dcEntry": {"variant": "wizard-steps", "qtyControl": "stepper", "supplierPicker": "buttons"},
 		"actions": {
-			"placement": "floating",
+			"placement": "action-sheet",
+			"dialogPosition": "bottom",
 			"items": [
 				"create_grn",
 				"create_dc",
@@ -948,13 +948,17 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 				[],
 				anchor,
 			)
-			# dialogPosition: every anchor is vocabulary-ACCEPTED (no off-form
-			# warning) but the knob is RESERVED — exactly one item-17 notice.
-			warnings = self._layout_warnings({"actions": {"dialogPosition": anchor}})
-			self.assertEqual(len(warnings), 1, f"{anchor}: {warnings}")
-			self.assertIn("actions.dialogPosition is RESERVED", warnings[0])
+			# dialogPosition: CONSUMED since item 9 — every valid anchor is
+			# accepted warning-free (no more item-17 reserved notice).
+			self.assertEqual(
+				self._layout_warnings({"actions": {"dialogPosition": anchor}}), [], anchor
+			)
 		for variant in ui_config.DC_ENTRY_VARIANTS:
 			self.assertEqual(self._layout_warnings({"dcEntry": {"variant": variant}}), [], variant)
+		for qty_control in ui_config.DC_ENTRY_QTY_CONTROLS:
+			self.assertEqual(
+				self._layout_warnings({"dcEntry": {"qtyControl": qty_control}}), [], qty_control
+			)
 		for picker in ui_config.DC_ENTRY_SUPPLIER_PICKERS:
 			self.assertEqual(
 				self._layout_warnings({"dcEntry": {"supplierPicker": picker}}), [], picker
@@ -988,22 +992,21 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 				"entry": {"mode": "popup", "popupPosition": "middle"}
 			},
 			"dcEntry.variant 'wizard' is not one of": {"dcEntry": {"variant": "wizard"}},
-			"dcEntry.qtyControl 'stepper' is not one of": {"dcEntry": {"qtyControl": "stepper"}},
+			"dcEntry.qtyControl 'wheel' is not one of": {"dcEntry": {"qtyControl": "wheel"}},
 			"dcEntry.supplierPicker 'dropdown' is not one of": {
 				"dcEntry": {"supplierPicker": "dropdown"}
 			},
 			"actions.placement 'sidebar' is not one of": {"actions": {"placement": "sidebar"}},
+			# dialogPosition is CONSUMED now — an off-vocabulary value draws ONLY
+			# the vocabulary warning (no reserved notice).
+			"actions.dialogPosition 'top-center' is not one of": {
+				"actions": {"dialogPosition": "top-center"}
+			},
 		}
 		for fragment, extra in cases.items():
 			warnings = self._layout_warnings(extra)
 			self.assertEqual(len(warnings), 1, f"{extra}: {warnings}")
 			self.assertIn(fragment, warnings[0])
-		# dialogPosition is RESERVED: an off-form value draws BOTH the item-17
-		# notice and the vocabulary warning.
-		warnings = self._layout_warnings({"actions": {"dialogPosition": "top-center"}})
-		self.assertEqual(len(warnings), 2, warnings)
-		self.assertTrue(any("actions.dialogPosition 'top-center' is not one of" in w for w in warnings))
-		self.assertTrue(any("actions.dialogPosition is RESERVED" in w for w in warnings))
 
 	def test_unknown_action_item_names_warn_softly_and_never_block(self):
 		warnings = self._layout_warnings(
@@ -1072,6 +1075,178 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 			self.assertTrue(any(f"unknown key '{key}'" in w for w in warnings), key)
 			self.assertNotIn(key, ui_config.OVERRIDABLE_KEYS)
 			self.assertIn(key, ui_config.LAYOUT_KEYS)
+
+
+class TestUIConfigItem5DcEntryTouchVocabulary(IntegrationTestCase):
+	"""USE_CASE §4 item 5: the DC-entry touch/mobile vocabulary — variant
+	wizard-steps/sheet-tiles/touch-rows, qtyControl stepper/big-touch,
+	supplierPicker buttons. Every new value is a NEW presentation over the SAME
+	WO-defaults + save path; the server only whitelists it."""
+
+	@staticmethod
+	def _layout_warnings(dc_entry):
+		return ui_config.validate_config(dict(LAYOUT_CONFIG, dcEntry=dc_entry), layer="layout")
+
+	def test_new_touch_values_are_accepted_warning_free(self):
+		self.assertEqual(
+			self._layout_warnings(
+				{"variant": "wizard-steps", "qtyControl": "stepper", "supplierPicker": "buttons"}
+			),
+			[],
+		)
+		for variant in ("sheet-tiles", "touch-rows"):
+			self.assertEqual(self._layout_warnings({"variant": variant}), [], variant)
+		self.assertEqual(self._layout_warnings({"qtyControl": "big-touch"}), [])
+
+	def test_unknown_values_soft_warn_and_never_block(self):
+		cases = {
+			"dcEntry.variant 'kanban'": {"variant": "kanban"},
+			"dcEntry.qtyControl 'slider'": {"qtyControl": "slider"},
+			"dcEntry.supplierPicker 'radio'": {"supplierPicker": "radio"},
+		}
+		for fragment, dc in cases.items():
+			warnings = self._layout_warnings(dc)
+			self.assertEqual(len(warnings), 1, dc)
+			self.assertIn(fragment, warnings[0])
+			self.assertIn("is not one of", warnings[0])
+
+	def test_non_object_dc_entry_hard_errors(self):
+		for bad in (1, ["wizard-steps"], "wizard-steps"):
+			with self.assertRaises(frappe.ValidationError, msg=str(bad)):
+				self._layout_warnings(bad)
+
+
+class TestUIConfigItem9ActionsVocabulary(IntegrationTestCase):
+	"""USE_CASE §4 item 9: actions.placement gains 'action-sheet', and
+	actions.dialogPosition is promoted from RESERVED to CONSUMED (validated
+	against the 9-position overlay grid, no reserved notice)."""
+
+	@staticmethod
+	def _layout_warnings(actions):
+		return ui_config.validate_config(dict(LAYOUT_CONFIG, actions=actions), layer="layout")
+
+	def test_action_sheet_placement_is_accepted_warning_free(self):
+		self.assertEqual(self._layout_warnings({"placement": "action-sheet"}), [])
+
+	def test_dialog_position_is_consumed_not_reserved(self):
+		for anchor in ui_config.OVERLAY_POSITIONS:
+			self.assertEqual(self._layout_warnings({"dialogPosition": anchor}), [], anchor)
+		warnings = self._layout_warnings({"placement": "header", "dialogPosition": "bottom"})
+		self.assertEqual(warnings, [])
+		self.assertFalse(any("RESERVED" in w for w in warnings))
+
+	def test_unknown_values_soft_warn_and_never_block(self):
+		for actions, fragment in (
+			({"placement": "drawer"}, "actions.placement 'drawer'"),
+			({"dialogPosition": "middle"}, "actions.dialogPosition 'middle'"),
+		):
+			warnings = self._layout_warnings(actions)
+			self.assertEqual(len(warnings), 1, actions)
+			self.assertIn(fragment, warnings[0])
+			self.assertNotIn("RESERVED", warnings[0])
+
+	def test_non_object_actions_hard_errors(self):
+		for bad in (1, ["action-sheet"], "action-sheet"):
+			with self.assertRaises(frappe.ValidationError, msg=str(bad)):
+				self._layout_warnings(bad)
+
+
+class TestUIConfigItem7StoryScroller(IntegrationTestCase):
+	"""USE_CASE §4 item 7: the story-scroller block — a required `source`
+	doctype + optional fields/limit/orientation, all soft (block props never
+	hard-error). Registered in BLOCK_PROP_KEYS; essdee_yrp test_ui_mirror proves
+	the client component's defineProps match."""
+
+	@staticmethod
+	def _block_warnings(props):
+		block = {"id": "s", "type": "story-scroller", "props": props}
+		cfg = dict(LAYOUT_CONFIG, screens={"home": {"blocks": [block], "hidden": {}}})
+		return ui_config.validate_config(cfg, layer="layout")
+
+	def test_registered_in_block_prop_keys(self):
+		self.assertIn("story-scroller", ui_config.BLOCK_PROP_KEYS)
+		self.assertEqual(
+			ui_config.BLOCK_PROP_KEYS["story-scroller"],
+			("source", "fields", "limit", "orientation"),
+		)
+
+	def test_valid_story_scroller_is_warning_free(self):
+		self.assertEqual(
+			self._block_warnings(
+				{
+					"source": "Work Order",
+					"fields": ["item", "status"],
+					"limit": 8,
+					"orientation": "vertical",
+				}
+			),
+			[],
+		)
+		for orientation in ui_config.STORY_SCROLLER_ORIENTATIONS:
+			self.assertEqual(
+				self._block_warnings({"source": "Work Order", "orientation": orientation}),
+				[],
+				orientation,
+			)
+
+	def test_unknown_orientation_soft_warns(self):
+		warnings = self._block_warnings({"source": "Work Order", "orientation": "diagonal"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("orientation 'diagonal'", warnings[0])
+
+	def test_missing_or_nonexistent_source_soft_warns(self):
+		warnings = self._block_warnings({"orientation": "horizontal"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("requires a non-empty string 'source'", warnings[0])
+		warnings = self._block_warnings({"source": "No Such DocType XYZ"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("does not exist as a DocType", warnings[0])
+
+	def test_bad_limit_and_unknown_field_soft_warn(self):
+		warnings = self._block_warnings({"source": "Work Order", "limit": 99})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("limit must be an integer between", warnings[0])
+		warnings = self._block_warnings({"source": "Work Order", "fields": ["not_a_field"]})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("field 'not_a_field'", warnings[0])
+
+	def test_unknown_prop_soft_warns_via_generic_check(self):
+		warnings = self._block_warnings({"source": "Work Order", "sparkles": 1})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("prop 'sparkles' is not a prop of block type 'story-scroller'", warnings[0])
+
+
+class TestUIConfigItem10ThemeFocus(IntegrationTestCase):
+	"""USE_CASE §4 item 10: theme.focus — a focus-ring colour token, live 2026-07-18
+	(the engine emits --yrp-focus/--yrp-focus-soft and the host recolours the input
+	ring + adds a gated :focus-visible outline). Validated as a colour (same forms
+	as the palette tokens); a valid value is silent, an off-form value warns softly,
+	nothing about focus ever blocks a save."""
+
+	@staticmethod
+	def _warnings(theme):
+		return ui_config.validate_config({"schema_version": 1, "theme": theme}, layer="overrides")
+
+	def test_focus_in_theme_keys(self):
+		self.assertIn("focus", ui_config.THEME_KEYS)
+
+	def test_valid_focus_colour_is_silent(self):
+		for value in ("#2563EB", "rgba(37, 99, 235, 0.5)"):
+			self.assertEqual(self._warnings({"focus": value}), [], value)
+
+	def test_off_form_focus_draws_only_the_colour_warning(self):
+		warnings = self._warnings({"focus": "tomato"})
+		self.assertEqual(len(warnings), 1, warnings)
+		self.assertIn("theme.focus", warnings[0])
+		self.assertIn("is not", warnings[0])
+
+	def test_dark_overlay_focus_is_also_silent_when_valid(self):
+		self.assertEqual(self._warnings({"dark": {"focus": "#2563EB"}}), [])
+
+	def test_focus_never_blocks_the_save(self):
+		# Non-string (list) → soft colour warning, nothing raised.
+		warnings = self._warnings({"focus": ["#fff"]})
+		self.assertTrue(any("theme.focus" in w for w in warnings), warnings)
 
 
 class TestUIPreferenceUserLifecycle(IntegrationTestCase):
@@ -1205,24 +1380,24 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 				"font": "Inter; } body { display: none",
 			}
 		)
-		# One per bad token, nothing raised — density draws its inert notice
-		# PLUS the vocabulary warning (house style: realtime.intervalMs et al).
-		self.assertEqual(len(warnings), 6, warnings)
+		# One soft warning per bad token, nothing raised — density "cozy" is
+		# off-vocab, so it warns like the rest (item 10 un-inerted density: a
+		# VALID density is now silent, only an off-vocab value warns).
+		self.assertEqual(len(warnings), 5, warnings)
 		for fragment in ("theme.bg", "theme.radius", "theme.density", "theme.fontScale", "theme.font"):
 			self.assertTrue(
 				any(fragment in w for w in warnings), f"missing soft warning for {fragment}"
 			)
 
-	def test_density_present_draws_the_inert_notice(self):
-		# 2026-07-17 drill: density is accepted but visually inert (Track 1
-		# item 10) — CATALOG says "don't author it", so lint must say so too.
-		warnings = self._warnings({"density": "compact"})
+	def test_valid_density_is_silent_off_vocab_warns(self):
+		# Track 1 item 10 (live 2026-07-18): the host consumes --yrp-pad/gap/row,
+		# so a valid density is a silent, working knob — no inert notice.
+		self.assertEqual(self._warnings({"density": "compact"}), [])
+		self.assertEqual(self._warnings({"dark": {"density": "spacious"}}), [])
+		# An off-vocab value still warns softly (never blocks).
+		warnings = self._warnings({"density": "cozy"})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("theme.density is accepted but visually INERT", warnings[0])
-		# Same notice for the dark-overlay spelling.
-		warnings = self._warnings({"dark": {"density": "compact"}})
-		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("theme.dark.density is accepted but visually INERT", warnings[0])
+		self.assertIn("theme.density", warnings[0])
 
 	def test_arrows_enum_soft_validation(self):
 		# DESIGN_PREMIUM §4(i) item 1: both enum values are silent, an off-enum
@@ -1320,9 +1495,11 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		)
 
 	def test_non_color_tokens_alone_never_trigger_the_dark_palette_warning(self):
-		# radius/fontScale/font carry into .dark safely — no palette, no warning.
-		# (density is deliberately absent: it draws the inert notice now.)
-		self.assertEqual(self._warnings({"mode": "user", "radius": 14, "fontScale": 1.1}), [])
+		# radius/density/fontScale/font carry into .dark safely — no palette, no
+		# warning. density is a valid, silent, scheme-neutral knob (item 10 live).
+		self.assertEqual(
+			self._warnings({"mode": "user", "radius": 14, "density": "compact", "fontScale": 1.1}), []
+		)
 
 	def test_unicode_font_warns_like_the_clients_ascii_regex(self):
 		# JS \w is ASCII-only: the client drops "Ariál" at render. Python \w is
@@ -2685,7 +2862,6 @@ class TestUIConfigItem17ReservedKnobs(IntegrationTestCase):
 		cases = {
 			"realtime.intervalMs": {"realtime": {"enabled": True, "intervalMs": 10000}},
 			"realtime.toast": {"realtime": {"enabled": True, "toast": True}},
-			"actions.dialogPosition": {"actions": {"dialogPosition": "bottom"}},
 			"detail.rich": {"detail": {"position": "page", "rich": True}},
 			"nav.home": {
 				"nav": dict(
@@ -2701,17 +2877,17 @@ class TestUIConfigItem17ReservedKnobs(IntegrationTestCase):
 			self.assertIn("does nothing today", warnings[0])
 
 	def test_reserved_notices_never_block_the_save(self):
-		# All five reserved names together: five notices, zero exceptions.
+		# All four remaining reserved names together (actions.dialogPosition was
+		# promoted to CONSUMED in item 9): four notices, zero exceptions.
 		cfg = dict(
 			LAYOUT_CONFIG,
 			realtime={"enabled": True, "intervalMs": 10000, "toast": True},
-			actions={"placement": "header", "dialogPosition": "bottom"},
 			detail={"position": "page", "rich": True},
 			nav=dict(LAYOUT_CONFIG["nav"], home={"view": "home"}),
 		)
 		warnings = ui_config.validate_config(cfg, layer="layout")
-		self.assertEqual(len([w for w in warnings if "RESERVED" in w]), 5, warnings)
-		self.assertEqual(len(warnings), 5, warnings)
+		self.assertEqual(len([w for w in warnings if "RESERVED" in w]), 4, warnings)
+		self.assertEqual(len(warnings), 4, warnings)
 
 
 class TestUIConfigItem17HomeQueuesStats(IntegrationTestCase):

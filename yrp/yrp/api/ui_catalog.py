@@ -87,6 +87,10 @@ from yrp.yrp.api.ui_config import (
 	NAV_SIDEBAR_POSITIONS,
 	OVERLAY_POSITIONS,
 	OVERRIDABLE_KEYS,
+	STORY_SCROLLER_LIMIT_DEFAULT,
+	STORY_SCROLLER_LIMIT_MAX,
+	STORY_SCROLLER_LIMIT_MIN,
+	STORY_SCROLLER_ORIENTATIONS,
 	STRUCTURAL_KEYS,
 	THEME_ARROWS,
 	THEME_COLOR_KEYS,
@@ -193,8 +197,15 @@ def _theme_token_keys(overlay=False):
 	}
 	keys["density"] = _enum(
 		THEME_DENSITIES,
-		"Spacing density token. INERT: emitted as CSS tokens but host CSS does not consume "
-		"density yet (Track 1 item 10) — authoring it draws a lint warning; don't author it.",
+		"Spacing-density scale (Track 1 item 10, live 2026-07-18). The engine emits "
+		"--yrp-pad/--yrp-gap/--yrp-row (compact 10/10/38 · comfortable 14/14/46 · spacious "
+		"18/18/58 px) and the host consumes them: card interior padding, form/detail stack "
+		"gaps, and table row height. Absent = shipped spacing, byte-identical.",
+	)
+	keys["focus"] = _color_token(
+		"Focus-ring colour token (#rrggbb or rgba), Track 1 item 10, live 2026-07-18. Recolours "
+		"the input focus ring and adds a keyboard :focus-visible outline across interactive "
+		"surfaces; works inside theme.dark too. Absent = the shipped royal-blue ring, byte-identical."
 	)
 	keys["fontScale"] = {
 		"type": "number",
@@ -437,6 +448,39 @@ def _block_type_specs():
 				"top-level composite_grammar (engine ground truth: "
 				"apps/yrp/frontend/src/composite/grammar.js).",
 			},
+		},
+		"story-scroller": {
+			"source": {
+				"type": "string",
+				"required": True,
+				"validation": "soft",
+				"values": "any DocType existing on the site (catalog NOT required — an "
+				"off-catalog doctype only loses its tap-through route)",
+				"effect": "The DocType whose recent records (newest modified first) become the "
+				"story chips. canRead-gated: no read permission ⇒ the block renders NOTHING.",
+			},
+			"fields": {
+				"type": "array",
+				"items": {
+					"type": "string",
+					"values": "a renderable fieldname on the source doctype",
+				},
+				"validation": "soft",
+				"effect": "Fields shown under each story chip's code (in order). Hidden fields, "
+				"non-listable fieldtypes and frappe default fields render nothing — lint warns.",
+			},
+			"limit": {
+				"type": "integer",
+				"validation": "soft",
+				"range": {"min": STORY_SCROLLER_LIMIT_MIN, "max": STORY_SCROLLER_LIMIT_MAX},
+				"fallback": STORY_SCROLLER_LIMIT_DEFAULT,
+				"effect": "How many recent records to scroll.",
+			},
+			"orientation": _enum(
+				STORY_SCROLLER_ORIENTATIONS,
+				"Rail direction: a horizontal snap feed or a vertical side rail.",
+				fallback="horizontal",
+			),
 		},
 	}
 
@@ -997,38 +1041,50 @@ def build_catalog():
 			"job-worker -> save).",
 			"keys": {
 				"variant": _enum(
-					DC_ENTRY_VARIANTS, "DC entry flow presentation.", fallback="form-grid"
+					DC_ENTRY_VARIANTS,
+					"DC entry flow presentation. form-grid/size-matrix/inline-grid are the "
+					"desk forms; wizard-steps (one step at a time), sheet-tiles (bottom sheet of "
+					"item tiles) and touch-rows (large finger-target rows) are the mobile/touch "
+					"topologies (Track 1 item 5). Every variant reuses the SAME WO-defaults + save "
+					"path — a new presentation, never a new save path.",
+					fallback="form-grid",
 				),
 				"qtyControl": _enum(
 					DC_ENTRY_QTY_CONTROLS,
-					"Quantity input control. Vocabulary is currently input-only (stepper/big-touch "
-					"are Track 1 item 5).",
+					"Quantity input control: 'input' (plain field), 'stepper' (+/- stepper) or "
+					"'big-touch' (large finger-target field for the floor).",
 					fallback="input",
 				),
 				"supplierPicker": _enum(
-					DC_ENTRY_SUPPLIER_PICKERS, "Supplier selection control.", fallback="select"
+					DC_ENTRY_SUPPLIER_PICKERS,
+					"Job-worker/supplier selection control: 'select' (dropdown), 'chips' or "
+					"'buttons' (a button group).",
+					fallback="select",
 				),
 			},
 		},
 		"actions": {
 			"type": "object",
 			"tier": "structural",
-			"status": "partially reserved",
+			"status": "consumed",
 			"validation": "hard shape; soft vocabulary",
 			"effect": "Where document actions render and which of the EXISTING affordances show. "
 			"Arrangement never grants capability — every item still passes the client's "
 			"permission gates.",
 			"keys": {
 				"placement": _enum(
-					ACTIONS_PLACEMENTS, "Action bar placement on the detail view.", fallback="header"
+					ACTIONS_PLACEMENTS,
+					"Action bar placement on the detail view: header, inline, floating, or "
+					"action-sheet (a bottom sheet/drawer of the same affordances, Track 1 item 9).",
+					fallback="header",
 				),
 				"dialogPosition": {
 					"type": "string",
-					"status": "reserved",
+					"status": "consumed",
 					"validation": "soft",
 					"enum": list(OVERLAY_POSITIONS),
-					"effect": "RESERVED — vocabulary-checked so layouts may carry it, but no client "
-					"consumes it; all action dialogs open center today.",
+					"effect": "Anchors the action dialog/drawer on the 9-position overlay grid "
+					"(Track 1 item 9 wired the anchor). Off-vocabulary values center the dialog.",
 				},
 				"items": {
 					"type": "array",
