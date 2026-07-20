@@ -219,6 +219,36 @@ class TestUIConfigUpgraders(IntegrationTestCase):
 			self.assertTrue(any("no upgrader" in w for w in warnings))
 
 
+class TestUIConfigUpgraderCoverage(IntegrationTestCase):
+	"""A version bump that FORGETS its upgrader must fail red at the bump
+	commit — not silently drop every stored layout of the old version to the
+	Default fleet-wide (``_prepare_layer`` drops any layer it cannot upgrade
+	all the way to CURRENT: the ``test_version_gap_without_upgrader_drops_layer``
+	behaviour, but across the whole fleet on the very next page load). Pure
+	arithmetic over the two upgrader registries — no DB, no commit."""
+
+	def test_schema_upgraders_cover_every_version_below_current(self):
+		self.assertEqual(
+			set(ui_config.UPGRADERS),
+			set(range(1, ui_config.CURRENT_SCHEMA_VERSION)),
+			"UPGRADERS must hold exactly one pure function per version below "
+			"CURRENT_SCHEMA_VERSION (UPGRADERS[N]: a version-N blob -> its version-N+1 "
+			"shape). A CURRENT_SCHEMA_VERSION bump without its UPGRADERS entry makes "
+			"_prepare_layer drop every stored layout/overrides layer of the old version "
+			"to Default for the ENTIRE fleet on the next page load.",
+		)
+
+	def test_composite_tree_upgraders_cover_every_grammar_version_below_current(self):
+		self.assertEqual(
+			set(ui_config.COMPOSITE_TREE_UPGRADERS),
+			set(range(1, ui_config.COMPOSITE_GRAMMAR_VERSION)),
+			"COMPOSITE_TREE_UPGRADERS must hold exactly one pure function per grammar "
+			"version below COMPOSITE_GRAMMAR_VERSION. A COMPOSITE_GRAMMAR_VERSION bump "
+			"without its tree upgrader breaks every stored composite tree of the old "
+			"node shape across the fleet.",
+		)
+
+
 class TestUIConfigResolver(IntegrationTestCase):
 	"""resolve_config + endpoints against real records — §4 and every §14 row
 	the resolver owns (1–6, 8, 14, 15, 17)."""
