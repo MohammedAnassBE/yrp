@@ -53,3 +53,9 @@ jspm_packages/
 
 # Aider AI Chat
 .aider*
+
+# ── Frontend (@yrp/web-engine source package) ──
+# Source-only, consumed via a link: dep; no build output is committed here.
+frontend/.vite/
+frontend/dist/
+*.local
