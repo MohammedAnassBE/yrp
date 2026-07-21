@@ -433,11 +433,43 @@ NON_LISTABLE_FIELDTYPES = (
 # Soft-checked vocabularies for the structural knobs. An off-vocabulary value
 # never blocks a save — the client warns/ignores it and keeps today's
 # behaviour (PARITY: every knob's absence/default = the current UI).
-DETAIL_KEYS = ("position",)
+DETAIL_KEYS = ("position", "related")
 # `rich` is a RESERVED detail knob name (USE_CASE item 17 vocabulary): stored,
 # consumed by nothing yet — presence gets the explicit RESERVED notice.
 DETAIL_RESERVED_KEYS = ("rich",)
 DETAIL_POSITIONS = ("page", "right", "center", "bottom-sheet")
+
+# `detail.related` (2026-07-21): the single-record cross-DocType workbench
+# (USE_CASE case (b)). `detail.related` is an object keyed by the SOURCE
+# DocType (like listViews) whose value is a list of related-record sets; each
+# set composes the open document's linked records of ONE other DocType into the
+# same detail screen. A set NAMES fields, never a query — the client fetches via
+# the permission-gated `get_related` API (frappe.has_permission + get_list) and
+# renders each returned row with the SAME row-scoped composite `cardTemplate`
+# grammar the list cards use. Absent → nothing renders (parity law). Keys of one
+# related-set entry:
+#   doctype      the linked DocType to fetch (required)
+#   fromField    fieldname ON THE SOURCE DOCTYPE whose value is the filter value
+#                (required) — e.g. Lot.production_detail
+#   filterField  fieldname ON THE LINKED DOCTYPE to match against (required) —
+#                e.g. Item Production Detail.name
+#   title        section heading text (optional; host-styled, minimal text)
+#   limit        max linked rows to fetch, 1..DETAIL_RELATED_MAX_LIMIT (optional)
+#   cardTemplate row-scoped composite tree shaping each linked card's interior
+#                (optional; same grammar/caps as listViews cardTemplate)
+DETAIL_RELATED_ENTRY_KEYS = (
+	"doctype",
+	"fromField",
+	"filterField",
+	"title",
+	"limit",
+	"cardTemplate",
+)
+DETAIL_RELATED_MAX_LIMIT = 20
+DETAIL_RELATED_DEFAULT_LIMIT = 5
+# Soft ceiling on how many related-record sets one source doctype may declare —
+# each set is a separate fetch fired on detail open, so a runaway fan-out warns.
+DETAIL_RELATED_MAX_SETS = 8
 ENTRY_KEYS = ("mode", "popupPosition")
 ENTRY_MODES = ("page", "popup")
 # 9-position overlay anchor grid, shared by entry.popupPosition and the
@@ -2339,11 +2371,160 @@ def _validate_detail(detail, layer, warnings):
 	if position is not None and position not in DETAIL_POSITIONS:
 		_warn_off_vocabulary(layer, "detail.position", position, DETAIL_POSITIONS, "page", warnings)
 
+	_validate_detail_related(detail.get("related"), layer, warnings)
+
 	for key in detail:
 		if key in DETAIL_RESERVED_KEYS:
 			_warn_reserved(layer, "detail.{0}".format(key), warnings)
 		elif key not in DETAIL_KEYS:
 			warnings.append(_("{0}: unknown key '{1}' inside detail").format(layer, key))
+
+
+def _validate_detail_related(related, layer, warnings):
+	"""``detail.related`` (2026-07-21) — the single-record cross-DocType
+	workbench. An object keyed by the SOURCE DocType (the doctype whose detail
+	screen the sets render on); each value is a list of related-record sets that
+	compose the open document's linked rows of one OTHER DocType into the same
+	screen. Arrangement never grants capability: the client fetches every set via
+	the permission-gated ``get_related`` (frappe.has_permission + get_list), so a
+	user without read on the linked doctype simply sees nothing.
+
+	SOFT for every drift (unknown/unusable doctype, a fieldname naming no meta
+	field, off-range limit) — the client degrades to the honest empty section.
+	HARD only for the shape rule and markup-shaped title strings (§3(d))."""
+	if related is None:
+		return
+	if not isinstance(related, dict):
+		_hard(layer, _("detail.related must be an object keyed by source DocType"))
+
+	catalog = _web_doctype_catalog()
+	for source_doctype, sets in related.items():
+		if _warn_unusable_doctype(layer, "detail.related", source_doctype, warnings, catalog):
+			source_fieldnames = None
+		else:
+			source_fieldnames = _composite_fetchable_fieldnames(source_doctype)
+		if sets is None:
+			continue
+		if not isinstance(sets, list):
+			warnings.append(
+				_(
+					"{0}: detail.related['{1}'] must be a list of related-record sets — the client ignores it"
+				).format(layer, source_doctype)
+			)
+			continue
+		if len(sets) > DETAIL_RELATED_MAX_SETS:
+			warnings.append(
+				_(
+					"{0}: detail.related['{1}'] has {2} sets — each is a separate fetch on detail open; keep it under {3}"
+				).format(layer, source_doctype, len(sets), DETAIL_RELATED_MAX_SETS)
+			)
+		for i, entry in enumerate(sets):
+			_validate_detail_related_entry(
+				entry, source_doctype, source_fieldnames, i, layer, warnings
+			)
+
+
+def _validate_detail_related_entry(entry, source_doctype, source_fieldnames, index, layer, warnings):
+	"""One related-record set inside ``detail.related[<SourceDocType>]``. Names a
+	linked ``doctype``, the ``fromField`` (on the source) supplying the filter
+	value, the ``filterField`` (on the linked doctype) to match, an optional
+	``title`` and ``limit``, and an optional row-scoped ``cardTemplate`` shaping
+	each linked card (same deep-validated grammar as listViews cardTemplate)."""
+	context = "detail.related['{0}'][{1}]".format(source_doctype, index)
+	if not isinstance(entry, dict):
+		warnings.append(
+			_("{0}: {1} must be an object — the client ignores it").format(layer, context)
+		)
+		return
+
+	for key in entry:
+		if key not in DETAIL_RELATED_ENTRY_KEYS:
+			warnings.append(_("{0}: unknown key '{1}' inside {2}").format(layer, key, context))
+
+	# Linked doctype — required; EXISTENCE-checked only (NOT catalog-gated: a
+	# related doctype is fetched and rendered INLINE, never routed by /web, so it
+	# needs no /web route — unlike a nav item or listViews key).
+	target_doctype = entry.get("doctype")
+	target_fieldnames = None
+	if not isinstance(target_doctype, str) or not target_doctype.strip():
+		warnings.append(
+			_("{0}: {1}.doctype is required and must be a DocType name string").format(layer, context)
+		)
+	elif not frappe.db.exists("DocType", target_doctype):
+		warnings.append(
+			_("{0}: {1}.doctype '{2}' does not exist as a DocType").format(
+				layer, context, target_doctype
+			)
+		)
+	else:
+		target_fieldnames = _composite_fetchable_fieldnames(target_doctype)
+
+	# filterField — a fetchable field on the LINKED doctype ('name' always legal).
+	filter_field = entry.get("filterField")
+	if not isinstance(filter_field, str) or not filter_field.strip():
+		warnings.append(
+			_("{0}: {1}.filterField is required and must be a fieldname string").format(layer, context)
+		)
+	elif target_fieldnames is not None and filter_field not in target_fieldnames:
+		warnings.append(
+			_(
+				"{0}: {1}.filterField '{2}' is not a field on '{3}' — the client fetches nothing"
+			).format(layer, context, filter_field, target_doctype)
+		)
+
+	# fromField — a fetchable field on the SOURCE doctype ('name' always legal).
+	from_field = entry.get("fromField")
+	if not isinstance(from_field, str) or not from_field.strip():
+		warnings.append(
+			_("{0}: {1}.fromField is required and must be a fieldname string").format(layer, context)
+		)
+	elif source_fieldnames is not None and from_field not in source_fieldnames:
+		warnings.append(
+			_(
+				"{0}: {1}.fromField '{2}' is not a field on '{3}' — the client has no value to filter on"
+			).format(layer, context, from_field, source_doctype)
+		)
+
+	# title — optional plain text; markup-shaped strings hard-fail (§3(d)).
+	title = entry.get("title")
+	if title is not None:
+		if not isinstance(title, str):
+			warnings.append(
+				_("{0}: {1}.title must be a string").format(layer, context)
+			)
+		else:
+			_hard_if_injection_string(title, context + ".title", layer)
+
+	# limit — optional int in 1..DETAIL_RELATED_MAX_LIMIT.
+	limit = entry.get("limit")
+	if limit is not None:
+		if isinstance(limit, bool) or not isinstance(limit, int) or not (1 <= limit <= DETAIL_RELATED_MAX_LIMIT):
+			warnings.append(
+				_(
+					"{0}: {1}.limit must be an integer 1–{2} — the client falls back to {3}"
+				).format(layer, context, DETAIL_RELATED_MAX_LIMIT, DETAIL_RELATED_DEFAULT_LIMIT)
+			)
+
+	# cardTemplate — optional row-scoped composite tree over the LINKED doctype.
+	card_template = entry.get("cardTemplate")
+	if card_template is not None:
+		if not isinstance(card_template, dict) or not isinstance(card_template.get("type"), str):
+			warnings.append(
+				_(
+					"{0}: {1}.cardTemplate must be a composite tree object with a string 'type' root node"
+				).format(layer, context)
+			)
+		else:
+			_validate_composite_tree(
+				card_template,
+				context,
+				"cardTemplate",
+				layer,
+				warnings,
+				scope="row",
+				doctype=target_doctype if isinstance(target_doctype, str) else None,
+				fieldnames=target_fieldnames,
+			)
 
 
 def _validate_entry(entry, layer, warnings):
@@ -3028,6 +3209,88 @@ def rename_ui_preference_for_user(doc, method=None, old=None, new=None, merge=Fa
 
 
 # ── Whitelisted endpoints + boot hook (§4) ──────────────────────────────────
+
+
+_FIELDNAME_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+@frappe.whitelist()
+def get_related(doctype, filter_field, filter_value, fields=None, limit=None):
+	"""Permission-gated fetch of one document's linked rows for the
+	``detail.related`` single-record workbench (case (b)).
+
+	Returns the rows of ``doctype`` where ``filter_field == filter_value`` — the
+	open document's related records of one OTHER DocType, composed into its
+	detail screen by the client. **Arrangement never grants capability** (§15):
+
+	* ``frappe.has_permission(doctype, "read")`` gates the whole call — no read
+	  permission returns ``[]`` (the section renders nothing), never an error.
+	* the fetch is ``frappe.get_list`` (the permission-RESPECTING list — unlike
+	  ``get_all``), so row-level User Permissions trim the result too.
+
+	Injection-safe by construction: ``filter_field`` and every requested
+	``fields`` entry are matched against the doctype's own meta (a name outside
+	it is rejected / dropped); the filter rides as a parameterized dict, never an
+	f-string. ``fields`` (the columns the composite cardTemplate binds) may be a
+	JSON string (bench) or a list (JS); ``name``/``docstatus``/``modified`` are
+	always included so the client can key + status the cards.
+	"""
+	if not isinstance(doctype, str) or not frappe.db.exists("DocType", doctype):
+		return []
+
+	# Permission gate FIRST — arrangement never grants capability.
+	if not frappe.has_permission(doctype, "read"):
+		return []
+
+	# No linked value on the source document → nothing to compose. Only a plain
+	# scalar is a legal filter value: this enforces the equality contract
+	# (filter_field == filter_value) and refuses a Frappe operator form
+	# (e.g. ["like", "%x%"]) a direct API caller might send. Not a privilege
+	# path (permissions are enforced regardless) — a contract guard.
+	if not isinstance(filter_value, (str, int, float)) or filter_value == "":
+		return []
+
+	fetchable = _composite_fetchable_fieldnames(doctype)
+	# Meta unavailable → we cannot safely whitelist the filter/columns, so return
+	# the honest empty result instead of risking an off-column get_list 500
+	# (keeps the "returns [], never throws" guarantee airtight).
+	if fetchable is None:
+		return []
+
+	# filter_field must be a real fieldname on the doctype (defence-in-depth; the
+	# client only ever sends a save-validated one).
+	if not isinstance(filter_field, str) or not _FIELDNAME_RE.match(filter_field):
+		return []
+	if filter_field not in fetchable:
+		return []
+
+	# Requested columns → keep only real, fetchable fields; always add the three
+	# base fields every card keys/statuses on.
+	if isinstance(fields, str):
+		try:
+			fields = json.loads(fields)
+		except (ValueError, TypeError):
+			fields = None
+	requested = fields if isinstance(fields, list) else []
+	safe_fields = ["name", "docstatus", "modified"]
+	for f in requested:
+		if isinstance(f, str) and _FIELDNAME_RE.match(f) and f in fetchable and f not in safe_fields:
+			safe_fields.append(f)
+
+	# Clamp the page length to the same ceiling the validator enforces.
+	try:
+		page_length = int(limit)
+	except (ValueError, TypeError):
+		page_length = DETAIL_RELATED_DEFAULT_LIMIT
+	page_length = max(1, min(page_length, DETAIL_RELATED_MAX_LIMIT))
+
+	return frappe.get_list(
+		doctype,
+		filters={filter_field: filter_value},
+		fields=safe_fields,
+		order_by="modified desc",
+		limit_page_length=page_length,
+	)
 
 
 @frappe.whitelist()
