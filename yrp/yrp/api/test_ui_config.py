@@ -3680,3 +3680,153 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 		# The family's only HARD rule (pre-existing): listViews must be a dict.
 		with self.assertRaises(frappe.ValidationError):
 			self._warnings([{"variant": "table"}])
+
+
+class TestUIConfigDetailRelated(IntegrationTestCase):
+	"""detail.related (2026-07-21) — the single-record cross-DocType workbench
+	(USE_CASE case (b)). A layout keys related-record sets by SOURCE doctype;
+	each set composes the open document's linked rows of ONE other doctype into
+	its detail screen. Validation: accept-valid is warning-free; every render-
+	nothing drift soft-warns; only the shape rule and markup-shaped strings
+	hard-fail. The fetch endpoint get_related is permission-gated + injection-safe."""
+
+	VALID_RELATED: ClassVar[dict] = {
+		"related": {
+			"Lot": [
+				{
+					"doctype": "Item Production Detail",
+					"fromField": "production_detail",
+					"filterField": "name",
+					"title": "Production Detail",
+					"limit": 1,
+					"cardTemplate": {
+						"type": "kv-row",
+						"props": {"label": "Item", "value": {"bind": "item"}},
+					},
+				},
+				{
+					"doctype": "Production Order",
+					"fromField": "production_order",
+					"filterField": "name",
+					"title": "Production Order (PPO)",
+					"limit": 1,
+				},
+			]
+		}
+	}
+
+	@staticmethod
+	def _layout_warnings(detail):
+		return ui_config.validate_config(dict(LAYOUT_CONFIG, detail=detail), layer="layout")
+
+	# ── accept-valid + parity ─────────────────────────────────────────────
+	def test_valid_related_saves_warning_free(self):
+		self.assertEqual(self._layout_warnings(self.VALID_RELATED), [])
+
+	def test_absent_related_is_silent_parity(self):
+		self.assertEqual(self._layout_warnings({"position": "page"}), [])
+
+	# ── soft drifts (render-nothing) ──────────────────────────────────────
+	def test_unknown_source_doctype_warns(self):
+		w = self._layout_warnings({"related": {"No Such DocType": []}})
+		self.assertTrue(any("No Such DocType" in x for x in w), w)
+
+	def test_missing_required_entry_keys_warn(self):
+		w = self._layout_warnings({"related": {"Lot": [{"title": "x"}]}})
+		self.assertTrue(any("doctype is required" in x for x in w), w)
+		self.assertTrue(any("fromField is required" in x for x in w), w)
+		self.assertTrue(any("filterField is required" in x for x in w), w)
+
+	def test_nonexistent_target_doctype_warns(self):
+		w = self._layout_warnings(
+			{"related": {"Lot": [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
+		)
+		self.assertTrue(any("Nope DT" in x and "does not exist" in x for x in w), w)
+
+	def test_bad_fieldnames_warn(self):
+		w = self._layout_warnings(
+			{
+				"related": {
+					"Lot": [
+						{
+							"doctype": "Item Production Detail",
+							"fromField": "not_a_lot_field",
+							"filterField": "not_an_ipd_field",
+						}
+					]
+				}
+			}
+		)
+		self.assertTrue(any("fromField 'not_a_lot_field'" in x for x in w), w)
+		self.assertTrue(any("filterField 'not_an_ipd_field'" in x for x in w), w)
+
+	def test_out_of_range_limit_warns(self):
+		w = self._layout_warnings(
+			{"related": {"Lot": [{"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name", "limit": 999}]}}
+		)
+		self.assertTrue(any("limit must be an integer" in x for x in w), w)
+
+	def test_too_many_sets_warns(self):
+		one = {"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name"}
+		w = self._layout_warnings({"related": {"Lot": [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}})
+		self.assertTrue(any("sets" in x and "keep it under" in x for x in w), w)
+
+	# ── hard fails (shape + injection) ────────────────────────────────────
+	def test_non_dict_related_hard_errors(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._layout_warnings({"related": [1, 2, 3]})
+
+	def test_markup_title_hard_fails(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._layout_warnings(
+				{"related": {"Lot": [{"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name", "title": "<script>x</script>"}]}}
+			)
+
+	def test_cardtemplate_injection_hard_fails(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._layout_warnings(
+				{
+					"related": {
+						"Lot": [
+							{
+								"doctype": "Item Production Detail",
+								"fromField": "production_detail",
+								"filterField": "name",
+								"cardTemplate": {"type": "text", "props": {"value": "<img src=x onerror=1>"}},
+							}
+						]
+					}
+				}
+			)
+
+	# ── get_related endpoint: permission-gating + injection-safety ─────────
+	def test_get_related_happy_path(self):
+		# UI Layout "Default" always exists — a deterministic fixture-free row.
+		rows = ui_config.get_related("UI Layout", "name", "Default", fields=json.dumps(["layout_name"]))
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0]["name"], "Default")
+		self.assertIn("layout_name", rows[0])  # requested field fetched
+		self.assertIn("modified", rows[0])  # base field always fetched
+
+	def test_get_related_off_meta_filter_field_returns_empty(self):
+		self.assertEqual(ui_config.get_related("UI Layout", "totally_bogus", "Default"), [])
+
+	def test_get_related_nonexistent_doctype_returns_empty(self):
+		self.assertEqual(ui_config.get_related("No Such DocType", "name", "x"), [])
+
+	def test_get_related_empty_filter_value_returns_empty(self):
+		self.assertEqual(ui_config.get_related("UI Layout", "name", ""), [])
+
+	def test_get_related_non_scalar_filter_value_returns_empty(self):
+		# A Frappe operator form must NOT slip through the equality contract.
+		self.assertEqual(ui_config.get_related("UI Layout", "name", ["like", "%Default%"]), [])
+
+	def test_get_related_bogus_requested_fields_are_dropped(self):
+		rows = ui_config.get_related("UI Layout", "name", "Default", fields=json.dumps(["layout_name", "__nope__"]))
+		self.assertEqual(len(rows), 1)
+		self.assertNotIn("__nope__", rows[0])
+
+	def test_get_related_returns_empty_without_read_permission(self):
+		# Arrangement never grants capability: no read on the doctype ⇒ [] (never raises).
+		with patch("frappe.has_permission", return_value=False):
+			self.assertEqual(ui_config.get_related("UI Layout", "name", "Default"), [])

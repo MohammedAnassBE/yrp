@@ -1006,6 +1006,29 @@ def build_catalog():
 					"Detail host: full page, right drawer, center dialog, or bottom sheet.",
 					fallback="page",
 				),
+				"related": {
+					"type": "object",
+					"status": "consumed",
+					"validation": "hard shape; soft vocabulary",
+					"effect": (
+						"Single-record cross-DocType WORKBENCH (USE_CASE case (b), added 2026-07-21): "
+						"compose the OPEN document's linked records of OTHER DocTypes into its OWN detail "
+						"screen. Keyed by the SOURCE DocType (like listViews) — a set renders ONLY on that "
+						"doctype's detail view; a null value is no-op. Each value is a LIST of related-record "
+						"sets. Per set: `doctype` (the linked DocType to fetch, required — soft catalog/existence "
+						"check), `fromField` (a fetchable fieldname ON THE SOURCE whose value is the filter — "
+						"required, e.g. Lot.production_detail), `filterField` (a fetchable fieldname ON THE LINKED "
+						"doctype to match — required, e.g. 'name'), optional `title` (host-styled section heading; "
+						"markup-shaped strings HARD-fail), optional `limit` (1–20, default 5), and optional "
+						"`cardTemplate` (a ROW-scoped composite tree shaping each linked card's interior — SAME "
+						"deep-validated grammar/caps as listViews cardTemplate; see top-level composite_grammar; "
+						"bind paths are plain fieldnames of the LINKED doctype). The client fetches every set via "
+						"the permission-gated `get_related` API (frappe.has_permission + get_list) — arrangement "
+						"NEVER grants capability: no read permission on the linked doctype ⇒ that section renders "
+						"NOTHING, and row-level User Permissions trim the rows. The JSON NAMES fields, never a query. "
+						"Absent ⇒ no workbench, byte-identical detail (parity law). Additive — no schema_version bump."
+					),
+				},
 				"rich": {
 					"type": "unknown",
 					"status": "reserved",
