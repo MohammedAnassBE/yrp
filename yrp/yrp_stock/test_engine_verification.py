@@ -53,6 +53,18 @@ def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
 		if frappe.db.exists("Item Variant", item_variant):
 			return item_variant
+	fallback = frappe.db.sql(
+		"""
+		SELECT iv.name
+		FROM `tabItem Variant` iv
+		INNER JOIN `tabItem` i ON i.name = iv.item
+		WHERE i.is_stock_item = 1
+		ORDER BY iv.creation
+		LIMIT 1
+		"""
+	)
+	if fallback:
+		return fallback[0][0]
 	frappe.throw("No test Item Variant found for stock engine verification.")
 
 

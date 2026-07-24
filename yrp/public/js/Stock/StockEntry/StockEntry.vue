@@ -25,11 +25,11 @@ const items = ref([]);
 const can_create = ref(true);
 const otherInputs = ref([]);
 const table_fields = ref([
-    { name: 'rate', label: 'Rate', uses_primary_attribute: 1 },
+    { name: 'rate', label: 'Rate', uses_primary_attribute: 1, reqd: 1, min: 0.000001 },
     { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
     { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
 ]);
-const qty_fields = ref(['secondary_qty']);
+const qty_fields = ref([]);
 const args = ref({
     docstatus: cur_frm.doc.docstatus,
     can_create: function () { return can_create; },
@@ -39,12 +39,13 @@ const args = ref({
 // Store handler reference so we can clean it up on unmount
 const _purposeHandler = (purpose) => {
     can_create.value = purpose !== "Receive at Warehouse";
+    qty_fields.value = purpose === "Material Receipt"
+        ? ['rate', 'secondary_qty']
+        : ['secondary_qty'];
 };
 
 onMounted(() => {
-    if (cur_frm.doc.purpose === "Receive at Warehouse") {
-        can_create.value = false;
-    }
+    _purposeHandler(cur_frm.doc.purpose);
     EventBus.$on("purpose_updated", _purposeHandler);
 });
 

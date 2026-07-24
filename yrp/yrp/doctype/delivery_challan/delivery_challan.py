@@ -349,18 +349,23 @@ class DeliveryChallan(Document):
 			if qty <= 0:
 				continue
 			base = _sle_base(self, row)
+			transfer_key = f"Delivery Challan:{self.name}:{row.name}"
 			entries.append({
 				**base,
 				"warehouse": self.from_warehouse,
 				"qty": -qty,
 				"rate": 0,
 				"outgoing_rate": flt(row.valuation_rate or row.rate),
+				"_transfer_key": transfer_key,
+				"_transfer_role": "outgoing",
 			})
 			entries.append({
 				**base,
 				"warehouse": destination,
 				"qty": qty,
 				"rate": flt(row.valuation_rate or row.rate),
+				"_transfer_key": transfer_key,
+				"_transfer_role": "incoming",
 			})
 
 		make_sl_entries(entries, cancel=cancel)

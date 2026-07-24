@@ -255,17 +255,34 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 	  2. Get or create the Bin for this (item, warehouse, *dimensions)
 	  3. Run the valuation engine to recompute forward
 	  4. Update the Bin with fresh qty and rate
+
+	Paired internal movements may include private ``_transfer_key`` and
+	``_transfer_role`` markers. After valuing the outgoing side, its actual
+	value reduction becomes the incoming rate. This guarantees that an
+	internal movement cannot create or destroy stock value.
 	"""
 	if not sl_entries:
-		return
+		return {}
 
 	# When cancelling, first mark all existing SLEs for this voucher as cancelled
 	if cancel:
 		_set_voucher_cancelled(sl_entries[0])
 
 	dim_fields = get_dimension_fieldnames()
+	transfer_rates = {}
 
-	for sle in sl_entries:
+	for raw_sle in sl_entries:
+		# Controller-only transfer markers must not be persisted on the SLE.
+		sle = dict(raw_sle)
+		transfer_key = sle.pop("_transfer_key", None)
+		transfer_role = sle.pop("_transfer_role", None)
+		if (
+			not cancel
+			and transfer_role == "incoming"
+			and transfer_key in transfer_rates
+		):
+			sle["rate"] = transfer_rates[transfer_key]
+
 		# Skip non-stock items
 		item_variant = sle.get("item")
 		if not item_variant:
@@ -312,14 +329,45 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 		# exist in this bucket, queue a background repost instead of running
 		# the engine inline. Inline path is preferred for the common case
 		# (no/few future SLEs) because it commits the new state atomically.
-		if _should_queue_repost(args):
+		queued_repost = _should_queue_repost(args)
+		if queued_repost:
 			_enqueue_backdated_repost(args)
 		else:
 			repost_current_voucher(args, allow_negative_stock=allow_negative_stock)
 
+		if not cancel and transfer_role == "outgoing" and transfer_key:
+			if queued_repost:
+				# The actual historical value will be available only after the
+				# queued repost. Use the source rate captured by the voucher so
+				# both legs still carry the same provisional value.
+				transfer_rate = flt(sle.get("outgoing_rate"))
+			else:
+				stock_value_difference = flt(
+					frappe.db.get_value(
+						"Stock Ledger Entry", sle_doc.name, "stock_value_difference"
+					)
+				)
+				transfer_rate = (
+					abs(stock_value_difference) / abs(flt(sle.get("qty")))
+					if flt(sle.get("qty"))
+					else 0.0
+				)
+				# Keep the source SLE audit field aligned with the cost that
+				# was actually removed by FIFO or Moving Average.
+				frappe.db.set_value(
+					"Stock Ledger Entry",
+					sle_doc.name,
+					"outgoing_rate",
+					transfer_rate,
+					update_modified=False,
+				)
+			transfer_rates[transfer_key] = transfer_rate
+
 		# Step 4: Refresh the Bin with updated qty and rate
 		from yrp.yrp_stock.doctype.bin.bin import update_qty as update_bin_qty
 		update_bin_qty(bin_name, args)
+
+	return transfer_rates
 
 
 def _set_voucher_cancelled(sl_entry):
@@ -373,7 +421,7 @@ def repost_current_voucher(args, allow_negative_stock=False):
 # ======================================================================
 # get_previous_sle — find the most recent SLE before a given datetime
 # ======================================================================
-def get_previous_sle(args, dim_fields=None):
+def get_previous_sle(args, dim_fields=None, strictly_before=False):
 	"""Find the most recent SLE at or before the given posting_datetime.
 
 	Args:
@@ -381,6 +429,9 @@ def get_previous_sle(args, dim_fields=None):
 		dim_fields: which dimension fields to filter by.
 			- None (default) = ALL dimensions (used by get_stock_balance)
 			- explicit list = only those (used by valuation engine for valuation-scoped queries)
+		strictly_before: use ``<`` rather than ``<=``. Forward valuation uses
+			this so every SLE at the starting timestamp is processed exactly
+			once; point-in-time balance lookups retain inclusive semantics.
 	"""
 	if dim_fields is None:
 		dim_fields = get_dimension_fieldnames()
@@ -402,7 +453,10 @@ def get_previous_sle(args, dim_fields=None):
 
 	# Only look at SLEs at or before the requested datetime
 	if args.get("posting_datetime"):
-		query = query.where(sle.posting_datetime <= args["posting_datetime"])
+		if strictly_before:
+			query = query.where(sle.posting_datetime < args["posting_datetime"])
+		else:
+			query = query.where(sle.posting_datetime <= args["posting_datetime"])
 
 	# Exclude the current voucher (so it doesn't find itself as "previous")
 	if args.get("voucher_no"):
@@ -411,6 +465,7 @@ def get_previous_sle(args, dim_fields=None):
 	# Get the most recent one
 	query = query.orderby(sle.posting_datetime, order=frappe.qb.desc)
 	query = query.orderby(sle.creation, order=frappe.qb.desc)
+	query = query.orderby(sle.name, order=frappe.qb.desc)
 	query = query.limit(1)
 
 	rows = query.run(as_dict=True)
@@ -508,6 +563,7 @@ class UpdateEntriesAfter:
 		previous_sle = get_previous_sle(
 			{**self.args, "posting_datetime": posting_dt},
 			dim_fields=self.valuation_dim_fields,
+			strictly_before=True,
 		)
 		if previous_sle:
 			self.previous_sle = previous_sle
@@ -558,7 +614,7 @@ class UpdateEntriesAfter:
 					{select_prefix}qty_after_transaction,
 					ROW_NUMBER() OVER (
 						PARTITION BY {partition_by}
-						ORDER BY posting_datetime DESC, creation DESC
+						ORDER BY posting_datetime DESC, creation DESC, name DESC
 					) AS rn
 				FROM `tabStock Ledger Entry`
 				WHERE {" AND ".join(conditions)}
@@ -600,6 +656,7 @@ class UpdateEntriesAfter:
 		posting_dt = get_combine_datetime(self.args.posting_date, self.args.posting_time)
 		query = query.where(sle.posting_datetime >= posting_dt)
 		query = query.orderby(sle.posting_datetime).orderby(sle.creation)
+		query = query.orderby(sle.name)
 
 		return [frappe._dict(r) for r in query.run(as_dict=True)]
 

@@ -38,7 +38,10 @@ def get_combine_datetime(posting_date, posting_time):
 		# MariaDB TIME columns sometimes return timedelta instead of time
 		posting_time = (datetime.datetime.min + posting_time).time()
 
-	return datetime.datetime.combine(posting_date, posting_time).replace(microsecond=0)
+	# Preserve microseconds. They are part of the stock-ledger ordering key;
+	# truncating them collapses otherwise distinct transactions into the same
+	# second and can make a repost load an SLE as both prior state and input.
+	return datetime.datetime.combine(posting_date, posting_time)
 
 
 # ----------------------------------------------------------------------

@@ -238,10 +238,26 @@ class InspectionEntry(Document):
 			)
 			source_rate = flt(source_rate)
 
-			outbound = {**base, "warehouse": row.warehouse, "qty": -qty, "rate": 0, "outgoing_rate": source_rate}
+			transfer_key = f"Inspection Entry:{self.name}:{row.name}"
+			outbound = {
+				**base,
+				"warehouse": row.warehouse,
+				"qty": -qty,
+				"rate": 0,
+				"outgoing_rate": source_rate,
+				"_transfer_key": transfer_key,
+				"_transfer_role": "outgoing",
+			}
 			inbound_base = dict(base)
 			inbound_base["received_type"] = target_rt
-			inbound = {**inbound_base, "warehouse": row.warehouse, "qty": qty, "rate": source_rate}
+			inbound = {
+				**inbound_base,
+				"warehouse": row.warehouse,
+				"qty": qty,
+				"rate": source_rate,
+				"_transfer_key": transfer_key,
+				"_transfer_role": "incoming",
+			}
 			entries.append(outbound)
 			entries.append(inbound)
 

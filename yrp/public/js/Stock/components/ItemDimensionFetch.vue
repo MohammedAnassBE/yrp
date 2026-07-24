@@ -120,7 +120,12 @@
                         </div>
                         <div v-for="field in editable_qty_fields" :key="field.name">
                             <label class="small text-muted">{{ field.label }}</label>
-                            <input class="form-control" type="number" min="0.000" step="0.001" v-model.number="item.values[attr][field.name]">
+                            <input class="form-control"
+                                   type="number"
+                                   :min="field.min ?? 0"
+                                   step="0.001"
+                                   :required="Boolean(field.reqd)"
+                                   v-model.number="item.values[attr][field.name]">
                         </div>
                     </div>
                 </div>
@@ -131,7 +136,12 @@
                     </div>
                     <div v-for="field in editable_qty_fields" :key="field.name" class="col">
                         <label class="small text-muted">{{ field.label }}</label>
-                        <input class="form-control" type="number" min="0.000" step="0.001" v-model.number="item.values['default'][field.name]">
+                        <input class="form-control"
+                               type="number"
+                               :min="field.min ?? 0"
+                               step="0.001"
+                               :required="Boolean(field.reqd)"
+                               v-model.number="item.values['default'][field.name]">
                     </div>
                 </div>
             </div>
