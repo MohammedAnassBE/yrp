@@ -30,7 +30,11 @@ class StockEntry(Document):
 			self.set("items", [])
 			for r in rows:
 				self.append("items", r)
-			self.set_rate_from_last_sle()
+			# Material Receipt is a genuine external valuation input, so keep
+			# the rate entered by the user. All other purposes derive rate from
+			# their source valuation bucket.
+			if self.purpose != "Material Receipt":
+				self.set_rate_from_last_sle()
 			self.set_receive_links()
 		apply_dimension_defaults(self.get("items") or [])
 
@@ -185,6 +189,12 @@ class StockEntry(Document):
 		for row in self.items:
 			if not row.qty or row.qty <= 0:
 				frappe.throw(_("Row {0}: qty must be > 0").format(row.idx))
+			if self.purpose == "Material Receipt" and flt(row.rate) <= 0:
+				frappe.throw(
+					_("Row {0}: Rate must be greater than zero for Material Receipt.").format(
+						row.idx
+					)
+				)
 			if not row.uom:
 				row.uom = frappe.db.get_value("Item Variant", row.item, "stock_uom")
 			row.conversion_factor = row.conversion_factor or 1.0
@@ -213,6 +223,7 @@ class StockEntry(Document):
 		transit_warehouse = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
 
 		for row in self.items:
+			transfer_key = f"Stock Entry:{self.name}:{row.name}"
 			base = {
 				"item": row.item,
 				"uom": row.uom,
@@ -231,26 +242,93 @@ class StockEntry(Document):
 			elif self.purpose == "Material Receipt":
 				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
 			elif self.purpose == "Send to Warehouse":
-				entries.append({**base, "warehouse": self.from_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
+				entries.append({
+					**base,
+					"warehouse": self.from_warehouse,
+					"qty": -row.stock_qty,
+					"rate": 0,
+					"outgoing_rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "outgoing",
+				})
 				if self.skip_transit:
-					entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
+					entries.append({
+						**base,
+						"warehouse": self.to_warehouse,
+						"qty": row.stock_qty,
+						"rate": row.rate or 0,
+						"_transfer_key": transfer_key,
+						"_transfer_role": "incoming",
+					})
 				else:
-					entries.append({**base, "warehouse": transit_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
+					entries.append({
+						**base,
+						"warehouse": transit_warehouse,
+						"qty": row.stock_qty,
+						"rate": row.rate or 0,
+						"_transfer_key": transfer_key,
+						"_transfer_role": "incoming",
+					})
 			elif self.purpose == "Receive at Warehouse":
-				entries.append({**base, "warehouse": transit_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
-				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
+				entries.append({
+					**base,
+					"warehouse": transit_warehouse,
+					"qty": -row.stock_qty,
+					"rate": 0,
+					"outgoing_rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "outgoing",
+				})
+				entries.append({
+					**base,
+					"warehouse": self.to_warehouse,
+					"qty": row.stock_qty,
+					"rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "incoming",
+				})
 			elif self.purpose == "Material Consumed":
 				entries.append({**base, "warehouse": self.from_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
 			elif self.purpose == "DC Completion":
 				if not transit_warehouse:
 					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose DC Completion."))
-				entries.append({**base, "warehouse": transit_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
-				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
+				entries.append({
+					**base,
+					"warehouse": transit_warehouse,
+					"qty": -row.stock_qty,
+					"rate": 0,
+					"outgoing_rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "outgoing",
+				})
+				entries.append({
+					**base,
+					"warehouse": self.to_warehouse,
+					"qty": row.stock_qty,
+					"rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "incoming",
+				})
 			elif self.purpose == "GRN Completion":
 				if not transit_warehouse:
 					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose GRN Completion."))
-				entries.append({**base, "warehouse": transit_warehouse, "qty": -row.stock_qty, "rate": 0, "outgoing_rate": row.rate or 0})
-				entries.append({**base, "warehouse": self.to_warehouse, "qty": row.stock_qty, "rate": row.rate or 0})
+				entries.append({
+					**base,
+					"warehouse": transit_warehouse,
+					"qty": -row.stock_qty,
+					"rate": 0,
+					"outgoing_rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "outgoing",
+				})
+				entries.append({
+					**base,
+					"warehouse": self.to_warehouse,
+					"qty": row.stock_qty,
+					"rate": row.rate or 0,
+					"_transfer_key": transfer_key,
+					"_transfer_role": "incoming",
+				})
 
 		if cancel:
 			# Reverse: flip qty and mark cancelled
