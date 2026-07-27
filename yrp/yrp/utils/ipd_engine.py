@@ -81,7 +81,7 @@ def get_process_io(ipd_name, process_name, output_demand):
 			if dep_attr and in_stage is not None:
 				attrs[dep_attr] = in_stage
 			inputs_required.append({
-				"item": matrix["input_item"],
+				"item": inp.get("item") or matrix["input_item"],
 				"attrs": attrs,
 				"qty": inp["qty"] * scale * (1 + wastage / 100.0),
 				"uom": inp["uom"],
@@ -93,7 +93,7 @@ def get_process_io(ipd_name, process_name, output_demand):
 			if dep_attr and out_stage is not None:
 				attrs[dep_attr] = out_stage
 			outputs_produced.append({
-				"item": matrix["output_item"],
+				"item": out.get("item") or matrix["output_item"],
 				"attrs": attrs,
 				"qty": out["qty"] * scale,
 				"uom": out["uom"],
@@ -304,7 +304,9 @@ def _consume_pool_group(ipd, matrix, group, stages, available, scale):
 
 
 def _matrix_combo_variant(ipd, matrix, combo, side, stage):
-	matrix_item = (matrix.input_item if side == "Input" else matrix.output_item) or ipd.item
+	matrix_item = combo.get("item") or (
+		matrix.input_item if side == "Input" else matrix.output_item
+	) or ipd.item
 	attrs = dict(combo.get("attrs") or {})
 	if matrix_item == ipd.item and ipd.dependent_attribute and stage is not None:
 		attrs[ipd.dependent_attribute] = stage
@@ -521,10 +523,12 @@ def _add_matrix_group_rows(
 ):
 	parent_item = ipd.item
 	dep_attr = ipd.dependent_attribute
-	matrix_item = (matrix.input_item if side == "Input" else matrix.output_item) or parent_item
 	side_key = side.lower()
 
 	for combo in group[side_key]:
+		matrix_item = combo.get("item") or (
+			matrix.input_item if side == "Input" else matrix.output_item
+		) or parent_item
 		attrs = dict(combo["attrs"] or {})
 		if matrix_item == parent_item and dep_attr and stage is not None:
 			attrs[dep_attr] = stage

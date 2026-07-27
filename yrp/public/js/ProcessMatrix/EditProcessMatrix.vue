@@ -20,6 +20,7 @@
                 <table class="table table-sm table-bordered combo-table">
                     <thead>
                         <tr>
+                            <th class="item-col">Item</th>
                             <th v-for="a in input_attributes" :key="'i-h-' + a">{{ a }}</th>
                             <th class="qty-col">Qty</th>
                             <th class="uom-col">UOM</th>
@@ -28,6 +29,7 @@
                     </thead>
                     <tbody>
                         <tr v-for="(row, ri) in group.inputs" :key="'i-' + ri">
+                            <td><input class="form-control compact-input" type="text" :disabled="readonly" v-model="row.item" @input="scheduleSync" placeholder="Item" /></td>
                             <td v-for="a in input_attributes" :key="'i-c-' + ri + '-' + a">
                                 <select v-model="row.attrs[a]" :disabled="readonly" @change="scheduleSync">
                                     <option :value="null">--</option>
@@ -39,7 +41,7 @@
                             <td><button v-if="!readonly" class="btn btn-xs btn-danger" @click="deleteRow(group, 'inputs', ri)">×</button></td>
                         </tr>
                         <tr v-if="group.inputs.length === 0">
-                            <td :colspan="input_attributes.length + 3" class="empty-row">No input rows. Click "+ Add Input" above.</td>
+                            <td :colspan="input_attributes.length + 4" class="empty-row">No input rows. Click "+ Add Input" above.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -53,6 +55,7 @@
                 <table class="table table-sm table-bordered combo-table">
                     <thead>
                         <tr>
+                            <th class="item-col">Item</th>
                             <th v-for="a in output_attributes" :key="'o-h-' + a">{{ a }}</th>
                             <th class="qty-col">Qty</th>
                             <th class="uom-col">UOM</th>
@@ -61,6 +64,7 @@
                     </thead>
                     <tbody>
                         <tr v-for="(row, ri) in group.outputs" :key="'o-' + ri">
+                            <td><input class="form-control compact-input" type="text" :disabled="readonly" v-model="row.item" @input="scheduleSync" placeholder="Item" /></td>
                             <td v-for="a in output_attributes" :key="'o-c-' + ri + '-' + a">
                                 <select v-model="row.attrs[a]" :disabled="readonly" @change="scheduleSync">
                                     <option :value="null">--</option>
@@ -72,7 +76,7 @@
                             <td><button v-if="!readonly" class="btn btn-xs btn-danger" @click="deleteRow(group, 'outputs', ri)">×</button></td>
                         </tr>
                         <tr v-if="group.outputs.length === 0">
-                            <td :colspan="output_attributes.length + 3" class="empty-row">No output rows. Click "+ Add Output" above.</td>
+                            <td :colspan="output_attributes.length + 4" class="empty-row">No output rows. Click "+ Add Output" above.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -145,6 +149,7 @@ export default {
                 for (const a of list) attrs[a] = attrSet[a] || null;
 
                 const row = {
+                    item: c.item || '',
                     qty: c.quantity,
                     uom: c.uom || '',
                     attrs,
@@ -172,7 +177,7 @@ export default {
             const attrs = {};
             const list = side === 'Input' ? this.input_attributes : this.output_attributes;
             for (const a of list) attrs[a] = null;
-            arr.push({ qty: 0, uom: '', attrs });
+            arr.push({ item: '', qty: 0, uom: '', attrs });
             this.scheduleSync();
         },
 
@@ -204,6 +209,7 @@ export default {
                         c.group_index = g.group_index;
                         c.group_name = g.group_name || null;
                         c.side = side;
+                        c.item = row.item || null;
                         c.combo_index = ci;
                         c.quantity = row.qty || 0;
                         c.uom = row.uom || null;
