@@ -524,6 +524,7 @@ ACTIONS_PLACEMENTS = ("header", "inline", "floating", "action-sheet")
 ACTION_ITEMS = (
 	"create_grn",
 	"create_dc",
+	"complete_transfer",
 	"build_cloth_programs",
 	"more_menu",
 	"ewaybill_menu",
