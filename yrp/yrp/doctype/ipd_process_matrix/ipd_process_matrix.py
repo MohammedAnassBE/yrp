@@ -73,7 +73,7 @@ class IPDProcessMatrix(Document):
 
 	def get_combinations_grouped(self):
 		"""Return groups dict: {group_index: {"input": [combo_dict, ...], "output": [...]}}.
-		Each combo_dict = {"combo_index": int, "qty": float, "uom": str,
+		Each combo_dict = {"combo_index": int, "item": str|None, "qty": float, "uom": str,
 		"wastage_pct": float, "attrs": {attr_name: attr_value, ...}}."""
 		groups = {}
 		attrs_by_key = {}
@@ -84,6 +84,7 @@ class IPDProcessMatrix(Document):
 			side_key = c.side.lower()
 			g[side_key].append({
 				"combo_index": c.combo_index,
+				"item": c.item or None,
 				"qty": c.quantity,
 				"uom": c.uom,
 				"wastage_pct": c.wastage_pct or 0,
