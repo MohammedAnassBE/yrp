@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -15,9 +17,25 @@ class TestWorkOrderClose(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		frappe.db.set_single_value("YRP Settings", "work_order_closing_approver_role", "System Manager")
-		frappe.db.set_single_value("YRP Settings", "debit_approval_role", "System Manager")
-		frappe.db.set_single_value("YRP Settings", "debit_request_role", "System Manager")
+		cls._get_single_value = frappe.db.get_single_value
+		role_fields = {
+			"work_order_closing_approver_role",
+			"debit_approval_role",
+			"debit_request_role",
+		}
+
+		def get_single_value(doctype, fieldname, *args, **kwargs):
+			if doctype == "YRP Settings" and fieldname in role_fields:
+				return "System Manager"
+			return cls._get_single_value(doctype, fieldname, *args, **kwargs)
+
+		cls._settings_patcher = patch.object(
+			frappe.db,
+			"get_single_value",
+			side_effect=get_single_value,
+		)
+		cls._settings_patcher.start()
+		cls.addClassCleanup(cls._settings_patcher.stop)
 
 	def test_close_requires_submitted_grn(self):
 		wo = _work_order_for_invoice(qty=1)

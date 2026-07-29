@@ -8,6 +8,8 @@
   - Cancel allowed only before Convert.
 """
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
@@ -66,9 +68,11 @@ def _new_ie_from_grn(grn):
 
 
 def _configure_approver_role(role="System Manager"):
-	"""Ensure YRP Settings has an approver role configured for the current user."""
-	settings = frappe.get_single("YRP Settings")
-	settings.db_set("inspection_entry_approver_role", role)
+	"""Override the approver role in memory without changing YRP Settings."""
+	return patch(
+		"yrp.yrp.doctype.inspection_entry.inspection_entry._approver_role",
+		return_value=role,
+	)
 
 
 # ----------------------------------------------------------------------
@@ -188,8 +192,8 @@ class TestInspectionEntry(FrappeTestCase):
 		ie.insert(ignore_permissions=True)
 		ie.submit()
 
-		_configure_approver_role("System Manager")
-		convert_stock(ie.name)
+		with _configure_approver_role("System Manager"):
+			convert_stock(ie.name)
 		ie.reload()
 		self.assertEqual(ie.status, "Converted")
 		self.assertEqual(int(ie.is_converted), 1)
@@ -224,8 +228,8 @@ class TestInspectionEntry(FrappeTestCase):
 		ie.insert(ignore_permissions=True)
 		ie.submit()
 
-		_configure_approver_role("System Manager")
-		convert_stock(ie.name)
+		with _configure_approver_role("System Manager"):
+			convert_stock(ie.name)
 		ie.reload()
 
 		with self.assertRaisesRegex(frappe.ValidationError, "already converted stock"):
@@ -242,6 +246,8 @@ class TestInspectionEntry(FrappeTestCase):
 		ie.submit()
 
 		# No role configured at all.
-		frappe.db.set_single_value("YRP Settings", "inspection_entry_approver_role", "")
-		with self.assertRaisesRegex(frappe.ValidationError, "not configured"):
+		with (
+			_configure_approver_role(""),
+			self.assertRaisesRegex(frappe.ValidationError, "not configured"),
+		):
 			convert_stock(ie.name)

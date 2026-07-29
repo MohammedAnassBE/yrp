@@ -62,7 +62,8 @@ PARENT_CHILD_MAP = {
 			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
 			"additional_parameters", "set_combination", "grn_detail_no", "item_type",
 			"is_calculated", "source_grn", "source_grn_item",
-			"source_inspection_entry_item",
+			"source_inspection_entry_item", "fabric_reference_variant",
+			"fabric_reference_allocations",
 		],
 	},
 	"Work Order Receivables": {
@@ -73,7 +74,8 @@ PARENT_CHILD_MAP = {
 		"value_fields": ["cost", "pending_quantity", "total_cost"],
 		"entry_fields": [
 			"comments", "secondary_qty", "secondary_uom", "process_cost",
-			"additional_parameters", "set_combination",
+			"additional_parameters", "set_combination", "fabric_reference_variant",
+			"fabric_reference_allocations",
 		],
 	},
 	"Delivery Challan": {
@@ -231,7 +233,18 @@ def group_items_for_ui(child_rows, parent_doctype):
 			return ""
 		return str(value)
 
-	rows.sort(key=lambda r: (_row_group_key(r), r.get("_original_order") or 0))
+	def _row_group_sort_key(row):
+		value = _row_group_key(row)
+		if value.isdigit():
+			return (0, "", int(value))
+		prefix, separator, suffix = value.rpartition("-")
+		if separator and suffix.isdigit():
+			return (1, prefix, int(suffix))
+		return (2, value, 0)
+
+	# `row_index` is a Data field, so numeric indexes return as strings.
+	# Natural ordering keeps 2 before 10 and fabric indexes fc-2 before fc-10.
+	rows.sort(key=lambda r: (_row_group_sort_key(r), r.get("_original_order") or 0))
 	dim_fields = get_dimension_fieldnames()
 
 	item_details = []  # final output — list of groups

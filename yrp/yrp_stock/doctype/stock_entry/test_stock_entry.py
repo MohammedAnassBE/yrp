@@ -1,25 +1,24 @@
 """Tests for Stock Entry — all 5 purposes + validation error paths."""
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
 
-# Use existing test data from the site
-ITEM_VARIANT = "Item-00005-45 cm-Blue"  # existing simple variant
-WH_FROM = "Supplier WH-1"
-WH_TO = "Supplier WH-2"
-UOM = "Piece"
+ITEM_VARIANT = None
+WH_FROM = None
+WH_TO = None
+UOM = None
+STOCK_DIMENSIONS = {}
 
 
-def _ensure_transit_warehouse():
-	"""Make sure transit warehouse is configured."""
-	tw = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
-	if not tw:
-		if not frappe.db.exists("Warehouse", "Transit WH"):
-			frappe.get_doc({"doctype": "Warehouse", "name1": "Transit WH"}).insert(ignore_permissions=True)
-		frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", "Transit WH")
-		frappe.db.commit()
-	return frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
+def _test_warehouse(label):
+	"""Create a transaction-scoped warehouse with no dependency on site masters."""
+	return frappe.get_doc({
+		"doctype": "Warehouse",
+		"name1": f"_Test Stock Entry {label} {frappe.generate_hash(length=8)}",
+	}).insert(ignore_permissions=True).name
 
 
 def _seed_stock(warehouse, qty=100):
@@ -37,11 +36,11 @@ def _seed_stock(warehouse, qty=100):
 			"uom": UOM,
 			"row_index": 0,
 			"table_index": 0,
+			**STOCK_DIMENSIONS,
 		}],
 	})
 	se.insert(ignore_permissions=True)
 	se.submit()
-	frappe.db.commit()
 	return se
 
 
@@ -62,6 +61,7 @@ def _make_se(purpose, from_wh=None, to_wh=None, qty=10, rate=5, skip_transit=0):
 			"uom": UOM,
 			"row_index": 0,
 			"table_index": 0,
+			**STOCK_DIMENSIONS,
 		}],
 	})
 
@@ -80,7 +80,53 @@ class TestStockEntry(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		cls.transit_wh = _ensure_transit_warehouse()
+		global ITEM_VARIANT, STOCK_DIMENSIONS, UOM, WH_FROM, WH_TO
+
+		ITEM_VARIANT = frappe.db.get_value("Item Variant", {}, "name")
+		if not ITEM_VARIANT:
+			raise frappe.DoesNotExistError("Stock Entry tests require one Item Variant")
+		parent_item = frappe.db.get_value("Item Variant", ITEM_VARIANT, "item")
+		UOM = frappe.db.get_value("Item", parent_item, "default_unit_of_measure")
+		if not UOM:
+			raise frappe.DoesNotExistError(f"{parent_item} requires a default UOM")
+
+		from yrp.stock.dimensions import get_mandatory_dimensions
+
+		STOCK_DIMENSIONS = {}
+		for dimension in get_mandatory_dimensions():
+			fieldname = dimension["fieldname"]
+			target_doctype = dimension.get("dimension_doctype")
+			if fieldname == "received_type":
+				value = frappe.db.get_single_value(
+					"YRP Stock Settings",
+					"default_received_type",
+				)
+			else:
+				value = frappe.db.get_value(target_doctype, {}, "name") if target_doctype else None
+			if not value:
+				raise frappe.DoesNotExistError(
+					f"Stock Entry tests require a {target_doctype or fieldname} value"
+				)
+			STOCK_DIMENSIONS[fieldname] = value
+
+		WH_FROM = _test_warehouse("From")
+		WH_TO = _test_warehouse("To")
+		cls.transit_wh = _test_warehouse("Transit")
+		cls.transit_warehouse_override = cls.transit_wh
+		cls._get_single_value = frappe.db.get_single_value
+
+		def get_single_value(doctype, fieldname, *args, **kwargs):
+			if doctype == "YRP Stock Settings" and fieldname == "transit_warehouse":
+				return cls.transit_warehouse_override
+			return cls._get_single_value(doctype, fieldname, *args, **kwargs)
+
+		cls._settings_patcher = patch.object(
+			frappe.db,
+			"get_single_value",
+			side_effect=get_single_value,
+		)
+		cls._settings_patcher.start()
+		cls.addClassCleanup(cls._settings_patcher.stop)
 		# Seed stock at both warehouses so issue/consume/send don't fail
 		_seed_stock(WH_FROM, 500)
 		_seed_stock(WH_TO, 500)
@@ -93,7 +139,6 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Material Issue", from_wh=WH_FROM)
 		se.insert(ignore_permissions=True)
 		se.submit()
-		frappe.db.commit()
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 1)
@@ -107,7 +152,6 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Material Receipt", to_wh=WH_TO, rate=10)
 		se.insert(ignore_permissions=True)
 		se.submit()
-		frappe.db.commit()
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 1)
@@ -121,7 +165,6 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO)
 		se.insert(ignore_permissions=True)
 		se.submit()
-		frappe.db.commit()
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 2)
@@ -139,7 +182,6 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Receive at Warehouse", from_wh=WH_FROM, to_wh=WH_TO)
 		se.insert(ignore_permissions=True)
 		se.submit()
-		frappe.db.commit()
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 2)
@@ -157,7 +199,6 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Material Consumed", from_wh=WH_FROM)
 		se.insert(ignore_permissions=True)
 		se.submit()
-		frappe.db.commit()
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 1)
@@ -168,17 +209,12 @@ class TestStockEntry(FrappeTestCase):
 	# 6. Send to WH — missing transit setting
 	# ---------------------------------------------------------------
 	def test_send_to_wh_missing_transit(self):
-		# Temporarily clear transit warehouse
-		orig = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
-		frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", "")
-		frappe.db.commit()
-
+		type(self).transit_warehouse_override = ""
 		try:
 			se = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO)
 			self.assertRaises(frappe.ValidationError, se.insert, ignore_permissions=True)
 		finally:
-			frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", orig)
-			frappe.db.commit()
+			type(self).transit_warehouse_override = self.transit_wh
 
 	# ---------------------------------------------------------------
 	# 7. Material Issue — no from_warehouse
@@ -222,13 +258,11 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Material Receipt", to_wh=WH_TO, rate=10)
 		se.insert(ignore_permissions=True)
 		se.submit()
-		frappe.db.commit()
 
 		original_sles = _get_sles(se.name, cancelled=0)
 		self.assertEqual(len(original_sles), 1)
 
 		se.cancel()
-		frappe.db.commit()
 
 		# Original SLEs marked cancelled
 		cancelled_sles = _get_sles(se.name, cancelled=1)
