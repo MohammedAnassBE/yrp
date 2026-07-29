@@ -10,7 +10,7 @@
         </goods-received-note-editor>
         <item-dimension-fetcher
             v-else
-            :items="items"
+            :items="displayItems"
             :other-inputs="otherInputs"
             :table-fields="tableFields"
             :qty-fields="qtyFields"
@@ -31,6 +31,7 @@
 
 <script setup>
 import { computed, ref } from 'vue';
+import { groupItemsForDisplay } from '../../../../frontend/src/stock/groupItemsForDisplay.js';
 import EventBus from '../Stock/bus.js';
 import ItemDimensionFetcher from '../Stock/components/ItemDimensionFetch.vue';
 import GoodsReceivedNoteEditor from './GoodsReceivedNoteEditor.vue';
@@ -45,6 +46,7 @@ const props = defineProps({
     lockDimensionsOnEdit: { type: Boolean, default: false },
     sourceType: { type: String, default: '' },
     showSecondary: { type: Boolean, default: false },
+    aggregateDisplay: { type: Boolean, default: false },
 });
 
 const SECONDARY_COLUMNS = [
@@ -55,6 +57,9 @@ const SECONDARY_COLUMNS = [
 const docstatus = ref(cur_frm.doc.docstatus || 0);
 const items = ref([]);
 const allowedItems = ref([]);
+const displayItems = computed(() => (
+    props.aggregateDisplay ? groupItemsForDisplay(items.value) : items.value
+));
 
 const baseTableFields = computed(() => {
     if (props.editorType === 'work_order_receivables') {
