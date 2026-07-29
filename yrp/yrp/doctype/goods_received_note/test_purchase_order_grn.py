@@ -22,6 +22,8 @@ def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
 		if frappe.db.exists("Item Variant", item_variant):
 			return item_variant
+	if item_variant := frappe.db.get_value("Item Variant", {}, "name"):
+		return item_variant
 	frappe.throw("No test Item Variant found for Purchase Order GRN tests.")
 
 
@@ -36,7 +38,10 @@ def _supplier(supplier_name):
 		return existing
 	return frappe.get_doc(
 		{"doctype": "Supplier", "supplier_name": supplier_name}
-	).insert(ignore_permissions=True).name
+	).insert(
+		ignore_permissions=True,
+		set_name=f"_TEST-SUP-{frappe.generate_hash(length=10)}",
+	).name
 
 
 def _warehouse(name):

@@ -1,5 +1,7 @@
 """Tests for Bill Tracking lifecycle and Purchase Invoice link mechanics."""
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, nowdate
@@ -175,20 +177,24 @@ class TestBillTracking(FrappeTestCase):
 	# ---------- Unique-bill toggle ----------
 
 	def test_08_unique_bill_toggle_enforces_per_supplier(self):
-		from frappe.utils import add_days
+		original_get_single_value = frappe.db.get_single_value
+		settings = {
+			"unique_vendor_bill_per_year": 1,
+			"fiscal_year_start_date": add_days(nowdate(), -30),
+			"fiscal_year_end_date": add_days(nowdate(), 30),
+		}
 
-		try:
-			frappe.db.set_single_value("YRP Settings", "unique_vendor_bill_per_year", 1)
-			frappe.db.set_single_value("YRP Settings", "fiscal_year_start_date", add_days(nowdate(), -30))
-			frappe.db.set_single_value("YRP Settings", "fiscal_year_end_date", add_days(nowdate(), 30))
+		def get_single_value(doctype, fieldname, *args, **kwargs):
+			if doctype == "YRP Settings" and fieldname in settings:
+				return settings[fieldname]
+			return original_get_single_value(doctype, fieldname, *args, **kwargs)
 
+		with patch.object(frappe.db, "get_single_value", side_effect=get_single_value):
 			sup = _supplier(f"_T_BT_Uniq_{frappe.generate_hash(length=6)}")
 			bill_no = f"DUP-{frappe.generate_hash(length=6)}"
 			_bill(supplier=sup, bill_no=bill_no)
 			with self.assertRaisesRegex(frappe.ValidationError, "already exist"):
 				_bill(supplier=sup, bill_no=bill_no)
-		finally:
-			frappe.db.set_single_value("YRP Settings", "unique_vendor_bill_per_year", 0)
 
 	# ---------- Purchase Invoice link round-trip ----------
 

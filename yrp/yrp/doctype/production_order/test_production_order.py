@@ -2,6 +2,7 @@
 # See license.txt
 
 import json
+from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
@@ -53,25 +54,23 @@ def setup_test_attributes():
 	return colour_attr, size_attr
 
 
-def setup_yrp_settings(colour_as_grid=True):
-	"""Configure YRP Settings with production order attributes."""
-	settings = frappe.get_doc("YRP Settings")
-	settings.set("production_order_attributes", [])
-
-	settings.append("production_order_attributes", {
-		"attribute": "Colour",
-		"is_grid_attribute": 1 if colour_as_grid else 0,
+def make_test_yrp_settings(colour_as_grid=True):
+	"""Build the Production Order settings fixture without touching the singleton."""
+	return frappe.get_doc({
+		"doctype": "YRP Settings",
+		"production_order_attributes": [
+			{
+				"attribute": "Colour",
+				"is_grid_attribute": 1 if colour_as_grid else 0,
+			},
+			{
+				"attribute": "Size",
+				"is_grid_attribute": 0,
+			},
+		],
+		"po_dependent_attribute": None,
+		"po_dependent_attribute_value": None,
 	})
-	settings.append("production_order_attributes", {
-		"attribute": "Size",
-		"is_grid_attribute": 0,
-	})
-
-	settings.po_dependent_attribute = None
-	settings.po_dependent_attribute_value = None
-	settings.save(ignore_permissions=True)
-	frappe.db.commit()
-	return settings
 
 
 def create_test_item(name1="Test PO Item", attributes=None, primary_attribute=None):
@@ -99,7 +98,6 @@ def create_test_item(name1="Test PO Item", attributes=None, primary_attribute=No
 		"attributes": [{"attribute": attr} for attr in attributes],
 	})
 	doc.insert(ignore_permissions=True)
-	frappe.db.commit()
 
 	# Add attribute values to mappings
 	for attr_row in doc.attributes:
@@ -113,17 +111,12 @@ def create_test_item(name1="Test PO Item", attributes=None, primary_attribute=No
 					mapping.append("values", {"attribute_value": val})
 			mapping.save(ignore_permissions=True)
 
-	frappe.db.commit()
 	return doc
 
 
 def create_production_term(term_name="Test Term", submit=True):
 	"""Create a Production Term with a detail row."""
-	if frappe.db.exists("Production Term", term_name):
-		doc = frappe.get_doc("Production Term", term_name)
-		if submit and doc.docstatus == 0:
-			doc.submit()
-		return doc
+	term_name = f"_Test {term_name} {frappe.generate_hash(length=8)}"
 
 	doc = frappe.get_doc({
 		"doctype": "Production Term",
@@ -135,7 +128,6 @@ def create_production_term(term_name="Test Term", submit=True):
 	doc.insert(ignore_permissions=True)
 	if submit:
 		doc.submit()
-	frappe.db.commit()
 	return doc
 
 
@@ -171,7 +163,10 @@ def create_production_order(
 	if do_not_save:
 		return doc
 
-	doc.insert(ignore_permissions=True)
+	doc.insert(
+		ignore_permissions=True,
+		set_name=f"PPO-TEST-{frappe.generate_hash(length=10)}",
+	)
 
 	if not do_not_submit:
 		doc.submit()
@@ -186,7 +181,21 @@ class TestProductionOrder(IntegrationTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		setup_test_attributes()
-		setup_yrp_settings()
+		cls.yrp_settings = make_test_yrp_settings()
+		cls._get_cached_doc = frappe.get_cached_doc
+
+		def get_cached_doc(doctype, *args, **kwargs):
+			if doctype == "YRP Settings":
+				return cls.yrp_settings
+			return cls._get_cached_doc(doctype, *args, **kwargs)
+
+		cls._settings_patcher = patch.object(
+			frappe,
+			"get_cached_doc",
+			side_effect=get_cached_doc,
+		)
+		cls._settings_patcher.start()
+		cls.addClassCleanup(cls._settings_patcher.stop)
 		cls.test_item = create_test_item()
 
 	# ──────────────────────────────────────────────
@@ -459,7 +468,6 @@ class TestProductionOrder(IntegrationTestCase):
 			"attributes": [{"attribute": "Weight"}],
 		})
 		item.insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		self.assertRaises(frappe.ValidationError, get_item_production_attributes, item.name)
 
@@ -560,6 +568,9 @@ class TestProductionOrder(IntegrationTestCase):
 		amended = frappe.copy_doc(doc)
 		amended.amended_from = doc.name
 		amended.docstatus = 0
-		amended.insert(ignore_permissions=True)
+		amended.insert(
+			ignore_permissions=True,
+			set_name=f"PPO-TEST-{frappe.generate_hash(length=10)}",
+		)
 		self.assertTrue(amended.name)
 		self.assertEqual(amended.amended_from, doc.name)

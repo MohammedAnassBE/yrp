@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
@@ -134,11 +136,16 @@ class TestPurchaseInvoice(FrappeTestCase):
 		self.assertFalse(grn.purchase_invoice_name)
 
 	def test_work_order_invoice_updates_billed_qty(self):
-		old_override = frappe.db.get_single_value("YRP Settings", "override_pi_approve")
-		frappe.db.set_single_value("YRP Settings", "override_pi_approve", 1)
-		wo = _work_order_for_invoice(qty=3)
-		grn = _work_order_grn(wo, qty=3)
-		try:
+		original_get_single_value = frappe.db.get_single_value
+
+		def get_single_value(doctype, fieldname, *args, **kwargs):
+			if doctype == "YRP Settings" and fieldname == "override_pi_approve":
+				return 1
+			return original_get_single_value(doctype, fieldname, *args, **kwargs)
+
+		with patch.object(frappe.db, "get_single_value", side_effect=get_single_value):
+			wo = _work_order_for_invoice(qty=3)
+			grn = _work_order_grn(wo, qty=3)
 			invoice = _purchase_invoice("Work Order", wo.supplier, grn, approved=True)
 			invoice.submit()
 
@@ -148,13 +155,16 @@ class TestPurchaseInvoice(FrappeTestCase):
 			invoice.cancel()
 			wo.reload()
 			self.assertAlmostEqual(wo.work_order_calculated_items[0].billed_qty, 0)
-		finally:
-			frappe.db.set_single_value("YRP Settings", "override_pi_approve", old_override)
 
 	def test_purchase_order_invoice_uses_form_uom_rate_after_freight(self):
-		old_method = frappe.db.get_single_value("YRP Stock Settings", "freight_allocation_method")
-		frappe.db.set_single_value("YRP Stock Settings", "freight_allocation_method", "By Quantity")
-		try:
+		original_get_single_value = frappe.db.get_single_value
+
+		def get_single_value(doctype, fieldname, *args, **kwargs):
+			if doctype == "YRP Stock Settings" and fieldname == "freight_allocation_method":
+				return "By Quantity"
+			return original_get_single_value(doctype, fieldname, *args, **kwargs)
+
+		with patch.object(frappe.db, "get_single_value", side_effect=get_single_value):
 			item_variant = _test_item_variant()
 			uom = _item_uom(item_variant)
 			warehouse = _warehouse(f"_Test_PI_Freight_CF_{frappe.generate_hash(length=6)}")
@@ -205,5 +215,3 @@ class TestPurchaseInvoice(FrappeTestCase):
 			)
 			self.assertAlmostEqual(flt(data["items"][0]["rate"]), 110, places=4)
 			self.assertAlmostEqual(flt(data["items"][0]["amount"]), 220, places=2)
-		finally:
-			frappe.db.set_single_value("YRP Stock Settings", "freight_allocation_method", old_method or "By Quantity")
