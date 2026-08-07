@@ -2,7 +2,11 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from yrp.yrp.api.ui_config import DEFAULT_LAYOUT_NAME, validate_config
+from yrp.yrp.api.ui_config import (
+	DEFAULT_LAYOUT_NAME,
+	validate_config,
+	validate_layout_rendering,
+)
 
 
 class UILayout(Document):
@@ -11,6 +15,8 @@ class UILayout(Document):
 		# soft issues come back as warning strings (spec §3.1).
 		for warning in validate_config(self.config, layer="layout"):
 			frappe.msgprint(warning, indicator="orange")
+
+		validate_layout_rendering(self.render_mode, self.experience_key, self.config)
 
 	def before_rename(self, old, new, merge=False):
 		# Mirror of the on_trash protection: the engine resolves missing or

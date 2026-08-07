@@ -23,6 +23,12 @@ from frappe.rate_limiter import rate_limit
 
 CURRENT_SCHEMA_VERSION = 1
 
+CONFIGURABLE_LAYOUT = "Configurable Layout"
+REGISTERED_EXPERIENCE = "Registered Experience"
+RENDER_MODES = (CONFIGURABLE_LAYOUT, REGISTERED_EXPERIENCE)
+EXPERIENCE_KEY_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+EXPERIENCE_PROP_KEY_RE = re.compile(r"[a-z][a-z0-9_]*")
+
 # The only top-level keys the personal overrides layer may carry (§2.2).
 OVERRIDABLE_KEYS = ("nav", "screens", "listViews", "quickCreate", "theme")
 
@@ -45,11 +51,10 @@ KILL_SWITCH_KEY = "yrp_disable_ui_config"  # site_config.json flag
 # stored records are rewritten only when an SM next saves them.
 UPGRADERS = {}
 
-# Layout-tier-ONLY keys the engine consumes today (2026-07-15 Demo-7 shell):
-# `chrome` (AppLayout/ChromeBar strip), `realtime` (ChromeBar Live indicator),
-# `dateFormat` (format.js/HomeRecent). NOT in OVERRIDABLE_KEYS — the personal
-# overrides layer still warns on + filters them.
-LAYOUT_ONLY_KEYS = ("chrome", "realtime", "dateFormat")
+# Layout-tier-ONLY keys. The first three are shared engine/shell knobs;
+# ``experience_props`` is the prop-bounded input for Registered Experience
+# mode. None are personally overridable.
+LAYOUT_ONLY_KEYS = ("chrome", "realtime", "dateFormat", "experience_props")
 
 # Structural knobs (2026-07-16, spec §6.4): how detail renders, how entry
 # opens, the Delivery Challan entry variant, and action placement/filtering.
@@ -654,6 +659,7 @@ def validate_config(config, layer):
 		_validate_chrome(cfg.get("chrome"), layer, warnings)
 		_validate_realtime(cfg.get("realtime"), layer, warnings)
 		_validate_date_format(cfg.get("dateFormat"), layer, warnings)
+		_validate_experience_props(cfg.get("experience_props"), layer)
 		# Structural knobs (layout-tier only, same rule as the shell knobs).
 		_validate_detail(cfg.get("detail"), layer, warnings)
 		_validate_entry(cfg.get("entry"), layer, warnings)
@@ -700,6 +706,120 @@ def _warn_unknown_top_level_keys(cfg, layer, warnings):
 		for key in cfg:
 			if key not in LAYOUT_KEYS:
 				warnings.append(_("{0}: unknown top-level key '{1}'").format(layer, key))
+
+
+def _validate_experience_props(props, layer):
+	"""Keep Registered Experience input declarative and JSON-only.
+
+	The host registry applies the key-specific allowlist in
+	``validate_layout_rendering``. This shape gate is shared so stored props can
+	never become a route/import/API selector or a place to smuggle markup.
+	"""
+	if props is None:
+		return
+	if not isinstance(props, dict):
+		_hard(layer, _("experience_props must be an object"))
+
+	def validate_value(value, path, depth=0):
+		if depth > 4:
+			_hard(layer, _("{0} is nested more than 4 levels").format(path))
+		if value is None or isinstance(value, bool | int | float):
+			return
+		if isinstance(value, str):
+			if COMPOSITE_MARKUP_RE.search(value):
+				_hard(layer, _("{0} contains markup or a script-shaped value").format(path))
+			return
+		if isinstance(value, list):
+			for index, child in enumerate(value):
+				validate_value(child, "{0}[{1}]".format(path, index), depth + 1)
+			return
+		if isinstance(value, dict):
+			for child_key, child in value.items():
+				if not isinstance(child_key, str) or not EXPERIENCE_PROP_KEY_RE.fullmatch(child_key):
+					_hard(layer, _("{0} contains an invalid property name").format(path))
+				validate_value(child, "{0}.{1}".format(path, child_key), depth + 1)
+			return
+		_hard(layer, _("{0} contains an unsupported value").format(path))
+
+	for key, value in props.items():
+		if not isinstance(key, str) or not EXPERIENCE_PROP_KEY_RE.fullmatch(key):
+			_hard(layer, _("experience_props contains an invalid property name"))
+		validate_value(value, "experience_props.{0}".format(key))
+
+
+def get_registered_experiences():
+	"""Return the code-owned server registry contributed by installed hosts.
+
+	A host declares ``yrp_registered_experiences = {key: [allowed_prop, ...]}``
+	in hooks.py. Database values can select only one of these keys; they can
+	never supply a module path or executable handler.
+	"""
+	try:
+		hooked = frappe.get_hooks("yrp_registered_experiences", default={})
+	except Exception:
+		return {}
+	if not isinstance(hooked, dict):
+		return {}
+
+	registry = {}
+	for key, allowed_props in hooked.items():
+		if not isinstance(key, str) or not EXPERIENCE_KEY_RE.fullmatch(key):
+			continue
+		if not isinstance(allowed_props, list):
+			allowed_props = []
+		registry[key] = tuple(
+			prop
+			for prop in dict.fromkeys(allowed_props)
+			if isinstance(prop, str) and EXPERIENCE_PROP_KEY_RE.fullmatch(prop)
+		)
+	return registry
+
+
+def _config_object(config):
+	if isinstance(config, dict):
+		return config
+	if isinstance(config, str):
+		try:
+			parsed = json.loads(config)
+		except ValueError:
+			return None
+		return parsed if isinstance(parsed, dict) else None
+	return None
+
+
+def validate_layout_rendering(render_mode, experience_key, config):
+	"""Validate the explicit UI Layout -> renderer selection contract."""
+	mode = render_mode or CONFIGURABLE_LAYOUT
+	if mode not in RENDER_MODES:
+		_hard("layout", _("render_mode must be one of {0}").format(", ".join(RENDER_MODES)))
+
+	if mode == CONFIGURABLE_LAYOUT:
+		if experience_key:
+			_hard("layout", _("experience_key is only valid for Registered Experience mode"))
+		return
+
+	if not isinstance(experience_key, str) or not EXPERIENCE_KEY_RE.fullmatch(experience_key):
+		_hard("layout", _("Registered Experience requires a safe experience_key"))
+
+	registry = get_registered_experiences()
+	if experience_key not in registry:
+		_hard(
+			"layout",
+			_("experience_key '{0}' is not registered by an installed application").format(
+				experience_key
+			),
+		)
+
+	cfg = _config_object(config) or {}
+	props = cfg.get("experience_props") or {}
+	unknown = sorted(set(props) - set(registry[experience_key]))
+	if unknown:
+		_hard(
+			"layout",
+			_("experience_props contains unsupported keys for '{0}': {1}").format(
+				experience_key, ", ".join(unknown)
+			),
+		)
 
 
 def _web_doctype_catalog():
@@ -3070,21 +3190,91 @@ def _upgrade_composite_trees(cfg, label, warnings):
 			holder[key] = tree
 
 
-def _meta(layout, has_preference, warnings):
+def _meta(
+	layout,
+	has_preference,
+	warnings,
+	render_mode=CONFIGURABLE_LAYOUT,
+	experience_key=None,
+):
 	return {
 		"layout": layout,
 		"has_preference": has_preference,
 		"schema_version": CURRENT_SCHEMA_VERSION,
+		"render_mode": render_mode,
+		"experience_key": experience_key,
 		"warnings": warnings,
 	}
+
+
+def _layout_row_fields():
+	"""Return renderer fields that exist in this site's physical schema.
+
+	App code is shared by every site in a bench, while each site's schema is
+	synchronised independently.  During that deployment window older sites do
+	not yet have the Registered Experience columns.  Reading only columns that
+	physically exist keeps their Configurable Layouts working until migrate adds
+	the new fields.
+	"""
+	fields = ["config", "disabled"]
+	try:
+		columns = set(frappe.db.get_table_columns("UI Layout"))
+	except Exception:
+		return fields
+	return fields + [
+		field for field in ("render_mode", "experience_key") if field in columns
+	]
+
+
+def _prepare_layout_rendering(row, cfg, label, warnings):
+	"""Resolve a stored layout's renderer without trusting database strings."""
+	mode = row.get("render_mode") or CONFIGURABLE_LAYOUT
+	if mode not in RENDER_MODES:
+		_drop(label, _("unknown render_mode {0!r}").format(mode), warnings)
+		return None
+
+	if mode == CONFIGURABLE_LAYOUT:
+		return mode, None
+
+	key = row.get("experience_key")
+	registry = get_registered_experiences()
+	if not isinstance(key, str) or not EXPERIENCE_KEY_RE.fullmatch(key):
+		_drop(label, _("Registered Experience has an invalid experience_key"), warnings)
+		return None
+	if key not in registry:
+		_drop(label, _("experience_key '{0}' is not registered").format(key), warnings)
+		return None
+
+	props = cfg.get("experience_props") or {}
+	if not isinstance(props, dict):
+		_drop(label, _("experience_props must be an object"), warnings)
+		return None
+	try:
+		_validate_experience_props(props, "layout")
+	except frappe.ValidationError as exc:
+		_drop(label, str(exc), warnings)
+		return None
+	unknown = sorted(set(props) - set(registry[key]))
+	if unknown:
+		_drop(
+			label,
+			_("experience_props contains unsupported keys for '{0}': {1}").format(
+				key, ", ".join(unknown)
+			),
+			warnings,
+		)
+		return None
+
+	return mode, key
 
 
 def _load_layout_config(requested, warnings):
 	"""Load + prepare the layout layer, cascading requested → Default → skeleton.
 
-	Returns ``(config_dict_or_None, applied_layout_name_or_None)`` — §14 rows
-	5/6: a missing/disabled/broken layout drops to ``Default``; a broken
-	``Default`` drops to the skeleton. Every hop is warned + Error-Logged.
+	Returns ``(config, layout_name, render_mode, experience_key)`` — §14 rows
+	5/6: a missing/disabled/broken/unknown experience layout drops to
+	``Default``; a broken ``Default`` drops to the skeleton. Every hop is
+	warned + Error-Logged.
 	"""
 	candidates = [requested] if requested else []
 	if DEFAULT_LAYOUT_NAME not in candidates:
@@ -3092,7 +3282,12 @@ def _load_layout_config(requested, warnings):
 
 	for name in candidates:
 		label = _("layout '{0}'").format(name)
-		row = frappe.db.get_value("UI Layout", name, ["config", "disabled"], as_dict=True)
+		row = frappe.db.get_value(
+			"UI Layout",
+			name,
+			_layout_row_fields(),
+			as_dict=True,
+		)
 		if not row:
 			_drop(label, _("record not found"), warnings)
 			continue
@@ -3102,9 +3297,12 @@ def _load_layout_config(requested, warnings):
 		cfg = _prepare_layer(row.config, label, warnings, required=True)
 		if cfg is None:
 			continue  # _prepare_layer already warned + logged the drop
-		return cfg, name
+		rendering = _prepare_layout_rendering(row, cfg, label, warnings)
+		if rendering is None:
+			continue
+		return cfg, name, *rendering
 
-	return None, None
+	return None, None, CONFIGURABLE_LAYOUT, None
 
 
 def _resolve_config(user):
@@ -3124,7 +3322,9 @@ def _resolve_config(user):
 		)
 
 	# Point-read 2 of 2 (+ fallback hops only on degradation).
-	layout_cfg, layout_name = _load_layout_config(pref.layout if pref else None, warnings)
+	layout_cfg, layout_name, render_mode, experience_key = _load_layout_config(
+		pref.layout if pref else None, warnings
+	)
 
 	overrides = _prepare_layer(pref.overrides if pref else None, "overrides", warnings)
 	if overrides:
@@ -3134,7 +3334,13 @@ def _resolve_config(user):
 				warnings.append(_("overrides: unknown key '{0}' ignored").format(key))
 
 	resolved = merge(merge(get_skeleton(), layout_cfg), overrides, OVERRIDABLE_KEYS)
-	return resolved, _meta(layout_name, bool(pref), warnings)
+	return resolved, _meta(
+		layout_name,
+		bool(pref),
+		warnings,
+		render_mode=render_mode,
+		experience_key=experience_key,
+	)
 
 
 def resolve_config(user):
@@ -3143,7 +3349,8 @@ def resolve_config(user):
 	Returns ``(merged_config, meta)`` and NEVER raises: every data defect
 	drops that layer only, appends to ``meta["warnings"]`` and writes an
 	Error Log entry (title prefix ``UI config:``) so ops sees it.
-	``meta`` = ``{layout, has_preference, schema_version, warnings}``.
+	``meta`` also carries the validated ``render_mode`` and ``experience_key``;
+	the frontend never reads an import path from layout JSON.
 	"""
 	try:
 		return _resolve_config(user)
@@ -3527,7 +3734,12 @@ def _resolve_layout_preview(layout):
 	if frappe.conf.get(KILL_SWITCH_KEY):
 		return get_skeleton(), _meta(None, False, [_("ui config disabled by site config")])
 
-	row = frappe.db.get_value("UI Layout", layout, ["config", "disabled"], as_dict=True)
+	row = frappe.db.get_value(
+		"UI Layout",
+		layout,
+		_layout_row_fields(),
+		as_dict=True,
+	)
 	if not row or row.disabled:
 		frappe.throw(_("Unknown or disabled layout"))
 
@@ -3539,8 +3751,24 @@ def _resolve_layout_preview(layout):
 				frappe.bold(layout), "; ".join(warnings) or _("empty config")
 			)
 		)
+	rendering = _prepare_layout_rendering(
+		row, cfg, _("layout '{0}'").format(layout), warnings
+	)
+	if rendering is None:
+		frappe.throw(
+			_("UI Layout {0} has an invalid renderer mapping: {1}").format(
+				frappe.bold(layout), "; ".join(warnings) or _("unknown renderer")
+			)
+		)
+	render_mode, experience_key = rendering
 
-	return merge(get_skeleton(), cfg), _meta(layout, False, warnings)
+	return merge(get_skeleton(), cfg), _meta(
+		layout,
+		False,
+		warnings,
+		render_mode=render_mode,
+		experience_key=experience_key,
+	)
 
 
 def _perm_hints(config, user):
