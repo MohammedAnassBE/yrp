@@ -8,6 +8,8 @@
  "field_order": [
   "layout_name",
   "disabled",
+  "render_mode",
+  "experience_key",
   "description",
   "config"
  ],
@@ -24,6 +26,22 @@
    "fieldname": "disabled",
    "fieldtype": "Check",
    "label": "Disabled"
+  },
+  {
+   "default": "Configurable Layout",
+   "fieldname": "render_mode",
+   "fieldtype": "Select",
+   "label": "Render Mode",
+   "options": "Configurable Layout\nRegistered Experience",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.render_mode == 'Registered Experience'",
+   "description": "Safe key from the host application's registered experience allowlist.",
+   "fieldname": "experience_key",
+   "fieldtype": "Data",
+   "label": "Experience Key",
+   "mandatory_depends_on": "eval:doc.render_mode == 'Registered Experience'"
   },
   {
    "fieldname": "description",

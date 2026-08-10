@@ -249,6 +249,70 @@ class TestUIConfigUpgraderCoverage(IntegrationTestCase):
 		)
 
 
+class TestRegisteredExperienceContract(IntegrationTestCase):
+	"""Registered Experience selection stays code-owned and prop-bounded."""
+
+	def test_legacy_site_schema_defaults_to_configurable_layout(self):
+		with patch.object(
+			frappe.db,
+			"get_table_columns",
+			return_value=["name", "config", "disabled"],
+		):
+			self.assertEqual(ui_config._layout_row_fields(), ["config", "disabled"])
+
+		warnings = []
+		self.assertEqual(
+			ui_config._prepare_layout_rendering(
+				frappe._dict({"config": json.dumps(LAYOUT_CONFIG), "disabled": 0}),
+				LAYOUT_CONFIG,
+				"legacy layout",
+				warnings,
+			),
+			(ui_config.CONFIGURABLE_LAYOUT, None),
+		)
+		self.assertEqual(warnings, [])
+
+	def test_registered_key_and_allowed_props_validate(self):
+		with patch.object(
+			ui_config,
+			"get_registered_experiences",
+			return_value={"sample-workspace": ("context_type", "default_tab")},
+		):
+			ui_config.validate_layout_rendering(
+				ui_config.REGISTERED_EXPERIENCE,
+				"sample-workspace",
+				{
+					"schema_version": 1,
+					"experience_props": {
+						"context_type": "Operations",
+						"default_tab": "home",
+					},
+				},
+			)
+
+	def test_unknown_key_and_prop_are_rejected(self):
+		with patch.object(
+			ui_config,
+			"get_registered_experiences",
+			return_value={"sample-workspace": ("default_tab",)},
+		):
+			with self.assertRaises(frappe.ValidationError):
+				ui_config.validate_layout_rendering(
+					ui_config.REGISTERED_EXPERIENCE,
+					"unknown-experience",
+					{"schema_version": 1},
+				)
+			with self.assertRaises(frappe.ValidationError):
+				ui_config.validate_layout_rendering(
+					ui_config.REGISTERED_EXPERIENCE,
+					"sample-workspace",
+					{
+						"schema_version": 1,
+						"experience_props": {"api_method": "unsafe.path"},
+					},
+				)
+
+
 class TestUIConfigResolver(IntegrationTestCase):
 	"""resolve_config + endpoints against real records — §4 and every §14 row
 	the resolver owns (1–6, 8, 14, 15, 17)."""
@@ -298,7 +362,12 @@ class TestUIConfigResolver(IntegrationTestCase):
 		frappe.db.set_value(
 			"UI Layout",
 			TEST_LAYOUT,
-			{"config": json.dumps(LAYOUT_CONFIG), "disabled": 0},
+			{
+				"config": json.dumps(LAYOUT_CONFIG),
+				"disabled": 0,
+				"render_mode": ui_config.CONFIGURABLE_LAYOUT,
+				"experience_key": None,
+			},
 			update_modified=False,
 		)
 		frappe.db.set_value(
@@ -332,6 +401,53 @@ class TestUIConfigResolver(IntegrationTestCase):
 		# …overrides on top: accent replaced, hidden dicts composed (rule 1).
 		self.assertEqual(config["theme"], {"mode": "user", "accent": "#2563EB"})
 		self.assertEqual(config["nav"]["hidden"], {"Work Order": True, "Stock Entry": True})
+
+	def test_registered_experience_resolves_safe_key_and_props(self):
+		registered_config = {
+			"schema_version": 1,
+			"experience_props": {
+				"context_type": "Operations",
+				"default_tab": "home",
+			},
+		}
+		frappe.db.set_value(
+			"UI Layout",
+			TEST_LAYOUT,
+			{
+				"config": json.dumps(registered_config),
+				"render_mode": ui_config.REGISTERED_EXPERIENCE,
+				"experience_key": "sample-workspace",
+			},
+			update_modified=False,
+		)
+		with patch.object(
+			ui_config,
+			"get_registered_experiences",
+			return_value={"sample-workspace": ("context_type", "default_tab")},
+		):
+			config, meta = resolve_config(TEST_USER)
+
+		self.assertEqual(meta["render_mode"], ui_config.REGISTERED_EXPERIENCE)
+		self.assertEqual(meta["experience_key"], "sample-workspace")
+		self.assertEqual(config["experience_props"], registered_config["experience_props"])
+
+	def test_unknown_registered_experience_falls_back_to_default(self):
+		frappe.db.set_value(
+			"UI Layout",
+			TEST_LAYOUT,
+			{
+				"render_mode": ui_config.REGISTERED_EXPERIENCE,
+				"experience_key": "missing-experience",
+			},
+			update_modified=False,
+		)
+		with patch.object(ui_config, "get_registered_experiences", return_value={}):
+			_config, meta = resolve_config(TEST_USER)
+
+		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)
+		self.assertEqual(meta["render_mode"], ui_config.CONFIGURABLE_LAYOUT)
+		self.assertIsNone(meta["experience_key"])
+		self.assertTrue(any("not registered" in warning for warning in meta["warnings"]))
 
 	def test_layout_link_empty_falls_to_default_with_overrides_on_top(self):
 		frappe.db.set_value("YRP UI Preference", TEST_USER, "layout", "", update_modified=False)

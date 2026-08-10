@@ -10,6 +10,7 @@ from yrp.yrp.doctype.purchase_order.purchase_order import (
 	refresh_status,
 	reopen_purchase_order,
 )
+from yrp.yrp.doctype.goods_received_note.goods_received_note import _validate_defaults_source
 
 
 ITEM_VARIANT_CANDIDATES = (
@@ -260,6 +261,22 @@ def _work_order(qty, warehouse):
 
 
 class TestPurchaseOrderGRN(FrappeTestCase):
+	def test_source_defaults_require_submitted_open_document(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "must be submitted"):
+			_validate_defaults_source(frappe._dict(
+				doctype="Purchase Order",
+				name="PO-DRAFT",
+				docstatus=0,
+				open_status="Open",
+			))
+		with self.assertRaisesRegex(frappe.ValidationError, "is closed"):
+			_validate_defaults_source(frappe._dict(
+				doctype="Work Order",
+				name="WO-CLOSED",
+				docstatus=1,
+				open_status="Close",
+			))
+
 	def test_po_ignores_blank_child_rows_before_mandatory_validation(self):
 		warehouse = _warehouse("_Test_PO_BLANK_ROW_WH")
 		item_variant = _test_item_variant()

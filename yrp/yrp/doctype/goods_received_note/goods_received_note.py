@@ -964,7 +964,14 @@ def get_work_order_defaults(work_order, delivery_challan=None):
 	from yrp.stock.dimensions import apply_dimension_defaults
 
 	wo = frappe.get_doc("Work Order", work_order)
+	wo.check_permission("read")
+	_validate_defaults_source(wo)
 	dc = frappe.get_doc("Delivery Challan", delivery_challan) if delivery_challan else None
+	if dc:
+		dc.check_permission("read")
+		_validate_defaults_source(dc)
+		if dc.work_order != wo.name:
+			frappe.throw(_("Delivery Challan must belong to the selected Work Order."))
 	items = _pending_receivable_rows(wo, delivery_challan=dc)
 	dimensions = _get_production_group_dimensions(wo)
 	_apply_dimension_values_to_rows(items, dimensions)
@@ -996,6 +1003,8 @@ def get_purchase_order_defaults(purchase_order):
 	from yrp.stock.save_stock_items import group_items_for_ui
 
 	po = frappe.get_doc("Purchase Order", purchase_order)
+	po.check_permission("read")
+	_validate_defaults_source(po)
 	items = _pending_purchase_order_rows(po)
 	dimensions = _get_production_group_dimensions(po)
 	_apply_dimension_values_to_rows(items, dimensions)
@@ -1009,6 +1018,13 @@ def get_purchase_order_defaults(purchase_order):
 	}
 	defaults.update(dimensions)
 	return defaults
+
+
+def _validate_defaults_source(source):
+	if source.docstatus != 1:
+		frappe.throw(_("{0} {1} must be submitted.").format(source.doctype, source.name))
+	if source.get("open_status") == "Close":
+		frappe.throw(_("{0} {1} is closed.").format(source.doctype, source.name))
 
 
 def _pending_receivable_rows(wo, existing_rows=None, delivery_challan=None):

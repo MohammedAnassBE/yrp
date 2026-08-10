@@ -45,10 +45,13 @@ class WorkOrder(Document):
 		self.set_status()
 
 	def before_submit(self):
-		if not self.get("deliverables"):
-			frappe.throw("There are no deliverables on the Work Order.")
-		if not self.get("receivables"):
-			frappe.throw("There are no receivables on the Work Order.")
+		issues = self.get_submit_readiness_issues()
+		if issues:
+			frappe.throw(
+				issues,
+				as_list=True,
+				title=_("Work Order is not ready to submit"),
+			)
 		self.set_receivable_process_costs(require_approved=True)
 		if not self.start_date:
 			self.start_date = nowdate()
@@ -61,6 +64,55 @@ class WorkOrder(Document):
 		self.set_pending_quantities()
 		self.set_total_quantity()
 		self.set_status()
+
+	def get_submit_readiness_issues(self):
+		"""Return all shared submit blockers in one operator-friendly response."""
+		issues = []
+		if not self.get("deliverables"):
+			issues.append(_("There are no deliverables on the Work Order."))
+		if not self.get("receivables"):
+			issues.append(_("There are no receivables on the Work Order."))
+
+		if self.get("production_detail"):
+			status = frappe.db.get_value(
+				"Item Production Detail",
+				self.production_detail,
+				"approval_status",
+			) or "Not Approved"
+			if status != "Approved":
+				issues.append(
+					_("Item Production Detail {0} is not Approved (status: {1}).").format(
+						self.production_detail, status
+					)
+				)
+
+		issues.extend(self.get_process_cost_readiness_issues())
+		return issues
+
+	def get_process_cost_readiness_issues(self):
+		"""Return shared Process Cost blockers; company apps may extend this."""
+		if (
+			not self.get("receivables")
+			or self.get("is_rework")
+			or self.get("rework_type") == "No Cost"
+		):
+			return []
+		if self.get_receivable_process_cost():
+			return []
+		return [
+			_("No approved Process Cost for process {0} / supplier {1}.").format(
+				self.process_name or _("(not selected)"),
+				self.supplier or _("(any supplier)"),
+			)
+		]
+
+	def allow_draft_without_process_cost(self):
+		"""Base policy: drafts may be calculated/saved before costing is ready.
+
+		A customer app that needs an earlier hard gate can override this single
+		method and return ``False``.
+		"""
+		return True
 
 	def on_submit(self):
 		self.create_rework_reservations()
@@ -239,9 +291,15 @@ class WorkOrder(Document):
 		if not process_cost_name:
 			if self.get("is_rework"):
 				return
-			if not require_approved:
+			if not require_approved and self.allow_draft_without_process_cost():
 				# Draft save: don't block. The approved Process Cost is enforced
-				# at submit (before_submit passes require_approved=True).
+				# at submit (before_submit passes require_approved=True). Clear any
+				# stale rate left by a previously-matching Item/process/supplier.
+				self.process_cost = None
+				for row in self.receivables:
+					row.process_cost = None
+					row.cost = 0
+					row.total_cost = 0
 				return
 			frappe.throw(
 				_(
