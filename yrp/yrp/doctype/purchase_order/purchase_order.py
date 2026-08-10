@@ -64,7 +64,10 @@ class PurchaseOrder(Document):
 		self.remove_blank_item_rows()
 		self.set_missing_values()
 		self.set_item_defaults()
-		self.apply_item_prices(strict=False)
+		self.apply_item_prices(
+			strict=False,
+			warn_on_missing=self.is_price_validation_enabled(),
+		)
 		self.calculate_totals()
 		self.set_status()
 
@@ -80,11 +83,8 @@ class PurchaseOrder(Document):
 		self.set_status()
 
 	def before_submit(self):
-		strict_price_validation = bool(
-			frappe.db.get_single_value("YRP Settings", "enable_price_validation")
-		)
 		self.set_item_defaults()
-		self.apply_item_prices(strict=strict_price_validation)
+		self.apply_item_prices(strict=self.is_price_validation_enabled())
 		self.validate_items()
 		self.initialize_pending_quantities(force=True)
 		self.calculate_totals()
@@ -169,12 +169,22 @@ class PurchaseOrder(Document):
 			row.delivery_date = row.delivery_date or self.expected_delivery_date
 			self.calculate_row_amount(row)
 
-	def apply_item_prices(self, strict=False):
+	def is_price_validation_enabled(self):
+		return bool(frappe.db.get_single_value("YRP Settings", "enable_price_validation"))
+
+	def apply_item_prices(self, strict=False, warn_on_missing=False):
 		if not self.supplier or not self.get("items"):
 			return
-		validate_price_details(self.get("items") or [], self.supplier, strict=strict)
+		warnings = validate_price_details(self.get("items") or [], self.supplier, strict=strict)
 		for row in self.get("items") or []:
 			self.calculate_row_amount(row)
+		if warn_on_missing and warnings:
+			frappe.msgprint(
+				warnings,
+				title=_("Item Price warning"),
+				indicator="orange",
+				as_list=True,
+			)
 
 	def validate_items(self):
 		if not self.supplier:
@@ -272,11 +282,12 @@ class PurchaseOrder(Document):
 
 def validate_price_details(rows, supplier=None, strict=True):
 	if not rows:
-		return
+		return []
 
 	from yrp.yrp.doctype.item_price.item_price import get_active_price
 
 	rows_by_item = defaultdict(list)
+	warnings = []
 	for row in rows:
 		parent_item = _get_parent_item(row.item_variant)
 		if parent_item:
@@ -285,9 +296,15 @@ def validate_price_details(rows, supplier=None, strict=True):
 	for parent_item, item_rows in rows_by_item.items():
 		item_price = get_active_price(parent_item, supplier, raise_error=strict)
 		if not item_price:
+			warnings.append(
+				_(
+					"No active Item Price was found for {0} and {1}. "
+					"This draft can be saved, but it cannot be submitted until the price is configured."
+				).format(parent_item, supplier)
+			)
 			continue
 		if item_price.depends_on_attribute:
-			_apply_attribute_price(item_price, item_rows, strict=strict)
+			warnings.extend(_apply_attribute_price(item_price, item_rows, strict=strict))
 		else:
 			qty = sum(flt(row.qty) for row in item_rows)
 			price = item_price.validate_attribute_values(qty=qty)
@@ -298,14 +315,22 @@ def validate_price_details(rows, supplier=None, strict=True):
 							parent_item, flt(qty)
 						)
 					)
+				warnings.append(
+					_(
+						"No matching Item Price slab was found for {0} at quantity {1}. "
+						"This draft can be saved, but it cannot be submitted until the price is configured."
+					).format(parent_item, flt(qty))
+				)
 				continue
 			for row in item_rows:
 				row.rate = flt(price)
 				row.tax = item_price.tax
+	return warnings
 
 
 def _apply_attribute_price(item_price, rows, strict=True):
 	rows_by_value = defaultdict(list)
+	warnings = []
 	for row in rows:
 		attribute_value = _get_variant_attribute_value(row.item_variant, item_price.attribute)
 		if attribute_value:
@@ -315,6 +340,13 @@ def _apply_attribute_price(item_price, rows, strict=True):
 				_("Item Variant {0} does not have attribute {1}.").format(
 					row.item_variant, item_price.attribute
 				)
+			)
+		else:
+			warnings.append(
+				_(
+					"Item Variant {0} does not have price attribute {1}. "
+					"This draft can be saved, but it cannot be submitted until the price is configured."
+				).format(row.item_variant, item_price.attribute)
 			)
 
 	for attribute_value, value_rows in rows_by_value.items():
@@ -331,10 +363,17 @@ def _apply_attribute_price(item_price, rows, strict=True):
 						item_price.attribute, attribute_value, flt(qty)
 					)
 				)
+			warnings.append(
+				_(
+					"No matching Item Price slab was found for {0} {1} at quantity {2}. "
+					"This draft can be saved, but it cannot be submitted until the price is configured."
+				).format(item_price.attribute, attribute_value, flt(qty))
+			)
 			continue
 		for row in value_rows:
 			row.rate = flt(price)
 			row.tax = item_price.tax
+	return warnings
 
 
 def _get_parent_item(item_variant):
