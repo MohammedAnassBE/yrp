@@ -32,8 +32,11 @@ STOCK_DOCTYPES = [
 	"Stock Entry Detail",
 	"Stock Update Detail",
 	"Stock Reconciliation Item",
+	"Purchase Order Item",
 	"Stock Reservation Entry",
 	"Repost Item Valuation",
+	"Work Order Deliverables",
+	"Work Order Receivables",
 	"Delivery Challan Item",
 	"Goods Received Note Item",
 	"Inspection Entry Item",
@@ -55,6 +58,13 @@ OPERATIONAL_DOCTYPES = [
 OPERATIONAL_CHILD_DOCTYPES = {
 	"Delivery Challan Item",
 	"Goods Received Note Item",
+}
+
+# Planning rows may carry the complete stock-dimension context without posting
+# stock themselves. Their dimensions are optional so existing/planned orders
+# are not forced to choose a stock-quality bucket before receipt.
+OPTIONAL_DIMENSION_DOCTYPES = {
+	"Purchase Order Item",
 }
 
 
@@ -174,6 +184,7 @@ def create_dimension_fields():
 			"options": dim["dimension_doctype"],
 			"label": dim["label"],
 			"reqd": 1,
+			"module": "YRP",
 			"description": MANAGED_DIMENSION_FIELD_MARKER,
 		}
 
@@ -183,6 +194,8 @@ def create_dimension_fields():
 				continue
 			doc_field_def = field_def.copy()
 			doc_field_def["insert_after"] = _get_insert_after(dim, dt)
+			if dt in OPTIONAL_DIMENSION_DOCTYPES:
+				doc_field_def["reqd"] = 0
 			if dim["is_production_group"] and dt in OPERATIONAL_CHILD_DOCTYPES:
 				doc_field_def["reqd"] = 0
 			custom_fields.setdefault(dt, []).append(doc_field_def)
@@ -259,4 +272,6 @@ def _get_insert_after(dim, doctype=None):
 	"""Determine where to insert the custom field. Default: after 'item' or at the end."""
 	if doctype == "Purchase Order":
 		return "expected_delivery_date"
+	if doctype in {"Purchase Order Item", "Work Order Deliverables", "Work Order Receivables"}:
+		return "item_variant"
 	return "item"

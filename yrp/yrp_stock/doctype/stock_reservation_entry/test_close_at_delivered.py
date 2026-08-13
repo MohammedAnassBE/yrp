@@ -8,6 +8,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
+from yrp.stock.dimensions import get_dimension_fieldnames
 from yrp.stock.utils import get_sre_reserved_qty
 from yrp.yrp.doctype.work_order.test_rework_flow import (
 	_make_parent_grn,
@@ -114,7 +115,12 @@ class TestSREClose(FrappeTestCase):
 		wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt = _build_normal_wo_with_sre(
 			reserved=10, seed_qty=10,
 		)
-		dim_filters = {"received_type": rt, "lot": sre.get("lot")}
+		dim_filters = {
+			fieldname: sre.get(fieldname)
+			for fieldname in get_dimension_fieldnames()
+			if sre.get(fieldname)
+		}
+		dim_filters["received_type"] = rt
 		# Before any delivery: SRE reserves 10 → reserved seen = 10.
 		reserved_before = get_sre_reserved_qty(
 			item_code=item_variant, warehouse=delivery_wh, **dim_filters,

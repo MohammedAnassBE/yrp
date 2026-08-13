@@ -68,7 +68,6 @@ from yrp.yrp.api.ui_config import (
 	DEFAULT_LAYOUT_NAME,
 	DETAIL_POSITIONS,
 	ENTRY_MODES,
-	HOME_QUEUE_METRICS,
 	ICON_RE,
 	LAYOUT_KEYS,
 	LAYOUT_ONLY_KEYS,
@@ -100,8 +99,9 @@ from yrp.yrp.api.ui_config import (
 	THEME_RGBA_RE,
 	THEME_SECTION_HEADERS,
 	_web_doctype_catalog,
+	get_home_queue_metrics,
 )
-from yrp.yrp.api.ui_metrics import CALCULATIONS, METRICS
+from yrp.yrp.api.ui_metrics import get_calculation_registry, get_metric_registry
 
 # Default output target, relative to the BENCH root (never sites/).
 DEFAULT_RELATIVE_PATH = os.path.join("custom ui", "catalog", "LAYOUT_SCHEMA.json")
@@ -113,15 +113,7 @@ DRIFT_SENTINEL = "LAYOUT-SCHEMA-DRIFT"
 # Curated per-calculation params documentation (the CALCULATIONS registry
 # stores only label + run; params are validated inside each run function).
 # A calculation missing here still lands in the catalog with params: None.
-_CALC_PARAMS_DOC = {
-	"lot_balance": {
-		"lot": {
-			"type": "string",
-			"required": True,
-			"effect": "Name of the Lot to balance (row-level read permission enforced).",
-		}
-	},
-}
+_CALC_PARAMS_DOC = {}
 
 
 # cardTemplate (Track 1 item 2) — the SAME doc text everywhere the knob
@@ -267,7 +259,7 @@ def _block_type_specs():
 			"stats": {
 				"type": "array",
 				"items": _enum(
-					HOME_QUEUE_METRICS,
+					get_home_queue_metrics(),
 					"Queue-backed metric names ONLY (HomeQueues METRIC_TO_QUEUE). A registered "
 					"KPI metric (e.g. completion, delayed) renders NOTHING here — put those in "
 					"a summary-tiles block. Anything else is a typo.",
@@ -309,7 +301,7 @@ def _block_type_specs():
 			"metrics": {
 				"type": "array",
 				"items": _enum(
-					tuple(sorted(METRICS)),
+					tuple(sorted(get_metric_registry())),
 					"Registered ui_metrics names. Tiles the user lacks read permission for are "
 					"omitted silently (arrangement never grants capability).",
 				),
@@ -379,7 +371,7 @@ def _block_type_specs():
 				"type": "string",
 				"required": True,
 				"validation": "soft",
-				"enum": sorted(CALCULATIONS),
+				"enum": sorted(get_calculation_registry()),
 				"effect": "Registered calculation this panel runs (run_ui_calculation registry).",
 			},
 			"params": {
@@ -397,7 +389,7 @@ def _block_type_specs():
 					"metrics": {
 						"type": "array",
 						"items": _enum(
-							tuple(sorted(METRICS)),
+							tuple(sorted(get_metric_registry())),
 							"Registered ui_metrics names feeding the binding scope at "
 							"metrics.<name>.value / metrics.<name>.label. Per-metric "
 							"permission-gated server-side; omitted metrics leave their "
@@ -573,19 +565,21 @@ def _composite_grammar_section():
 		"HARD-fail), no queries, no loops, no server-method names. Bindings only READ what "
 		"the permissioned host fetched — arrangement never grants capability.",
 		"ground_truth": "apps/yrp/frontend/src/composite/grammar.js (engine); "
-		"yrp.yrp.api.ui_config COMPOSITE_* constants (server mirror, drift-guarded by "
-		"essdee_yrp.api.test_ui_mirror)",
+		"yrp.yrp.api.ui_config COMPOSITE_* constants (server mirror, suitable for "
+		"consumer-side drift tests)",
 	}
 
 
 def _metrics_registry():
 	out = {}
-	for key in sorted(METRICS):
-		spec = METRICS[key]
+	registry = get_metric_registry()
+	home_queue_metrics = get_home_queue_metrics()
+	for key in sorted(registry):
+		spec = registry[key]
 		out[key] = {
 			"label": spec["label"],
 			"doctypes": list(spec["doctypes"]),
-			"home_queue": key in HOME_QUEUE_METRICS,
+			"home_queue": key in home_queue_metrics,
 			"effect": "Omitted silently when the user lacks read permission on any listed DocType. "
 			"Tile click deep-links the metric's goto list.",
 		}
@@ -594,10 +588,11 @@ def _metrics_registry():
 
 def _calculations_registry():
 	out = {}
-	for key in sorted(CALCULATIONS):
+	registry = get_calculation_registry()
+	for key in sorted(registry):
 		out[key] = {
-			"label": CALCULATIONS[key]["label"],
-			"params": _CALC_PARAMS_DOC.get(key),
+			"label": registry[key]["label"],
+			"params": registry[key].get("params", _CALC_PARAMS_DOC.get(key)),
 		}
 	return out
 
@@ -1017,7 +1012,7 @@ def build_catalog():
 						"doctype's detail view; a null value is no-op. Each value is a LIST of related-record "
 						"sets. Per set: `doctype` (the linked DocType to fetch, required — soft catalog/existence "
 						"check), `fromField` (a fetchable fieldname ON THE SOURCE whose value is the filter — "
-						"required, e.g. Lot.production_detail), `filterField` (a fetchable fieldname ON THE LINKED "
+						"required, e.g. Project.customer), `filterField` (a fetchable fieldname ON THE LINKED "
 						"doctype to match — required, e.g. 'name'), optional `title` (host-styled section heading; "
 						"markup-shaped strings HARD-fail), optional `limit` (1–20, default 5), and optional "
 						"`cardTemplate` (a ROW-scoped composite tree shaping each linked card's interior — SAME "
@@ -1179,7 +1174,7 @@ def build_catalog():
 		"composite_grammar": _composite_grammar_section(),
 		"registries": {
 			"metrics": _metrics_registry(),
-			"home_queue_metrics": list(HOME_QUEUE_METRICS),
+			"home_queue_metrics": list(get_home_queue_metrics()),
 			"calculations": _calculations_registry(),
 			"action_items": list(ACTION_ITEMS),
 		},

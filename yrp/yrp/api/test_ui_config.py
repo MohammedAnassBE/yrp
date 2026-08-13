@@ -47,7 +47,7 @@ LAYOUT_CONFIG = {
 				"id": "Production",
 				"label": "Production",
 				"items": [
-					{"doctype": "Lot", "icon": "pi pi-inbox"},
+					{"doctype": "Delivery Challan", "icon": "pi pi-inbox"},
 					{"doctype": "Work Order", "icon": "pi pi-bars"},
 				],
 			}
@@ -61,7 +61,7 @@ LAYOUT_CONFIG = {
 		}
 	},
 	"listViews": {},
-	"quickCreate": ["Lot"],
+	"quickCreate": ["Delivery Challan"],
 	"theme": {"mode": "user", "accent": None},
 }
 
@@ -96,13 +96,13 @@ class TestUIConfigMerge(IntegrationTestCase):
 
 	BASE = {
 		"schema_version": 1,
-		"nav": {"groups": [{"id": "A", "items": [{"doctype": "Lot"}]}], "hidden": {"Stock Entry": True}},
-		"quickCreate": ["Lot", "Work Order"],
+		"nav": {"groups": [{"id": "A", "items": [{"doctype": "Delivery Challan"}]}], "hidden": {"Stock Entry": True}},
+		"quickCreate": ["Delivery Challan", "Work Order"],
 		"theme": {"mode": "user", "accent": "#111111"},
 	}
 	DELTA = {
 		"schema_version": 1,
-		"nav": {"hidden": {"Stock Entry": False, "Lot": True}},
+		"nav": {"hidden": {"Stock Entry": False, "Delivery Challan": True}},
 		"quickCreate": ["Delivery Challan"],
 		"theme": {"accent": "#2563EB"},
 	}
@@ -144,7 +144,7 @@ class TestUIConfigMerge(IntegrationTestCase):
 	def test_null_skip_means_no_opinion(self):
 		out = merge(self.BASE, {"theme": {"accent": None}, "quickCreate": None})
 		self.assertEqual(out["theme"]["accent"], "#111111")
-		self.assertEqual(out["quickCreate"], ["Lot", "Work Order"])
+		self.assertEqual(out["quickCreate"], ["Delivery Challan", "Work Order"])
 
 	def test_whitelist_filters_unknown_top_level_keys(self):
 		delta = {"schema_version": 99, "evil": {"x": 1}, "theme": {"accent": "#2563EB"}}
@@ -158,8 +158,8 @@ class TestUIConfigMerge(IntegrationTestCase):
 
 	def test_hidden_reshow_through_dict_merge(self):
 		out = merge(self.BASE, self.DELTA)
-		# Upper layer re-shows Stock Entry (false wins) and hides Lot; composes.
-		self.assertEqual(out["nav"]["hidden"], {"Stock Entry": False, "Lot": True})
+		# Upper layer re-shows Stock Entry (false wins) and hides Delivery Challan; composes.
+		self.assertEqual(out["nav"]["hidden"], {"Stock Entry": False, "Delivery Challan": True})
 
 	def test_skeleton_guarantees_every_renderer_key(self):
 		skeleton = get_skeleton()
@@ -397,10 +397,32 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertEqual(meta["warnings"], [])
 		# Layout layer applied…
 		self.assertEqual(config["nav"]["groups"], LAYOUT_CONFIG["nav"]["groups"])
-		self.assertEqual(config["quickCreate"], ["Lot"])
+		self.assertEqual(config["quickCreate"], ["Delivery Challan"])
 		# …overrides on top: accent replaced, hidden dicts composed (rule 1).
 		self.assertEqual(config["theme"], {"mode": "user", "accent": "#2563EB"})
 		self.assertEqual(config["nav"]["hidden"], {"Work Order": True, "Stock Entry": True})
+
+	def test_selected_layout_terminology_is_returned_in_meta(self):
+		terminology = frappe.get_doc("YRP UI Terminology", TEST_LAYOUT)
+		terminology.set("terms", [])
+		terminology.append(
+			"terms",
+			{
+				"term_key": "purchase_order.books.sample.label",
+				"source_text": "Sample Book",
+				"tamil_text": "மாதிரி புக்",
+			},
+		)
+		terminology.save(ignore_permissions=True)
+		try:
+			_config, meta = resolve_config(TEST_USER)
+			self.assertEqual(
+				meta["terminology"]["purchase_order.books.sample.label"],
+				{"source": "Sample Book", "ta": "மாதிரி புக்"},
+			)
+		finally:
+			terminology.set("terms", [])
+			terminology.save(ignore_permissions=True)
 
 	def test_registered_experience_resolves_safe_key_and_props(self):
 		registered_config = {
@@ -602,11 +624,11 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertEqual(payload["config"]["theme"]["accent"], "#2563EB")
 		hints = payload["perm_hints"]
 		self.assertEqual(set(hints), {"can_read", "can_create"})
-		# Computed AS the target user, never as the SM caller: Lot/Work Order
+		# Computed AS the target user, never as the SM caller: Delivery Challan/Work Order
 		# grant read to role "All" (so the roleless user may read), but create
 		# needs a real role — Administrator (the caller) would have both full.
 		self.assertEqual(hints["can_create"], [])
-		self.assertTrue(set(hints["can_read"]) <= {"Lot", "Work Order"})
+		self.assertTrue(set(hints["can_read"]) <= {"Delivery Challan", "Work Order"})
 
 	def test_get_ui_config_for_layout_previews_bare_layout(self):
 		payload = get_ui_config_for(layout=TEST_LAYOUT)
@@ -617,8 +639,8 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertEqual(payload["config"]["nav"]["groups"], LAYOUT_CONFIG["nav"]["groups"])
 		# Perm hints = the caller's own (Administrator sees everything) over
 		# nav + quickCreate doctypes of the RESOLVED config.
-		self.assertEqual(payload["perm_hints"]["can_read"], ["Lot", "Work Order"])
-		self.assertEqual(payload["perm_hints"]["can_create"], ["Lot", "Work Order"])
+		self.assertEqual(payload["perm_hints"]["can_read"], ["Delivery Challan", "Work Order"])
+		self.assertEqual(payload["perm_hints"]["can_create"], ["Delivery Challan", "Work Order"])
 
 	def test_get_ui_config_for_unknown_disabled_or_broken_layout_fails_loudly(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -1321,7 +1343,7 @@ class TestUIConfigItem7StoryScroller(IntegrationTestCase):
 			self._block_warnings(
 				{
 					"source": "Work Order",
-					"fields": ["item", "status"],
+					"fields": ["supplier", "status"],
 					"limit": 8,
 					"orientation": "vertical",
 				}
@@ -1588,7 +1610,7 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		# M13: same soft rule as nav items — the client catalog drops a typo'd
 		# entry silently, so the save must surface it.
 		warnings = ui_config.validate_config(
-			{"schema_version": 1, "quickCreate": ["Lot", "No Such DocType"]}, layer="overrides"
+			{"schema_version": 1, "quickCreate": ["Item", "No Such DocType"]}, layer="overrides"
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("No Such DocType", warnings[0])
@@ -1671,7 +1693,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 
 	def test_existing_and_unknown_types_stay_warning_free(self):
 		for block in (
-			{"id": "q", "type": "home-queues", "props": {"stats": ["open_lots", "draft_dcs"]}},
+			{"id": "q", "type": "home-queues", "props": {"stats": ["open_wos", "draft_dcs"]}},
 			{"id": "q2", "type": "home-queues"},  # no props at all
 			{"id": "g", "type": "home-greeting", "props": {"greetingName": "Anna"}},
 			{"id": "x", "type": "some-future-block", "props": {"anything": ["goes"]}},
@@ -1696,7 +1718,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 
 	def test_non_object_props_warn_once_and_skip_per_type_checks(self):
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": "doctype=Lot"}
+			{"id": "r", "type": "record-list", "props": "doctype=Item"}
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("props must be an object", warnings[0])
@@ -1707,7 +1729,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		block = {
 			"id": "s",
 			"type": "summary-tiles",
-			"props": {"metrics": ["open_wos", "open_lots"]},
+			"props": {"metrics": ["open_wos", "total_wo"]},
 		}
 		self.assertEqual(self._block_warnings(block), [])
 		# metrics is optional — a bare summary-tiles block stays clean.
@@ -1758,10 +1780,10 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			"props": {
 				"doctype": "Work Order",
 				"variant": "kanban",
-				"columns": ["item", "status"],
+				"columns": ["supplier", "status"],
 				"pageSize": 25,
 				"groupBy": "status",
-				"titleField": "item",
+				"titleField": "supplier",
 				"title": "Orders",
 			},
 		}
@@ -1783,11 +1805,11 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": "Lot", "variant": good},
+				"props": {"doctype": "Item", "variant": good},
 			}
 			self.assertEqual(self._block_warnings(block), [], good)
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "variant": "list"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "variant": "list"}}
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("variant", warnings[0])
@@ -1797,12 +1819,12 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		# → one per-entry warning. Both messages now name the {field,label}
 		# object form the client ALSO accepts (item 17 mismatch fix).
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "columns": "name,status"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "columns": "name,status"}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("columns must be a list of fieldname strings or {field, label} objects", warnings[0])
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "columns": ["status", 7]}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "columns": ["disabled", 7]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("neither a fieldname string nor a {field, label} object", warnings[0])
@@ -1815,7 +1837,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			"type": "record-list",
 			"props": {
 				"doctype": "Work Order",
-				"columns": ["status", {"field": "item", "label": "Item"}],
+				"columns": ["status", {"field": "supplier", "label": "Supplier"}],
 			},
 		}
 		self.assertEqual(self._block_warnings(block), [])
@@ -1892,7 +1914,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 	def test_record_list_page_size_bounds(self):
 		for bad in (0, 51, True, "10"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "pageSize": bad}}
+				{"id": "r", "type": "record-list", "props": {"doctype": "Item", "pageSize": bad}}
 			)
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn("pageSize", warnings[0])
@@ -1900,14 +1922,14 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": "Lot", "pageSize": good},
+				"props": {"doctype": "Item", "pageSize": good},
 			}
 			self.assertEqual(self._block_warnings(block), [], good)
 
 	def test_record_list_string_props(self):
 		for key in ("groupBy", "titleField", "title"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": "Lot", key: 1}}
+				{"id": "r", "type": "record-list", "props": {"doctype": "Item", key: 1}}
 			)
 			self.assertEqual(len(warnings), 1, key)
 			self.assertIn(f"{key} must be a string", warnings[0])
@@ -1962,9 +1984,10 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		block = {
 			"id": "c",
 			"type": "calculator-panel",
-			"props": {"calculation": "lot_balance", "params": {"lot": "X"}},
+			"props": {"calculation": "test_calc", "params": {"value": "X"}},
 		}
-		self.assertEqual(self._block_warnings(block), [])
+		with patch.object(ui_config, "_known_calculation_keys", return_value={"test_calc"}):
+			self.assertEqual(self._block_warnings(block), [])
 
 	def test_calculator_panel_requires_a_calculation(self):
 		for block in (
@@ -1978,13 +2001,14 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			self.assertIn("calculation", warnings[0])
 
 	def test_calculator_panel_params_must_be_an_object(self):
-		warnings = self._block_warnings(
-			{
-				"id": "c",
-				"type": "calculator-panel",
-				"props": {"calculation": "lot_balance", "params": [1]},
-			}
-		)
+		with patch.object(ui_config, "_known_calculation_keys", return_value={"test_calc"}):
+			warnings = self._block_warnings(
+				{
+					"id": "c",
+					"type": "calculator-panel",
+					"props": {"calculation": "test_calc", "params": [1]},
+				}
+			)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("params must be an object", warnings[0])
 
@@ -2137,10 +2161,10 @@ class TestUIConfigCompositeBlock(IntegrationTestCase):
 class CompositeTreeTestBase(IntegrationTestCase):
 	"""Helpers only — no tests of its own."""
 
-	# Work Order source: item/supplier/status/lot/process_name/planned_quantity/
+	# Work Order source: item/supplier/status/process_name/planned_quantity/
 	# wo_date are real visible fields; total_quantity is a real HIDDEN field
 	# (fetchable but not renderable — the distinction under test).
-	SOURCE = {"metrics": ["open_wos", "open_lots"], "doctype": "Work Order", "limit": 5}
+	SOURCE = {"metrics": ["open_wos", "total_wo"], "doctype": "Work Order", "limit": 5}
 
 	@staticmethod
 	def _composite_warnings(tree, source=None, layer="layout"):
@@ -2221,7 +2245,7 @@ class TestUIConfigCompositeTreeValidFamily(CompositeTreeTestBase):
 								"align": "center",
 							},
 						},
-						{"type": "stat", "props": {"value": {"bind": "metrics.open_lots.value"}, "label": "Lots"}},
+						{"type": "stat", "props": {"value": {"bind": "metrics.total_wo.value"}, "label": "Work Orders"}},
 						{"type": "progress", "props": {"value": {"bind": "rows.0.planned_quantity"}, "tone": "muted"}},
 					],
 				},
@@ -3061,7 +3085,7 @@ class TestUIConfigItem17HomeQueuesStats(IntegrationTestCase):
 			{
 				"id": "q",
 				"type": "home-queues",
-				"props": {"stats": ["open_lots", "delayed", "completion"]},
+				"props": {"stats": ["open_wos", "delayed", "completion"]},
 			}
 		)
 		self.assertEqual(len(warnings), 2, warnings)
@@ -3080,7 +3104,7 @@ class TestUIConfigItem17HomeQueuesStats(IntegrationTestCase):
 		self.assertIn("'delayed_wos' is not a registered metric", warnings[0])
 
 	def test_stats_must_be_a_list_of_strings(self):
-		for bad in ("open_lots", {"a": 1}, ["open_lots", 7]):
+		for bad in ("open_wos", {"a": 1}, ["open_wos", 7]):
 			warnings = self._block_warnings(
 				{"id": "q", "type": "home-queues", "props": {"stats": bad}}
 			)
@@ -3108,8 +3132,9 @@ class TestUIConfigItem17CalculatorRegistry(IntegrationTestCase):
 		return ui_config.validate_config(cfg, layer="layout")
 
 	def test_registered_calculation_stays_warning_free(self):
-		block = {"id": "c", "type": "calculator-panel", "props": {"calculation": "lot_balance"}}
-		self.assertEqual(self._block_warnings(block), [])
+		block = {"id": "c", "type": "calculator-panel", "props": {"calculation": "test_calc"}}
+		with patch.object(ui_config, "_known_calculation_keys", return_value={"test_calc"}):
+			self.assertEqual(self._block_warnings(block), [])
 
 	def test_unregistered_calculation_warns_softly(self):
 		warnings = self._block_warnings(
@@ -3126,9 +3151,9 @@ class TestUIConfigItem17CalculatorRegistry(IntegrationTestCase):
 		self.assertEqual(warnings, [])
 
 	def test_known_calculation_keys_helper_reflects_the_registry(self):
-		from yrp.yrp.api.ui_metrics import CALCULATIONS
+		from yrp.yrp.api.ui_metrics import get_calculation_registry
 
-		self.assertEqual(ui_config._known_calculation_keys(), set(CALCULATIONS))
+		self.assertEqual(ui_config._known_calculation_keys(), set(get_calculation_registry()))
 
 
 class TestUIConfigItem17ListViews(IntegrationTestCase):
@@ -3154,9 +3179,9 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 				{
 					"Work Order": {
 						"variant": "kanban",
-						"columns": [{"field": "item"}, {"field": "supplier", "label": "Job-worker"}],
+						"columns": [{"field": "status"}, {"field": "supplier", "label": "Job-worker"}],
 						"groupBy": "process_name",
-						"titleField": "item",
+						"titleField": "supplier",
 					}
 				}
 			),
@@ -3168,14 +3193,14 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		# `if (!lc || !lc.field) continue` — a plain string has no .field, so
 		# EVERY string entry is skipped and an all-string list silently falls
 		# back to the meta defaults. The validator used to certify strings here.
-		warnings = self._warnings({"Work Order": {"columns": ["lot", "item", "status"]}})
+		warnings = self._warnings({"Work Order": {"columns": ["supplier", "process_name", "status"]}})
 		self.assertEqual(len(warnings), 3, warnings)
 		for w in warnings:
 			self.assertIn("DROPS string entries", w)
 		# The {field, label} spelling of the same columns is clean.
 		self.assertEqual(
 			self._warnings(
-				{"Work Order": {"columns": [{"field": "lot"}, {"field": "item"}, {"field": "status"}]}}
+				{"Work Order": {"columns": [{"field": "supplier"}, {"field": "process_name"}, {"field": "status"}]}}
 			),
 			[],
 		)
@@ -3231,7 +3256,7 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 	def test_off_catalog_doctype_key_warns(self):
 		# Catalog keeps the base config's nav doctypes so ONLY the listViews
 		# key under test ("Item" — real, off-catalog) warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Delivery Challan", "Work Order"}):
 			warnings = self._warnings({"Item": {"variant": "cards"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
@@ -3243,54 +3268,54 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		self.assertEqual(len(warnings), 1, warnings)  # existence check still runs
 
 	def test_non_object_value_warns_and_null_stays_silent(self):
-		warnings = self._warnings({"Lot": "cards"})
+		warnings = self._warnings({"Item": "cards"})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['Lot'] must be an object", warnings[0])
-		self.assertEqual(self._warnings({"Lot": None}), [])  # null = no opinion
+		self.assertIn("listViews['Item'] must be an object", warnings[0])
+		self.assertEqual(self._warnings({"Item": None}), [])  # null = no opinion
 
 	def test_unknown_key_inside_a_list_view_warns(self):
-		warnings = self._warnings({"Lot": {"pageSize": 5}})
+		warnings = self._warnings({"Item": {"pageSize": 5}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("unknown key 'pageSize' inside listViews['Lot']", warnings[0])
+		self.assertIn("unknown key 'pageSize' inside listViews['Item']", warnings[0])
 
 	def test_variant_vocabulary(self):
 		for good in ui_config.LIST_VIEW_VARIANTS:
-			self.assertEqual(self._warnings({"Lot": {"variant": good}}), [], good)
-		warnings = self._warnings({"Lot": {"variant": "grid"}})
+			self.assertEqual(self._warnings({"Item": {"variant": good}}), [], good)
+		warnings = self._warnings({"Item": {"variant": "grid"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['Lot'].variant 'grid' is not one of", warnings[0])
+		self.assertIn("listViews['Item'].variant 'grid' is not one of", warnings[0])
 
 	def test_column_fieldname_typo_warns(self):
 		warnings = self._warnings(
-			{"Lot": {"columns": [{"field": "lot_name"}, {"field": "no_such_field"}]}}
+			{"Item": {"columns": [{"field": "name1"}, {"field": "no_such_field"}]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("column 'no_such_field' is not a field on 'Lot'", warnings[0])
+		self.assertIn("column 'no_such_field' is not a field on 'Item'", warnings[0])
 
 	def test_column_object_families(self):
 		# Dead annotation key ("type" — the client reads only field/label).
 		warnings = self._warnings(
-			{"Lot": {"columns": [{"field": "lot_name", "label": "Lot", "type": "Date"}]}}
+			{"Item": {"columns": [{"field": "name1", "label": "Item", "type": "Date"}]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("key 'type' is ignored", warnings[0])
 		# Object without a usable field.
-		warnings = self._warnings({"Lot": {"columns": [{"label": "X"}]}})
+		warnings = self._warnings({"Item": {"columns": [{"label": "X"}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("needs a non-empty string 'field'", warnings[0])
 		# Non-string label.
-		warnings = self._warnings({"Lot": {"columns": [{"field": "lot_name", "label": 7}]}})
+		warnings = self._warnings({"Item": {"columns": [{"field": "name1", "label": 7}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("label must be a string", warnings[0])
 
 	def test_group_by_and_title_field_checked_against_meta(self):
 		for key in ("groupBy", "titleField"):
-			warnings = self._warnings({"Lot": {key: "no_such_field"}})
+			warnings = self._warnings({"Item": {key: "no_such_field"}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
-			self.assertIn(f"listViews['Lot'].{key} 'no_such_field' is not a field on 'Lot'", warnings[0])
-			warnings = self._warnings({"Lot": {key: 7}})
+			self.assertIn(f"listViews['Item'].{key} 'no_such_field' is not a field on 'Item'", warnings[0])
+			warnings = self._warnings({"Item": {key: 7}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
-			self.assertIn(f"listViews['Lot'].{key} must be a fieldname string", warnings[0])
+			self.assertIn(f"listViews['Item'].{key} must be a fieldname string", warnings[0])
 
 	# ── listViews cardTemplate (Track 1 item 2) ───────────────────────────
 
@@ -3334,9 +3359,9 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 			self.assertIn("cardTemplate does nothing without variant 'cards' or 'kanban'", warnings[0])
 
 	def test_overrides_layer_gets_the_same_deep_checks(self):
-		warnings = self._warnings({"Lot": {"variant": "grid"}}, layer="overrides")
+		warnings = self._warnings({"Item": {"variant": "grid"}}, layer="overrides")
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("overrides: listViews['Lot'].variant 'grid'", warnings[0])
+		self.assertIn("overrides: listViews['Item'].variant 'grid'", warnings[0])
 
 
 class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
@@ -3358,8 +3383,8 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		}
 
 	def test_web_doctype_catalog_helper_reads_the_hook_fail_safe(self):
-		with patch.object(frappe, "get_hooks", return_value=["Lot", "Item"]):
-			self.assertEqual(ui_config._web_doctype_catalog(), {"Lot", "Item"})
+		with patch.object(frappe, "get_hooks", return_value=["Item", "Item"]):
+			self.assertEqual(ui_config._web_doctype_catalog(), {"Item", "Item"})
 		with patch.object(frappe, "get_hooks", return_value=[]):
 			self.assertIsNone(ui_config._web_doctype_catalog())
 		with patch.object(frappe, "get_hooks", side_effect=RuntimeError):
@@ -3371,20 +3396,22 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		catalog = ui_config._web_doctype_catalog()
 		if catalog is None:
 			self.skipTest("no yrp_web_doctype_catalog hook on this site")
-		self.assertIn("Lot", catalog)
+		self.assertIn("Item", catalog)
 		self.assertIn("Terms and Condition", catalog)
 
 	def test_existing_but_off_catalog_nav_doctype_warns(self):
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot"}):
+		with patch.object(
+			ui_config, "_web_doctype_catalog", return_value={"Item", "Delivery Challan"}
+		):
 			warnings = self._nav_warnings(
-				self._items_nav([{"doctype": "Lot"}, {"doctype": "Work Order"}])
+				self._items_nav([{"doctype": "Item"}, {"doctype": "Work Order"}])
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("nav doctype 'Work Order' is not in the /web doctype catalog", warnings[0])
 
 	def test_view_home_item_is_soft_not_a_hard_error(self):
 		warnings = self._nav_warnings(
-			self._items_nav([{"view": "home"}, {"doctype": "Lot"}])
+			self._items_nav([{"view": "home"}, {"doctype": "Item"}])
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("{'view': 'home'} is redundant", warnings[0])
@@ -3395,14 +3422,14 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 	def test_duplicate_nav_doctypes_and_group_ids_warn(self):
 		nav = {
 			"groups": [
-				{"id": "A", "label": "A", "items": [{"doctype": "Lot"}, {"doctype": "Lot"}]},
-				{"id": "A", "label": "Again", "items": [{"doctype": "Lot"}]},
+				{"id": "A", "label": "A", "items": [{"doctype": "Item"}, {"doctype": "Item"}]},
+				{"id": "A", "label": "Again", "items": [{"doctype": "Item"}]},
 			],
 			"hidden": {},
 		}
 		warnings = self._nav_warnings(nav)
 		self.assertEqual(len(warnings), 2, warnings)
-		self.assertTrue(any("nav doctype 'Lot' appears 3 times" in w for w in warnings))
+		self.assertTrue(any("nav doctype 'Item' appears 3 times" in w for w in warnings))
 		self.assertTrue(any("nav group id 'A' appears 2 times" in w for w in warnings))
 
 	def test_unknown_keys_warn_at_every_nav_level(self):
@@ -3414,7 +3441,7 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 					"id": "G",
 					"label": "G",
 					"colour": "red",
-					"items": [{"doctype": "Lot", "label": "My Lots"}],
+					"items": [{"doctype": "Item", "label": "My Lots"}],
 				}
 			],
 			"hidden": {},
@@ -3425,13 +3452,13 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		self.assertTrue(any("unknown key 'colour' inside nav group" in w for w in warnings))
 		self.assertTrue(
 			any(
-				"unknown key 'label' inside nav item 'Lot' — the client reads only doctype/icon" in w
+				"unknown key 'label' inside nav item 'Item' — the client reads only doctype/icon" in w
 				for w in warnings
 			)
 		)
 
 	def test_dead_nav_hidden_target_warns_on_layout_layer_only(self):
-		nav = self._items_nav([{"doctype": "Lot"}], hidden={"Delivery Challan": True})
+		nav = self._items_nav([{"doctype": "Item"}], hidden={"Delivery Challan": True})
 		warnings = self._nav_warnings(nav)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn(
@@ -3443,11 +3470,11 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		)
 
 	def test_quick_create_off_catalog_warns(self):
-		# Catalog keeps the base config's nav doctypes (Lot, Work Order) so
+		# Catalog keeps the base config's nav doctypes so
 		# only the off-catalog quickCreate entry warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Delivery Challan", "Work Order"}):
 			warnings = ui_config.validate_config(
-				dict(LAYOUT_CONFIG, quickCreate=["Lot", "Item"]), layer="layout"
+				dict(LAYOUT_CONFIG, quickCreate=["Delivery Challan", "Item"]), layer="layout"
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("quickCreate doctype 'Item' is not in the /web doctype catalog", warnings[0])
@@ -3531,7 +3558,7 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 
 	def test_unknown_prop_on_a_known_block_type_warns(self):
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": "Lot", "pagesize": 8}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "pagesize": 8}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn(
@@ -3556,7 +3583,7 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("'No Such DocType' does not exist as a DocType", warnings[0])
 		# Catalog keeps the base config's nav doctypes so only the block warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Delivery Challan", "Work Order"}):
 			warnings = self._block_warnings(
 				{"id": "recent", "type": "home-recent", "props": {"doctypes": ["Item"]}}
 			)
@@ -3570,7 +3597,7 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 				{
 					"id": "g",
 					"type": "home-greeting",
-					"props": {"newCta": {"primary": "Lot", "menu": ["Work Order"]}},
+					"props": {"newCta": {"primary": "Delivery Challan", "menu": ["Work Order"]}},
 				}
 			),
 			[],
@@ -3579,7 +3606,7 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 			"newCta.primary must be a DocType name": {"primary": 7},
 			"'No Such DocType' does not exist as a DocType": {"primary": "No Such DocType"},
 			"newCta.menu must be a list of DocType names": {"menu": "Work Order"},
-			"unknown key 'colour' inside newCta": {"primary": "Lot", "colour": "red"},
+			"unknown key 'colour' inside newCta": {"primary": "Delivery Challan", "colour": "red"},
 		}
 		for fragment, new_cta in cases.items():
 			warnings = self._block_warnings(
@@ -3588,12 +3615,12 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 			self.assertEqual(len(warnings), 1, f"{new_cta}: {warnings}")
 			self.assertIn(fragment, warnings[0])
 		# Catalog keeps the base config's nav doctypes so only newCta warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Delivery Challan", "Work Order"}):
 			warnings = self._block_warnings(
 				{
 					"id": "g",
 					"type": "home-greeting",
-					"props": {"newCta": {"primary": "Lot", "menu": ["Item"]}},
+					"props": {"newCta": {"primary": "Delivery Challan", "menu": ["Item"]}},
 				}
 			)
 		self.assertEqual(len(warnings), 1, warnings)
@@ -3629,7 +3656,7 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 		self.assertEqual(self._nav_warnings({"shell": "mobile-shell"}), [])
 		self.assertEqual(
 			self._nav_warnings(
-				{"footer": [{"doctype": "Lot", "icon": "pi pi-cog"}, {"doctype": "Work Order"}]}
+				{"footer": [{"doctype": "Item", "icon": "pi pi-cog"}, {"doctype": "Work Order"}]}
 			),
 			[],
 		)
@@ -3674,25 +3701,25 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 		self.assertIn("nav.overflow must be an integer", warnings[0])
 
 	def test_footer_off_catalog_unknown_key_and_duplicate_soft_warn(self):
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Lot", "Work Order"}):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Delivery Challan", "Work Order"}):
 			warnings = self._nav_warnings(
-				{"footer": [{"doctype": "Item", "label": "x"}, {"doctype": "Lot"}, {"doctype": "Lot"}]}
+				{"footer": [{"doctype": "Item", "label": "x"}, {"doctype": "Item"}, {"doctype": "Item"}]}
 			)
 		self.assertEqual(len(warnings), 3, warnings)
 		self.assertTrue(
 			any("nav.footer doctype 'Item' is not in the /web doctype catalog" in w for w in warnings)
 		)
 		self.assertTrue(any("unknown key 'label' inside nav.footer item 'Item'" in w for w in warnings))
-		self.assertTrue(any("nav.footer doctype 'Lot' appears 2 times" in w for w in warnings))
+		self.assertTrue(any("nav.footer doctype 'Item' appears 3 times" in w for w in warnings))
 
 	# ── structurally-bad hard ────────────────────────────────────────────────
 	def test_footer_structural_shapes_hard_error(self):
-		for bad in ({"footer": "Lot"}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
+		for bad in ({"footer": "Item"}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
 			with self.assertRaises(frappe.ValidationError):
 				self._nav_warnings(bad)
 		# A malformed footer icon is a hard error (same rule as group items).
 		with self.assertRaises(frappe.ValidationError):
-			self._nav_warnings({"footer": [{"doctype": "Lot", "icon": "cog"}]})
+			self._nav_warnings({"footer": [{"doctype": "Item", "icon": "cog"}]})
 
 	def test_new_nav_family_checks_run_on_overrides_layer_too(self):
 		warnings = self._nav_warnings({"sidebar": "docked"}, layer="overrides")
@@ -3736,7 +3763,7 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 		# colourBy may also name a real renderable field.
 		self.assertEqual(self._warnings({"Work Order": {"colourBy": "process_name"}}), [])
 		# Flags with variant absent (defaults to table) are clean too.
-		self.assertEqual(self._warnings({"Lot": {"rowSize": "comfortable", "monoId": True}}), [])
+		self.assertEqual(self._warnings({"Item": {"rowSize": "comfortable", "monoId": True}}), [])
 
 	def test_flag_keys_are_not_unknown_keys(self):
 		# LIST_VIEW_KEYS grew the six flags — none draws the unknown-key warning.
@@ -3748,16 +3775,16 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 			("headerBand", True),
 			("edgeStatus", True),
 		):
-			self.assertEqual(self._warnings({"Lot": {flag: value}}), [], flag)
+			self.assertEqual(self._warnings({"Item": {flag: value}}), [], flag)
 
 	# ── unknown value soft-warns ─────────────────────────────────────────────
 	def test_rowsize_and_chipstyle_off_vocabulary_soft_warn(self):
-		warnings = self._warnings({"Lot": {"rowSize": "huge"}})
+		warnings = self._warnings({"Item": {"rowSize": "huge"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['Lot'].rowSize 'huge' is not one of", warnings[0])
-		warnings = self._warnings({"Lot": {"chipStyle": "pills"}})
+		self.assertIn("listViews['Item'].rowSize 'huge' is not one of", warnings[0])
+		warnings = self._warnings({"Item": {"chipStyle": "pills"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['Lot'].chipStyle 'pills' is not one of", warnings[0])
+		self.assertIn("listViews['Item'].chipStyle 'pills' is not one of", warnings[0])
 
 	def test_colour_by_fieldname_typo_warns_and_status_keyword_is_clean(self):
 		warnings = self._warnings({"Work Order": {"colourBy": "no_such_field"}})
@@ -3771,9 +3798,9 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 
 	def test_boolean_flags_reject_non_booleans_softly(self):
 		for flag in ("monoId", "headerBand", "edgeStatus"):
-			warnings = self._warnings({"Lot": {flag: "yes"}})
+			warnings = self._warnings({"Item": {flag: "yes"}})
 			self.assertEqual(len(warnings), 1, f"{flag}: {warnings}")
-			self.assertIn(f"listViews['Lot'].{flag} should be a boolean", warnings[0])
+			self.assertIn(f"listViews['Item'].{flag} should be a boolean", warnings[0])
 
 	def test_table_flags_are_dead_on_card_variants(self):
 		for variant in ("cards", "kanban"):
@@ -3787,9 +3814,9 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 			self.assertIn(f"the '{variant}' variant", warnings[0])
 
 	def test_overrides_layer_gets_the_same_flag_checks(self):
-		warnings = self._warnings({"Lot": {"rowSize": "huge"}}, layer="overrides")
+		warnings = self._warnings({"Item": {"rowSize": "huge"}}, layer="overrides")
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("overrides: listViews['Lot'].rowSize 'huge'", warnings[0])
+		self.assertIn("overrides: listViews['Item'].rowSize 'huge'", warnings[0])
 
 	# ── structurally-bad hard ────────────────────────────────────────────────
 	def test_listviews_non_object_still_hard_errors(self):
@@ -3808,23 +3835,23 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 
 	VALID_RELATED: ClassVar[dict] = {
 		"related": {
-			"Lot": [
+			"Work Order": [
 				{
-					"doctype": "Item Production Detail",
-					"fromField": "production_detail",
+					"doctype": "Supplier",
+					"fromField": "supplier",
 					"filterField": "name",
-					"title": "Production Detail",
+					"title": "Supplier",
 					"limit": 1,
 					"cardTemplate": {
 						"type": "kv-row",
-						"props": {"label": "Item", "value": {"bind": "item"}},
+						"props": {"label": "Supplier", "value": {"bind": "supplier_name"}},
 					},
 				},
 				{
-					"doctype": "Production Order",
-					"fromField": "production_order",
+					"doctype": "Process",
+					"fromField": "process_name",
 					"filterField": "name",
-					"title": "Production Order (PPO)",
+					"title": "Process",
 					"limit": 1,
 				},
 			]
@@ -3848,14 +3875,14 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		self.assertTrue(any("No Such DocType" in x for x in w), w)
 
 	def test_missing_required_entry_keys_warn(self):
-		w = self._layout_warnings({"related": {"Lot": [{"title": "x"}]}})
+		w = self._layout_warnings({"related": {"Item": [{"title": "x"}]}})
 		self.assertTrue(any("doctype is required" in x for x in w), w)
 		self.assertTrue(any("fromField is required" in x for x in w), w)
 		self.assertTrue(any("filterField is required" in x for x in w), w)
 
 	def test_nonexistent_target_doctype_warns(self):
 		w = self._layout_warnings(
-			{"related": {"Lot": [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
+			{"related": {"Item": [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
 		)
 		self.assertTrue(any("Nope DT" in x and "does not exist" in x for x in w), w)
 
@@ -3863,7 +3890,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		w = self._layout_warnings(
 			{
 				"related": {
-					"Lot": [
+					"Item": [
 						{
 							"doctype": "Item Production Detail",
 							"fromField": "not_a_lot_field",
@@ -3878,13 +3905,13 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 
 	def test_out_of_range_limit_warns(self):
 		w = self._layout_warnings(
-			{"related": {"Lot": [{"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name", "limit": 999}]}}
+			{"related": {"Item": [{"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name", "limit": 999}]}}
 		)
 		self.assertTrue(any("limit must be an integer" in x for x in w), w)
 
 	def test_too_many_sets_warns(self):
 		one = {"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name"}
-		w = self._layout_warnings({"related": {"Lot": [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}})
+		w = self._layout_warnings({"related": {"Item": [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}})
 		self.assertTrue(any("sets" in x and "keep it under" in x for x in w), w)
 
 	# ── hard fails (shape + injection) ────────────────────────────────────
@@ -3895,7 +3922,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 	def test_markup_title_hard_fails(self):
 		with self.assertRaises(frappe.ValidationError):
 			self._layout_warnings(
-				{"related": {"Lot": [{"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name", "title": "<script>x</script>"}]}}
+				{"related": {"Item": [{"doctype": "Item Production Detail", "fromField": "production_detail", "filterField": "name", "title": "<script>x</script>"}]}}
 			)
 
 	def test_cardtemplate_injection_hard_fails(self):
@@ -3903,7 +3930,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 			self._layout_warnings(
 				{
 					"related": {
-						"Lot": [
+						"Item": [
 							{
 								"doctype": "Item Production Detail",
 								"fromField": "production_detail",
@@ -3917,32 +3944,32 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 
 	# ── get_related endpoint: permission-gating + injection-safety ─────────
 	def test_get_related_happy_path(self):
-		# UI Layout "Default" always exists — a deterministic fixture-free row.
-		rows = ui_config.get_related("UI Layout", "name", "Default", fields=json.dumps(["layout_name"]))
+		# The Administrator user is a deterministic framework row on every site.
+		rows = ui_config.get_related("User", "name", "Administrator", fields=json.dumps(["full_name"]))
 		self.assertEqual(len(rows), 1)
-		self.assertEqual(rows[0]["name"], "Default")
-		self.assertIn("layout_name", rows[0])  # requested field fetched
+		self.assertEqual(rows[0]["name"], "Administrator")
+		self.assertIn("full_name", rows[0])  # requested field fetched
 		self.assertIn("modified", rows[0])  # base field always fetched
 
 	def test_get_related_off_meta_filter_field_returns_empty(self):
-		self.assertEqual(ui_config.get_related("UI Layout", "totally_bogus", "Default"), [])
+		self.assertEqual(ui_config.get_related("User", "totally_bogus", "Administrator"), [])
 
 	def test_get_related_nonexistent_doctype_returns_empty(self):
 		self.assertEqual(ui_config.get_related("No Such DocType", "name", "x"), [])
 
 	def test_get_related_empty_filter_value_returns_empty(self):
-		self.assertEqual(ui_config.get_related("UI Layout", "name", ""), [])
+		self.assertEqual(ui_config.get_related("User", "name", ""), [])
 
 	def test_get_related_non_scalar_filter_value_returns_empty(self):
 		# A Frappe operator form must NOT slip through the equality contract.
-		self.assertEqual(ui_config.get_related("UI Layout", "name", ["like", "%Default%"]), [])
+		self.assertEqual(ui_config.get_related("User", "name", ["like", "%Administrator%"]), [])
 
 	def test_get_related_bogus_requested_fields_are_dropped(self):
-		rows = ui_config.get_related("UI Layout", "name", "Default", fields=json.dumps(["layout_name", "__nope__"]))
+		rows = ui_config.get_related("User", "name", "Administrator", fields=json.dumps(["full_name", "__nope__"]))
 		self.assertEqual(len(rows), 1)
 		self.assertNotIn("__nope__", rows[0])
 
 	def test_get_related_returns_empty_without_read_permission(self):
 		# Arrangement never grants capability: no read on the doctype ⇒ [] (never raises).
 		with patch("frappe.has_permission", return_value=False):
-			self.assertEqual(ui_config.get_related("UI Layout", "name", "Default"), [])
+			self.assertEqual(ui_config.get_related("User", "name", "Administrator"), [])

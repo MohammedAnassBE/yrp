@@ -13,6 +13,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
+from yrp.stock.dimensions import get_stock_dimensions
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
@@ -27,16 +28,12 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 )
 
 
-def _test_lot():
-	existing = frappe.db.get_value("Lot", {"lot_name": ["like", "_T_GRN_Lot%"]}, "name")
-	if existing:
-		return existing
-	doc = frappe.get_doc({
-		"doctype": "Lot",
-		"lot_name": f"_T_GRN_Lot_{frappe.generate_hash(length=6)}",
-	})
-	doc.insert(ignore_permissions=True, ignore_mandatory=True)
-	return doc.name
+def _row_dimensions(row):
+	return {
+		dimension["fieldname"]: row.get(dimension["fieldname"])
+		for dimension in get_stock_dimensions()
+		if row.get(dimension["fieldname"])
+	}
 
 
 def _company_supplier(prefix):
@@ -79,7 +76,7 @@ def _make_wo(sender_supplier, receiver_location, qty=10):
 			"uom": uom,
 			"table_index": 0,
 			"row_index": 0,
-			"lot": _test_lot(),
+			**dimensions,
 		}],
 		"receivables": [{
 			"item_variant": item_variant,
@@ -88,7 +85,7 @@ def _make_wo(sender_supplier, receiver_location, qty=10):
 			"cost": 12,
 			"table_index": 0,
 			"row_index": 0,
-			"lot": _test_lot(),
+			**dimensions,
 		}],
 		"work_order_calculated_items": [{
 			"item_variant": item_variant,
@@ -105,6 +102,7 @@ def _make_wo(sender_supplier, receiver_location, qty=10):
 
 def _make_grn(wo, from_wh, to_wh, item_variant, uom, qty=5):
 	receivable = wo.receivables[0]
+	dimensions = _row_dimensions(receivable)
 	grn = frappe.get_doc({
 		"doctype": "Goods Received Note",
 		"against": "Work Order",
@@ -128,7 +126,7 @@ def _make_grn(wo, from_wh, to_wh, item_variant, uom, qty=5):
 			"ref_docname": receivable.name,
 			"table_index": 0,
 			"row_index": "0",
-			"lot": _test_lot(),
+			**dimensions,
 		}],
 	})
 	grn.insert(ignore_permissions=True)

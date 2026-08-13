@@ -1,7 +1,6 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "hash",
  "creation": "2026-05-08 00:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
@@ -16,6 +15,7 @@
   "stock_uom",
   "conversion_factor",
   "rate",
+  "delivery_location",
   "tax",
   "discount_percentage",
   "amount",
@@ -26,8 +26,10 @@
   "received_quantity",
   "cancelled_quantity",
   "delivery_date",
+  "expected_delivery_date",
   "table_index",
   "row_index",
+  "additional_parameters",
   "set_combination",
   "comments"
  ],
@@ -86,6 +88,12 @@
    "in_list_view": 1,
    "label": "Rate",
    "precision": "3"
+  },
+  {
+   "fieldname": "delivery_location",
+   "fieldtype": "Link",
+   "label": "Delivery Location",
+   "options": "Supplier"
   },
   {
    "fieldname": "tax",
@@ -157,6 +165,11 @@
    "label": "Delivery Date"
   },
   {
+   "fieldname": "expected_delivery_date",
+   "fieldtype": "Date",
+   "label": "Expected Delivery Date"
+  },
+  {
    "fieldname": "table_index",
    "fieldtype": "Int",
    "label": "Table Index",
@@ -167,6 +180,11 @@
    "fieldtype": "Data",
    "label": "Row Index",
    "read_only": 1
+  },
+  {
+   "fieldname": "additional_parameters",
+   "fieldtype": "Text",
+   "label": "Additional Parameters"
   },
   {
    "fieldname": "set_combination",
@@ -198,7 +216,6 @@
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "Purchase Order Item",
- "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [],
  "row_format": "Dynamic",

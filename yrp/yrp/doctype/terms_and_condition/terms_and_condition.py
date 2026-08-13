@@ -41,13 +41,18 @@ def get_default_terms(transaction_type, supplier=None):
 	if transaction_type not in (PO, WO):
 		return None
 
-	supplier_field = "po_terms_and_condition" if transaction_type == PO else "wo_terms_and_condition"
+	supplier_fields = (
+		("po_terms_and_condition",)
+		if transaction_type == PO
+		else ("terms_and_condition", "wo_terms_and_condition")
+	)
 	default_flag = "is_default_po_term" if transaction_type == PO else "is_default_wo_term"
 
 	if supplier:
-		mapped = frappe.db.get_value("Supplier", supplier, supplier_field)
-		if mapped:
-			return mapped
+		for supplier_field in supplier_fields:
+			mapped = frappe.db.get_value("Supplier", supplier, supplier_field)
+			if mapped:
+				return mapped
 
 	txn_default = frappe.db.get_value("Terms and Condition", {default_flag: 1}, "name")
 	if txn_default:

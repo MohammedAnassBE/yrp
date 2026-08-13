@@ -10,6 +10,9 @@ from yrp.yrp.api.ui_config import (
 
 
 class UILayout(Document):
+	def after_insert(self):
+		self._ensure_terminology()
+
 	def validate(self):
 		# Hard errors raise inside validate_config and block the save;
 		# soft issues come back as warning strings (spec §3.1).
@@ -50,3 +53,23 @@ class UILayout(Document):
 					"Set Disabled to retire it instead."
 				).format(frappe.bold(DEFAULT_LAYOUT_NAME))
 			)
+
+		# App code can be newer than an individual site's schema during a rolling
+		# deploy. Keep the existing UI Layout lifecycle usable until that site is
+		# migrated and the terminology tables exist.
+		if frappe.db.table_exists("YRP UI Terminology"):
+			terminology = frappe.db.get_value("YRP UI Terminology", {"ui_layout": self.name}, "name")
+			if terminology:
+				frappe.delete_doc("YRP UI Terminology", terminology, ignore_permissions=True, force=True)
+
+	def _ensure_terminology(self):
+		if not frappe.db.exists("DocType", "YRP UI Terminology"):
+			return
+		if frappe.db.exists("YRP UI Terminology", {"ui_layout": self.name}):
+			return
+		frappe.get_doc(
+			{
+				"doctype": "YRP UI Terminology",
+				"ui_layout": self.name,
+			}
+		).insert(ignore_permissions=True)

@@ -14,6 +14,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
+from yrp.stock.dimensions import get_dimension_fieldnames
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
 	_purchase_order,
@@ -177,11 +178,16 @@ class TestInspectionEntry(FrappeTestCase):
 		# Split one row into source + rejected.
 		default_row = ie.items[0]
 		default_row.qty = 7
+		dimensions = {
+			fieldname: default_row.get(fieldname)
+			for fieldname in get_dimension_fieldnames()
+			if fieldname != "received_type" and default_row.get(fieldname)
+		}
 		ie.append("items", {
 			"item_variant": default_row.item_variant,
 			"warehouse": default_row.warehouse,
 			"received_type": default_row.received_type,
-			"lot": default_row.get("lot"),
+			**dimensions,
 			"grn_qty": default_row.grn_qty,
 			"qty": 3,
 			"target_received_type": self.rejected_rt,

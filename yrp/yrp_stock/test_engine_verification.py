@@ -35,6 +35,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import nowdate, nowtime
 
 from yrp.stock.api import get_total_stock
+from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import (
 	close_voucher_reservations,
 	get_last_sle_rate,
@@ -77,8 +78,22 @@ ITEM_UOM = (
 	)
 	or "Piece"
 )
-TEST_LOT = frappe.db.get_value("Lot", {}, "name")
-ACCEPTED_DIMS = {"lot": TEST_LOT, "received_type": "Accepted"} if TEST_LOT else {"received_type": "Accepted"}
+
+
+def _test_dimensions():
+	values = {}
+	for dimension in get_stock_dimensions():
+		fieldname = dimension["fieldname"]
+		value = None
+		if fieldname == "received_type":
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
+		value = value or frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
+		if value:
+			values[fieldname] = value
+	return values
+
+
+ACCEPTED_DIMS = _test_dimensions()
 
 
 def _wh(suffix):
@@ -130,7 +145,7 @@ class TestEngineVerification(FrappeTestCase):
 	def test_C4_get_or_make_bin_succeeds_with_dim(self):
 		wh = _wh("C4b")
 		_seed(10, 50, wh)
-		bin_name = get_or_make_bin(ITEM_VARIANT, wh, received_type="Accepted")
+		bin_name = get_or_make_bin(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 		self.assertTrue(bin_name)
 		self.assertEqual(
 			frappe.db.get_value("Bin", bin_name, "warehouse"), wh
@@ -149,7 +164,7 @@ class TestEngineVerification(FrappeTestCase):
 				"available_qty": 9999,
 				"voucher_type": "Stock Update",
 				"voucher_no": voucher_no,
-				"received_type": "Accepted",
+				**ACCEPTED_DIMS,
 			}
 		)
 		sre.flags.ignore_permissions = True
@@ -164,7 +179,7 @@ class TestEngineVerification(FrappeTestCase):
 		_seed(50, 100, wh)
 		self._make_sre(7, "SRE-VERIFY-C6-1", wh)
 		reserved = get_sre_reserved_qty(
-			item_code=ITEM_VARIANT, warehouse=wh, received_type="Accepted"
+			item_code=ITEM_VARIANT, warehouse=wh, **ACCEPTED_DIMS
 		)
 		self.assertAlmostEqual(reserved, 7.0)
 
@@ -174,14 +189,14 @@ class TestEngineVerification(FrappeTestCase):
 		self._make_sre(7, "SRE-VERIFY-H1-1", wh)
 
 		full = get_sre_reserved_qty(
-			item_code=ITEM_VARIANT, warehouse=wh, received_type="Accepted"
+			item_code=ITEM_VARIANT, warehouse=wh, **ACCEPTED_DIMS
 		)
 		excluded = get_sre_reserved_qty(
 			item_code=ITEM_VARIANT,
 			warehouse=wh,
-			received_type="Accepted",
 			exclude_voucher_type="Stock Update",
 			exclude_voucher_name="SRE-VERIFY-H1-1",
+			**ACCEPTED_DIMS,
 		)
 		self.assertAlmostEqual(full, 7.0)
 		self.assertAlmostEqual(excluded, 0.0)
@@ -202,7 +217,7 @@ class TestEngineVerification(FrappeTestCase):
 		wh = _wh("F1a")
 		_seed(20, 73, wh)
 		rate, matched = get_last_sle_rate(
-			ITEM_VARIANT, warehouse=wh, received_type="Accepted"
+			ITEM_VARIANT, warehouse=wh, **ACCEPTED_DIMS
 		)
 		self.assertAlmostEqual(rate, 73.0)
 		self.assertTrue(matched)
@@ -212,7 +227,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Fallback should pick up the global last item-rate (>0).
 		fresh = _wh("F1b_unused")
 		rate, matched = get_last_sle_rate(
-			ITEM_VARIANT, warehouse=fresh, received_type="Accepted"
+			ITEM_VARIANT, warehouse=fresh, **ACCEPTED_DIMS
 		)
 		self.assertGreater(rate, 0)
 		self.assertFalse(matched)
@@ -242,7 +257,7 @@ class TestEngineVerification(FrappeTestCase):
 		wh = _wh("D2")
 		_seed(10, 50, wh)
 		out = get_stock_balance(
-			ITEM_VARIANT, wh, with_stale=True, received_type="Accepted"
+			ITEM_VARIANT, wh, with_stale=True, **ACCEPTED_DIMS
 		)
 		self.assertEqual(set(out.keys()), {"actual_qty", "valuation_rate", "stale", "stale_reason"})
 		self.assertFalse(out["stale"])
@@ -335,7 +350,7 @@ class TestEngineVerification(FrappeTestCase):
 					{
 						"item_variant": ITEM_VARIANT,
 						"update_diff_qty": 10,
-						"received_type": "Accepted",
+						**ACCEPTED_DIMS,
 					}
 				],
 			}
@@ -344,7 +359,7 @@ class TestEngineVerification(FrappeTestCase):
 		reduce_doc.insert(ignore_permissions=True)
 		reduce_doc.submit()
 
-		bal = get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted")
+		bal = get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 		self.assertLess(bal, 0)
 
 		# Toggle off → must throw.
@@ -419,7 +434,7 @@ class TestEngineVerification(FrappeTestCase):
 					{
 						"item_variant": ITEM_VARIANT,
 						"update_diff_qty": 25,
-						"received_type": "Accepted",
+						**ACCEPTED_DIMS,
 					}
 				],
 			}
@@ -461,7 +476,7 @@ class TestEngineVerification(FrappeTestCase):
 					{
 						"item_variant": ITEM_VARIANT,
 						"update_diff_qty": 18,
-						"received_type": "Accepted",
+						**ACCEPTED_DIMS,
 					}
 				],
 			}
@@ -494,7 +509,7 @@ class TestEngineVerification(FrappeTestCase):
 					{
 						"item_variant": ITEM_VARIANT,
 						"update_diff_qty": 8,
-						"received_type": "Accepted",
+						**ACCEPTED_DIMS,
 					}
 				],
 			}
@@ -673,7 +688,7 @@ class TestEngineVerification(FrappeTestCase):
 
 		# Querying a specific received_type value should still count this NULL SRE.
 		reserved = get_sre_reserved_qty(
-			item_code=ITEM_VARIANT, warehouse=wh, received_type="Accepted"
+			item_code=ITEM_VARIANT, warehouse=wh, **ACCEPTED_DIMS
 		)
 		self.assertGreaterEqual(reserved, 7.0)
 
@@ -704,7 +719,7 @@ class TestEngineVerification(FrappeTestCase):
 		riv.db_update()
 
 		out = get_stock_balance(
-			ITEM_VARIANT, wh, with_stale=True, received_type="Accepted"
+			ITEM_VARIANT, wh, with_stale=True, **ACCEPTED_DIMS
 		)
 		self.assertTrue(out["stale"])
 		self.assertEqual(out["stale_reason"], "Repost Item Valuation in progress")
@@ -809,6 +824,7 @@ class TestEngineVerification(FrappeTestCase):
 						"uom": ITEM_UOM,
 						"row_index": 0,
 						"table_index": 0,
+						**ACCEPTED_DIMS,
 						"received_type": "_Verify_Rejected",
 					}
 				],
@@ -838,10 +854,12 @@ class TestEngineVerification(FrappeTestCase):
 		self.assertIn("create_dimension_fields", src)
 		self.assertIn("clear_dimension_cache", src)
 
-	# Bug B — create_dimension_fields hardcodes reqd=1 even if mandatory=0
-	def test_BugB_create_dimension_fields_hardcodes_reqd(self):
-		"""r-010 Critical #5: every dimension Custom Field must be reqd=1
-		regardless of the YRP Stock Dimension.mandatory toggle."""
+	# Bug B — stock-ledger dimension fields remain mandatory
+	def test_BugB_stock_ledger_dimension_field_is_required(self):
+		"""r-010 Critical #5: stock-ledger dimension fields must remain required.
+
+		Planning-only targets such as Purchase Order Item are intentionally optional.
+		"""
 		# The received_type dimension was created via the patch with
 		# mandatory=1, but verify the engine setting on the actual Custom Field.
 		cf = frappe.db.get_value(
@@ -922,7 +940,7 @@ class TestEngineVerification(FrappeTestCase):
 				"available_qty": 9999,
 				"voucher_type": "Stock Update",
 				"voucher_no": "SRE-VERIFY-BUGD-1",
-				"received_type": "Accepted",
+				**ACCEPTED_DIMS,
 			}
 		)
 		sre1.flags.ignore_permissions = True
@@ -942,7 +960,7 @@ class TestEngineVerification(FrappeTestCase):
 				"available_qty": 9999,
 				"voucher_type": "Stock Update",
 				"voucher_no": "SRE-VERIFY-BUGD-2",
-				"received_type": "Accepted",
+				**ACCEPTED_DIMS,
 			}
 		)
 		sre2.flags.ignore_permissions = True
@@ -995,9 +1013,7 @@ class TestEngineVerification(FrappeTestCase):
 		wh = _wh("BugF")
 		bin_names = set()
 		for _ in range(50):
-			name = get_or_make_bin(
-				ITEM_VARIANT, wh, received_type="Accepted"
-			)
+			name = get_or_make_bin(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 			self.assertIsNotNone(name)
 			bin_names.add(name)
 		# All 50 calls must point to the same Bin (idempotent).
@@ -1009,7 +1025,7 @@ class TestEngineVerification(FrappeTestCase):
 	def test_A1_recon_cancel_restores_balance(self):
 		wh = _wh("A1")
 		_seed(100, 50, wh)
-		baseline = get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted")
+		baseline = get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 		self.assertAlmostEqual(baseline, 100.0)
 
 		recon = frappe.get_doc(
@@ -1025,7 +1041,7 @@ class TestEngineVerification(FrappeTestCase):
 						"warehouse": wh,
 						"qty": 200,
 						"rate": 50,
-						"received_type": "Accepted",
+						**ACCEPTED_DIMS,
 					}
 				],
 			}
@@ -1034,7 +1050,7 @@ class TestEngineVerification(FrappeTestCase):
 		recon.insert(ignore_permissions=True)
 		recon.submit()
 		self.assertAlmostEqual(
-			get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted"), 200.0
+			get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS), 200.0
 		)
 
 		# Reduce 20 → 180.
@@ -1049,7 +1065,7 @@ class TestEngineVerification(FrappeTestCase):
 					{
 						"item_variant": ITEM_VARIANT,
 						"update_diff_qty": 20,
-						"received_type": "Accepted",
+						**ACCEPTED_DIMS,
 					}
 				],
 			}
@@ -1058,11 +1074,11 @@ class TestEngineVerification(FrappeTestCase):
 		r2.insert(ignore_permissions=True)
 		r2.submit()
 		self.assertAlmostEqual(
-			get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted"), 180.0
+			get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS), 180.0
 		)
 
 		# Cancel recon: expect 80 (NOT 0).
 		recon.reload()
 		recon.cancel()
-		final = get_stock_balance(ITEM_VARIANT, wh, received_type="Accepted")
+		final = get_stock_balance(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 		self.assertAlmostEqual(final, 80.0)

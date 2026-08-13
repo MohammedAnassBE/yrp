@@ -13,9 +13,10 @@
  "fields": [
   {
    "fieldname": "reference_doctype",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Reference DocType"
+   "label": "Reference DocType",
+   "options": "DocType"
   },
   {
    "fieldname": "reference_name",

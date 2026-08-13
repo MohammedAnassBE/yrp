@@ -62,8 +62,7 @@ PARENT_CHILD_MAP = {
 			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
 			"additional_parameters", "set_combination", "grn_detail_no", "item_type",
 			"is_calculated", "source_grn", "source_grn_item",
-			"source_inspection_entry_item", "fabric_reference_variant",
-			"fabric_reference_allocations",
+			"fabric_reference_variant", "fabric_reference_allocations",
 		],
 	},
 	"Work Order Receivables": {
@@ -120,7 +119,8 @@ PARENT_CHILD_MAP = {
 			"secondary_qty", "secondary_uom",
 		],
 		"entry_fields": [
-			"stock_uom", "conversion_factor", "delivery_date", "tax",
+			"stock_uom", "conversion_factor", "delivery_location", "delivery_date",
+			"expected_delivery_date", "additional_parameters", "tax",
 			"discount_percentage", "table_index", "row_index", "set_combination",
 			"comments",
 		],

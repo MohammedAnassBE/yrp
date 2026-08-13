@@ -156,9 +156,12 @@ function group_rework_sources(sources) {
 	for (const row of sources) {
 		const np = row.non_primary_attrs || {};
 		const np_key = Object.keys(np).sort().map((k) => `${k}=${np[k]}`).join("|");
+		const dimensions = row.dimensions || {};
+		const dimensions_key = Object.keys(dimensions).sort()
+			.map((key) => `${key}=${dimensions[key] || ""}`).join("|");
 		const bucket_key = [
 			row.parent_item || "",
-			row.lot || "",
+			dimensions_key,
 			row.set_combination || "",
 			np_key,
 		].join("::");
@@ -168,7 +171,8 @@ function group_rework_sources(sources) {
 				key: bucket_key,
 				meta: {
 					parent_item: row.parent_item,
-					lot: row.lot,
+					dimensions,
+					dimension_labels: row.dimension_labels || {},
 					set_combination: row.set_combination,
 					non_primary_attrs: np,
 					primary_attribute: row.primary_attribute,
@@ -205,7 +209,11 @@ function render_rework_pivot(dialog, buckets) {
 		const np_label = Object.keys(np).sort().map((k) => `${k}: ${np[k]}`).join(" / ");
 		const header_bits = [bucket.meta.parent_item];
 		if (np_label) header_bits.push(np_label);
-		if (bucket.meta.lot) header_bits.push(`Lot ${bucket.meta.lot}`);
+		const dimension_label = Object.keys(bucket.meta.dimensions || {}).sort()
+			.filter((key) => key !== "received_type" && bucket.meta.dimensions[key])
+			.map((key) => `${bucket.meta.dimension_labels[key] || key.replaceAll("_", " ")}: ${bucket.meta.dimensions[key]}`)
+			.join(" / ");
+		if (dimension_label) header_bits.push(dimension_label);
 		const header = header_bits.filter(Boolean).join(" • ");
 		const primary_values = Array.from(bucket.primary_values).sort(compare_primary_values);
 		const rts = Array.from(bucket.rts).sort();

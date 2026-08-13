@@ -6,6 +6,14 @@ frappe.ui.form.on("Purchase Order", {
 		frm.set_query("delivery_warehouse", () => ({
 			filters: { disabled: 0 },
 		}));
+		frm.set_query("default_delivery_location", () => ({
+			filters: {
+				is_company_location: frm.doc.deliver_to_supplier ? 0 : 1,
+			},
+		}));
+		frm.set_query("supplier_address", () => party_address_query(frm, "supplier"));
+		frm.set_query("delivery_address", () => party_address_query(frm, "default_delivery_location"));
+		frm.set_query("contact_person", () => party_contact_query(frm));
 	},
 
 	refresh(frm) {
@@ -20,7 +28,110 @@ frappe.ui.form.on("Purchase Order", {
 	before_save(frm) {
 		sync_item_editor_payload(frm);
 	},
+
+	supplier(frm) {
+		frm.set_value("contact_person", null);
+		frm.set_value("contact_display", null);
+		frm.set_value("contact_mobile", null);
+		set_primary_address(frm, frm.doc.supplier, "supplier_address");
+	},
+
+	default_delivery_location(frm) {
+		set_primary_address(frm, frm.doc.default_delivery_location, "delivery_address");
+	},
+
+	deliver_to_supplier(frm) {
+		if (!frm.doc.default_delivery_location) return;
+		frm.set_value("default_delivery_location", null);
+		frm.set_value("delivery_address", null);
+		frm.set_value("delivery_address_display", null);
+	},
+
+	supplier_address(frm) {
+		set_address_display(frm, "supplier_address", "supplier_address_display");
+	},
+
+	delivery_address(frm) {
+		set_address_display(frm, "delivery_address", "delivery_address_display");
+	},
+
+	contact_person(frm) {
+		set_contact_details(frm);
+	},
 });
+
+function party_address_query(frm, partyField) {
+	const party = frm.doc[partyField];
+	if (!party) {
+		frappe.throw(__("Please select {0} first", [frm.fields_dict[partyField].df.label]));
+	}
+	return {
+		query: "frappe.contacts.doctype.address.address.address_query",
+		filters: {
+			link_doctype: "Supplier",
+			link_name: party,
+		},
+	};
+}
+
+function party_contact_query(frm) {
+	if (!frm.doc.supplier) {
+		frappe.throw(__("Please select Supplier first"));
+	}
+	return {
+		query: "frappe.contacts.doctype.contact.contact.contact_query",
+		filters: {
+			link_doctype: "Supplier",
+			link_name: frm.doc.supplier,
+		},
+	};
+}
+
+function set_primary_address(frm, supplier, targetField) {
+	if (!supplier) {
+		frm.set_value(targetField, null);
+		return;
+	}
+	frappe.call({
+		method: "yrp.yrp.doctype.supplier.supplier.get_primary_address",
+		args: { supplier },
+		callback(r) {
+			frm.set_value(targetField, r.message || null);
+		},
+	});
+}
+
+function set_address_display(frm, addressField, displayField) {
+	const address = frm.doc[addressField];
+	if (!address) {
+		frm.set_value(displayField, null);
+		return;
+	}
+	frappe.call({
+		method: "frappe.contacts.doctype.address.address.get_address_display",
+		args: { address_dict: address },
+		callback(r) {
+			frm.set_value(displayField, r.message || null);
+		},
+	});
+}
+
+function set_contact_details(frm) {
+	if (!frm.doc.contact_person) {
+		frm.set_value("contact_display", null);
+		frm.set_value("contact_mobile", null);
+		return;
+	}
+	frappe.call({
+		method: "frappe.contacts.doctype.contact.contact.get_contact_details",
+		args: { contact: frm.doc.contact_person },
+		callback(r) {
+			const details = r.message || {};
+			frm.set_value("contact_display", details.contact_display || null);
+			frm.set_value("contact_mobile", details.contact_mobile || null);
+		},
+	});
+}
 
 function mount_po_editor(frm) {
 	if (!frappe.yrp.work_order || !frappe.yrp.work_order.ItemEditor || !frm.fields_dict.item_html) {

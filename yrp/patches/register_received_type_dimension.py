@@ -23,8 +23,9 @@ DEFAULT_RT_NAME = "Accepted"
 DIMENSION_FIELDNAME = "received_type"
 DIMENSION_LABEL = "Received Type"
 
-# Tables that hold the received_type column once create_dimension_fields() runs.
-# Keep in sync with yrp.stock.dimensions.STOCK_DOCTYPES.
+# Historical stock tables backfilled when Received Type was first introduced.
+# New dimension targets are populated by their normal document flow and must
+# not be added retroactively to this already-shipped data patch.
 BACKFILL_DOCTYPES = [
 	"Stock Ledger Entry",
 	"Bin",

@@ -63,6 +63,7 @@ class PurchaseOrder(Document):
 		self.set_default_terms()
 		self.remove_blank_item_rows()
 		self.set_missing_values()
+		self.set_party_details()
 		self.set_item_defaults()
 		self.apply_item_prices(
 			strict=False,
@@ -72,6 +73,7 @@ class PurchaseOrder(Document):
 		self.set_status()
 
 	def validate(self):
+		self.validate_delivery_destination()
 		self.validate_items()
 		self.calculate_totals()
 		self.set_status()
@@ -141,6 +143,45 @@ class PurchaseOrder(Document):
 		if not self.open_status:
 			self.open_status = "Open"
 
+	def set_party_details(self):
+		self.supplier_address, self.supplier_address_display = _resolve_party_address(
+			self.supplier,
+			self.supplier_address,
+		)
+		self.delivery_address, self.delivery_address_display = _resolve_party_address(
+			self.default_delivery_location,
+			self.delivery_address,
+		)
+
+		if not self.supplier or not self.contact_person or not _is_party_link(
+			"Contact",
+			self.contact_person,
+			self.supplier,
+		):
+			self.contact_person = None
+			self.contact_display = None
+			self.contact_mobile = None
+			return
+
+		contact = frappe.get_cached_doc("Contact", self.contact_person)
+		self.contact_display = contact.full_name
+		self.contact_mobile = contact.mobile_no
+
+	def validate_delivery_destination(self):
+		if not self.default_delivery_location:
+			return
+		is_company_location = frappe.db.get_value(
+			"Supplier",
+			self.default_delivery_location,
+			"is_company_location",
+		)
+		expected = 0 if self.deliver_to_supplier else 1
+		if int(is_company_location or 0) != expected:
+			destination_type = _("an external supplier") if self.deliver_to_supplier else _("a company location")
+			frappe.throw(
+				_("Default Delivery Location must be {0}.").format(destination_type)
+			)
+
 	def set_default_terms(self):
 		# Prefill Terms and Condition once, on creation, only when empty — so the
 		# user can change or remove it and the removal sticks on later saves.
@@ -166,7 +207,14 @@ class PurchaseOrder(Document):
 			) or 1
 			row.stock_uom = row.stock_uom or conversion.get("stock_uom") or row.uom or default_uom
 			row.stock_qty = flt(row.qty) * flt(row.conversion_factor)
+			row.delivery_location = row.delivery_location or self.default_delivery_location
 			row.delivery_date = row.delivery_date or self.expected_delivery_date
+			# Preserve the original committed date separately from later submitted
+			# delivery-date changes, matching Production API's row-level baseline.
+			if self.docstatus == 0:
+				row.expected_delivery_date = row.delivery_date
+			elif not row.expected_delivery_date:
+				row.expected_delivery_date = row.delivery_date
 			self.calculate_row_amount(row)
 
 	def is_price_validation_enabled(self):
@@ -278,6 +326,39 @@ class PurchaseOrder(Document):
 			frappe.throw(_("Cannot close a cancelled Purchase Order."))
 		self.open_status = "Close" if close else "Open"
 		self.set_status()
+
+
+def _is_party_link(reference_doctype, reference_name, supplier):
+	if not reference_name or not supplier:
+		return False
+	return bool(
+		frappe.db.exists(
+			"Dynamic Link",
+			{
+				"parenttype": reference_doctype,
+				"parent": reference_name,
+				"link_doctype": "Supplier",
+				"link_name": supplier,
+			},
+		)
+	)
+
+
+def _resolve_party_address(supplier, address):
+	if not supplier:
+		return None, None
+	if address and not _is_party_link("Address", address, supplier):
+		address = None
+	if not address:
+		from yrp.yrp.doctype.supplier.supplier import get_primary_address
+
+		address = get_primary_address(supplier)
+	if not address:
+		return None, None
+
+	from frappe.contacts.doctype.address.address import get_address_display
+
+	return address, get_address_display(address)
 
 
 def validate_price_details(rows, supplier=None, strict=True):

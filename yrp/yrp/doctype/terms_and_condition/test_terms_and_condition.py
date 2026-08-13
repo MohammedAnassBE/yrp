@@ -17,15 +17,17 @@ def _tnc(po=0, wo=0, company=0):
 	).insert(ignore_permissions=True)
 
 
-def _supplier(po_tc=None, wo_tc=None):
+def _supplier(po_tc=None, wo_tc=None, terms_tc=None):
+	supplier_name = f"_Test Supplier {frappe.generate_hash(length=8)}"
 	return frappe.get_doc(
 		{
 			"doctype": "Supplier",
-			"supplier_name": f"_Test Supplier {frappe.generate_hash(length=8)}",
+			"supplier_name": supplier_name,
 			"po_terms_and_condition": po_tc,
 			"wo_terms_and_condition": wo_tc,
+			"terms_and_condition": terms_tc,
 		}
-	).insert(ignore_permissions=True)
+	).insert(ignore_permissions=True, set_name=supplier_name)
 
 
 def _flag(name, flag):
@@ -72,6 +74,7 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 	def test_cascade_falls_back_to_company_default(self):
 		from yrp.yrp.doctype.terms_and_condition.terms_and_condition import get_default_terms
 
+		frappe.db.sql("UPDATE `tabTerms and Condition` SET is_default_po_term = 0")
 		company_default = _tnc(company=1)
 		supplier = _supplier()  # no mapping, no PO default
 		self.assertEqual(get_default_terms("PO", supplier.name), company_default.name)
@@ -95,6 +98,14 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 		wo_mapped = _tnc()
 		supplier = _supplier(wo_tc=wo_mapped.name)
 		self.assertEqual(get_default_terms("WO", supplier.name), wo_mapped.name)
+
+	def test_wo_cascade_prefers_supplier_terms_and_condition(self):
+		from yrp.yrp.doctype.terms_and_condition.terms_and_condition import get_default_terms
+
+		mapped = _tnc()
+		legacy_wo_mapped = _tnc()
+		supplier = _supplier(wo_tc=legacy_wo_mapped.name, terms_tc=mapped.name)
+		self.assertEqual(get_default_terms("WO", supplier.name), mapped.name)
 
 	def test_wo_cascade_falls_back_to_default_wo_term(self):
 		from yrp.yrp.doctype.terms_and_condition.terms_and_condition import get_default_terms

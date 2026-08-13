@@ -6,11 +6,11 @@
  "engine": "InnoDB",
  "field_order": [
   "item",
+  "process_name",
+  "dependent_attribute_value",
   "qty_of_product",
   "qty_of_bom_item",
   "uom",
-  "process_name",
-  "dependent_attribute_value",
   "based_on_attribute_mapping",
   "attribute_mapping",
   "wastage_pct"
@@ -30,6 +30,7 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Qty of Product",
+   "non_negative": 1,
    "reqd": 1
   },
   {
@@ -38,9 +39,11 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Qty of BOM Item",
+   "non_negative": 1,
    "reqd": 1
   },
   {
+   "fetch_from": "item.default_unit_of_measure",
    "fieldname": "uom",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -53,7 +56,7 @@
    "fieldname": "process_name",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Process",
+   "label": "Process Name",
    "options": "Process"
   },
   {
@@ -78,9 +81,11 @@
    "options": "Item BOM Attribute Mapping"
   },
   {
+   "default": "0",
    "fieldname": "wastage_pct",
    "fieldtype": "Float",
-   "label": "Wastage %"
+   "label": "Wastage %",
+   "non_negative": 1
   }
  ],
  "istable": 1,

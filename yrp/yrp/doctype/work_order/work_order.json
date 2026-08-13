@@ -15,7 +15,6 @@
   "supplier_name",
   "is_delivered",
   "is_manual_entry",
-  "includes_packing",
   "column_break_wrym",
   "is_internal_unit",
   "parent_wo",
@@ -221,7 +220,8 @@
    "allow_on_submit": 1,
    "fieldname": "expected_delivery_date",
    "fieldtype": "Date",
-   "label": "Expected Delivery Date"
+   "label": "Expected Delivery Date",
+   "reqd": 1
   },
   {
    "fieldname": "section_break_axzz",
@@ -403,6 +403,8 @@
   },
   {
    "default": "0",
+   "fetch_from": "supplier.is_company_location",
+   "fetch_if_empty": 1,
    "fieldname": "is_internal_unit",
    "fieldtype": "Check",
    "hidden": 1,
@@ -531,6 +533,7 @@
   },
   {
    "default": "0",
+   "fetch_from": "process_name.is_manual_entry_in_grn",
    "fieldname": "is_manual_entry",
    "fieldtype": "Check",
    "hidden": 1,
@@ -569,13 +572,6 @@
    "fieldtype": "Table",
    "label": "Work Order Tracking Logs",
    "options": "Work Order Tracking Log"
-  },
-  {
-   "allow_on_submit": 1,
-   "default": "0",
-   "fieldname": "includes_packing",
-   "fieldtype": "Check",
-   "label": "Includes Packing"
   },
   {
    "allow_on_submit": 1,
@@ -636,6 +632,9 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "fetch_from": "supplier.terms_and_condition",
+   "fetch_if_empty": 1,
    "fieldname": "terms_and_condition",
    "fieldtype": "Link",
    "label": "Terms and Condition",

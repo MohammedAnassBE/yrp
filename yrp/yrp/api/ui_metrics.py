@@ -10,8 +10,7 @@ define logic (spec "custom ui/PER_USER_UI_SPEC.md" §6.4 knobs-are-props).
 
 Design rules:
 
-- **Parity with the live /web home.** The four queue metrics (``open_lots``,
-  ``open_wos``, ``draft_dcs``, ``draft_grns``) use the EXACT filter triples
+- **Parity with the live /web home.** Base queue metrics use the exact filters
   ``useHomeQueues.js`` deep-links and counts with today, and the counts run
   through ``frappe.get_list`` — the same permission-aware DatabaseQuery
   machinery ``frappe.desk.reportview.get_count`` (the frontend's count
@@ -42,8 +41,7 @@ from frappe.utils import cint, flt, nowdate
 
 # ── shared filter triples (single source of truth for value + goto) ─────────
 
-# Exact parity with useHomeQueues.js — these four MUST match the live home.
-OPEN_LOT_FILTERS = [["status", "=", "Open"]]
+# Exact parity with useHomeQueues.js for base-owned transactions.
 OPEN_WO_FILTERS = [["docstatus", "=", 1], ["status", "not in", ["Closed", "Cancelled"]]]
 DRAFT_DC_FILTERS = [["docstatus", "=", 0]]
 DRAFT_GRN_FILTERS = [["docstatus", "=", 0]]
@@ -122,10 +120,6 @@ def _wo_child_rows(child_doctype, extra_filters=None):
 # ── per-metric computes (named functions for junior readability) ────────────
 
 
-def _open_lots():
-	return _count("Lot", OPEN_LOT_FILTERS)
-
-
 def _open_wos():
 	return _count("Work Order", OPEN_WO_FILTERS)
 
@@ -201,42 +195,12 @@ def _delayed():
 	return _count("Work Order", _delayed_wo_filters())
 
 
-def _active_lot_names():
-	"""Distinct lots referenced by open WOs (demo semantics: lots that still
-	have unfinished work), via permission-aware ``frappe.get_list`` — the
-	caller only ever counts/sees lots from Work Orders they may read. ``lot``
-	on Work Order is the stock-dimension Custom Field — absent when the site
-	has no production-group dimension, in which case the metric degrades to
-	an empty list (count 0) instead of erroring. Shared by the compute AND
-	the tile's goto, so the deep-linked list always shows exactly the counted
-	lots."""
-	if not frappe.get_meta("Work Order").has_field("lot"):
-		return []
-	return frappe.get_list(
-		"Work Order",
-		filters=deepcopy(OPEN_WO_FILTERS) + [["lot", "is", "set"]],
-		pluck="lot",
-		distinct=True,
-		limit=0,
-	)
-
-
-def _active_lots():
-	return len(_active_lot_names())
-
-
 # ── METRICS registry ─────────────────────────────────────────────────────────
 # Each entry: label (card text), doctypes (ALL DocTypes the compute reads —
 # the permission gate), compute (returns a number), goto (deep-link target;
 # a callable so date-dependent filters are built per call).
 
 METRICS = {
-	"open_lots": {
-		"label": "Open Lots",
-		"doctypes": ["Lot"],
-		"compute": _open_lots,
-		"goto": lambda: {"doctype": "Lot", "filters": deepcopy(OPEN_LOT_FILTERS)},
-	},
 	"open_wos": {
 		"label": "Open Work Orders",
 		"doctypes": ["Work Order"],
@@ -291,30 +255,71 @@ METRICS = {
 		"compute": _delayed,
 		"goto": lambda: {"doctype": "Work Order", "filters": _delayed_wo_filters()},
 	},
-	"active_lots": {
-		# goto lands on the LOT list (2026-07-16 cleanup — the tile used to
-		# deep-link the open-WO list). "lots with open WOs" is not a static
-		# Lot-list filter, so the callable mirrors the metric's own query into
-		# a name-in filter: tile count == list count for the same user (the
-		# names come from Work Orders the caller may read; goto is built per
-		# call, like _delayed_wo_filters). doctypes gates BOTH sides of the
-		# tile: Work Order (what the compute queries) AND Lot (where the goto
-		# lands) — a user who can't read Lot must not get a tile whose click
-		# deep-links a list they can't open.
-		"label": "Active Lots",
-		"doctypes": ["Work Order", "Lot"],
-		"compute": _active_lots,
-		"goto": lambda: {"doctype": "Lot", "filters": [["name", "in", _active_lot_names()]]},
-	},
 }
 
 
-def _parse_keys(keys):
+def _merge_hook_registry(base, hook_name):
+	"""Merge code-owned downstream registry contributions deterministically.
+
+	Base keys win. A malformed contribution or duplicate is logged and skipped,
+	so a consumer hook cannot take the whole UI down.
+	"""
+	registry = dict(base)
+	for path in frappe.get_hooks(hook_name) or []:
+		try:
+			contribution = frappe.get_attr(path)()
+			if not isinstance(contribution, dict):
+				raise TypeError(f"{path} must return a dict")
+			_validate_registry_contribution(contribution, hook_name, path)
+			duplicates = set(registry).intersection(contribution)
+			if duplicates:
+				raise ValueError(
+					f"duplicate registry key(s): {', '.join(sorted(duplicates))}"
+				)
+			# Merge a contribution atomically. If any key is invalid/duplicated,
+			# none of that consumer's keys should leak into the live registry.
+			registry.update(contribution)
+		except Exception:
+			try:
+				frappe.log_error(
+					title=f"UI registry hook failed: {hook_name}"[:140],
+					message=frappe.get_traceback(),
+				)
+			except Exception:
+				pass
+	return registry
+
+
+def _validate_registry_contribution(contribution, hook_name, path):
+	for key, spec in contribution.items():
+		if not isinstance(key, str) or not key:
+			raise TypeError(f"{path} returned an invalid registry key")
+		if not isinstance(spec, dict) or not isinstance(spec.get("label"), str):
+			raise TypeError(f"{path}.{key} must be a dict with a string label")
+		if hook_name == "yrp_ui_metrics":
+			if not isinstance(spec.get("doctypes"), list) or not spec["doctypes"]:
+				raise TypeError(f"{path}.{key}.doctypes must be a non-empty list")
+			if not callable(spec.get("compute")) or not callable(spec.get("goto")):
+				raise TypeError(f"{path}.{key} must define callable compute and goto")
+		elif hook_name == "yrp_ui_calculations" and not callable(spec.get("run")):
+			raise TypeError(f"{path}.{key} must define a callable run")
+
+
+def get_metric_registry():
+	return _merge_hook_registry(METRICS, "yrp_ui_metrics")
+
+
+def get_calculation_registry():
+	return _merge_hook_registry(CALCULATIONS, "yrp_ui_calculations")
+
+
+def _parse_keys(keys, registry=None):
 	"""``keys`` over the wire: None (= all), a JSON list string, a
 	comma-separated string, or an in-process list/tuple. Returns an ordered,
 	de-duplicated list of requested key strings."""
+	registry = registry or get_metric_registry()
 	if keys is None or keys == "":
-		return list(METRICS)
+		return list(registry)
 	if isinstance(keys, str):
 		stripped = keys.strip()
 		if stripped.startswith("["):
@@ -349,15 +354,16 @@ def get_ui_metrics(keys=None):
 	"""
 	warnings = []
 	metrics = []
+	registry = get_metric_registry()
 
-	for key in _parse_keys(keys):
+	for key in _parse_keys(keys, registry):
 		# Type-check BEFORE the dict lookup (2026-07-16 review): an unhashable
 		# entry (list/dict) in the keys array would raise TypeError inside
 		# METRICS.get() — degradation contract says warn, never error.
-		if not isinstance(key, str) or key not in METRICS:
+		if not isinstance(key, str) or key not in registry:
 			warnings.append(_("unknown metric key {0!r} ignored").format(key))
 			continue
-		spec = METRICS[key]
+		spec = registry[key]
 
 		missing = [dt for dt in spec["doctypes"] if not frappe.db.exists("DocType", dt)]
 		if missing:
@@ -397,91 +403,7 @@ def _log_metric_error(key):
 
 # ── CALCULATIONS registry ────────────────────────────────────────────────────
 
-
-def _calc_lot_balance(params):
-	"""Balance of a Lot across its submitted Work Orders.
-
-	No single authoritative "lot balance" function exists in yrp/essdee_yrp
-	(``fabric_tracking``'s balance is per fabric-program row, and the Lot
-	controller only totals its own order items), so this is a read-only
-	aggregation that REUSES the Work Order status engine's row math
-	(``work_order.py set_status`` — see ``_received_from_rows``). Formula:
-
-	    ordered   = Σ planned_quantity          over WOs (lot = X, docstatus 1)
-	    produced  = Σ per-WO max(Σqty − Σmax(pending, 0), 0)   over receivables
-	    delivered = same formula                                over deliverables
-	    balance   = max(ordered − produced, 0)   (pieces still to receive)
-
-	"delivered" is materials sent TO suppliers (the real DC direction in this
-	outsourced-production model), not finished goods going out — hence the
-	line labels differ from the demo's customer-delivery framing.
-	"""
-	known = {"lot"}
-	unknown = set(params) - known
-	if unknown:
-		frappe.throw(
-			_("Unknown parameter(s) for lot_balance: {0}").format(", ".join(sorted(unknown))),
-			title=_("Invalid Calculation Params"),
-		)
-
-	lot = params.get("lot")
-	if not lot or not isinstance(lot, str):
-		frappe.throw(
-			_("lot_balance requires a 'lot' parameter (a Lot name)"),
-			title=_("Invalid Calculation Params"),
-		)
-
-	if not frappe.db.exists("DocType", "Lot"):
-		frappe.throw(_("The Lot DocType is not installed on this site"))
-	for doctype in ("Lot", "Work Order"):
-		frappe.has_permission(doctype, "read", throw=True)
-	if not frappe.db.exists("Lot", lot):
-		frappe.throw(_("Lot {0} not found").format(frappe.bold(lot)), frappe.DoesNotExistError)
-	# Row-level gate (2026-07-16 review): doctype-level read alone would let a
-	# User-Permission-restricted user compute ANY Lot's balance by name.
-	frappe.has_permission("Lot", "read", doc=lot, throw=True)
-	if not frappe.get_meta("Work Order").has_field("lot"):
-		frappe.throw(_("Work Order has no 'lot' dimension field on this site"))
-
-	# frappe.get_list (never get_all) so the aggregation covers exactly the
-	# Work Orders this user may read — same row-level scope as the metrics.
-	wo_rows = frappe.get_list(
-		"Work Order",
-		filters=[["lot", "=", lot], ["docstatus", "=", 1]],
-		fields=["name", "planned_quantity"],
-		limit=0,
-	)
-	wo_names = [row.name for row in wo_rows]
-	ordered = sum(flt(row.planned_quantity) for row in wo_rows)
-
-	produced = delivered = 0.0
-	if wo_names:
-		produced = _received_from_rows(
-			_wo_child_rows("Work Order Receivables", {"parent": ["in", wo_names]})
-		)
-		delivered = _received_from_rows(
-			_wo_child_rows("Work Order Deliverables", {"parent": ["in", wo_names]})
-		)
-
-	balance = max(ordered - produced, 0)
-	return {
-		"name": "lot_balance",
-		"label": _("Lot balance"),
-		"params": {"lot": lot},
-		"value": balance,
-		"lines": [
-			[_("Work orders"), len(wo_names)],
-			[_("Ordered"), ordered],
-			[_("Produced (received back)"), produced],
-			[_("Materials delivered to supplier"), delivered],
-			[_("Balance to receive"), balance],
-		],
-	}
-
-
-CALCULATIONS = {
-	"lot_balance": {"label": "Lot balance", "run": _calc_lot_balance},
-}
+CALCULATIONS = {}
 
 
 @frappe.whitelist()
@@ -493,10 +415,11 @@ def run_ui_calculation(name=None, params=None):
 	``params`` THROW with a clean message. Each calculation validates its own
 	params and enforces read permission on every DocType it touches.
 	"""
-	if not name or not isinstance(name, str) or name not in CALCULATIONS:
+	registry = get_calculation_registry()
+	if not name or not isinstance(name, str) or name not in registry:
 		frappe.throw(
 			_("Unknown calculation {0!r}. Available: {1}").format(
-				name, ", ".join(sorted(CALCULATIONS))
+				name, ", ".join(sorted(registry))
 			),
 			title=_("Unknown Calculation"),
 		)
@@ -511,4 +434,4 @@ def run_ui_calculation(name=None, params=None):
 	if not isinstance(params, dict):
 		frappe.throw(_("params must be a JSON object"), title=_("Invalid Calculation Params"))
 
-	return CALCULATIONS[name]["run"](params)
+	return registry[name]["run"](params)

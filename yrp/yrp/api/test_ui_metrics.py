@@ -18,9 +18,9 @@ from frappe.utils import flt
 
 from yrp.yrp.api import ui_metrics
 from yrp.yrp.api.ui_metrics import (
-	CALCULATIONS,
 	METRICS,
-	OPEN_WO_FILTERS,
+	get_calculation_registry,
+	get_metric_registry,
 	get_ui_metrics,
 	run_ui_calculation,
 )
@@ -28,7 +28,6 @@ from yrp.yrp.api.ui_metrics import (
 # Every metric key the task/demo registry promises. New metrics may be added
 # over time (registry growth is allowed); these may never disappear.
 REQUIRED_METRIC_KEYS = {
-	"open_lots",
 	"open_wos",
 	"draft_dcs",
 	"draft_grns",
@@ -38,7 +37,6 @@ REQUIRED_METRIC_KEYS = {
 	"produced_qty",
 	"completion",
 	"delayed",
-	"active_lots",
 }
 
 
@@ -71,10 +69,57 @@ class TestMetricsRegistry(IntegrationTestCase):
 			json.dumps(goto)
 
 	def test_calculations_registry_completeness(self):
-		self.assertIn("lot_balance", CALCULATIONS)
-		for name, spec in CALCULATIONS.items():
+		for name, spec in get_calculation_registry().items():
 			self.assertIsInstance(spec["label"], str, name)
 			self.assertTrue(callable(spec["run"]), name)
+
+	def test_downstream_registry_hook_is_merged_without_mutating_base(self):
+		contribution = {
+			"consumer_metric": {
+				"label": "Consumer",
+				"doctypes": ["Work Order"],
+				"compute": lambda: 0,
+				"goto": lambda: {"doctype": "Work Order", "filters": []},
+			}
+		}
+		with (
+			patch.object(frappe, "get_hooks", return_value=["consumer.metrics"]),
+			patch.object(frappe, "get_attr", return_value=lambda: contribution),
+		):
+			registry = get_metric_registry()
+		self.assertIn("consumer_metric", registry)
+		self.assertNotIn("consumer_metric", METRICS)
+
+	def test_duplicate_consumer_contribution_is_skipped_atomically(self):
+		def spec(label):
+			return {
+				"label": label,
+				"doctypes": ["Work Order"],
+				"compute": lambda: 0,
+				"goto": lambda: {"doctype": "Work Order", "filters": []},
+			}
+
+		contribution = {
+			"consumer_metric": spec("Consumer"),
+			"open_wos": spec("Must not override base"),
+		}
+		with (
+			patch.object(frappe, "get_hooks", return_value=["consumer.metrics"]),
+			patch.object(frappe, "get_attr", return_value=lambda: contribution),
+			patch.object(frappe, "log_error"),
+		):
+			registry = get_metric_registry()
+		self.assertNotIn("consumer_metric", registry)
+		self.assertIs(registry["open_wos"]["compute"], METRICS["open_wos"]["compute"])
+
+	def test_malformed_consumer_contribution_is_skipped(self):
+		with (
+			patch.object(frappe, "get_hooks", return_value=["consumer.metrics"]),
+			patch.object(frappe, "get_attr", return_value=lambda: {"bad": {"label": "Bad"}}),
+			patch.object(frappe, "log_error"),
+		):
+			registry = get_metric_registry()
+		self.assertNotIn("bad", registry)
 
 
 class TestGetUIMetrics(IntegrationTestCase):
@@ -96,10 +141,9 @@ class TestGetUIMetrics(IntegrationTestCase):
 		json.dumps(out)  # must be wire-safe as a whole
 
 	def test_queue_counts_match_the_live_home_filter_semantics(self):
-		"""The four useHomeQueues.js cards — same filters, same numbers."""
+		"""Base-owned live home cards use the same filters and numbers."""
 		out = {m["key"]: m["value"] for m in get_ui_metrics()["metrics"]}
 		expected = {
-			"open_lots": frappe.db.count("Lot", {"status": "Open"}),
 			"open_wos": frappe.db.count(
 				"Work Order",
 				{"docstatus": 1, "status": ("not in", ["Closed", "Cancelled"])},
@@ -142,41 +186,13 @@ class TestGetUIMetrics(IntegrationTestCase):
 		self.assertEqual(out["metrics"], [])
 		self.assertEqual(len(out["warnings"]), 1)
 
-	def test_active_lots_goto_deep_links_the_exact_counted_lots(self):
-		"""2026-07-16 cleanup: the tile used to deep-link the open-WO list; it
-		must land on the LOT list showing exactly the lots the metric counted
-		(a name-in filter mirroring the compute's own open-WO query)."""
-		out = get_ui_metrics(["active_lots"])
-		self.assertEqual(out["warnings"], [])
-		metric = out["metrics"][0]
-		self.assertEqual(metric["key"], "active_lots")
-
-		goto = metric["goto"]
-		self.assertEqual(goto["doctype"], "Lot")
-		self.assertEqual(len(goto["filters"]), 1)
-		field, operator, lots = goto["filters"][0]
-		self.assertEqual((field, operator), ("name", "in"))
-
-		# Independent recomputation of the compute's query — same filters.
-		expected = frappe.get_list(
-			"Work Order",
-			filters=OPEN_WO_FILTERS + [["lot", "is", "set"]],
-			pluck="lot",
-			distinct=True,
-			limit=0,
-		)
-		self.assertEqual(sorted(lots), sorted(expected))
-		# Tile count == deep-linked list count, by construction.
-		self.assertEqual(metric["value"], len(lots))
-		json.dumps(goto)  # must ride to the client
-
 	def test_permission_gating_omits_unreadable_doctypes_silently(self):
-		def deny_lot(doctype, ptype="read", *args, **kwargs):
-			return doctype != "Lot"
+		def deny_work_order(doctype, ptype="read", *args, **kwargs):
+			return doctype != "Work Order"
 
-		with patch.object(ui_metrics.frappe, "has_permission", side_effect=deny_lot):
-			out = get_ui_metrics(json.dumps(["open_lots", "open_wos"]))
-		self.assertEqual([m["key"] for m in out["metrics"]], ["open_wos"])
+		with patch.object(ui_metrics.frappe, "has_permission", side_effect=deny_work_order):
+			out = get_ui_metrics(json.dumps(["open_wos", "draft_dcs"]))
+		self.assertEqual([m["key"] for m in out["metrics"]], ["draft_dcs"])
 		self.assertEqual(out["warnings"], [])  # permission skip is silent
 
 	def test_a_compute_failure_degrades_that_metric_only(self):
@@ -195,106 +211,20 @@ class TestRunUICalculation(IntegrationTestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 
-	def _lot_with_submitted_wos(self):
-		lots = frappe.get_list(
-			"Work Order",
-			filters=OPEN_WO_FILTERS + [["lot", "is", "set"]],
-			pluck="lot",
-			distinct=True,
-			limit=1,
-		)
-		return lots[0] if lots else None
-
-	def test_lot_balance_happy_path_matches_the_wo_engine_math(self):
-		lot = self._lot_with_submitted_wos()
-		if not lot:
-			self.skipTest("no submitted Work Order with a lot on this site")
-
-		out = run_ui_calculation("lot_balance", json.dumps({"lot": lot}))
-		self.assertEqual(out["name"], "lot_balance")
-		self.assertEqual(out["params"], {"lot": lot})
-		self.assertIsInstance(out["lines"], list)
-		lines = dict((label, value) for label, value in out["lines"])
-
-		# Independent recomputation of the documented formula.
-		wos = frappe.get_all(
-			"Work Order", filters={"lot": lot, "docstatus": 1}, fields=["name", "planned_quantity"]
-		)
-		ordered = sum(flt(w.planned_quantity) for w in wos)
-		self.assertEqual(lines["Work orders"], len(wos))
-		self.assertEqual(flt(lines["Ordered"]), ordered)
-		produced = 0.0
-		for wo in wos:
-			rows = frappe.get_all(
-				"Work Order Receivables",
-				filters={"parenttype": "Work Order", "parent": wo.name, "docstatus": 1},
-				fields=["qty", "pending_quantity"],
-				parent_doctype="Work Order",
-			)
-			qty = sum(flt(r.qty) for r in rows)
-			pending = sum(max(flt(r.pending_quantity), 0) for r in rows)
-			produced += max(qty - pending, 0)
-		self.assertEqual(flt(lines["Produced (received back)"]), flt(produced))
-		self.assertEqual(out["value"], max(ordered - produced, 0))
-		self.assertEqual(flt(lines["Balance to receive"]), flt(out["value"]))
-		json.dumps(out)
-
-	def test_lot_balance_on_a_lot_without_work_orders_is_all_zero(self):
-		used = set(
-			frappe.get_all(
-				"Work Order", filters={"lot": ("is", "set")}, pluck="lot", distinct=True
-			)
-		)
-		idle = frappe.get_all("Lot", filters={"name": ("not in", list(used) or [""])}, limit=1)
-		if not idle:
-			self.skipTest("every Lot on this site has Work Orders")
-		out = run_ui_calculation("lot_balance", {"lot": idle[0].name})
-		self.assertEqual(out["value"], 0)
-		self.assertEqual(dict(out["lines"])["Ordered"], 0)
-
 	def test_unknown_calculation_name_throws_cleanly(self):
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			run_ui_calculation("no_such_calc")
 		self.assertIn("Unknown calculation", str(ctx.exception))
-		self.assertIn("lot_balance", str(ctx.exception))  # names the options
 		with self.assertRaises(frappe.ValidationError):
 			run_ui_calculation(None)
 
-	def test_params_are_validated(self):
-		with self.assertRaises(frappe.ValidationError):  # missing lot
-			run_ui_calculation("lot_balance", {})
-		with self.assertRaises(frappe.ValidationError):  # non-string lot
-			run_ui_calculation("lot_balance", {"lot": 42})
-		with self.assertRaises(frappe.ValidationError):  # unknown param key
-			run_ui_calculation("lot_balance", {"lot": "X", "warehouse": "Y"})
-		with self.assertRaises(frappe.ValidationError):  # unparseable params
-			run_ui_calculation("lot_balance", "{not json")
-		with self.assertRaises(frappe.ValidationError):  # valid JSON, not an object
-			run_ui_calculation("lot_balance", "[1, 2]")
-		with self.assertRaises(frappe.DoesNotExistError):  # dangling lot
-			run_ui_calculation("lot_balance", {"lot": "NO-SUCH-LOT-XXXXX"})
-
-	def test_lot_balance_enforces_read_permission(self):
-		def deny_lot(doctype, ptype="read", *args, **kwargs):
-			if kwargs.get("throw") and doctype == "Lot":
-				raise frappe.PermissionError
-			return doctype != "Lot"
-
-		lot = self._lot_with_submitted_wos()
-		with patch.object(ui_metrics.frappe, "has_permission", side_effect=deny_lot):
-			with self.assertRaises(frappe.PermissionError):
-				run_ui_calculation("lot_balance", {"lot": lot or "ANY"})
-
 
 class TestRowLevelPermissionScope(IntegrationTestCase):
-	"""2026-07-16 review findings 2+3: REAL row-level (User Permission) scope.
+	"""Real row-level User Permission scope for generic quantity metrics.
 
 	Finding 2: the produced side used permission-bypassing ``frappe.get_all``
 	while the ordered side ran permission-aware ``frappe.get_list`` — a
 	restricted user leaked global produced totals and saw >100% completion.
-	Finding 3: ``lot_balance`` checked only doctype-level read, so a
-	User-Permission-restricted user could compute ANY Lot's balance by name.
-
 	The throwaway user and User Permissions are created INSIDE the tests (no
 	``frappe.db.commit``; the runner transaction rolls them back). Each User
 	Permission is removed again via ``addCleanup`` because the class-level
@@ -415,19 +345,3 @@ class TestRowLevelPermissionScope(IntegrationTestCase):
 			ui_metrics, "_wo_child_rows", side_effect=AssertionError("must not query")
 		):
 			self.assertEqual(ui_metrics._produced_qty([]), 0.0)
-
-	def test_lot_balance_blocks_lots_outside_the_users_row_permissions(self):
-		lots = frappe.get_all("Lot", pluck="name", order_by="name", limit=2)
-		if len(lots) < 2:
-			self.skipTest("needs at least two Lots on this site")
-		allowed, forbidden = lots
-		self._restrict_to("Lot", allowed)
-		frappe.set_user(self.RESTRICTED_USER)
-		with self.assertRaises(frappe.PermissionError):
-			run_ui_calculation("lot_balance", {"lot": forbidden})
-		# The permitted Lot still computes…
-		out = run_ui_calculation("lot_balance", {"lot": allowed})
-		self.assertEqual(out["params"], {"lot": allowed})
-		# …and a nonexistent Lot keeps today's clean error, not a permission one.
-		with self.assertRaises(frappe.DoesNotExistError):
-			run_ui_calculation("lot_balance", {"lot": "NO-SUCH-LOT-XXXXX"})

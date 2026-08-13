@@ -234,8 +234,7 @@ const can_create = computed(() => _resolve_arg('can_create', true));
 const can_edit = computed(() => _resolve_arg('can_edit', true));
 const can_remove = computed(() => _resolve_arg('can_remove', true));
 
-// Hide dimension columns where no row has a value (e.g. Work Order Deliverables
-// has no `lot` field, so the Lot column would always render empty).
+// Hide configured dimension columns where no row carries a value.
 const visible_dimensions = computed(() => {
     if (!dimensions.value || !dimensions.value.length) return [];
     return dimensions.value.filter((dim) => {
