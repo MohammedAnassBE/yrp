@@ -1,3 +1,5 @@
+frappe.provide("frappe.yrp.work_order");
+
 frappe.ui.form.on("Purchase Invoice", {
 	setup(frm) {
 		frm.set_query("supplier", () => ({ filters: { disabled: 0 } }));
@@ -144,7 +146,7 @@ function render_work_order_details(frm) {
 							html += `</div>`;
 							$(wrapper).html(html);
 							$(wrapper).find(".yrp-close-wo").on("click", function () {
-								open_close_dialog(frm, $(this).data("wo"));
+								frappe.yrp.work_order.open_close_dialog(frm, $(this).data("wo"));
 							});
 						},
 					});
@@ -216,21 +218,7 @@ function open_close_dialog(frm, work_order) {
 				mandatory_depends_on: "eval: doc.with_debit == 'With Debit'",
 			},
 			{ fieldtype: "Section Break", label: __("Close Details") },
-			{
-				fieldtype: "Select",
-				fieldname: "close_reason",
-				label: __("Close Reason"),
-				options: "\nCutting Shortage\nPrinting Shortage\nSewing Shortage\nSewing Missing\nOthers",
-				reqd: 1,
-			},
-			{
-				fieldtype: "Data",
-				fieldname: "close_other_reason",
-				label: __("Other Reason"),
-				depends_on: "eval: doc.close_reason == 'Others'",
-				mandatory_depends_on: "eval: doc.close_reason == 'Others'",
-			},
-			{ fieldtype: "Small Text", fieldname: "close_remarks", label: __("Close Remarks") },
+			...frappe.yrp.work_order.get_close_reason_fields(),
 		],
 		primary_action_label: __("Close Work Order"),
 		primary_action(values) {
@@ -274,6 +262,8 @@ function open_close_dialog(frm, work_order) {
 	d.show();
 	render_close_debits(work_order, d);
 }
+
+frappe.yrp.work_order.make_purchase_invoice_close_dialog = open_close_dialog;
 
 function render_close_debits(work_order, dialog) {
 	frappe.call({

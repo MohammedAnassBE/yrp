@@ -3,13 +3,13 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from yrp.yrp.doctype.purchase_invoice.test_purchase_invoice import (
-	_work_order_for_invoice,
-	_work_order_grn,
-)
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_test_item_variant,
 	_warehouse,
+)
+from yrp.yrp.doctype.purchase_invoice.test_purchase_invoice import (
+	_work_order_for_invoice,
+	_work_order_grn,
 )
 
 
@@ -62,8 +62,7 @@ class TestWorkOrderClose(FrappeTestCase):
 		frappe.get_attr("yrp.yrp.doctype.debit.debit.approve_debit")(debit.name)
 		status = frappe.get_attr("yrp.yrp.doctype.work_order.work_order.update_stock")(
 			wo.name,
-			close_reason="Others",
-			close_other_reason="Test",
+			close_reason="Completed after final receipt",
 			close_remarks="Closed from regression test",
 		)
 
@@ -83,6 +82,7 @@ class TestWorkOrderCancelReservationCleanup(FrappeTestCase):
 		warehouse with stock first so the SRE's live-availability check passes.
 		"""
 		from frappe.utils import nowdate, nowtime
+
 		from yrp.stock.dimensions import get_mandatory_dimensions
 
 		item_variant = _test_item_variant()

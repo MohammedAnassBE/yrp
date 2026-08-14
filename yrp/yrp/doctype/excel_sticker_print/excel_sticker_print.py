@@ -1,10 +1,14 @@
 # Copyright (c) 2026, Essdee and contributors
 # For license information, please see license.txt
 
-import frappe, json, math
+import json
+import math
+
+import frappe
 from frappe.model.document import Document
-from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
 from frappe.utils.file_manager import get_file_path
+from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+
 
 class ExcelStickerPrint(Document):
 	def on_submit(self):
@@ -45,15 +49,15 @@ def get_raw_code(doc_name):
 	if not doc.serialized_data:
 		frappe.throw("No data found. Please ensure the document is submitted.")
 
-	print_format_doc = frappe.get_doc("Essdee Raw Print Format", doc.print_format)
+	print_format_doc = frappe.get_doc("ZPL Raw Print Format", doc.print_format)
 	raw_code = None
-	for p in print_format_doc.raw_print_format_details:
+	for p in print_format_doc.zpl_raw_print_format_details:
 		if p.printer_type == "300dpi":
 			raw_code = p.raw_code
 			break
 
-	if not raw_code and print_format_doc.raw_print_format_details:
-		raw_code = print_format_doc.raw_print_format_details[0].raw_code
+	if not raw_code and print_format_doc.zpl_raw_print_format_details:
+		raw_code = print_format_doc.zpl_raw_print_format_details[0].raw_code
 
 	if not raw_code:
 		frappe.throw("Print Format is not defined")
@@ -82,18 +86,18 @@ def get_print_format(doc_name, printer_res="200dpi"):
 	if not doc.serialized_data:
 		frappe.throw("No data found to print. Please ensure the document is submitted.")
 
-	print_format_doc = frappe.get_doc("Essdee Raw Print Format", doc.print_format)
-	
+	print_format_doc = frappe.get_doc("ZPL Raw Print Format", doc.print_format)
+
 	raw_code = None
-	for p in print_format_doc.raw_print_format_details:
+	for p in print_format_doc.zpl_raw_print_format_details:
 		if p.printer_type == printer_res:
 			raw_code = p.raw_code
-	
+
 	if not raw_code:
 		# Fallback to the first available if requested not found
-		if print_format_doc.raw_print_format_details:
-			raw_code = print_format_doc.raw_print_format_details[0].raw_code
-			printer_res = print_format_doc.raw_print_format_details[0].printer_type
+		if print_format_doc.zpl_raw_print_format_details:
+			raw_code = print_format_doc.zpl_raw_print_format_details[0].raw_code
+			printer_res = print_format_doc.zpl_raw_print_format_details[0].printer_type
 		else:
 			frappe.throw("Print Format Res not defined")
 
@@ -116,6 +120,6 @@ def get_template(row, raw_code, dpi_value=203):
 		'dpi': dpi_value
 	}
 	context.update(row)
-	
+
 	template = frappe.render_template(raw_code, context)
 	return template

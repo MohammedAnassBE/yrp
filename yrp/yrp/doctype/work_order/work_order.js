@@ -62,7 +62,9 @@ function add_close_button(frm) {
 			if (frm.doc.open_status === "Close Request") {
 				label = __("Approve Close");
 			}
-			frm.add_custom_button(label, () => open_close_dialog(frm));
+			frm.add_custom_button(label, () => {
+				frappe.yrp.work_order.open_close_dialog(frm, frm.doc.name);
+			});
 		},
 	});
 }
@@ -343,7 +345,7 @@ function bind_editor_dirty_handler(frm) {
 	frappe.yrp.eventBus.$on("work_order_items_updated", frm._work_order_editor_dirty_handler);
 }
 
-function open_close_dialog(frm) {
+function open_close_dialog(frm, work_order) {
 	const d = new frappe.ui.Dialog({
 		title: __("Close Work Order"),
 		fields: [
@@ -377,28 +379,11 @@ function open_close_dialog(frm) {
 				mandatory_depends_on: "eval: doc.with_debit == 'With Debit'",
 			},
 			{ fieldtype: "Section Break", label: __("Close Details") },
-			{
-				fieldtype: "Select",
-				fieldname: "close_reason",
-				label: __("Close Reason"),
-				options: "\nCutting Shortage\nPrinting Shortage\nSewing Shortage\nSewing Missing\nOthers",
-				reqd: 1,
-				default: frm.doc.close_reason || "",
-			},
-			{
-				fieldtype: "Data",
-				fieldname: "close_other_reason",
-				label: __("Other Reason"),
-				depends_on: "eval: doc.close_reason == 'Others'",
-				mandatory_depends_on: "eval: doc.close_reason == 'Others'",
-				default: frm.doc.close_other_reason || "",
-			},
-			{
-				fieldtype: "Small Text",
-				fieldname: "close_remarks",
-				label: __("Close Remarks"),
-				default: frm.doc.close_remarks || "",
-			},
+			...frappe.yrp.work_order.get_close_reason_fields({
+				close_reason: frm.doc.close_reason,
+				close_other_reason: frm.doc.close_other_reason,
+				close_remarks: frm.doc.close_remarks,
+			}),
 		],
 		primary_action_label: __("Close Work Order"),
 		primary_action(values) {
@@ -407,7 +392,7 @@ function open_close_dialog(frm) {
 				frappe.call({
 					method: "yrp.yrp.doctype.work_order.work_order.update_stock",
 					args: {
-						work_order: frm.doc.name,
+						work_order,
 						close_reason: values.close_reason,
 						close_other_reason: values.close_other_reason || "",
 						close_remarks: values.close_remarks || "",
@@ -423,7 +408,7 @@ function open_close_dialog(frm) {
 				frappe.call({
 					method: "yrp.yrp.doctype.debit.debit.create_debit",
 					args: {
-						work_order: frm.doc.name,
+						work_order,
 						debit_no: values.debit_no,
 						debit_value: values.debit_value,
 						reason: values.debit_reason,
@@ -440,8 +425,10 @@ function open_close_dialog(frm) {
 		},
 	});
 	d.show();
-	render_debit_list(frm.doc.name, d);
+	render_debit_list(work_order, d);
 }
+
+frappe.yrp.work_order.make_work_order_close_dialog = open_close_dialog;
 
 function render_debit_list(work_order, dialog) {
 	frappe.call({

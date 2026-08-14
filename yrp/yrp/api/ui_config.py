@@ -195,7 +195,7 @@ STORY_SCROLLER_LIMIT_DEFAULT = 12
 NEWCTA_KEYS = ("primary", "menu")
 # composite.source vocabulary (Composite.vue reads exactly these keys).
 COMPOSITE_SOURCE_KEYS = ("metrics", "doctype", "limit")
-# Engine grammar caps (apps/yrp/frontend/src/composite/grammar.js mirror —
+# Engine grammar caps (apps/essdee_yrp/frontend/src/engine/composite/grammar.js mirror —
 # enforced as HARD errors by the item-3 tree validator below; the engine
 # re-enforces them at render, where an over-cap tree draws the honest card).
 COMPOSITE_MAX_NODES = 100
@@ -204,7 +204,7 @@ COMPOSITE_MAX_DEPTH = 6
 # ── Composite grammar server mirror (USE_CASE §4 Track 1 item 3) ────────────
 # The deep-tree vocabulary of the `composite` block and BOTH cardTemplate
 # seams (record-list block props + listViews[<DocType>]) — a hand-maintained
-# mirror of the ENGINE grammar (apps/yrp/frontend/src/composite/grammar.js,
+# mirror of the host ENGINE grammar (apps/essdee_yrp/frontend/src/engine/composite/grammar.js,
 # the single ground truth; essdee_yrp/api/test_ui_mirror.py drift-guards every
 # constant in this section against the parsed grammar.js). validate_config
 # enforces it at save time wherever a composite tree can appear.
@@ -538,21 +538,28 @@ ACTIONS_KEYS = ("placement", "dialogPosition", "items")
 # STACK_DECISION: Drawer-bottom IS action-sheet; still a FILTER over capability,
 # never a grant).
 ACTIONS_PLACEMENTS = ("header", "inline", "floating", "action-sheet")
-# actions.items is a FILTER over the EXISTING header affordances only (§15:
-# arrangement never grants capability — every listed item still renders
-# through the client's canRead/canCreate/canSubmit/canCancel gates, and an
-# unknown name is ignored client-side, so it soft-warns here).
-ACTION_ITEMS = (
-	"create_grn",
-	"create_dc",
-	"complete_transfer",
-	"build_cloth_programs",
-	"more_menu",
-	"ewaybill_menu",
-	"send_sms",
-	"send_whatsapp",
-	"cancel_doc",
-)
+# actions.items is a FILTER over affordances registered by the installed /web
+# host. Base YRP deliberately knows no visual or business action names. A host
+# contributes safe identifiers through ``yrp_ui_actions``; JSON can select only
+# those inert identifiers and can never supply executable code.
+def get_registered_action_items():
+	"""Return ordered, safe action identifiers contributed by installed hosts."""
+	try:
+		hooked = frappe.get_hooks("yrp_ui_actions")
+	except Exception:
+		return ()
+
+	if isinstance(hooked, str):
+		hooked = [hooked]
+	if not isinstance(hooked, list | tuple):
+		return ()
+
+	return tuple(
+		item
+		for item in dict.fromkeys(hooked)
+		if isinstance(item, str) and EXPERIENCE_PROP_KEY_RE.fullmatch(item)
+	)
+
 
 # Theme token vocabulary — exactly what the engine renders today (frontend
 # theme/applyTheme.js tokenVars). mode/accent keep their HARD rules in
@@ -2761,16 +2768,23 @@ def _validate_actions(actions, layer, warnings):
 	if items is not None:
 		if not isinstance(items, list):
 			_hard(layer, _("actions.items must be a list of action names"))
+		registered_actions = get_registered_action_items()
 		for item in items:
 			if not isinstance(item, str):
 				warnings.append(
 					_("{0}: actions.items entry {1!r} is not a string").format(layer, item)
 				)
-			elif item not in ACTION_ITEMS:
+			elif not EXPERIENCE_PROP_KEY_RE.fullmatch(item):
+				warnings.append(
+					_("{0}: actions.items entry '{1}' is not a safe action identifier").format(
+						layer, item
+					)
+				)
+			elif registered_actions and item not in registered_actions:
 				warnings.append(
 					_(
 						"{0}: actions.items entry '{1}' is not one of {2} — the client ignores it"
-					).format(layer, item, ", ".join(ACTION_ITEMS))
+					).format(layer, item, ", ".join(registered_actions))
 				)
 
 	for key in actions:

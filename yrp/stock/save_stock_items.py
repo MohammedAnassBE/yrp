@@ -17,7 +17,6 @@ from frappe import _
 
 from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 
-
 # ---------------------------------------------------------------------------
 # Per-doctype field map
 #   child_table_field: child table field on parent
@@ -60,9 +59,8 @@ PARENT_CHILD_MAP = {
 		"value_fields": ["pending_quantity", "stock_update", "valuation_rate"],
 		"entry_fields": [
 			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
-			"additional_parameters", "set_combination", "grn_detail_no", "item_type",
+			"additional_parameters", "set_combination", "grn_detail_no",
 			"is_calculated", "source_grn", "source_grn_item",
-			"fabric_reference_variant", "fabric_reference_allocations",
 		],
 	},
 	"Work Order Receivables": {
@@ -73,8 +71,7 @@ PARENT_CHILD_MAP = {
 		"value_fields": ["cost", "pending_quantity", "total_cost"],
 		"entry_fields": [
 			"comments", "secondary_qty", "secondary_uom", "process_cost",
-			"additional_parameters", "set_combination", "fabric_reference_variant",
-			"fabric_reference_allocations",
+			"additional_parameters", "set_combination",
 		],
 	},
 	"Delivery Challan": {
@@ -132,6 +129,26 @@ def _get_map_config(parent_doctype):
 	if parent_doctype not in PARENT_CHILD_MAP:
 		frappe.throw(f"Unsupported item editor parent doctype {parent_doctype}")
 	return PARENT_CHILD_MAP[parent_doctype]
+
+
+def _get_entry_fields(parent_doctype, config):
+	"""Merge generic fields with code-owned consumer app contributions."""
+	fields = list(config.get("entry_fields") or [])
+	for path in frappe.get_hooks("yrp_stock_item_entry_fields") or []:
+		contribution = frappe.get_attr(path)(
+			parent_doctype=parent_doctype,
+			child_doctype=config.get("child_doctype"),
+		)
+		if contribution is None:
+			continue
+		if not isinstance(contribution, list | tuple):
+			raise TypeError(f"{path} must return a list or tuple of fieldnames")
+		for fieldname in contribution:
+			if not isinstance(fieldname, str) or not fieldname:
+				raise TypeError(f"{path} returned an invalid fieldname")
+			if fieldname not in fields:
+				fields.append(fieldname)
+	return fields
 
 
 def _child_has_field(child_doctype, fieldname):
@@ -212,7 +229,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 	qty_field = config["qty_field"]
 	child_doctype = config.get("child_doctype")
 	value_fields = config.get("value_fields") or []
-	entry_fields = config.get("entry_fields") or []
+	entry_fields = _get_entry_fields(parent_doctype, config)
 
 	# Normalise to dicts
 	rows = []
@@ -419,7 +436,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
 	qty_field = config["qty_field"]
 	child_doctype = config.get("child_doctype")
 	value_fields = config.get("value_fields") or []
-	entry_fields = config.get("entry_fields") or []
+	entry_fields = _get_entry_fields(parent_doctype, config)
 
 	dim_fields = get_dimension_fieldnames()
 
@@ -518,7 +535,7 @@ def _resolve_or_create_variant(parent_item, attributes):
 	same variant simultaneously, the second insert catches the duplicate error
 	and falls back to re-querying.
 	"""
-	from yrp.yrp.doctype.item.item import get_variant, create_variant
+	from yrp.yrp.doctype.item.item import create_variant, get_variant
 
 	# Strip empty-value keys — dependent stages may leave inapplicable attributes blank
 	attrs = {k: v for k, v in attributes.items() if v}
