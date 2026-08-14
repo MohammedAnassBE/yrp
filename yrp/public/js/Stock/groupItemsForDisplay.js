@@ -1,3 +1,4 @@
+// Generic display-only aggregation for the base Desk stock editor.
 const ADDITIVE_FIELDS = new Set([
 	"qty",
 	"pending_quantity",
@@ -9,18 +10,7 @@ const ADDITIVE_FIELDS = new Set([
 	"cancelled_qty",
 ])
 
-const ROUTE_ONLY_FIELDS = new Set([
-	"fabric_reference_variant",
-	"fabric_reference_allocations",
-	"row_index",
-	"table_index",
-])
-
 function clone(value) {
-	// Vue stores loaded table rows as reactive Proxy objects. Browsers expose
-	// structuredClone(), but it throws DataCloneError for a Proxy and prevents
-	// the entire grouped table from rendering. JSON data is the editor's actual
-	// contract, so a JSON clone is both sufficient and Proxy-safe.
 	return JSON.parse(JSON.stringify(value))
 }
 
@@ -38,10 +28,10 @@ function add(left, right) {
 	return Math.round(((Number(left) || 0) + (Number(right) || 0)) * 1e9) / 1e9
 }
 
-function displayIdentity(item) {
+function displayIdentity(item, routeOnlyFields) {
 	const entry = {}
 	for (const [key, value] of Object.entries(item || {})) {
-		if (key === "values" || ADDITIVE_FIELDS.has(key) || ROUTE_ONLY_FIELDS.has(key)) continue
+		if (key === "values" || ADDITIVE_FIELDS.has(key) || routeOnlyFields.has(key)) continue
 		entry[key] = value
 	}
 
@@ -66,28 +56,21 @@ function mergeAdditiveFields(target, source) {
 }
 
 /**
- * Aggregate route-split Work Order rows for read-only presentation.
- *
- * Fabric calculations intentionally retain one flat child row per
- * `fabric_reference_variant`, because later cloth-program tracking needs that
- * route reference. The item editor does not need to repeat the same physical
- * yarn/cloth variant once per route, so this function sums display-equivalent
- * entries while leaving the source grouped JSON untouched for round-tripping.
+ * Aggregate equivalent rows for read-only display without mutating the source.
+ * The consuming app names any business-specific route fields to ignore.
  */
-export function groupItemsForDisplay(groups) {
+export function groupItemsForDisplay(groups, routeFields = []) {
+	const routeOnlyFields = new Set(["row_index", "table_index", ...routeFields])
 	return (groups || []).map((group) => {
 		const byIdentity = new Map()
 		const items = []
 
 		for (const source of group.items || []) {
-			const identity = displayIdentity(source)
+			const identity = displayIdentity(source, routeOnlyFields)
 			let target = byIdentity.get(identity)
 			if (!target) {
 				target = clone(source)
-				delete target.fabric_reference_variant
-				delete target.fabric_reference_allocations
-				delete target.row_index
-				delete target.table_index
+				for (const fieldname of routeOnlyFields) delete target[fieldname]
 				byIdentity.set(identity, target)
 				items.push(target)
 				continue

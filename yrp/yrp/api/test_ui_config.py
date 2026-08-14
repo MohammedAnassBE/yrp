@@ -1184,6 +1184,21 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 		self.assertIn("delete_everything", warnings[0])
 		self.assertIn("the client ignores it", warnings[0])
 
+	def test_action_names_come_from_the_installed_host_registry(self):
+		with patch.object(
+			frappe,
+			"get_hooks",
+			return_value=["host_action", "host_action", "unsafe-action"],
+		):
+			self.assertEqual(ui_config.get_registered_action_items(), ("host_action",))
+
+	def test_bare_base_accepts_safe_inert_action_names_without_owning_them(self):
+		with patch.object(ui_config, "get_registered_action_items", return_value=()):
+			self.assertEqual(
+				self._layout_warnings({"actions": {"items": ["host_action"]}}),
+				[],
+			)
+
 	def test_non_string_action_item_entry_warns_softly(self):
 		warnings = self._layout_warnings({"actions": {"items": ["create_grn", 7]}})
 		self.assertEqual(len(warnings), 1)
@@ -1764,9 +1779,9 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		self.assertEqual(warnings, [])
 
 	def test_known_metric_keys_helper_reflects_the_registry(self):
-		from yrp.yrp.api.ui_metrics import METRICS
+		from yrp.yrp.api.ui_metrics import get_metric_registry
 
-		self.assertEqual(ui_config._known_metric_keys(), set(METRICS))
+		self.assertEqual(ui_config._known_metric_keys(), set(get_metric_registry()))
 
 	# ── record-list ───────────────────────────────────────────────────────
 
@@ -2144,7 +2159,7 @@ class TestUIConfigCompositeBlock(IntegrationTestCase):
 	def test_composite_caps_constants_are_declared(self):
 		# The engine grammar caps are mirrored server-side (enforced HARD by
 		# the item-3 validator); the essdee_yrp client-mirror test guards the
-		# values against apps/yrp/frontend/src/composite/grammar.js.
+		# values against apps/essdee_yrp/frontend/src/engine/composite/grammar.js.
 		self.assertEqual(ui_config.COMPOSITE_MAX_NODES, 100)
 		self.assertEqual(ui_config.COMPOSITE_MAX_DEPTH, 6)
 

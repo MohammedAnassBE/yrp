@@ -7,54 +7,46 @@ frappe.ui.form.on("Excel Sticker Print", {
         $('[data-original-title=Print]').hide();
         $("li:has(a:has(span[data-label='Print']))").remove();
 
-        if (frm.doc.docstatus === 1 && frm.doc.print_format) {
-            frappe.call({
-                method: 'production_api.production_api.doctype.excel_sticker_print.excel_sticker_print.get_raw_code',
-                args: { doc_name: frm.doc.name },
-                callback: function (r) {
-                    let data = encodeURI(r.message.code);
-                    const imageUrl = `http://api.labelary.com/v1/printers/12dpmm/labels/${r.message.width}x${r.message.height}/0/"${data}"`;
-                    frm.fields_dict['print_preview_html'].df.options = `<img src=${imageUrl} style="border: 2px solid #000;">`
-                    frm.fields_dict['print_preview_html'].refresh()
-                }
+		if (frm.doc.docstatus === 1 && frm.doc.print_format) {
+			frappe.call({
+				method: 'yrp.yrp.doctype.excel_sticker_print.excel_sticker_print.get_raw_code',
+				args: { doc_name: frm.doc.name },
+				callback: function (r) {
+					let data = encodeURI(r.message.code);
+					const imageUrl = `https://api.labelary.com/v1/printers/12dpmm/labels/${r.message.width}x${r.message.height}/0/"${data}"`;
+					frm.fields_dict['print_preview_html'].df.options = `<img src=${imageUrl} style="border: 2px solid #000;">`
+					frm.fields_dict['print_preview_html'].refresh()
+				}
             });
 
             frm.add_custom_button("Print", () => {
                 frappe.ui.form.qz_connect()
-                    .then(function () {
-                        return frappe.ui.form.qz_get_printer_list();
-                    })
-                    .then(function (printers) {
-                        frappe.call({
-                            method: 'production_api.essdee_production.doctype.box_sticker_print.box_sticker_print.get_printer',
-                            args: {
-                                printers: printers,
-                            },
-                            callback: function (r) {
-                                let d = new frappe.ui.Dialog({
-                                    title: "Select any one printer",
-                                    fields: [
-                                        {
-                                            fieldname: 'printer_list_html',
-                                            fieldtype: 'HTML',
-                                        }
-                                    ],
-                                    size: 'small',
-                                    primary_action: function () {
-                                        let printer_info = get_printer();
-                                        if (printer_info) {
-                                            d.hide();
-                                            let printer = printer_info.printer.slice(1, -1);
-                                            print_labels(frm, printer, printer_info.res);
-                                        }
-                                    }
-                                });
-                                d.fields_dict.printer_list_html.$wrapper.html('');
-                                d.fields_dict.printer_list_html.$wrapper.append(get_printers_html(r.message));
-                                d.show();
-                            }
-                        });
-                    })
+					.then(function () {
+						return frappe.ui.form.qz_get_printer_list();
+					})
+					.then(function (printers) {
+						let d = new frappe.ui.Dialog({
+							title: "Select any one printer",
+							fields: [
+								{
+									fieldname: 'printer_list_html',
+									fieldtype: 'HTML',
+								}
+							],
+							size: 'small',
+							primary_action: function () {
+								let printer_info = get_printer();
+								if (printer_info) {
+									d.hide();
+									let printer = printer_info.printer.slice(1, -1);
+									print_labels(frm, printer, printer_info.res);
+								}
+							}
+						});
+						d.fields_dict.printer_list_html.$wrapper.html('');
+						d.fields_dict.printer_list_html.$wrapper.append(get_printers_html(printers));
+						d.show();
+					})
                     .catch(function (err) {
                         frappe.ui.form.qz_fail(err);
                     });
@@ -140,8 +132,8 @@ function get_printer() {
 }
 
 function print_labels(frm, printer, res) {
-    frappe.call({
-        method: 'production_api.production_api.doctype.excel_sticker_print.excel_sticker_print.get_print_format',
+	frappe.call({
+		method: 'yrp.yrp.doctype.excel_sticker_print.excel_sticker_print.get_print_format',
         args: {
             doc_name: frm.doc.name,
             printer_res: res

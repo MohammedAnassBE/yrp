@@ -31,7 +31,7 @@
 
 <script setup>
 import { computed, ref } from 'vue';
-import { groupItemsForDisplay } from '../../../../frontend/src/stock/groupItemsForDisplay.js';
+import { groupItemsForDisplay } from '../Stock/groupItemsForDisplay.js';
 import EventBus from '../Stock/bus.js';
 import ItemDimensionFetcher from '../Stock/components/ItemDimensionFetch.vue';
 import GoodsReceivedNoteEditor from './GoodsReceivedNoteEditor.vue';
@@ -47,6 +47,7 @@ const props = defineProps({
     sourceType: { type: String, default: '' },
     showSecondary: { type: Boolean, default: false },
     aggregateDisplay: { type: Boolean, default: false },
+    aggregateRouteFields: { type: Array, default: () => [] },
 });
 
 const SECONDARY_COLUMNS = [
@@ -58,7 +59,9 @@ const docstatus = ref(cur_frm.doc.docstatus || 0);
 const items = ref([]);
 const allowedItems = ref([]);
 const displayItems = computed(() => (
-    props.aggregateDisplay ? groupItemsForDisplay(items.value) : items.value
+    props.aggregateDisplay
+        ? groupItemsForDisplay(items.value, props.aggregateRouteFields)
+        : items.value
 ));
 
 const baseTableFields = computed(() => {

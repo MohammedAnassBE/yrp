@@ -98,16 +98,6 @@ def calculate_bom_for_variant_demands(
 	)
 
 
-def calculate_lot_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
-	"""Compatibility alias; this function performs no Lot lookup or persistence."""
-	return calculate_bom_for_variant_demands(
-		ipd_name,
-		variant_demands,
-		process_names=process_names,
-		include_outputs=include_outputs,
-	)
-
-
 @frappe.whitelist()
 def calculate_matrix_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
 	return calculate_major_deliverables(

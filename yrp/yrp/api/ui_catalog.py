@@ -44,7 +44,6 @@ from frappe.utils import get_bench_path
 
 from yrp.yrp.api.ui_config import (
 	ACCENT_RE,
-	ACTION_ITEMS,
 	ACTIONS_PLACEMENTS,
 	BLOCK_PROP_KEYS,
 	BLOCK_SIZES,
@@ -100,6 +99,7 @@ from yrp.yrp.api.ui_config import (
 	THEME_SECTION_HEADERS,
 	_web_doctype_catalog,
 	get_home_queue_metrics,
+	get_registered_action_items,
 )
 from yrp.yrp.api.ui_metrics import get_calculation_registry, get_metric_registry
 
@@ -438,7 +438,7 @@ def _block_type_specs():
 				f"{COMPOSITE_MAX_NODES} nodes / depth {COMPOSITE_MAX_DEPTH}; unknown nodes "
 				"render path-labelled honest fallbacks. Full machine-readable grammar: "
 				"top-level composite_grammar (engine ground truth: "
-				"apps/yrp/frontend/src/composite/grammar.js).",
+				"apps/essdee_yrp/frontend/src/engine/composite/grammar.js).",
 			},
 		},
 		"story-scroller": {
@@ -564,7 +564,7 @@ def _composite_grammar_section():
 		"boundary": "USE_CASE §3(d): no HTML/CSS/selector/JS strings (markup-shaped literals "
 		"HARD-fail), no queries, no loops, no server-method names. Bindings only READ what "
 		"the permissioned host fetched — arrangement never grants capability.",
-		"ground_truth": "apps/yrp/frontend/src/composite/grammar.js (engine); "
+		"ground_truth": "apps/essdee_yrp/frontend/src/engine/composite/grammar.js (engine); "
 		"yrp.yrp.api.ui_config COMPOSITE_* constants (server mirror, suitable for "
 		"consumer-side drift tests)",
 	}
@@ -1108,7 +1108,7 @@ def build_catalog():
 					"type": "array",
 					"validation": "hard shape; soft entries",
 					"items": _enum(
-						ACTION_ITEMS,
+						get_registered_action_items(),
 						"FILTER over the existing header affordances only. Unknown names are "
 						"ignored by the client.",
 					),
@@ -1136,7 +1136,7 @@ def build_catalog():
 				"apps/yrp/yrp/yrp/api/ui_metrics.py (METRICS + CALCULATIONS registries)",
 				"apps/essdee_yrp/essdee_yrp/hooks.py (yrp_web_doctype_catalog hook)",
 				"apps/essdee_yrp/frontend/src/blocks/index.js (block registrations, mirrored by BLOCK_PROP_KEYS)",
-				"apps/yrp/frontend/src/composite/grammar.js (composite grammar, mirrored by COMPOSITE_PRIMITIVES et al.)",
+				"apps/essdee_yrp/frontend/src/engine/composite/grammar.js (composite grammar, mirrored by COMPOSITE_PRIMITIVES et al.)",
 			],
 			"reading_rules": [
 				"NEVER read custom ui/demos/ for vocabulary — demo vocab != live vocab.",
@@ -1176,7 +1176,7 @@ def build_catalog():
 			"metrics": _metrics_registry(),
 			"home_queue_metrics": list(get_home_queue_metrics()),
 			"calculations": _calculations_registry(),
-			"action_items": list(ACTION_ITEMS),
+			"action_items": list(get_registered_action_items()),
 		},
 		"web_doctype_catalog": sorted(catalog_hook) if catalog_hook else None,
 		"formats": {

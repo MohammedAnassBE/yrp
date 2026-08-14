@@ -610,7 +610,7 @@ def _apply_close_details(doc, open_status, close_reason=None, close_other_reason
 	doc.open_status = open_status
 	if close_reason:
 		doc.close_reason = close_reason
-	if close_other_reason:
+	if close_other_reason and doc.meta.get_field("close_other_reason"):
 		doc.close_other_reason = close_other_reason
 	if close_remarks:
 		doc.close_remarks = close_remarks

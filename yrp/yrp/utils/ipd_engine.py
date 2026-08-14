@@ -377,16 +377,6 @@ def calculate_bom_for_variant_demands(
 	}
 
 
-def calculate_lot_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
-	"""Compatibility alias for consumers that still use the former API name."""
-	return calculate_bom_for_variant_demands(
-		ipd_name,
-		variant_demands,
-		process_names=process_names,
-		include_outputs=include_outputs,
-	)
-
-
 def _normalize_variant_demands(ipd, variant_demands):
 	variant_demands = frappe.parse_json(variant_demands) if isinstance(variant_demands, str) else variant_demands
 	if isinstance(variant_demands, dict):

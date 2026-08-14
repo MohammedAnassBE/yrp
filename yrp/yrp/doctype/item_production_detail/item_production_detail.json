@@ -29,7 +29,7 @@
   {"fieldname": "item_details_tab", "fieldtype": "Tab Break", "label": "Item Details"},
   {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "Item", "reqd": 1, "in_list_view": 1},
   {"fieldname": "version", "fieldtype": "Int", "label": "Version", "hidden": 1},
-  {"fieldname": "approval_status", "fieldtype": "Select", "label": "Approval Status", "options": "Not Approved\nCutting Approved\nApproved", "default": "Not Approved", "read_only": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "approval_status", "fieldtype": "Select", "label": "Approval Status", "options": "Not Approved\nApproved", "default": "Not Approved", "read_only": 1, "in_list_view": 1, "in_standard_filter": 1},
   {"fieldname": "approved_by", "fieldtype": "Link", "label": "Approved By", "options": "User", "read_only": 1},
   {"fieldname": "section_break_yqii", "fieldtype": "Section Break", "label": "Item Attributes"},
   {"fieldname": "primary_item_attribute", "fieldtype": "Link", "label": "Primary Item Attribute", "options": "Item Attribute", "read_only_depends_on": "eval: !doc.__islocal"},
