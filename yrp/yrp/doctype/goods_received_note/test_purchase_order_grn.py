@@ -179,6 +179,10 @@ def _purchase_order_grn(po, qty):
 		"posting_date": nowdate(),
 		"posting_time": nowtime(),
 		"to_warehouse": po.delivery_warehouse,
+		"supplier_address": po.supplier_address
+		or _address(f"_Test PO GRN Supplier Address {frappe.generate_hash(length=6)}"),
+		"delivery_address": po.delivery_address
+		or _address(f"_Test PO GRN Delivery Address {frappe.generate_hash(length=6)}"),
 		"items": [{
 			"item_variant": item.item_variant,
 			"quantity": qty,

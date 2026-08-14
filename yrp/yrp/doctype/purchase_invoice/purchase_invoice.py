@@ -78,6 +78,7 @@ class PurchaseInvoice(Document):
 		self.db_set("status", "Cancelled", update_modified=False)
 
 	def on_trash(self):
+		self.unlink_grns()
 		self.revert_bill_tracking_link(origin="PI-delete")
 
 	def link_to_bill_tracking(self):
@@ -164,33 +165,7 @@ class PurchaseInvoice(Document):
 			if row.grn in seen:
 				frappe.throw(_("GRN {0} is duplicated.").format(row.grn))
 			seen.add(row.grn)
-			if not frappe.db.exists("Goods Received Note", row.grn):
-				frappe.throw(_("Goods Received Note {0} does not exist.").format(row.grn))
-			grn = frappe.db.get_value(
-				"Goods Received Note",
-				row.grn,
-				["docstatus", "supplier", "against", "purchase_invoice_name"],
-				as_dict=True,
-			)
-			if grn.docstatus != 1:
-				frappe.throw(_("Goods Received Note {0} must be submitted.").format(row.grn))
-			if self.supplier and grn.supplier != self.supplier:
-				frappe.throw(_("Goods Received Note {0} belongs to another supplier.").format(row.grn))
-			if self.against and grn.against != self.against:
-				frappe.throw(_("Goods Received Note {0} is against {1}.").format(row.grn, grn.against))
-			if grn.purchase_invoice_name and grn.purchase_invoice_name != self.name:
-				frappe.throw(
-					_("Goods Received Note {0} is already linked to Purchase Invoice {1}.").format(
-						row.grn, grn.purchase_invoice_name
-					)
-				)
-			linked_invoice = _get_linked_invoice_from_child_table(row.grn, exclude=self.name)
-			if linked_invoice:
-				frappe.throw(
-					_("Goods Received Note {0} is already linked to Purchase Invoice {1}.").format(
-						row.grn, linked_invoice
-					)
-				)
+			_validate_selected_grn(row.grn, self.supplier, self.against, self.name)
 
 	def sync_grn_links(self):
 		current = {row.grn for row in self.get("grn") or [] if row.grn}
@@ -240,7 +215,11 @@ class PurchaseInvoice(Document):
 		self.grn_grand_total = grn_total
 		# Compare PRE-TAX (self.total) against the GRN total, which is itself pre-tax.
 		# Using the tax-inclusive grand_total would falsely trip on any taxed row.
-		if self.against == "Purchase Order" and flt(self.total) > flt(grn_total) + 0.01:
+		if (
+			self.against == "Purchase Order"
+			and not self.allow_to_change_rate
+			and flt(self.total) > flt(grn_total) + 0.01
+		):
 			frappe.throw(_("Total amount is greater than GRN total amount."))
 		# Work Order: the PI bills at the WO's Process Cost (the processing charge
 		# only), NOT the GRN line total — which also bakes in the issued material
@@ -270,7 +249,70 @@ def update_wo_billed_qty(doc, docstatus=1):
 
 
 @frappe.whitelist()
-def fetch_grn_details(grns, against, supplier):
+def get_eligible_grns(supplier, against, search_text=None, purchase_invoice=None, limit=100):
+	"""Return submitted, unbilled GRNs available to a Purchase Invoice.
+
+	The denormalised ``purchase_invoice_name`` on GRN is the fast path. The PI
+	child table is checked as a second source of truth so an older/stale GRN link
+	cannot make the same receipt billable twice. While editing, rows already owned
+	by that same draft invoice remain selectable.
+	"""
+	_check_invoice_fetch_permission(purchase_invoice)
+	frappe.has_permission("Goods Received Note", "read", throw=True)
+	if not supplier:
+		frappe.throw(_("Supplier is required."))
+	if against not in {"Purchase Order", "Work Order"}:
+		frappe.throw(_("Against must be Purchase Order or Work Order."))
+
+	purchase_invoice = purchase_invoice if _is_active_invoice(purchase_invoice) else None
+	limit = max(1, min(int(limit or 100), 200))
+	filters = {"docstatus": 1, "supplier": supplier, "against": against}
+	search_text = (search_text or "").strip()
+	or_filters = None
+	if search_text:
+		like = f"%{search_text}%"
+		or_filters = [
+			["Goods Received Note", "name", "like", like],
+			["Goods Received Note", "against_id", "like", like],
+			["Goods Received Note", "supplier_document_no", "like", like],
+		]
+
+	# Fetch a bounded superset: rows already billed elsewhere are removed below.
+	# frappe.get_list (rather than get_all) keeps User Permissions authoritative.
+	rows = frappe.get_list(
+		"Goods Received Note",
+		filters=filters,
+		or_filters=or_filters,
+		fields=[
+			"name",
+			"against_id",
+			"posting_date",
+			"supplier_document_no",
+			"total_received_quantity",
+			"total",
+			"purchase_invoice_name",
+		],
+		order_by="posting_date desc, modified desc",
+		limit_page_length=min(limit * 3, 600),
+	)
+
+	linked_by_child = _active_invoice_links_for_grns([row.name for row in rows])
+	eligible = []
+	for row in rows:
+		owner = row.purchase_invoice_name or linked_by_child.get(row.name)
+		if owner and owner != purchase_invoice:
+			continue
+		row["selected"] = bool(purchase_invoice and owner == purchase_invoice)
+		eligible.append(row)
+		if len(eligible) >= limit:
+			break
+	return eligible
+
+
+@frappe.whitelist()
+def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
+	_check_invoice_fetch_permission(purchase_invoice)
+	frappe.has_permission("Goods Received Note", "read", throw=True)
 	grns = frappe.parse_json(grns) if isinstance(grns, str) else grns
 	grns = list(dict.fromkeys(grns or []))
 	if not grns:
@@ -280,13 +322,8 @@ def fetch_grn_details(grns, against, supplier):
 	wo_items = {}
 	total_quantity = 0
 	for grn_name in grns:
+		_validate_selected_grn(grn_name, supplier, against, purchase_invoice)
 		grn = frappe.get_doc("Goods Received Note", grn_name)
-		if grn.docstatus != 1:
-			frappe.throw(_("Goods Received Note {0} must be submitted.").format(grn_name))
-		if supplier and grn.supplier != supplier:
-			frappe.throw(_("Goods Received Note {0} belongs to another supplier.").format(grn_name))
-		if against and grn.against != against:
-			frappe.throw(_("Goods Received Note {0} is against {1}.").format(grn_name, grn.against))
 
 		work_order = frappe.get_doc("Work Order", grn.against_id) if grn.against == "Work Order" else None
 		for grn_item in grn.get("items") or []:
@@ -327,12 +364,14 @@ def fetch_grn_details(grns, against, supplier):
 					"tax": tax,
 					"actual_rate": stock_rate,
 					"actual_qty": 0,
+					"_actual_amount": 0,
 					"set_combination": json.dumps(set_combination) if set_combination else None,
 				},
 			)
 			items[key]["qty"] += qty
 			items[key]["actual_qty"] += qty
 			items[key]["amount"] += qty * rate
+			items[key]["_actual_amount"] += qty * stock_rate
 			total_quantity += qty
 
 			if work_order:
@@ -358,6 +397,12 @@ def fetch_grn_details(grns, against, supplier):
 
 	item_rows = list(items.values())
 	for row in item_rows:
+		row["rate"] = flt(row["amount"]) / flt(row["qty"]) if flt(row["qty"]) else 0
+		row["actual_rate"] = (
+			flt(row.pop("_actual_amount")) / flt(row["actual_qty"])
+			if flt(row["actual_qty"])
+			else 0
+		)
 		row["amount"] = flt(row["qty"]) * flt(row["rate"])
 
 	grand_total = sum(
@@ -370,7 +415,8 @@ def fetch_grn_details(grns, against, supplier):
 		"total": grand_total,
 		"total_quantity": total_quantity,
 		"wo_items": list(wo_items.values()),
-		"allow_to_change_rate": 0,
+		"tax_rates": {row.get("tax"): _get_tax_rate(row.get("tax")) for row in item_rows if row.get("tax")},
+		"allow_to_change_rate": 1,
 	}
 
 
@@ -535,6 +581,68 @@ def _normal_json(value):
 	if not value:
 		return {}
 	return frappe.parse_json(value) if isinstance(value, str) else value
+
+
+def _check_invoice_fetch_permission(purchase_invoice=None):
+	if purchase_invoice and frappe.db.exists("Purchase Invoice", purchase_invoice):
+		invoice = frappe.get_doc("Purchase Invoice", purchase_invoice)
+		frappe.has_permission("Purchase Invoice", "write", doc=invoice, throw=True)
+		return
+	frappe.has_permission("Purchase Invoice", "create", throw=True)
+
+
+def _validate_selected_grn(grn_name, supplier=None, against=None, purchase_invoice=None):
+	if not frappe.db.exists("Goods Received Note", grn_name):
+		frappe.throw(_("Goods Received Note {0} does not exist.").format(grn_name))
+	frappe.has_permission("Goods Received Note", "read", doc=grn_name, throw=True)
+	grn = frappe.db.get_value(
+		"Goods Received Note",
+		grn_name,
+		["docstatus", "supplier", "against", "purchase_invoice_name"],
+		as_dict=True,
+	)
+	if grn.docstatus != 1:
+		frappe.throw(_("Goods Received Note {0} must be submitted.").format(grn_name))
+	if supplier and grn.supplier != supplier:
+		frappe.throw(_("Goods Received Note {0} belongs to another supplier.").format(grn_name))
+	if against and grn.against != against:
+		frappe.throw(_("Goods Received Note {0} is against {1}.").format(grn_name, grn.against))
+	if grn.purchase_invoice_name and grn.purchase_invoice_name != purchase_invoice:
+		frappe.throw(
+			_("Goods Received Note {0} is already linked to Purchase Invoice {1}.").format(
+				grn_name, grn.purchase_invoice_name
+			)
+		)
+	linked_invoice = _get_linked_invoice_from_child_table(grn_name, exclude=purchase_invoice)
+	if linked_invoice:
+		frappe.throw(
+			_("Goods Received Note {0} is already linked to Purchase Invoice {1}.").format(
+				grn_name, linked_invoice
+			)
+		)
+	return grn
+
+
+def _active_invoice_links_for_grns(grns):
+	grns = list(dict.fromkeys(grn for grn in (grns or []) if grn))
+	if not grns or not frappe.db.exists("DocType", "Purchase Invoice GRN"):
+		return {}
+	rows = frappe.get_all(
+		"Purchase Invoice GRN",
+		filters={"grn": ["in", grns], "parenttype": "Purchase Invoice"},
+		fields=["grn", "parent"],
+		limit_page_length=0,
+	)
+	parents = list(dict.fromkeys(row.parent for row in rows if row.parent))
+	active = set(
+		frappe.get_all(
+			"Purchase Invoice",
+			filters={"name": ["in", parents], "docstatus": ["!=", 2]},
+			pluck="name",
+			limit_page_length=0,
+		)
+	) if parents else set()
+	return {row.grn: row.parent for row in rows if row.parent in active}
 
 
 def _get_linked_invoice_from_child_table(grn, exclude=None):

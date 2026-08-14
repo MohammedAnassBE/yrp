@@ -16,6 +16,18 @@
   "terms_and_condition",
   "open_status",
   "status",
+  "supplier_details_section",
+  "supplier_address",
+  "supplier_address_display",
+  "supplier_contact_column",
+  "contact_person",
+  "contact_display",
+  "contact_mobile",
+  "delivery_details_section",
+  "deliver_to_supplier",
+  "default_delivery_location",
+  "delivery_address",
+  "delivery_address_display",
   "items_section",
   "items",
   "item_html",
@@ -31,6 +43,8 @@
   "in_words",
   "comments_section",
   "comments",
+  "print_settings_section",
+  "show_delivery_details",
   "approved_by",
   "cancel_reason",
   "amended_from"
@@ -94,6 +108,7 @@
    "default": "Open",
    "fieldname": "open_status",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_list_view": 1,
    "label": "Open Status",
    "options": "Open\nClose",
@@ -104,10 +119,79 @@
    "default": "Draft",
    "fieldname": "status",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
    "options": "Draft\nOrdered\nPartially Received\nReceived\nPartially Cancelled\nCancelled\nClosed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_details_section",
+   "fieldtype": "Section Break",
+   "label": "Supplier Address and Contact"
+  },
+  {
+   "fieldname": "supplier_address",
+   "fieldtype": "Link",
+   "label": "Supplier Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "supplier_address_display",
+   "fieldtype": "Small Text",
+   "label": "Supplier Address Details",
+   "read_only": 1
+  },
+  {
+   "fieldname": "supplier_contact_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "contact_person",
+   "fieldtype": "Link",
+   "label": "Supplier Contact",
+   "options": "Contact"
+  },
+  {
+   "fieldname": "contact_display",
+   "fieldtype": "Small Text",
+   "label": "Contact Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contact_mobile",
+   "fieldtype": "Small Text",
+   "label": "Contact Mobile",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_details_section",
+   "fieldtype": "Section Break",
+   "label": "Delivery Details"
+  },
+  {
+   "default": "0",
+   "fieldname": "deliver_to_supplier",
+   "fieldtype": "Check",
+   "label": "Deliver to Supplier"
+  },
+  {
+   "fieldname": "default_delivery_location",
+   "fieldtype": "Link",
+   "label": "Default Delivery Location",
+   "options": "Supplier"
+  },
+  {
+   "fieldname": "delivery_address",
+   "fieldtype": "Link",
+   "label": "Delivery Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "delivery_address_display",
+   "fieldtype": "Small Text",
+   "label": "Delivery Address Details",
    "read_only": 1
   },
   {
@@ -119,9 +203,9 @@
    "allow_on_submit": 1,
    "fieldname": "items",
    "fieldtype": "Table",
+   "hidden": 1,
    "label": "Items",
-   "options": "Purchase Order Item",
-   "reqd": 1
+   "options": "Purchase Order Item"
   },
   {
    "fieldname": "item_html",
@@ -201,8 +285,20 @@
    "label": "Comments"
   },
   {
+   "fieldname": "print_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Print Settings"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_delivery_details",
+   "fieldtype": "Check",
+   "label": "Show Delivery Details"
+  },
+  {
    "fieldname": "approved_by",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Approved By",
    "no_copy": 1,
    "options": "User",

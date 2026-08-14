@@ -37,6 +37,7 @@ frappe.ui.form.on("Purchase Invoice", {
 				grns,
 				against: frm.doc.against,
 				supplier: frm.doc.supplier,
+				purchase_invoice: frm.is_new() ? null : frm.doc.name,
 			},
 			callback(r) {
 				if (!r.message) return;

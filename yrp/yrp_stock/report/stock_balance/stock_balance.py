@@ -30,7 +30,8 @@ def execute(filters=None):
 	if not sle:
 		return columns, []
 
-	if filters.get("show_stock_ageing_data"):
+	item_wise_fifo_queue = {}
+	if filters.get("show_stock_ageing_data") or filters.get("show_inward_date_split"):
 		filters["show_warehouse_wise_stock"] = True
 		item_wise_fifo_queue = FIFOSlots(filters, sle).generate()
 
@@ -52,10 +53,16 @@ def execute(filters=None):
 		row = _unpack_group_key(group_key, dim_fields)
 		row.update(item_map[item])
 		row.update(qty_dict)
+		fifo_queue = item_wise_fifo_queue.get(group_key, {}).get("fifo_queue", [])
+
+		if filters.get("show_inward_date_split"):
+			breakdown = get_inward_date_breakdown(fifo_queue)
+			row["inward_date_breakdown"] = breakdown
+			row["inward_split"] = "\n".join(
+				f"{entry['date']}: {entry['qty']:g}" for entry in breakdown
+			)
 
 		if filters.get("show_stock_ageing_data"):
-			fifo_data = item_wise_fifo_queue.get(group_key, {})
-			fifo_queue = fifo_data.get("fifo_queue", [])
 			ageing = {"average_age": 0, "earliest_age": 0, "latest_age": 0}
 			if fifo_queue:
 				sorted_q = sorted([e for e in fifo_queue if e[1]], key=lambda x: x[1])
@@ -68,6 +75,23 @@ def execute(filters=None):
 		data.append(row)
 
 	return columns, data
+
+
+def get_inward_date_breakdown(fifo_queue):
+	"""Aggregate remaining FIFO stock into oldest-first inward-date buckets."""
+	buckets = {}
+	for qty, posting_date, *_rest in fifo_queue or []:
+		qty = flt(qty)
+		if not qty or not posting_date:
+			continue
+		date_key = getdate(posting_date)
+		buckets[date_key] = buckets.get(date_key, 0.0) + qty
+
+	return [
+		{"date": date_key.strftime("%d-%m-%Y"), "qty": flt(buckets[date_key], 3)}
+		for date_key in sorted(buckets)
+		if flt(buckets[date_key], 3)
+	]
 
 
 def get_columns(filters, dims):
@@ -99,6 +123,21 @@ def get_columns(filters, dims):
 		{"label": _("Out Value"), "fieldname": "out_val", "fieldtype": "Currency", "width": 80},
 		{"label": _("Valuation Rate"), "fieldname": "val_rate", "fieldtype": "Currency", "width": 100},
 	])
+
+	if filters.get("show_inward_date_split"):
+		balance_index = next(
+			(index for index, column in enumerate(columns) if column.get("fieldname") == "bal_val"),
+			len(columns) - 1,
+		)
+		columns.insert(
+			balance_index + 1,
+			{
+				"label": _("Inward Date Split"),
+				"fieldname": "inward_split",
+				"fieldtype": "Data",
+				"width": 220,
+			},
+		)
 
 	if filters.get("show_stock_ageing_data"):
 		columns.extend([
@@ -136,7 +175,11 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 	if filters.get("to_date"):
 		query = query.where(sle.posting_date <= filters["to_date"])
 	if filters.get("warehouse"):
-		query = query.where(sle.warehouse == filters["warehouse"])
+		warehouses = filters["warehouse"]
+		if isinstance(warehouses, (list, tuple, set)):
+			query = query.where(sle.warehouse.isin(list(warehouses)))
+		else:
+			query = query.where(sle.warehouse == warehouses)
 	if items:
 		query = query.where(sle.item.isin(items))
 	for fn in dim_fields:

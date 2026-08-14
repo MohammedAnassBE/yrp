@@ -2,9 +2,18 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import nowdate, nowtime
 
+from yrp.stock.dimensions import get_dimension_fieldnames
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
 )
+
+
+def _source_dimensions(row):
+	return {
+		fieldname: row.get(fieldname)
+		for fieldname in get_dimension_fieldnames()
+		if fieldname != "received_type" and row.get(fieldname)
+	}
 from yrp.yrp.doctype.work_order.test_rework_flow import (
 	_make_parent_grn,
 	_make_parent_work_order,
@@ -86,7 +95,7 @@ class TestReworkSourceFilter(FrappeTestCase):
 
 	def test_inspection_emits_rework_source_for_non_default_target(self):
 		"""An Inspection Entry converting Accepted → Oil Mark must surface
-		one inspection-anchored source row with qty = inspection qty. The
+		one GRN-anchored inspected-stock row with qty = inspection qty. The
 		original GRN row (at default RT) must NOT be shown.
 		"""
 		accepted = _default_received_type()
@@ -113,7 +122,7 @@ class TestReworkSourceFilter(FrappeTestCase):
 				"ref_doctype": "Goods Received Note Item",
 				"ref_docname": grn_row.name,
 				"received_type": accepted,
-				"lot": grn_row.lot,
+				**_source_dimensions(grn_row),
 			}],
 		})
 		insp.insert(ignore_permissions=True)
@@ -123,8 +132,49 @@ class TestReworkSourceFilter(FrappeTestCase):
 
 		self.assertEqual(len(rows), 1)
 		self.assertEqual(rows[0]["source_key"].startswith("inspection::"), True)
+		self.assertEqual(rows[0]["source_grn"], grn.name)
+		self.assertEqual(rows[0]["source_grn_item"], grn_row.name)
+		self.assertNotIn("source_inspection_entry_item", rows[0])
 		self.assertEqual(rows[0]["received_type"], oil_mark)
 		self.assertEqual(rows[0]["available_qty"], 4)
+
+	def test_multiple_inspections_are_queried_as_one_grn_bucket(self):
+		accepted = _default_received_type()
+		oil_mark = _received_type(f"_T_Filter_MultiInsp_{frappe.generate_hash(length=6)}")
+		wo, supplier_wh, delivery_wh, item_variant, uom = _make_parent_work_order(qty=10)
+		grn = _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, accepted, qty=10)
+		grn_row = grn.items[0]
+
+		for qty in (2, 3):
+			inspection = frappe.get_doc({
+				"doctype": "Inspection Entry",
+				"against": "Goods Received Note",
+				"against_id": grn.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"is_converted": 1,
+				"items": [{
+					"item_variant": item_variant,
+					"warehouse": delivery_wh,
+					"grn_qty": 10,
+					"target_received_type": oil_mark,
+					"qty": qty,
+					"received_date": nowdate(),
+					"ref_doctype": "Goods Received Note Item",
+					"ref_docname": grn_row.name,
+					"received_type": accepted,
+					**_source_dimensions(grn_row),
+				}],
+			})
+			inspection.insert(ignore_permissions=True)
+			inspection.submit()
+
+		rows = get_rework_source_rows(wo.name)
+
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0]["source_grn_item"], grn_row.name)
+		self.assertEqual(rows[0]["available_qty"], 5)
+		self.assertNotIn("source_inspection_entry_item", rows[0])
 
 	def test_inspection_outflow_reduces_grn_row_available(self):
 		"""When an Inspection Entry converts qty out of a GRN row's bucket
@@ -155,7 +205,7 @@ class TestReworkSourceFilter(FrappeTestCase):
 				"ref_doctype": "Goods Received Note Item",
 				"ref_docname": grn_row.name,
 				"received_type": oil_mark,
-				"lot": grn_row.lot,
+				**_source_dimensions(grn_row),
 			}],
 		})
 		insp.insert(ignore_permissions=True)
@@ -195,7 +245,7 @@ class TestReworkSourceFilter(FrappeTestCase):
 				"ref_doctype": "Goods Received Note Item",
 				"ref_docname": grn_row.name,
 				"received_type": oil_mark,
-				"lot": grn_row.lot,
+				**_source_dimensions(grn_row),
 			}],
 		})
 		insp.insert(ignore_permissions=True)

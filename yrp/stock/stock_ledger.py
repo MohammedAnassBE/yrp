@@ -5,15 +5,13 @@ How valuation and quantity tracking work together:
 Stock dimensions can be marked as "in_valuation" (affects cost) or not (tracking only).
 
 Example configuration:
-  - Lot:           in_valuation = True   (each lot has its own cost)
-  - Received Type: in_valuation = False  (just a label, doesn't affect cost)
+  - Production Group: in_valuation = True  (each group has its own cost)
+  - Stock State:      in_valuation = False (tracking only)
 
 This means:
-  - The FIFO queue and valuation_rate are SHARED per (item, warehouse, lot).
-    Lot-1/Fresh and Lot-1/Used share the same FIFO queue and cost per unit.
+  - FIFO and valuation_rate are shared per valuation-dimension bucket.
 
-  - The qty_after_transaction is tracked SEPARATELY per (item, warehouse, lot, received_type).
-    Lot-1/Fresh = 80 pieces, Lot-1/Used = 50 pieces — each has its own balance.
+  - Quantity is tracked separately across all configured dimensions.
 
 The stock_queue stored on each SLE is a JSON array of [qty, rate] pairs:
   e.g. [[100, 50.0], [50, 45.0]] means 100 units at 50 and 50 units at 45.
@@ -478,24 +476,24 @@ def get_previous_sle(args, dim_fields=None, strictly_before=False):
 class UpdateEntriesAfter:
 	"""Recompute valuation for a (item, warehouse, *valuation_dims) bucket.
 
-	Example with Lot (in_valuation=True) and Received Type (in_valuation=False):
+	Example with one valuation dimension and one tracking-only dimension:
 
 	  Config:
-	    Item = "T-Shirt Blue", Warehouse = "WH-1", Lot = "LOT-001"
-	    SLEs exist for received_type = "Fresh" and "Used"
+	    Item = "T-Shirt Blue", Warehouse = "WH-1", Production Group = "GROUP-001"
+	    SLEs exist for stock_state = "Fresh" and "Used"
 
 	  What this engine does:
-	    1. Fetches ALL SLEs for (T-Shirt Blue, WH-1, LOT-001) — both Fresh and Used
+	    1. Fetches all SLEs for the valuation bucket — both Fresh and Used
 	    2. Processes them in chronological order through one shared FIFO queue
 	    3. Writes back:
-	       - valuation_rate = shared rate (same for Fresh and Used within LOT-001)
+	       - valuation_rate = shared rate within the valuation bucket
 	       - qty_after_transaction = per (Fresh) or per (Used) running balance
 	"""
 
 	def __init__(self, args, allow_negative_stock=False):
 		self.args = frappe._dict(args)
 
-		# All dimensions (e.g., ["lot", "received_type"]) — for qty tracking
+		# All configured dimensions — for quantity tracking
 		self.dim_fields = get_dimension_fieldnames()
 
 		# Only valuation dimensions (e.g., ["lot"]) — for FIFO queue scoping

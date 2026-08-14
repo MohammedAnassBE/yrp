@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, getdate, nowdate, nowtime
+from frappe.utils import cint, flt, getdate, nowdate, nowtime
 
 
 class WorkOrder(Document):
@@ -27,7 +27,40 @@ class WorkOrder(Document):
 
 	def before_validate(self):
 		self.prepare_process_cost_links()
+		self.set_stock_dimension_values()
+		self.set_linked_process_and_supplier_flags()
 		self.set_default_terms()
+
+	def set_linked_process_and_supplier_flags(self):
+		if self.supplier:
+			self.is_internal_unit = cint(
+				frappe.db.get_value("Supplier", self.supplier, "is_company_location")
+			)
+		if self.process_name:
+			self.is_manual_entry = cint(frappe.db.get_value(
+				"Process",
+				self.process_name,
+				"is_manual_entry_in_grn",
+			))
+
+	def set_stock_dimension_values(self):
+		"""Populate Work Order child dimensions through the shared stock model."""
+		from yrp.stock.dimensions import apply_dimension_defaults, get_stock_dimensions
+
+		dimensions = get_stock_dimensions()
+		for child_doctype, rows in (
+			("Work Order Deliverables", self.get("deliverables") or []),
+			("Work Order Receivables", self.get("receivables") or []),
+		):
+			meta = frappe.get_meta(child_doctype)
+			for row in rows:
+				for dimension in dimensions:
+					fieldname = dimension["fieldname"]
+					if not meta.get_field(fieldname) or row.get(fieldname):
+						continue
+					if self.get(fieldname):
+						row.set(fieldname, self.get(fieldname))
+			apply_dimension_defaults(rows)
 
 	def set_default_terms(self):
 		# Prefill Terms and Condition once, on creation, only when empty — so the
@@ -180,13 +213,10 @@ class WorkOrder(Document):
 			)
 
 		for row in self.get("deliverables") or []:
-			has_grn_source = bool(row.get("source_grn_item"))
-			has_inspection_source = bool(row.get("source_inspection_entry_item"))
-			if has_grn_source == has_inspection_source:
+			if not row.get("source_grn_item"):
 				frappe.throw(
 					_(
-						"Row {0}: Rework deliverable must reference exactly one source: "
-						"Source GRN Item or Source Inspection Entry Item."
+						"Row {0}: Rework deliverable must reference a Source GRN Item."
 					).format(row.idx)
 				)
 			if not row.get("received_type"):
@@ -614,9 +644,25 @@ def get_rework_source_rows(work_order):
 	grn_by_name = {row.name: row for row in grns}
 	rows.extend(_direct_grn_rework_sources(grn_by_name))
 	rows.extend(_inspection_rework_sources(grn_by_name))
+	_enrich_dimension_metadata(rows)
 	_enrich_variant_attributes(rows)
 	rows.sort(key=lambda r: (r.get("item_variant") or "", r.get("source_label") or ""))
 	return rows
+
+
+def _enrich_dimension_metadata(rows):
+	"""Attach configured stock-dimension labels for the generic popup UI."""
+	from yrp.stock.dimensions import get_stock_dimensions
+
+	labels = {
+		dimension["fieldname"]: dimension.get("label") or dimension["fieldname"]
+		for dimension in get_stock_dimensions()
+	}
+	for row in rows:
+		row["dimension_labels"] = {
+			fieldname: labels.get(fieldname, fieldname)
+			for fieldname in (row.get("dimensions") or {})
+		}
 
 
 def _enrich_variant_attributes(rows):
@@ -816,21 +862,20 @@ def _direct_grn_rework_sources(grn_by_name):
 		warehouse = grn.to_warehouse if grn else None
 		if not row.item_variant or not warehouse:
 			continue
+		dim_values = _row_dimension_values(row, "Goods Received Note Item")
 		available = (
 			flt(row.quantity)
 			- flt(_inspection_outflow_from_grn_row(row.name))
-			- flt(_prior_rework_consumed(source_grn_item=row.name))
+			- flt(_prior_rework_consumed(row.name, dim_values))
 		)
 		if available <= 0:
 			continue
-		dim_values = _row_dimension_values(row, "Goods Received Note Item")
 		out.append({
 			"source_key": f"grn::{row.name}",
 			"source_type": "Goods Received Note Item",
 			"source_label": f"{row.parent} / {row.name}",
 			"source_grn": row.parent,
 			"source_grn_item": row.name,
-			"source_inspection_entry_item": "",
 			"item_variant": row.item_variant,
 			"uom": row.uom or _item_uom(row.item_variant),
 			"warehouse": warehouse,
@@ -851,101 +896,114 @@ def _inspection_rework_sources(grn_by_name):
 	if not grn_by_name:
 		return []
 
-	entries = frappe.get_all(
-		"Inspection Entry",
-		filters={
-			"against": "Goods Received Note",
-			"against_id": ["in", list(grn_by_name)],
-			"docstatus": 1,
-		},
-		fields=["name", "against_id", "status", "is_converted"],
-		order_by="posting_date asc, creation asc",
-	)
-	entries = [row for row in entries if row.is_converted or row.status == "Converted"]
-	if not entries:
-		return []
-
-	from yrp.stock.dimensions import get_dimension_fieldnames
+	from yrp.stock.dimensions import assert_safe_fieldname, get_dimension_fieldnames
 
 	dim_fields = get_dimension_fieldnames()
-	entry_by_name = {row.name: row for row in entries}
-	fields = [
-		"name",
-		"parent",
-		"item_variant",
-		"warehouse",
-		"qty",
-		"target_received_type",
-		"ref_doctype",
-		"ref_docname",
-	] + dim_fields
-	rows = frappe.get_all(
-		"Inspection Entry Item",
-		filters={
-			"parent": ["in", list(entry_by_name)],
-			"parenttype": "Inspection Entry",
-		},
-		fields=fields,
-		order_by="parent asc, idx asc",
+	default_rt, rejected_rt = _eligible_rt_context()
+	select_dimensions = []
+	group_dimensions = []
+	for fieldname in dim_fields:
+		assert_safe_fieldname(fieldname)
+		if fieldname == "received_type":
+			continue
+		select_dimensions.append(f"i.`{fieldname}` AS `{fieldname}`")
+		group_dimensions.append(f"i.`{fieldname}`")
+
+	grn_names = list(grn_by_name)
+	placeholders = ", ".join(["%s"] * len(grn_names))
+	conditions = [
+		"p.against = 'Goods Received Note'",
+		f"p.against_id IN ({placeholders})",
+		"p.docstatus = 1",
+		"(p.is_converted = 1 OR p.status = 'Converted')",
+		"i.parenttype = 'Inspection Entry'",
+		"i.ref_doctype = 'Goods Received Note Item'",
+		"g.parenttype = 'Goods Received Note'",
+		"g.parent = p.against_id",
+		"g.item_variant = i.item_variant",
+		"i.item_variant IS NOT NULL",
+		"i.item_variant != ''",
+		"i.warehouse IS NOT NULL",
+		"i.warehouse != ''",
+		"i.target_received_type IS NOT NULL",
+		"i.target_received_type != ''",
+	]
+	values = list(grn_names)
+	if default_rt:
+		conditions.append("i.target_received_type != %s")
+		values.append(default_rt)
+	if rejected_rt:
+		conditions.append("i.target_received_type != %s")
+		values.append(rejected_rt)
+	conditions.append("COALESCE(NULLIF(i.received_type, ''), %s) != i.target_received_type")
+	values.append(default_rt or "")
+
+	select_sql = ",\n\t\t       ".join(select_dimensions)
+	if select_sql:
+		select_sql = ",\n\t\t       " + select_sql
+	group_by = [
+		"g.name",
+		"g.parent",
+		"g.table_index",
+		"g.row_index",
+		"g.set_combination",
+		"i.item_variant",
+		"i.warehouse",
+		"i.target_received_type",
+		*group_dimensions,
+	]
+	rows = frappe.db.sql(
+		f"""
+		SELECT g.name AS source_grn_item,
+		       g.parent AS source_grn,
+		       g.table_index,
+		       g.row_index,
+		       g.set_combination,
+		       i.item_variant,
+		       i.warehouse,
+		       i.target_received_type,
+		       SUM(i.qty) AS converted_qty
+		       {select_sql}
+		FROM `tabInspection Entry Item` i
+		JOIN `tabInspection Entry` p ON p.name = i.parent
+		JOIN `tabGoods Received Note Item` g ON g.name = i.ref_docname
+		WHERE {" AND ".join(conditions)}
+		GROUP BY {", ".join(group_by)}
+		ORDER BY g.parent ASC, g.name ASC, i.target_received_type ASC
+		""",
+		tuple(values),
+		as_dict=True,
 	)
 
-	default_rt, rejected_rt = _eligible_rt_context()
 	out = []
 	for row in rows:
 		target_rt = row.target_received_type
-		if not _is_rework_eligible_rt(target_rt, default_rt, rejected_rt):
-			continue
-		# Identity conversions (source RT == target RT) emit no SLEs and create
-		# no new physical stock — they must not appear as rework sources.
-		source_rt = row.get("received_type") or default_rt
-		if source_rt == target_rt:
-			continue
-		if not row.item_variant or not row.warehouse:
-			continue
-		available = flt(row.qty) - flt(
-			_prior_rework_consumed(source_inspection_entry_item=row.name)
+		dim_values = {
+			fieldname: target_rt if fieldname == "received_type" else row.get(fieldname)
+			for fieldname in dim_fields
+		}
+		available = flt(row.converted_qty) - flt(
+			_prior_rework_consumed(row.source_grn_item, dim_values)
 		)
 		if available <= 0:
 			continue
-		entry = entry_by_name.get(row.parent)
-		dim_values = _row_dimension_values(
-			row,
-			"Inspection Entry Item",
-			override_received_type=target_rt,
-		)
-		# Inherit table/row_index + set_combination from the source GRN row
-		# (when ref_doctype is GRN Item) so the rework deliverable groups
-		# alongside GRN-sourced deliverables in the pivot UI.
-		src_table_index = None
-		src_row_index = f"insp::{row.name}"
-		src_set_combination = None
-		if row.ref_doctype == "Goods Received Note Item" and row.ref_docname:
-			src = frappe.db.get_value(
-				"Goods Received Note Item",
-				row.ref_docname,
-				["table_index", "row_index", "set_combination"],
-				as_dict=True,
-			)
-			if src:
-				src_table_index = src.table_index
-				if src.row_index not in (None, ""):
-					src_row_index = f"{src.row_index}::{target_rt or ''}"
-				src_set_combination = src.set_combination
+		row_index = f"inspection::{row.source_grn_item}::{target_rt or ''}"
+		if row.row_index not in (None, ""):
+			row_index = f"{row.row_index}::{target_rt or ''}"
 		out.append({
-			"source_key": f"inspection::{row.name}",
-			"source_type": "Inspection Entry Item",
-			"source_label": f"{row.parent} / {row.name}",
-			"source_grn": entry.against_id if entry else "",
-			"source_grn_item": "",
-			"source_inspection_entry_item": row.name,
+			"source_key": f"inspection::{row.source_grn_item}::{target_rt}::{_json_key(dim_values)}",
+			"source_type": "Inspected GRN Stock",
+			"source_label": f"{row.source_grn} / {row.source_grn_item} / {target_rt}",
+			"source_grn": row.source_grn,
+			"source_grn_item": row.source_grn_item,
 			"item_variant": row.item_variant,
 			"uom": _item_uom(row.item_variant),
 			"warehouse": row.warehouse,
 			"received_type": target_rt,
 			"role": _rework_role_label(target_rt),
-			"table_index": src_table_index,
-			"row_index": src_row_index,
-			"set_combination": src_set_combination,
+			"table_index": row.table_index,
+			"row_index": row_index,
+			"set_combination": row.set_combination,
 			"dimensions": dim_values,
 			"available_qty": flt(available),
 			"qty": 0,
@@ -1002,26 +1060,35 @@ def _inspection_outflow_from_grn_row(grn_item_name):
 	return flt(row[0][0]) if row else 0
 
 
-def _prior_rework_consumed(source_grn_item=None, source_inspection_entry_item=None):
+def _prior_rework_consumed(source_grn_item, dimensions):
 	"""Sum qty in non-cancelled, non-closed rework Work Order deliverables that
-	cite this source row. Draft (docstatus=0) consumption is included so in-flight
-	rework WOs reduce the popup's available_qty.
+	 cite this GRN row and stock bucket. Draft (docstatus=0) consumption is
+	 included so in-flight rework WOs reduce the popup's available_qty.
 	"""
-	if not (source_grn_item or source_inspection_entry_item):
+	if not source_grn_item:
 		return 0
 	conds = [
 		"d.parenttype = 'Work Order'",
 		"wo.is_rework = 1",
 		"wo.docstatus IN (0, 1)",
 		"(wo.open_status IS NULL OR wo.open_status != 'Close')",
+		"d.source_grn_item = %s",
 	]
-	values = []
-	if source_grn_item:
-		conds.append("d.source_grn_item = %s")
-		values.append(source_grn_item)
-	if source_inspection_entry_item:
-		conds.append("d.source_inspection_entry_item = %s")
-		values.append(source_inspection_entry_item)
+	values = [source_grn_item]
+
+	from yrp.stock.dimensions import assert_safe_fieldname, get_dimension_fieldnames
+
+	deliverable_meta = frappe.get_meta("Work Order Deliverables")
+	for fieldname in get_dimension_fieldnames():
+		if not deliverable_meta.get_field(fieldname):
+			continue
+		assert_safe_fieldname(fieldname)
+		value = (dimensions or {}).get(fieldname)
+		if value in (None, ""):
+			conds.append(f"(d.`{fieldname}` IS NULL OR d.`{fieldname}` = '')")
+		else:
+			conds.append(f"d.`{fieldname}` = %s")
+			values.append(value)
 	where_sql = " AND ".join(conds)
 	row = frappe.db.sql(
 		f"""
@@ -1056,7 +1123,7 @@ def _row_dimension_values(row, child_doctype, override_received_type=None):
 
 def _consolidate_rework_rows(rows):
 	"""Merge popup-selected source rows that share the same physical bucket
-	(variant, lot, set_combination, received_type) into a single deliverable row.
+	(variant, configured dimensions, set combination) into one deliverable row.
 
 	Two source rows can land in the same bucket — e.g., one GRN-direct Adas
 	and one inspection-converted Adas for the same variant. They are fungible
@@ -1064,10 +1131,8 @@ def _consolidate_rework_rows(rows):
 	row per bucket. Without this merge, the GRN pivot UI silently drops one
 	entry when two rows hit the same cell.
 
-	Source ref handling: prefer the first GRN-sourced row's `source_grn_item`
-	(authoritative audit anchor). If all contributors are inspection-sourced,
-	use the first `source_inspection_entry_item`. The `validate_rework_source_refs`
-	check still passes (exactly one of the two refs is set).
+	Every source is anchored to its originating GRN item. Inspection Entries are
+	queried to calculate the bucket quantity and are not stored on the Work Order.
 	"""
 	if not rows:
 		return rows
@@ -1077,9 +1142,8 @@ def _consolidate_rework_rows(rows):
 		dims = row.get("dimensions") or {}
 		key = (
 			row.get("item_variant"),
-			dims.get("lot") or row.get("lot"),
+			_json_key(dims),
 			_json_key(row.get("set_combination")),
-			row.get("received_type"),
 		)
 		if key not in merged:
 			merged[key] = {**row}
@@ -1089,13 +1153,6 @@ def _consolidate_rework_rows(rows):
 		if not merged[key].get("source_grn_item") and row.get("source_grn_item"):
 			merged[key]["source_grn_item"] = row.get("source_grn_item")
 			merged[key]["source_grn"] = row.get("source_grn") or merged[key].get("source_grn")
-			merged[key]["source_inspection_entry_item"] = ""
-		elif (
-			not merged[key].get("source_grn_item")
-			and not merged[key].get("source_inspection_entry_item")
-			and row.get("source_inspection_entry_item")
-		):
-			merged[key]["source_inspection_entry_item"] = row.get("source_inspection_entry_item")
 	return [merged[k] for k in order]
 
 
@@ -1164,7 +1221,6 @@ def _rework_deliverable_row(source, idx):
 		"received_type": source.get("received_type"),
 		"source_grn": source.get("source_grn"),
 		"source_grn_item": source.get("source_grn_item"),
-		"source_inspection_entry_item": source.get("source_inspection_entry_item"),
 	}
 	_apply_child_dimension_values(row, "Work Order Deliverables", source.get("dimensions") or {})
 	return row

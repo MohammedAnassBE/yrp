@@ -10,6 +10,7 @@
   "uid",
   "gstin",
   "pan",
+  "terms_and_condition",
   "po_terms_and_condition",
   "wo_terms_and_condition",
   "address_html",
@@ -40,6 +41,12 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "PAN"
+  },
+  {
+   "fieldname": "terms_and_condition",
+   "fieldtype": "Link",
+   "label": "Terms and Condition",
+   "options": "Terms and Condition"
   },
   {
    "fieldname": "address_html",

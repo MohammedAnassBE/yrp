@@ -4,12 +4,7 @@ import DependentAttributeTemplate from "./components/DependentAttribute.vue";
 import { EditBOMAttributeMappingWrapper, BOMAttributeMappingWrapper } from "./ItemBOM";
 import { ProductionOrderTableWrapper } from "./ProductionOrder";
 import { EditProcessMatrixWrapper } from "./ProcessMatrix";
-import {
-    LotOrderWrapper,
-    OCRDetailWrapper,
-} from "./Lot";
 import CutPlanItems from "./CuttingPlan/components/CutPlanItems.vue";
-import AlternativeDetail from "./Finishing/AlternativeDetail.vue";
 
 import { createApp } from 'vue';
 
@@ -68,8 +63,6 @@ frappe.production.ui.BomItemAttributeMapping = BOMAttributeMappingWrapper;
 frappe.production.ui.EditBOMAttributeMapping = EditBOMAttributeMappingWrapper;
 frappe.production.ui.EditProcessMatrix = EditProcessMatrixWrapper;
 frappe.production.ui.ProductionOrderTable = ProductionOrderTableWrapper;
-frappe.production.ui.LotOrder = LotOrderWrapper;
-frappe.production.ui.OCRDetail = OCRDetailWrapper;
 
 frappe.production.ui.CutPlanItems = class {
     constructor(wrapper) {
@@ -92,17 +85,5 @@ frappe.production.ui.CutPlanItems = class {
     }
     update_status() {
         this.vue.update_status();
-    }
-};
-
-frappe.production.ui.AlternativeDetail = class {
-    constructor(wrapper) {
-        this.$wrapper = $(wrapper);
-        this.make_app();
-    }
-    make_app() {
-        const mounted = mount_component(AlternativeDetail, this.$wrapper);
-        this.app = mounted.app;
-        this.vue = mounted.vue;
     }
 };

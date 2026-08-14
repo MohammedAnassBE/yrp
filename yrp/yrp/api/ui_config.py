@@ -129,7 +129,23 @@ BLOCK_SIZES = ("full", "half", "third")
 # of HomeQueues.vue METRIC_TO_QUEUE. A REGISTERED but non-queue metric (a KPI
 # like "completion") in home-queues stats renders NOTHING with zero warnings —
 # the 2026-07-17 owner bite this whole item exists to kill.
-HOME_QUEUE_METRICS = ("open_lots", "open_wos", "draft_dcs", "draft_grns")
+HOME_QUEUE_METRICS = ("open_wos", "draft_dcs", "draft_grns")
+
+
+def get_home_queue_metrics():
+	"""Return base queues plus downstream metrics explicitly marked as queues."""
+	try:
+		from yrp.yrp.api.ui_metrics import get_metric_registry
+
+		registry = get_metric_registry()
+	except Exception:
+		return HOME_QUEUE_METRICS
+	downstream = [
+		key
+		for key, spec in registry.items()
+		if spec.get("home_queue") and key not in HOME_QUEUE_METRICS
+	]
+	return (*HOME_QUEUE_METRICS, *downstream)
 
 # Per-block-type prop vocabulary (the defineProps list of every registered
 # block). Unknown block types stay unvalidated (the client bundle may be
@@ -455,7 +471,7 @@ DETAIL_POSITIONS = ("page", "right", "center", "bottom-sheet")
 # related-set entry:
 #   doctype      the linked DocType to fetch (required)
 #   fromField    fieldname ON THE SOURCE DOCTYPE whose value is the filter value
-#                (required) — e.g. Lot.production_detail
+#                (required) — e.g. Project.customer
 #   filterField  fieldname ON THE LINKED DOCTYPE to match against (required) —
 #                e.g. Item Production Detail.name
 #   title        section heading text (optional; host-styled, minimal text)
@@ -1208,10 +1224,10 @@ def _known_metric_keys():
 	soft check. Lazily imported so a defect in that module can NEVER hard-fail
 	config validation — ``None`` means "unknown, skip the registry check"."""
 	try:
-		from yrp.yrp.api.ui_metrics import METRICS
+		from yrp.yrp.api.ui_metrics import get_metric_registry
 	except Exception:
 		return None
-	return set(METRICS)
+	return set(get_metric_registry())
 
 
 def _known_calculation_keys():
@@ -1219,10 +1235,10 @@ def _known_calculation_keys():
 	calculator-panel soft check. Same lazy fail-safe contract as
 	``_known_metric_keys`` — ``None`` = skip the registry check."""
 	try:
-		from yrp.yrp.api.ui_metrics import CALCULATIONS
+		from yrp.yrp.api.ui_metrics import get_calculation_registry
 	except Exception:
 		return None
-	return set(CALCULATIONS)
+	return set(get_calculation_registry())
 
 
 def _validate_columns(columns, fieldnames, doctype, path, layer, warnings, strings_legal=True):
@@ -1346,13 +1362,14 @@ def _check_block_props(block, layer, warnings, catalog=None):
 				_("{0}: block '{1}' stats must be a list of metric names").format(layer, block["id"])
 			)
 		elif stats:
-			# The 2026-07-17 owner bite: home-queues renders ONLY the four
+			# The 2026-07-17 owner bite: home-queues renders ONLY registered
 			# queue-backed metrics (HOME_QUEUE_METRICS = HomeQueues.vue
 			# METRIC_TO_QUEUE). A registered KPI key here renders nothing; an
 			# unregistered name is a typo. Both must warn, never drop silently.
 			known = _known_metric_keys()
+			home_queue_metrics = get_home_queue_metrics()
 			for name in stats:
-				if name in HOME_QUEUE_METRICS:
+				if name in home_queue_metrics:
 					continue
 				if known is not None and name not in known:
 					warnings.append(
@@ -1364,7 +1381,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 					warnings.append(
 						_(
 							"{0}: block '{1}' stat '{2}' is not a home-queue metric ({3}) — home-queues renders NOTHING for it; put KPI metrics in a summary-tiles block"
-						).format(layer, block["id"], name, ", ".join(HOME_QUEUE_METRICS))
+						).format(layer, block["id"], name, ", ".join(home_queue_metrics))
 					)
 	elif block_type in ("home-recent", "home-quick-create"):
 		doctypes = props.get("doctypes")
@@ -3207,6 +3224,38 @@ def _meta(
 	}
 
 
+def _load_layout_terminology(layout):
+	"""Return the selected layout's safe semantic terminology map.
+
+	Terminology is presentation data, not executable layout configuration. A
+	missing table/record during a rolling deploy therefore degrades to an empty
+	map and leaves the compiled English labels untouched.
+	"""
+	if not layout:
+		return {}
+	try:
+		if not frappe.db.table_exists("YRP UI Terminology") or not frappe.db.table_exists("YRP UI Term"):
+			return {}
+		parent = frappe.db.get_value("YRP UI Terminology", {"ui_layout": layout}, "name")
+		if not parent:
+			return {}
+		rows = frappe.get_all(
+			"YRP UI Term",
+			filters={"parent": parent, "parenttype": "YRP UI Terminology", "parentfield": "terms"},
+			fields=["term_key", "source_text", "tamil_text"],
+			order_by="idx asc",
+		)
+		return {
+			row.term_key: {"source": row.source_text, "ta": row.tamil_text}
+			for row in rows
+			if row.term_key
+		}
+	except Exception:
+		# A terminology defect must never make /web unavailable. The owning
+		# layout still renders with its compiled English fallbacks.
+		return {}
+
+
 def _layout_row_fields():
 	"""Return renderer fields that exist in this site's physical schema.
 
@@ -3334,13 +3383,15 @@ def _resolve_config(user):
 				warnings.append(_("overrides: unknown key '{0}' ignored").format(key))
 
 	resolved = merge(merge(get_skeleton(), layout_cfg), overrides, OVERRIDABLE_KEYS)
-	return resolved, _meta(
+	meta = _meta(
 		layout_name,
 		bool(pref),
 		warnings,
 		render_mode=render_mode,
 		experience_key=experience_key,
 	)
+	meta["terminology"] = _load_layout_terminology(layout_name)
+	return resolved, meta
 
 
 def resolve_config(user):
@@ -3762,13 +3813,15 @@ def _resolve_layout_preview(layout):
 		)
 	render_mode, experience_key = rendering
 
-	return merge(get_skeleton(), cfg), _meta(
+	meta = _meta(
 		layout,
 		False,
 		warnings,
 		render_mode=render_mode,
 		experience_key=experience_key,
 	)
+	meta["terminology"] = _load_layout_terminology(layout)
+	return merge(get_skeleton(), cfg), meta
 
 
 def _perm_hints(config, user):

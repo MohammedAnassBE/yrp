@@ -7,8 +7,10 @@
  "field_order": [
   "item",
   "item_attributes",
+  "item_production_detail",
   "column_break_kxpi6",
   "bom_item",
+  "bom_uom",
   "bom_item_attributes",
   "section_break_wrgji",
   "get_combination",
@@ -58,6 +60,14 @@
    "read_only": 1
   },
   {
+   "fetch_from": "bom_item.default_unit_of_measure",
+   "fieldname": "bom_uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
    "fieldname": "attribute_mapping_html",
    "fieldtype": "HTML",
    "label": "Attribute Mapping HTML"
@@ -66,6 +76,13 @@
    "fieldname": "get_combination",
    "fieldtype": "Button",
    "label": "Get Combination"
+  },
+  {
+   "fieldname": "item_production_detail",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Item Production Detail",
+   "options": "Item Production Detail"
   }
  ],
  "index_web_pages_for_search": 1,

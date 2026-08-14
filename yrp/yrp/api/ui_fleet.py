@@ -244,11 +244,10 @@ def seed_verify_user():
 
 	- ``User`` ``ui-verify@essdee.fit`` exists, enabled, System User, named
 	  "UI Verify", with the System Manager role. **Why System Manager in v1:**
-	  the verify user must READ all 9 /web catalog doctypes (Lot, Work Order,
-	  Work Order Correction, Delivery Challan, Goods Received Note, Stock
-	  Entry, Item, Item Production Detail, Terms and Condition) so every
+	  the verify user must read every DocType declared by the installed /web
+	  catalog hook so every
 	  layout's nav/list/detail render is exercisable; no narrower shipped
-	  role covers that set today. For a PERMISSION-RESTRICTED render (what a
+	  role covers that configured set today. For a permission-restricted render (what a
 	  real floor worker actually sees), use ``seed_floor_verify_user`` below,
 	  which seeds a read-only, non-SM floor user over exactly those 9.
 	- A fresh random password, written ONLY to ``~/.frappe-ui-verify-creds``
@@ -365,9 +364,7 @@ def seed_floor_verify_user():
 
 	- Role ``YRP Floor Verify`` exists, granting **read only** (no write /
 	  create / delete / submit) at permlevel 0 over every /web catalog doctype
-	  (the ``yrp_web_doctype_catalog`` hook — Lot, Work Order, Work Order
-	  Correction, Delivery Challan, Goods Received Note, Stock Entry, Item, Item
-	  Production Detail, Terms and Condition). The grant uses Frappe's own
+	  (the ``yrp_web_doctype_catalog`` hook). The grant uses Frappe's own
 	  ``add_permission`` (the Role Permission Manager mechanism) — SIDE EFFECT:
 	  as with any Role-Permission-Manager edit, a doctype that had no Custom
 	  DocPerm yet is converted to custom-perm management (its shipped DocPerms

@@ -2,7 +2,7 @@
 
 Each Bin tracks:
   - actual_qty:     per ALL dimensions (Fresh has its own qty, Used has its own qty)
-  - valuation_rate: per VALUATION dimensions only (Fresh and Used share the same rate within a Lot)
+  - valuation_rate: per configured valuation-dimension bucket
   - stock_value:    actual_qty * valuation_rate
 
 Dimension fields are added dynamically by the YRP Stock dimension patch.

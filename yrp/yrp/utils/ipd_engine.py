@@ -132,7 +132,7 @@ def _attrs_match(combo_attrs, demand_attrs):
 
 
 def calculate_major_deliverables(ipd_name, variant_demands, process_names=None, include_outputs=False):
-	"""Scale IPD Process Matrix rows for Lot-style BOM calculation.
+	"""Scale IPD Process Matrix rows for variant-demand BOM calculation.
 
 	Args:
 	    ipd_name: `Item Production Detail` name.
@@ -323,7 +323,7 @@ def _scaled_combo_qty(combo, scale, side):
 
 
 def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
-	"""Scale `Item Production Detail.item_bom` rows for the same Lot demand payload."""
+	"""Scale `Item Production Detail.item_bom` rows for the same demand payload."""
 	ipd = frappe.get_doc("Item Production Detail", ipd_name)
 	demands = _normalize_variant_demands(ipd, variant_demands)
 	variants = [
@@ -362,8 +362,10 @@ def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
 	return list(aggregated.values())
 
 
-def calculate_lot_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
-	"""Return both matrix deliverables and accessory BOM rows for a Lot demand."""
+def calculate_bom_for_variant_demands(
+	ipd_name, variant_demands, process_names=None, include_outputs=False
+):
+	"""Return matrix deliverables and accessory BOM rows for variant demands."""
 	return {
 		"major_deliverables": calculate_major_deliverables(
 			ipd_name,
@@ -373,6 +375,16 @@ def calculate_lot_bom(ipd_name, variant_demands, process_names=None, include_out
 		),
 		"accessories": calculate_accessory_bom(ipd_name, variant_demands),
 	}
+
+
+def calculate_lot_bom(ipd_name, variant_demands, process_names=None, include_outputs=False):
+	"""Compatibility alias for consumers that still use the former API name."""
+	return calculate_bom_for_variant_demands(
+		ipd_name,
+		variant_demands,
+		process_names=process_names,
+		include_outputs=include_outputs,
+	)
 
 
 def _normalize_variant_demands(ipd, variant_demands):

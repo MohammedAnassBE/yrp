@@ -50,6 +50,12 @@ frappe.query_reports["Stock Balance"] = {
 			fieldtype: "Check",
 			default: 1,
 		},
+		{
+			fieldname: "show_inward_date_split",
+			label: __("Show Inward Date Split"),
+			fieldtype: "Check",
+			default: 0,
+		},
 	],
 	formatter: function (value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
@@ -57,6 +63,9 @@ frappe.query_reports["Stock Balance"] = {
 			value = "<span style='color:red'>" + value + "</span>";
 		} else if (column.fieldname == "in_qty" && data && data.in_qty > 0) {
 			value = "<span style='color:green'>" + value + "</span>";
+		} else if (column.fieldname == "inward_split" && data && data.inward_split) {
+			const escaped = frappe.utils.escape_html(String(data.inward_split));
+			value = `<span title="${escaped}">${escaped.replace(/\n/g, "<br>")}</span>`;
 		}
 		return value;
 	},
