@@ -49,16 +49,14 @@
   },
   {
    "fieldname": "voucher_type",
-   "fieldtype": "Link",
+   "fieldtype": "Select",
    "label": "Voucher Type",
-   "options": "DocType",
    "read_only": 1
   },
   {
    "fieldname": "voucher_no",
-   "fieldtype": "Dynamic Link",
+   "fieldtype": "Data",
    "label": "Voucher No",
-   "options": "voucher_type",
    "read_only": 1
   },
   {
