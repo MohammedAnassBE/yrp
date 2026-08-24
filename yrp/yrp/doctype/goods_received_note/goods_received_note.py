@@ -4,7 +4,7 @@ import json
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import flt, get_datetime
 
 from yrp.yrp.doctype.delivery_challan.delivery_challan import (
 	_apply_dimension_values_to_rows,
@@ -15,8 +15,12 @@ from yrp.yrp.doctype.delivery_challan.delivery_challan import (
 	_normal_json,
 	_sle_base,
 	_update_work_order_correction_status,
+	_update_work_order_sre_delivered_qty,
 	_update_work_order_status,
 )
+
+
+QTY_TOLERANCE = 0.0001
 
 
 def _strip_zero_entries(item_details):
@@ -53,7 +57,13 @@ class GoodsReceivedNote(Document):
 		from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 
 		rows = self.get("items") or []
-		if self.docstatus == 0 and self.against == "Work Order" and self.against_id and rows:
+		if (
+			self.docstatus == 0
+			and self.against == "Work Order"
+			and self.against_id
+			and rows
+			and not self.get("is_return")
+		):
 			from yrp.stock.dimensions import apply_dimension_defaults
 
 			wo = frappe.get_doc("Work Order", self.against_id)
@@ -97,19 +107,47 @@ class GoodsReceivedNote(Document):
 	def before_submit(self):
 		self.validate_against()
 		self.validate_source_pending()
+		prepare_grn_deliverable_valuation(self)
 		self.apply_freight_allocation()
 
 	def on_submit(self):
 		self.update_source_pending()
 		self.make_stock_ledger_entries()
+		self.set_current_valuation_fields()
 		self.update_rework_delivery_challan_items()
+
+	def set_current_valuation_fields(self):
+		"""Initialize the mutable/current view while preserving submitted rate."""
+		for row in (self.get("items") or []) + (self.get("correction_items") or []):
+			if not row.meta.get_field("current_valuation_rate"):
+				continue
+			qty = flt(row.stock_qty) or flt(row.quantity)
+			values = {
+				"current_valuation_rate": flt(row.rate),
+				"current_valuation_value": qty * flt(row.rate),
+			}
+			row.update(values)
+			frappe.db.set_value(
+				row.doctype,
+				row.name,
+				values,
+				update_modified=False,
+			)
 
 	def before_cancel(self):
 		self.validate_no_purchase_invoice()
 		self.validate_closed_purchase_order()
 		self.validate_age_limit()
 		self.validate_no_inspection_entry()
-		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry", "Inspection Entry")
+		if self.get("is_return") and self.get("delivery_challan"):
+			_validate_return_cancellation(self)
+		self.ignore_linked_doctypes = (
+			"Stock Ledger Entry",
+			"Repost Item Valuation",
+			"Stock Valuation Adjustment",
+			"Stock Entry",
+			"Inspection Entry",
+		)
 		if self.is_internal_unit:
 			ste_names = frappe.get_all(
 				"Stock Entry",
@@ -144,6 +182,9 @@ class GoodsReceivedNote(Document):
 
 		if self.against == "Work Order":
 			wo = frappe.get_cached_doc("Work Order", self.against_id)
+			if self.get("is_return"):
+				self._set_return_missing_values(wo)
+				return
 			if self.meta.get_field("is_rework"):
 				self.is_rework = wo.is_rework
 			self.process_name = self.process_name or wo.process_name
@@ -160,6 +201,21 @@ class GoodsReceivedNote(Document):
 			self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(po.supplier)
 			self.to_warehouse = self.to_warehouse or po.delivery_warehouse
 			_copy_production_group_dimensions_from_source(self, po)
+
+	def _set_return_missing_values(self, work_order):
+		if not self.delivery_challan:
+			return
+		delivery_challan = frappe.get_cached_doc("Delivery Challan", self.delivery_challan)
+		self.process_name = work_order.process_name
+		self.item = work_order.item
+		self.production_detail = work_order.production_detail
+		self.is_rework = work_order.is_rework
+		self.supplier = delivery_challan.supplier
+		self.delivery_location = delivery_challan.from_location
+		self.from_warehouse = delivery_challan.to_warehouse
+		self.to_warehouse = delivery_challan.from_warehouse
+		self.freight_charges = 0
+		_copy_production_group_dimensions_from_source(self, delivery_challan)
 
 	def sync_vue_item_details(self):
 		if self.docstatus != 0 or not self.get("item_details"):
@@ -200,19 +256,21 @@ class GoodsReceivedNote(Document):
 		apply_dimension_defaults(correction_items)
 
 	def set_item_defaults(self):
+		from yrp.stock.uom import apply_item_uom
+
 		wo = frappe.get_doc("Work Order", self.against_id) if self.against == "Work Order" and self.against_id else None
 		delivery_challan = (
 			frappe.get_doc("Delivery Challan", self.delivery_challan)
 			if self.delivery_challan else None
 		)
 		for row in (self.get("items") or []) + (self.get("correction_items") or []):
-			row.conversion_factor = flt(row.conversion_factor) or 1
-			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
-			default_uom = frappe.get_cached_value("Item", parent_item, "default_unit_of_measure") if parent_item else None
-			row.uom = row.uom or default_uom
-			row.stock_uom = row.stock_uom or row.uom or default_uom
+			apply_item_uom(row)
 			row.stock_qty = flt(row.quantity) * flt(row.conversion_factor)
-			if row.get("work_order_correction"):
+			if self.get("is_return"):
+				rate = _get_return_source_rate(self, row)
+				row.rate = flt(rate)
+				row.amount = flt(row.stock_qty or row.quantity) * flt(rate)
+			elif row.get("work_order_correction"):
 				# Correction receivables keep their own receivable cost as rate;
 				# no DC material-rate blend in v1.
 				row.amount = flt(row.stock_qty or row.quantity) * flt(row.rate)
@@ -239,13 +297,26 @@ class GoodsReceivedNote(Document):
 			if is_rework and not self.delivery_challan:
 				frappe.throw(_("Delivery Challan is required for rework Goods Received Note."))
 		if self.delivery_challan:
-			dc_work_order, dc_docstatus = frappe.db.get_value(
-				"Delivery Challan", self.delivery_challan, ["work_order", "docstatus"]
+			dc_work_order, dc_docstatus, dc_internal, dc_transfer_complete = frappe.db.get_value(
+				"Delivery Challan",
+				self.delivery_challan,
+				["work_order", "docstatus", "is_internal_unit", "transfer_complete"],
 			)
 			if dc_docstatus != 1:
 				frappe.throw(_("Delivery Challan {0} must be submitted.").format(self.delivery_challan))
 			if dc_work_order != self.against_id:
 				frappe.throw(_("Delivery Challan must belong to the same Work Order."))
+			if self.get("is_return") and dc_internal and not dc_transfer_complete:
+				frappe.throw(
+					_("Complete the internal-unit transfer for Delivery Challan {0} before returning items.").format(
+						self.delivery_challan
+					)
+				)
+		if self.get("is_return"):
+			if self.against != "Work Order" or not self.delivery_challan:
+				frappe.throw(_("A return GRN must be against a Work Order and Delivery Challan."))
+			if self.get("correction_items"):
+				frappe.throw(_("Correction Items are not supported on a Delivery Challan return."))
 
 	def validate_items(self):
 		# Correction-only GRNs are valid: a fully-received WO can still owe its
@@ -263,8 +334,6 @@ class GoodsReceivedNote(Document):
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if flt(row.quantity) <= 0:
 				frappe.throw(_("Row {0}: Quantity must be greater than zero.").format(row.idx))
-			if not row.uom:
-				frappe.throw(_("Row {0}: UOM is required.").format(row.idx))
 
 	def calculate_totals(self):
 		all_rows = (self.get("items") or []) + (self.get("correction_items") or [])
@@ -294,6 +363,11 @@ class GoodsReceivedNote(Document):
 		Idempotent within a single doc lifetime: flags.freight_allocated blocks
 		double application if before_submit fires twice.
 		"""
+		if self.get("is_return"):
+			self.freight_charges = 0
+			self.total = sum(flt(row.amount) for row in self.items)
+			self.flags.freight_allocated = True
+			return
 		if self.flags.get("freight_allocated"):
 			return
 		freight = flt(self.freight_charges)
@@ -323,15 +397,21 @@ class GoodsReceivedNote(Document):
 		"""Normalise item amounts before applying freight.
 
 		PO rows enter the form with a per-form-UOM rate, while SLE valuation uses
-		stock_qty. For amended GRNs, copied child rows may already include old
-		freight in row.rate, so source PO/WO rates are resolved again first.
+		stock_qty. PO receipts always resolve the source PO item's net rate so its
+		discount percentage reduces stock value. For amended WO GRNs, copied child
+		rows may already include old freight in row.rate, so the source rate is
+		resolved again first.
 		"""
 		for row in self.items:
 			stock_qty = flt(row.stock_qty) or (flt(row.quantity) * flt(row.conversion_factor or 1))
 			if stock_qty <= 0:
 				continue
 
-			base_rate = self._get_source_base_rate(row) if self.amended_from else None
+			base_rate = (
+				self._get_source_base_rate(row)
+				if self.against == "Purchase Order" or self.amended_from
+				else None
+			)
 			if base_rate is None:
 				base_rate = flt(row.rate)
 
@@ -346,12 +426,17 @@ class GoodsReceivedNote(Document):
 	def _get_source_base_rate(self, row):
 		if self.against == "Purchase Order":
 			if row.ref_docname:
-				rate = frappe.db.get_value("Purchase Order Item", row.ref_docname, "rate")
-				if rate is not None:
-					return flt(rate)
+				po_item = frappe.db.get_value(
+					"Purchase Order Item",
+					row.ref_docname,
+					["rate", "discount_percentage"],
+					as_dict=True,
+				)
+				if po_item:
+					return _purchase_order_item_net_rate(po_item)
 			po = frappe.get_doc("Purchase Order", self.against_id)
 			target = _find_matching_purchase_order_item(po.items, row)
-			return flt(target.rate) if target else None
+			return _purchase_order_item_net_rate(target) if target else None
 
 		if self.against == "Work Order":
 			wo = frappe.get_doc("Work Order", self.against_id)
@@ -419,6 +504,9 @@ class GoodsReceivedNote(Document):
 			row.amount = new_amount
 
 	def validate_source_pending(self):
+		if self.get("is_return"):
+			_validate_return_quantities(self)
+			return
 		if self.against == "Purchase Order":
 			self.validate_against_purchase_order_pending()
 			return
@@ -652,12 +740,17 @@ class GoodsReceivedNote(Document):
 					row.max_receivable_quantity = max(flt(allowance), 0)
 
 	def update_source_pending(self, cancel=False):
+		if self.get("is_return"):
+			_update_returned_deliverables(self, cancel=cancel)
+			return
 		if self.against == "Purchase Order":
 			self.update_purchase_order_items(cancel=cancel)
 			return
 		self.update_work_order_receivables(cancel=cancel)
 
 	def update_rework_delivery_challan_items(self, cancel=False):
+		if self.get("is_return"):
+			return
 		if not _is_rework_work_order(self.against_id):
 			return
 		totals = defaultdict(float)
@@ -741,6 +834,10 @@ class GoodsReceivedNote(Document):
 	def make_stock_ledger_entries(self, cancel=False):
 		from yrp.stock.stock_ledger import make_sl_entries
 
+		if self.get("is_return"):
+			make_sl_entries(_return_stock_ledger_entries(self), cancel=cancel)
+			return
+
 		destination = self.to_warehouse
 		if self.is_internal_unit:
 			destination = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
@@ -749,38 +846,23 @@ class GoodsReceivedNote(Document):
 					_("Transit Warehouse must be set in YRP Stock Settings for internal-unit Goods Received Note.")
 				)
 
-		entries = []
-		for row in (self.get("items") or []) + (self.get("correction_items") or []):
-			qty = flt(row.stock_qty) or flt(row.quantity)
-			if qty <= 0:
-				continue
-			base = _sle_base(self, row)
-			# Correction receivables always post a plain destination-warehouse
-			# receipt, even on a rework WO — the rework input-return SLE applies
-			# only to the WO's own returned deliverables (v1).
-			if _is_rework_work_order(self.against_id) and not row.get("work_order_correction"):
-				dc_item = _get_delivery_challan_item(row.delivery_challan_item)
-				entries.append({
-					**_rework_input_sle_base(self, row, dc_item),
-					"warehouse": self.from_warehouse,
-					"qty": -qty,
-					"rate": 0,
-					"outgoing_rate": flt(dc_item.valuation_rate or dc_item.rate or row.rate),
-				})
-			entries.append({
-				**base,
-				"warehouse": destination,
-				"qty": qty,
-				"rate": flt(row.rate),
-			})
+		if has_mapped_grn_deliverables(self):
+			make_production_grn_stock_ledger_entries(self, destination, cancel=cancel)
+			return
 
-		make_sl_entries(entries, cancel=cancel)
+		make_sl_entries(_grn_receipt_stock_entries(self, destination), cancel=cancel)
 
 	def compute_internal_unit(self):
 		"""Internal-unit GRN: supplier (sender) and delivery_location (receiver) are both
 		company locations. Mirrors DC's compute_internal_unit but uses (supplier,
 		delivery_location) instead of DC's (from_location, supplier). PO-only GRNs lack
 		delivery_location and stay non-internal."""
+		if self.get("is_return"):
+			# F15 parity: the reverse movement is posted directly from the DC's
+			# destination warehouse back to its source warehouse. Internal-unit DCs
+			# must complete transit first (validated above).
+			self.is_internal_unit = 0
+			return
 		if not self.supplier or not self.delivery_location or self.supplier == self.delivery_location:
 			self.is_internal_unit = 0
 			return
@@ -793,6 +875,364 @@ class GoodsReceivedNote(Document):
 			)
 		}
 		self.is_internal_unit = 1 if (flags.get(self.supplier) and flags.get(self.delivery_location)) else 0
+
+
+def _get_return_delivery_challan(grn):
+	if not grn.get("delivery_challan"):
+		return None
+	# A return can be created and submitted in the same request as its source
+	# DC. Use the authoritative child rows instead of a request-cache snapshot;
+	# stale DC items would silently skip the Work Order pending update.
+	return frappe.get_doc("Delivery Challan", grn.delivery_challan)
+
+
+def _get_return_dc_item(grn, row):
+	delivery_challan = _get_return_delivery_challan(grn)
+	if not delivery_challan or not row.get("delivery_challan_item"):
+		return None
+	for dc_item in delivery_challan.get("items") or []:
+		if dc_item.name == row.delivery_challan_item:
+			return dc_item
+	return None
+
+
+def _get_return_deliverable(work_order, dc_item):
+	if not dc_item or dc_item.get("ref_doctype") != "Work Order Deliverables":
+		return None
+	for deliverable in work_order.get("deliverables") or []:
+		if deliverable.name == dc_item.get("ref_docname"):
+			return deliverable
+	return None
+
+
+def _return_source_dimension_values(grn, dc_item):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	delivery_challan = _get_return_delivery_challan(grn)
+	if not delivery_challan or not dc_item:
+		return {}
+	base = _sle_base(delivery_challan, dc_item)
+	return {fieldname: base.get(fieldname) for fieldname in get_dimension_fieldnames()}
+
+
+def _get_return_source_rate(grn, row):
+	from yrp.stock.utils import get_stock_balance
+
+	dc_item = _get_return_dc_item(grn, row)
+	if not dc_item or not grn.get("from_warehouse"):
+		return 0
+	_dimensions = _return_source_dimension_values(grn, dc_item)
+	_stock_qty, valuation_rate = get_stock_balance(
+		dc_item.item_variant,
+		grn.from_warehouse,
+		posting_date=grn.posting_date,
+		posting_time=grn.posting_time,
+		with_valuation_rate=True,
+		**_dimensions,
+	)
+	return flt(valuation_rate)
+
+
+def _submitted_return_quantities(delivery_challan, *, exclude_grn=None):
+	filters = {
+		"against": "Work Order",
+		"delivery_challan": delivery_challan,
+		"is_return": 1,
+		"docstatus": 1,
+	}
+	return_grns = frappe.get_all("Goods Received Note", filters=filters, pluck="name")
+	if exclude_grn:
+		return_grns = [name for name in return_grns if name != exclude_grn]
+	if not return_grns:
+		return {}
+	quantities = defaultdict(float)
+	for row in frappe.get_all(
+		"Goods Received Note Item",
+		filters={
+			"parent": ["in", return_grns],
+			"parentfield": "items",
+			"parenttype": "Goods Received Note",
+		},
+		fields=["delivery_challan_item", "quantity"],
+	):
+		if row.delivery_challan_item:
+			quantities[row.delivery_challan_item] += flt(row.quantity)
+	return dict(quantities)
+
+
+def _validate_return_quantities(grn):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+	from yrp.stock.utils import get_stock_balance
+
+	delivery_challan = _get_return_delivery_challan(grn)
+	if not delivery_challan:
+		frappe.throw(_("Delivery Challan is required for a return GRN."))
+	work_order = frappe.get_doc("Work Order", grn.against_id)
+	dc_items = {row.name: row for row in delivery_challan.get("items") or []}
+	previous_returns = _submitted_return_quantities(
+		delivery_challan.name,
+		exclude_grn=grn.name,
+	)
+	requested_by_dc_item = defaultdict(float)
+	requested_by_deliverable = defaultdict(float)
+	deliverables = {}
+	stock_buckets = {}
+	dimension_fields = get_dimension_fieldnames()
+
+	for row in grn.get("items") or []:
+		dc_item = dc_items.get(row.get("delivery_challan_item"))
+		if not dc_item:
+			frappe.throw(
+				_("Row {0}: Delivery Challan Item must belong to {1}.").format(
+					row.idx, delivery_challan.name
+				)
+			)
+		deliverable = _get_return_deliverable(work_order, dc_item)
+		if not deliverable:
+			frappe.throw(
+				_("Row {0}: Delivery Challan Item {1} is not linked to a Work Order Deliverable.").format(
+					row.idx, dc_item.name
+				)
+			)
+		if row.item_variant != dc_item.item_variant or _normal_json(
+			row.get("set_combination")
+		) != _normal_json(dc_item.get("set_combination")):
+			frappe.throw(
+				_("Row {0}: item and set combination must match Delivery Challan Item {1}.").format(
+					row.idx, dc_item.name
+				)
+			)
+
+		source_dimensions = _return_source_dimension_values(grn, dc_item)
+		incoming_base = _sle_base(grn, row)
+		for fieldname in dimension_fields:
+			# F15 permits the returned stock to be classified into a selected
+			# Received Type. Every other configured dimension stays identical.
+			if fieldname == "received_type":
+				continue
+			if incoming_base.get(fieldname) != source_dimensions.get(fieldname):
+				frappe.throw(
+					_("Row {0}: Stock Dimension {1} must match Delivery Challan Item {2}.").format(
+						row.idx, fieldname, dc_item.name
+					)
+				)
+
+		row.ref_doctype = "Work Order Deliverables"
+		row.ref_docname = deliverable.name
+		requested_by_dc_item[dc_item.name] += flt(row.quantity)
+		requested_by_deliverable[deliverable.name] += flt(row.quantity)
+		deliverables[deliverable.name] = deliverable
+
+		stock_qty = flt(row.stock_qty) or flt(row.quantity)
+		dimension_key = tuple(source_dimensions.get(fieldname) for fieldname in dimension_fields)
+		bucket_key = (dc_item.item_variant, grn.from_warehouse, dimension_key)
+		bucket = stock_buckets.setdefault(
+			bucket_key,
+			{
+				"item": dc_item.item_variant,
+				"stock_qty": 0.0,
+				"dimensions": source_dimensions,
+			},
+		)
+		bucket["stock_qty"] += stock_qty
+
+	for dc_item_name, return_qty in requested_by_dc_item.items():
+		dc_item = dc_items[dc_item_name]
+		dispatched = flt(dc_item.delivered_quantity or dc_item.qty)
+		already_returned = flt(previous_returns.get(dc_item_name))
+		remaining_for_dc = max(dispatched - already_returned, 0)
+		if return_qty > remaining_for_dc + QTY_TOLERANCE:
+			frappe.throw(
+				_("Return qty {0} exceeds the remaining DC qty {1} for row {2}.").format(
+					flt(return_qty), flt(remaining_for_dc), dc_item_name
+				)
+			)
+
+	for deliverable_name, return_qty in requested_by_deliverable.items():
+		deliverable = deliverables[deliverable_name]
+		net_delivered = flt(deliverable.qty) - flt(deliverable.pending_quantity)
+		unconsumed = max(net_delivered - flt(deliverable.stock_update), 0)
+		if return_qty > unconsumed + QTY_TOLERANCE:
+			frappe.throw(
+				_("Return qty {0} exceeds unconsumed qty {1} for {2}.").format(
+					flt(return_qty), flt(unconsumed), deliverable.item_variant
+				)
+			)
+
+	for bucket in stock_buckets.values():
+		available = get_stock_balance(
+			bucket["item"],
+			grn.from_warehouse,
+			posting_date=grn.posting_date,
+			posting_time=grn.posting_time,
+			**bucket["dimensions"],
+		)
+		if flt(available) + QTY_TOLERANCE < flt(bucket["stock_qty"]):
+			frappe.throw(
+				_("Insufficient return stock for {0}: available {1}, required {2}.").format(
+					bucket["item"], flt(available), flt(bucket["stock_qty"])
+				)
+			)
+
+
+def _update_returned_deliverables(grn, *, cancel):
+	work_order = frappe.get_doc("Work Order", grn.against_id)
+	quantities = defaultdict(float)
+	stock_quantities = defaultdict(float)
+	for row in grn.get("items") or []:
+		dc_item = _get_return_dc_item(grn, row)
+		deliverable = _get_return_deliverable(work_order, dc_item)
+		if not deliverable:
+			continue
+		quantities[deliverable.name] += flt(row.quantity)
+		stock_quantities[deliverable.name] += flt(row.stock_qty) or flt(row.quantity)
+
+	changed = False
+	for deliverable in work_order.get("deliverables") or []:
+		quantity = quantities.get(deliverable.name)
+		if not quantity:
+			continue
+		pending = (
+			flt(deliverable.pending_quantity) - quantity
+			if cancel
+			else flt(deliverable.pending_quantity) + quantity
+		)
+		deliverable.db_set("pending_quantity", flt(pending), update_modified=False)
+		_update_work_order_sre_delivered_qty(
+			work_order.name,
+			deliverable.name,
+			stock_quantities[deliverable.name] if cancel else -stock_quantities[deliverable.name],
+		)
+		changed = True
+
+	if changed:
+		_update_work_order_status(work_order.name)
+
+
+def _validate_return_cancellation(grn):
+	"""Do not cancel returned qty that a later DC has already re-delivered."""
+	deliverable_names = set()
+	return_quantities = defaultdict(float)
+	for row in grn.get("items") or []:
+		dc_item = _get_return_dc_item(grn, row)
+		if dc_item and dc_item.get("ref_doctype") == "Work Order Deliverables":
+			deliverable_name = dc_item.get("ref_docname")
+			deliverable_names.add(deliverable_name)
+			return_quantities[deliverable_name] += flt(row.quantity)
+	if not deliverable_names:
+		return
+
+	# pending_quantity contains the stock made available again by submitted
+	# returns. If a later delivery has already consumed any part of this GRN's
+	# quantity, cancelling it would drive the deliverable pending balance below
+	# zero even when the later DC cannot be identified reliably by timestamps.
+	for deliverable_name, return_quantity in return_quantities.items():
+		pending_quantity, item_variant = frappe.db.get_value(
+			"Work Order Deliverables",
+			deliverable_name,
+			["pending_quantity", "item_variant"],
+		)
+		if flt(pending_quantity) + QTY_TOLERANCE < flt(return_quantity):
+			frappe.throw(
+				_(
+					"Cannot cancel this return because {0} has already been re-delivered. "
+					"Cancel the later Delivery Challan first."
+				).format(item_variant)
+			)
+
+	return_posting = get_datetime(f"{grn.posting_date} {grn.posting_time}")
+	return_created = get_datetime(grn.creation)
+	later_delivery_challans = []
+	for candidate in frappe.get_all(
+		"Delivery Challan",
+		filters={"work_order": grn.against_id, "docstatus": 1},
+		fields=["name", "posting_date", "posting_time", "creation"],
+	):
+		candidate_posting = get_datetime(
+			f"{candidate.posting_date} {candidate.posting_time}"
+		)
+		candidate_created = get_datetime(candidate.creation)
+		if candidate_posting > return_posting or (
+			candidate_posting == return_posting and candidate_created > return_created
+		):
+			later_delivery_challans.append(candidate.name)
+	if not later_delivery_challans:
+		return
+
+	redelivered = defaultdict(float)
+	for row in frappe.get_all(
+		"Delivery Challan Item",
+		filters={
+			"parent": ["in", later_delivery_challans],
+			"parenttype": "Delivery Challan",
+			"parentfield": "items",
+			"ref_doctype": "Work Order Deliverables",
+			"ref_docname": ["in", list(deliverable_names)],
+		},
+		fields=["ref_docname", "delivered_quantity", "qty"],
+	):
+		redelivered[row.ref_docname] += flt(row.delivered_quantity or row.qty)
+
+	redelivered_name = next(
+		(name for name, quantity in redelivered.items() if quantity > QTY_TOLERANCE),
+		None,
+	)
+	if redelivered_name:
+		item_variant = frappe.db.get_value(
+			"Work Order Deliverables", redelivered_name, "item_variant"
+		)
+		frappe.throw(
+			_(
+				"Cannot cancel this return because {0} has already been re-delivered. "
+				"Cancel the later Delivery Challan first."
+			).format(item_variant)
+		)
+
+
+def _return_stock_ledger_entries(grn):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	delivery_challan = _get_return_delivery_challan(grn)
+	if not delivery_challan or not grn.from_warehouse or not grn.to_warehouse:
+		frappe.throw(_("Return source and destination Warehouses are required."))
+	dimension_fields = get_dimension_fieldnames()
+	entries = []
+	for row in grn.get("items") or []:
+		stock_qty = flt(row.stock_qty) or flt(row.quantity)
+		if stock_qty <= 0:
+			continue
+		dc_item = _get_return_dc_item(grn, row)
+		if not dc_item:
+			continue
+		incoming = _sle_base(grn, row)
+		outgoing = dict(incoming)
+		source_dimensions = _return_source_dimension_values(grn, dc_item)
+		for fieldname in dimension_fields:
+			outgoing[fieldname] = source_dimensions.get(fieldname)
+		rate = _get_return_source_rate(grn, row)
+		transfer_key = f"Goods Received Note Return:{grn.name}:{row.name}"
+		entries.extend(
+			[
+				{
+					**outgoing,
+					"warehouse": grn.from_warehouse,
+					"qty": -stock_qty,
+					"rate": 0,
+					"outgoing_rate": flt(rate),
+					"_transfer_key": transfer_key,
+					"_transfer_role": "outgoing",
+				},
+				{
+					**incoming,
+					"warehouse": grn.to_warehouse,
+					"qty": stock_qty,
+					"rate": flt(rate),
+					"_transfer_key": transfer_key,
+					"_transfer_role": "incoming",
+				},
+			]
+		)
+	return entries
 
 
 def _po_excess_percentage(item_variant):
@@ -897,7 +1337,346 @@ def _throw_purchase_invoice_link_error(grn_name, purchase_invoice):
 	)
 
 
+def has_mapped_grn_deliverables(grn):
+	"""Return whether an installed custom app supplied the base valuation contract.
+
+	The custom app owns the ``grn_deliverables`` field and its child DocType.
+	Base YRP deliberately activates only when that child schema provides the
+	explicit ``goods_received_note_item`` mapping. This keeps older custom GRN
+	deliverable tables working on their legacy path until they adopt the contract.
+	"""
+	field = grn.meta.get_field("grn_deliverables")
+	if not field or not field.options or not (grn.get("grn_deliverables") or []):
+		return False
+	child_meta = frappe.get_meta(field.options)
+	return bool(child_meta.get_field("goods_received_note_item"))
+
+
+def prepare_grn_deliverable_valuation(grn):
+	"""Set provisional output rates from mapped consumed-material rows.
+
+	This runs before freight allocation. The authoritative consumed value is
+	replaced with the actual FIFO/Moving Average value during ledger posting;
+	the provisional value exists so validation, totals, and value-based freight
+	allocation are deterministic before submission.
+	"""
+	if not has_mapped_grn_deliverables(grn):
+		return
+	if (
+		grn.against != "Work Order"
+		or grn.get("is_return")
+		or grn.get("is_rework")
+	):
+		frappe.throw(_("Mapped GRN Deliverables are supported only for a regular Work Order receipt."))
+
+	items = {row.name: row for row in grn.get("items") or []}
+	material_value_by_output = defaultdict(float)
+	for deliverable in grn.get("grn_deliverables") or []:
+		output_name = deliverable.get("goods_received_note_item")
+		if output_name not in items:
+			frappe.throw(
+				_("GRN Deliverable row {0} is not mapped to a received item on this GRN.").format(
+					deliverable.idx
+				)
+			)
+		stock_qty = flt(deliverable.get("stock_qty"))
+		if stock_qty <= 0 or not deliverable.get("item_variant"):
+			frappe.throw(
+				_("GRN Deliverable row {0} has no calculated stock quantity or item.").format(
+					deliverable.idx
+				)
+			)
+		# Parse now so malformed or unknown dimension payloads cannot reach the
+		# stock ledger after the document has started submitting.
+		_grn_deliverable_dimensions(deliverable)
+		material_value = stock_qty * flt(deliverable.get("valuation_rate"))
+		material_value_by_output[output_name] += material_value
+		_set_deliverable_value(deliverable, "material_value", material_value)
+
+	wo = frappe.get_doc("Work Order", grn.against_id)
+	for output_name, output in items.items():
+		if output_name not in material_value_by_output:
+			frappe.throw(
+				_("Received item row {0} has no mapped GRN Deliverables.").format(output.idx)
+			)
+		stock_qty = flt(output.stock_qty) or flt(output.quantity)
+		if stock_qty <= 0:
+			continue
+		material_rate = material_value_by_output[output_name] / stock_qty
+		process_rate = get_work_order_process_rate(wo, output)
+		output.rate = material_rate + process_rate
+		output.amount = stock_qty * flt(output.rate)
+
+	grn.calculate_totals()
+
+
+def _set_deliverable_value(row, fieldname, value):
+	if row.meta.get_field(fieldname):
+		row.set(fieldname, value)
+
+
+def _grn_deliverable_dimensions(row):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	raw = row.get("stock_dimensions") or {}
+	if isinstance(raw, str):
+		try:
+			raw = frappe.parse_json(raw)
+		except (TypeError, ValueError):
+			frappe.throw(_("GRN Deliverable row {0} has invalid Stock Dimensions.").format(row.idx))
+	if not isinstance(raw, dict):
+		frappe.throw(_("GRN Deliverable row {0} has invalid Stock Dimensions.").format(row.idx))
+
+	dimension_fieldnames = get_dimension_fieldnames()
+	unknown = set(raw) - set(dimension_fieldnames)
+	if unknown:
+		frappe.throw(
+			_("GRN Deliverable row {0} contains unknown Stock Dimensions: {1}.").format(
+				row.idx, ", ".join(sorted(unknown))
+			)
+		)
+	values = {}
+	for fieldname in dimension_fieldnames:
+		direct_value = row.get(fieldname) if row.meta.get_field(fieldname) else None
+		values[fieldname] = direct_value if direct_value is not None else raw.get(fieldname)
+	return values
+
+
+def _grn_receipt_stock_entries(grn, destination, with_result_keys=False):
+	entries = []
+	for row in (grn.get("items") or []) + (grn.get("correction_items") or []):
+		qty = flt(row.stock_qty) or flt(row.quantity)
+		if qty <= 0:
+			continue
+		base = _sle_base(grn, row)
+		# Correction receivables always post a plain destination-warehouse
+		# receipt, even on a rework WO — the rework input-return SLE applies
+		# only to the WO's own returned deliverables (v1).
+		if _is_rework_work_order(grn.against_id) and not row.get("work_order_correction"):
+			dc_item = _get_delivery_challan_item(row.delivery_challan_item)
+			entries.append({
+				**_rework_input_sle_base(grn, row, dc_item),
+				"warehouse": grn.from_warehouse,
+				"qty": -qty,
+				"rate": 0,
+				"outgoing_rate": flt(dc_item.valuation_rate or dc_item.rate or row.rate),
+			})
+		receipt_entry = {
+			**base,
+			"warehouse": destination,
+			"qty": qty,
+			"rate": flt(row.rate),
+		}
+		if with_result_keys:
+			receipt_entry["_result_key"] = f"grn-output:{row.name}"
+		entries.append(receipt_entry)
+	return entries
+
+
+def _group_grn_deliverable_consumption(grn):
+	"""Group physical issues by Item + Warehouse + every Stock Dimension."""
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dimension_fieldnames = get_dimension_fieldnames()
+	groups = {}
+	for row in grn.get("grn_deliverables") or []:
+		dimensions = _grn_deliverable_dimensions(row)
+		key = (
+			row.item_variant,
+			grn.from_warehouse,
+			row.get("stock_uom") or row.get("uom"),
+			*(dimensions.get(fieldname) for fieldname in dimension_fieldnames),
+		)
+		group = groups.setdefault(
+			key,
+			{
+				"rows": [],
+				"stock_qty": 0.0,
+				"dimensions": dimensions,
+			},
+		)
+		group["rows"].append(row)
+		group["stock_qty"] += flt(row.stock_qty)
+
+	result = []
+	for index, group in enumerate(groups.values(), 1):
+		first = group["rows"][0]
+		result_key = f"grn-consumption-{index}"
+		entry = {
+			"item": first.item_variant,
+			"warehouse": grn.from_warehouse,
+			"uom": first.get("stock_uom") or first.get("uom"),
+			"voucher_type": grn.doctype,
+			"voucher_no": grn.name,
+			"voucher_detail_no": first.name,
+			"posting_date": grn.posting_date,
+			"posting_time": grn.posting_time,
+			"qty": -flt(group["stock_qty"]),
+			"rate": 0,
+			"outgoing_rate": 0,
+			"is_cancelled": 0,
+			"_result_key": result_key,
+		}
+		entry.update(group["dimensions"])
+		group["result_key"] = result_key
+		group["entry"] = entry
+		result.append(group)
+	return result
+
+
+def make_production_grn_stock_ledger_entries(grn, destination, cancel=False):
+	"""Consume mapped inputs first, then receive outputs at their exact value."""
+	from yrp.stock.stock_ledger import make_sl_entries
+	from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+		deactivate_production_links,
+		register_production_links,
+	)
+
+	groups = _group_grn_deliverable_consumption(grn)
+	consumption_entries = [group["entry"] for group in groups]
+	if cancel:
+		make_sl_entries(
+			consumption_entries + _grn_receipt_stock_entries(grn, destination),
+			cancel=True,
+			force_inline=True,
+		)
+		deactivate_production_links(grn.doctype, grn.name)
+		return
+
+	result = make_sl_entries(
+		consumption_entries,
+		return_details=True,
+		force_inline=True,
+	)
+	actual_value_by_output = defaultdict(float)
+	for group in groups:
+		detail = result["entries"].get(group["result_key"])
+		if not detail:
+			frappe.throw(
+				_("Could not calculate consumed stock value for {0}.").format(
+					group["rows"][0].item_variant
+				)
+			)
+		group_value = flt(detail["value"])
+		group_qty = flt(group["stock_qty"])
+		actual_rate = group_value / group_qty if group_qty else 0
+		assigned = 0.0
+		for index, row in enumerate(group["rows"]):
+			is_last = index == len(group["rows"]) - 1
+			material_value = (
+				group_value - assigned
+				if is_last
+				else actual_rate * flt(row.stock_qty)
+			)
+			assigned += material_value
+			actual_value_by_output[row.goods_received_note_item] += material_value
+			_persist_grn_deliverable_value(
+				row,
+				actual_rate,
+				material_value,
+				consumption_sle=detail["sle"],
+			)
+
+	wo = frappe.get_doc("Work Order", grn.against_id)
+	for output in grn.get("items") or []:
+		stock_qty = flt(output.stock_qty) or flt(output.quantity)
+		if stock_qty <= 0:
+			continue
+		process_rate = get_work_order_process_rate(wo, output)
+		output.rate = process_rate + (actual_value_by_output[output.name] / stock_qty)
+		output.amount = stock_qty * flt(output.rate)
+
+	# Re-run freight using the authoritative material values. This matters for
+	# "By Value" allocation when a FIFO issue spans layers whose actual cost is
+	# different from the provisional current balance rate.
+	grn.flags.freight_allocated = False
+	grn.apply_freight_allocation()
+	for output in grn.get("items") or []:
+		frappe.db.set_value(
+			output.doctype,
+			output.name,
+			{"rate": output.rate, "amount": output.amount},
+			update_modified=False,
+		)
+
+	grn.calculate_totals()
+	frappe.db.set_value(
+		grn.doctype,
+		grn.name,
+		{"total_received_quantity": grn.total_received_quantity, "total": grn.total},
+		update_modified=False,
+	)
+	receipt_result = make_sl_entries(
+		_grn_receipt_stock_entries(grn, destination, with_result_keys=True),
+		return_details=True,
+		force_inline=True,
+	)
+	output_sles = {
+		row.name: (receipt_result["entries"].get(f"grn-output:{row.name}") or {}).get("sle")
+		for row in grn.get("items") or []
+	}
+	production_links = []
+	for row in grn.get("grn_deliverables") or []:
+		output_sle = output_sles.get(row.goods_received_note_item)
+		consumption_sle = row.get("consumption_sle")
+		if not output_sle or not consumption_sle:
+			frappe.throw(
+				_("Could not persist valuation lineage for GRN Deliverable row {0}.").format(
+					row.idx
+				)
+			)
+		_persist_grn_deliverable_value(
+			row,
+			flt(row.get("valuation_rate")),
+			flt(row.get("material_value")),
+			consumption_sle=consumption_sle,
+			output_receipt_sle=output_sle,
+		)
+		production_links.append(
+			{
+				"consumption_sle": consumption_sle,
+				"output_receipt_sle": output_sle,
+				"source_row": row.name,
+				"input_quantity": flt(row.stock_qty),
+				"allocation_weight": flt(row.stock_qty),
+				"stock_dimensions": row.get("stock_dimensions") or "{}",
+			}
+		)
+	register_production_links(grn.doctype, grn.name, production_links)
+
+
+def _persist_grn_deliverable_value(
+	row,
+	valuation_rate,
+	material_value,
+	consumption_sle=None,
+	output_receipt_sle=None,
+):
+	values = {}
+	if row.meta.get_field("valuation_rate"):
+		row.valuation_rate = valuation_rate
+		values["valuation_rate"] = valuation_rate
+	if row.meta.get_field("material_value"):
+		row.material_value = material_value
+		values["material_value"] = material_value
+	if consumption_sle and row.meta.get_field("consumption_sle"):
+		row.consumption_sle = consumption_sle
+		values["consumption_sle"] = consumption_sle
+	if output_receipt_sle and row.meta.get_field("output_receipt_sle"):
+		row.output_receipt_sle = output_receipt_sle
+		values["output_receipt_sle"] = output_receipt_sle
+	if values:
+		frappe.db.set_value(row.doctype, row.name, values, update_modified=False)
+
+
 def get_work_order_grn_rate(wo, delivery_challan, row):
+	process_rate = get_work_order_process_rate(wo, row)
+	material_rate = get_delivery_challan_material_rate(delivery_challan, row)
+	return flt(material_rate) + flt(process_rate)
+
+
+def get_work_order_process_rate(wo, row):
+	"""Return the Work Order process cost per received stock unit."""
 	process_rate = 0
 	target = _find_matching_receivable(wo.receivables, row)
 	if target:
@@ -905,8 +1684,7 @@ def get_work_order_grn_rate(wo, delivery_challan, row):
 		row.ref_doctype = "Work Order Receivables"
 		row.ref_docname = target.name
 		row.pending_quantity = target.pending_quantity
-	material_rate = get_delivery_challan_material_rate(delivery_challan, row)
-	return flt(material_rate) + flt(process_rate)
+	return process_rate
 
 
 def get_delivery_challan_material_rate(delivery_challan, row):
@@ -1261,9 +2039,20 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			"table_index": row.table_index,
 			"row_index": row.row_index,
 			"set_combination": row.set_combination,
-			"rate": row.rate,
+			"rate": _purchase_order_item_net_rate(row),
 		})
 	return rows
+
+
+def _purchase_order_item_net_rate(row):
+	"""Return the PO item's discounted rate in its purchase UOM.
+
+	GRN submit later divides the received net amount by received stock quantity,
+	so partial receipts and non-stock purchase UOMs retain the same proportional
+	discount without rounding the discount into each unit prematurely.
+	"""
+	discount_percentage = flt(row.get("discount_percentage"))
+	return flt(row.get("rate")) * (1 - discount_percentage / 100)
 
 
 def _existing_purchase_receipt_quantities(po, existing_rows):

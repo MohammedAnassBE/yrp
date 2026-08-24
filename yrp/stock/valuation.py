@@ -114,7 +114,10 @@ class FIFOValuation(BinWiseValuation):
 	) -> list[StockBin]:
 		"""Remove stock from the FIFO queue. Consumes oldest bins first.
 
-		If outgoing_rate is specified, tries to find a bin with that exact rate first.
+		``outgoing_rate`` is only a fallback valuation for negative stock after the
+		queue is exhausted.  It must never select a later positive layer: doing so
+		breaks FIFO chronology and lets a late adjustment follow another same-rate
+		receipt instead of the material that was actually consumed.
 		Returns list of consumed [qty, rate] pairs for cost tracking.
 		"""
 		if not rate_generator:
@@ -126,19 +129,8 @@ class FIFOValuation(BinWiseValuation):
 			if not len(self.queue):
 				self.queue.append([0, rate_generator()])
 
-			# Find which bin to consume from
-			# If outgoing_rate is specified, try to match it; otherwise use first bin (FIFO)
-			index = None
-			if outgoing_rate > 0:
-				for idx, fifo_bin in enumerate(self.queue):
-					if fifo_bin[RATE] == outgoing_rate:
-						index = idx
-						break
-				if index is None:
-					index = 0  # No matching rate found — fall back to FIFO order
-			else:
-				index = 0
-
+			# Strict FIFO: always consume the oldest positive layer.
+			index = 0
 			fifo_bin = self.queue[index]
 
 			if qty >= fifo_bin[QTY]:

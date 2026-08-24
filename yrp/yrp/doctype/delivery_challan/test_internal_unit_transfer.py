@@ -54,7 +54,9 @@ def _seed_stock(item_variant, warehouse, qty, dimensions=None, posting_date=None
 		"doctype": "Stock Entry",
 		"purpose": "Material Receipt",
 		"to_warehouse": warehouse,
+		"edit_posting_date_and_time": 1 if posting_date else 0,
 		"posting_date": posting_date,
+		"posting_time": "09:00:00" if posting_date else None,
 		"items": [{
 			"item": item_variant,
 			"qty": qty,
@@ -441,6 +443,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 
 		# DC backdated to yesterday
 		dc = _make_dc(wo, from_wh, to_wh, iv, uom, qty=5)
+		dc.edit_posting_date_and_time = 1
 		dc.posting_date = add_days(nowdate(), -1)
 		dc.posting_time = "00:00:00"
 		dc.save(ignore_permissions=True)

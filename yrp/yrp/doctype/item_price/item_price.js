@@ -33,7 +33,7 @@ frappe.ui.form.on("Item Price", {
 
 	refresh(frm) {
 		if (frm.doc.from_date) {
-			frm.fields_dict.to_date.datepicker.update({
+			updateDatepicker(frm, "to_date", {
 				minDate: new Date(frm.doc.from_date),
 			});
 		}
@@ -42,7 +42,7 @@ frappe.ui.form.on("Item Price", {
 
 	from_date(frm) {
 		if (frm.doc.from_date) {
-			frm.fields_dict.to_date.datepicker.update({
+			updateDatepicker(frm, "to_date", {
 				minDate: new Date(frm.doc.from_date),
 			});
 		}
@@ -50,7 +50,7 @@ frappe.ui.form.on("Item Price", {
 
 	to_date(frm) {
 		if (frm.doc.to_date) {
-			frm.fields_dict.from_date.datepicker.update({
+			updateDatepicker(frm, "from_date", {
 				maxDate: new Date(frm.doc.to_date),
 			});
 		}
@@ -69,6 +69,13 @@ frappe.ui.form.on("Item Price", {
 		}
 	},
 });
+
+function updateDatepicker(frm, fieldname, options) {
+	const datepicker = frm.fields_dict[fieldname]?.datepicker;
+	if (datepicker?.update) {
+		datepicker.update(options);
+	}
+}
 
 function removeAttributes(frm) {
 	frm.set_value("attribute", null);

@@ -17,6 +17,11 @@ class StockLedgerEntry(Document):
 		self.scrub_posting_time()
 		self.set_posting_datetime()
 		self.validate_mandatory()
+		from yrp.stock.stock_ledger import validate_stock_valuation_period
+
+		validate_stock_valuation_period(
+			self.posting_date, self.voucher_type, self.voucher_no
+		)
 
 	def on_submit(self):
 		self.set_posting_datetime(save=True)

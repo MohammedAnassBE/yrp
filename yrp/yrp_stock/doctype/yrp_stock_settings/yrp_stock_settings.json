@@ -16,6 +16,8 @@
   "column_break_stock_1",
   "default_valuation_method",
   "allow_negative_stock",
+  "valuation_closing_section",
+  "last_stock_valuation_closing_date",
   "reposting_section",
   "limit_reposting_timeslot",
   "start_time",
@@ -103,6 +105,18 @@
    "fieldtype": "Check",
    "label": "Allow Negative Stock (Legacy)",
    "description": "Legacy global toggle. Negative stock is now controlled per-Item via Item.allow_negative_stock. This field is kept for backwards compatibility and is ignored by the engine."
+  },
+  {
+   "fieldname": "valuation_closing_section",
+   "fieldtype": "Section Break",
+   "label": "Stock Valuation Closing"
+  },
+  {
+   "description": "System-maintained cutoff from the latest submitted Stock Valuation Closing. Stock transactions on or before this date are blocked. Blank means no period is closed.",
+   "fieldname": "last_stock_valuation_closing_date",
+   "fieldtype": "Date",
+   "label": "Last Stock Valuation Closing Date",
+   "read_only": 1
   },
   {
    "fieldname": "reposting_section",

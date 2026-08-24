@@ -31,7 +31,8 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   },
   {
    "fieldname": "available_stock",
@@ -65,17 +66,20 @@
    "fieldname": "stock_uom",
    "fieldtype": "Link",
    "label": "Stock UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   },
   {
    "fieldname": "conversion_factor",
    "fieldtype": "Float",
-   "label": "Conversion Factor"
+   "label": "Conversion Factor",
+   "read_only": 1
   },
   {
    "fieldname": "stock_qty",
    "fieldtype": "Float",
-   "label": "Stock Qty"
+   "label": "Stock Qty",
+   "read_only": 1
   },
   {
    "fieldname": "secondary_qty",
@@ -86,7 +90,8 @@
    "fieldname": "secondary_uom",
    "fieldtype": "Link",
    "label": "Secondary UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   }
  ],
  "istable": 1,

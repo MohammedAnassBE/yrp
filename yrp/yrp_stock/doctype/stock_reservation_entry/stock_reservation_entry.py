@@ -15,6 +15,9 @@ from frappe.utils import flt
 
 class StockReservationEntry(Document):
 	def validate(self):
+		from yrp.stock.uom import apply_item_uom
+
+		apply_item_uom(self, item_field="item_code")
 		if not self.reserved_qty or self.reserved_qty <= 0:
 			frappe.throw(_("Reserved Qty must be > 0"))
 		# closed_qty + delivered_qty must never exceed reserved_qty.

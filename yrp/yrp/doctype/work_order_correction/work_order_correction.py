@@ -35,6 +35,11 @@ class WorkOrderCorrection(Document):
 
 	def validate(self):
 		self.sync_vue_item_details()
+		from yrp.stock.uom import apply_item_uoms
+
+		apply_item_uoms(
+			(self.get("deliverables") or []) + (self.get("receivables") or [])
+		)
 		docstatus, open_status = frappe.db.get_value(
 			"Work Order", self.work_order, ["docstatus", "open_status"]
 		) or (None, None)

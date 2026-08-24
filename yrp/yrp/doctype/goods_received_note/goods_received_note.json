@@ -10,6 +10,7 @@
   "against",
   "against_id",
   "delivery_challan",
+  "is_return",
   "is_rework",
   "posting_date",
   "posting_time",
@@ -84,6 +85,14 @@
    "fieldtype": "Link",
    "label": "Delivery Challan",
    "options": "Delivery Challan"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_return",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Is Return",
+   "read_only": 1
   },
   {
    "default": "0",

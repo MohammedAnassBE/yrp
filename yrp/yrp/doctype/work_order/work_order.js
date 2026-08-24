@@ -1,6 +1,15 @@
 frappe.provide("frappe.yrp.work_order");
 
 frappe.ui.form.on("Work Order", {
+	setup(frm) {
+		frm.set_query("supplier_address", () =>
+			work_order_party_address_query(frm, "supplier"),
+		);
+		frm.set_query("delivery_address", () =>
+			work_order_party_address_query(frm, "delivery_location"),
+		);
+	},
+
 	refresh(frm) {
 		mount_work_order_editor(frm, {
 			fieldname: "deliverable_items",
@@ -44,6 +53,20 @@ frappe.ui.form.on("Work Order", {
 		sync_editor_payload(frm, "receivableEditor", "receivable_details");
 	},
 });
+
+function work_order_party_address_query(frm, party_field) {
+	const party = frm.doc[party_field];
+	if (!party) {
+		frappe.throw(__("Please select {0} first", [frm.fields_dict[party_field].df.label]));
+	}
+	return {
+		query: "frappe.contacts.doctype.address.address.address_query",
+		filters: {
+			link_doctype: "Supplier",
+			link_name: party,
+		},
+	};
+}
 
 function add_close_button(frm) {
 	frappe.call({

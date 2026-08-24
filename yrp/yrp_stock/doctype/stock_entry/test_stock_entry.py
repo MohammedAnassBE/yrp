@@ -21,7 +21,7 @@ def _test_warehouse(label):
 	}).insert(ignore_permissions=True).name
 
 
-def _seed_stock(warehouse, qty=100):
+def _seed_stock(warehouse, qty=100, rate=10):
 	"""Add opening stock so reduces don't fail on negative stock."""
 	se = frappe.get_doc({
 		"doctype": "Stock Entry",
@@ -32,7 +32,7 @@ def _seed_stock(warehouse, qty=100):
 		"items": [{
 			"item": ITEM_VARIANT,
 			"qty": qty,
-			"rate": 10,
+			"rate": rate,
 			"uom": UOM,
 			"row_index": 0,
 			"table_index": 0,
@@ -76,6 +76,21 @@ def _get_sles(voucher_no, cancelled=0):
 
 
 class TestStockEntry(FrappeTestCase):
+	def test_before_cancel_preserves_owner_link_exemption(self):
+		stock_entry = frappe.new_doc("Stock Entry")
+		stock_entry.ignore_linked_doctypes = ("Owning Voucher",)
+
+		stock_entry.before_cancel()
+
+		self.assertEqual(
+			stock_entry.ignore_linked_doctypes,
+			(
+				"Owning Voucher",
+				"Stock Ledger Entry",
+				"Repost Item Valuation",
+				"Stock Valuation Adjustment",
+			),
+		)
 
 	@classmethod
 	def setUpClass(cls):
@@ -131,6 +146,64 @@ class TestStockEntry(FrappeTestCase):
 		_seed_stock(WH_FROM, 500)
 		_seed_stock(WH_TO, 500)
 		_seed_stock(cls.transit_wh, 500)
+
+	# ---------------------------------------------------------------
+	# Exact outgoing value — compound production receipts
+	# ---------------------------------------------------------------
+	def test_make_sl_entries_returns_actual_fifo_value(self):
+		from yrp.stock.stock_ledger import make_sl_entries
+
+		warehouse = _test_warehouse("FIFO Result")
+		for qty, rate in ((2, 10), (3, 20)):
+			receipt = _make_se("Material Receipt", to_wh=warehouse, qty=qty, rate=rate)
+			receipt.insert(ignore_permissions=True)
+			make_sl_entries(
+				[
+					{
+						"item": ITEM_VARIANT,
+						"warehouse": warehouse,
+						"uom": UOM,
+						"voucher_type": "Stock Entry",
+						"voucher_no": receipt.name,
+						"voucher_detail_no": receipt.items[0].name,
+						"posting_date": frappe.utils.today(),
+						"posting_time": frappe.utils.nowtime(),
+						"qty": qty,
+						"rate": rate,
+						**STOCK_DIMENSIONS,
+					}
+				],
+				force_inline=True,
+			)
+		voucher = _make_se("Material Issue", from_wh=warehouse, qty=4, rate=0)
+		voucher.insert(ignore_permissions=True)
+
+		result = make_sl_entries(
+			[
+				{
+					"item": ITEM_VARIANT,
+					"warehouse": warehouse,
+					"uom": UOM,
+					"voucher_type": "Stock Entry",
+					"voucher_no": voucher.name,
+					"voucher_detail_no": voucher.items[0].name,
+					"posting_date": frappe.utils.today(),
+					"posting_time": frappe.utils.nowtime(),
+					"qty": -4,
+					"rate": 0,
+					"outgoing_rate": 0,
+					"_result_key": "consumed-input",
+					**STOCK_DIMENSIONS,
+				}
+			],
+			return_details=True,
+			force_inline=True,
+		)
+
+		detail = result["entries"]["consumed-input"]
+		self.assertAlmostEqual(detail["value"], 60)
+		self.assertAlmostEqual(detail["rate"], 15)
+		self.assertFalse(detail["queued_repost"])
 
 	# ---------------------------------------------------------------
 	# 1. Material Issue — reduces stock at from_warehouse

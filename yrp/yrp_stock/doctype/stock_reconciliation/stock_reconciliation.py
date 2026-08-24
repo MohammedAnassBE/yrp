@@ -34,16 +34,17 @@ class StockReconciliation(Document):
 		if not self.items:
 			frappe.throw(_("At least one item is required"))
 		from yrp.stock.dimensions import get_stock_dimensions
+		from yrp.stock.uom import apply_item_uom
 
 		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
 		self.set_rate_from_last_sle()
 
 		for row in self.items:
+			apply_item_uom(row, item_field="item")
 			if not row.warehouse:
 				row.warehouse = self.default_warehouse
 			if not row.warehouse:
 				frappe.throw(_("Row {0}: Warehouse is required").format(row.idx))
-			row.conversion_factor = row.conversion_factor or 1.0
 			row.stock_qty = (row.qty or 0) * row.conversion_factor
 			row.stock_uom_rate = (row.rate or 0) / row.conversion_factor if row.conversion_factor else 0
 			row.amount = (row.qty or 0) * (row.rate or 0)

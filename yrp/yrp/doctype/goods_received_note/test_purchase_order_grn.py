@@ -23,6 +23,23 @@ def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
 		if frappe.db.exists("Item Variant", item_variant):
 			return item_variant
+	# Most tests in this module assert stock quantities in the Item's default
+	# UOM.  Prefer a non-dependent Item so a stage-level alternate UOM does not
+	# change those unrelated baselines.
+	item_variant = frappe.db.sql(
+		"""
+		SELECT iv.name
+		FROM `tabItem Variant` iv
+		INNER JOIN `tabItem` i ON i.name = iv.item
+		WHERE COALESCE(i.dependent_attribute, '') = ''
+			AND COALESCE(i.default_unit_of_measure, '') != ''
+		ORDER BY iv.creation
+		LIMIT 1
+		""",
+		pluck=True,
+	)
+	if item_variant:
+		return item_variant[0]
 	if item_variant := frappe.db.get_value("Item Variant", {}, "name"):
 		return item_variant
 	frappe.throw("No test Item Variant found for Purchase Order GRN tests.")
@@ -145,8 +162,15 @@ def _production_group_dimensions():
 	return values
 
 
-def _purchase_order(qty, warehouse, supplier=None):
-	item_variant = _test_item_variant()
+def _purchase_order(
+	qty,
+	warehouse,
+	supplier=None,
+	rate=25,
+	discount_percentage=0,
+	item_variant=None,
+):
+	item_variant = item_variant or _test_item_variant()
 	uom = _item_uom(item_variant)
 	po = frappe.get_doc({
 		"doctype": "Purchase Order",
@@ -159,7 +183,8 @@ def _purchase_order(qty, warehouse, supplier=None):
 			"uom": uom,
 			"stock_uom": uom,
 			"conversion_factor": 1,
-			"rate": 25,
+			"rate": rate,
+			"discount_percentage": discount_percentage,
 			"table_index": 0,
 			"row_index": 0,
 		}],
@@ -341,6 +366,67 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 			get_stock_balance(item_variant, warehouse, received_type=received_type),
 			baseline,
 		)
+
+	def test_po_discount_reduces_grn_stock_value(self):
+		warehouse = _warehouse(f"_Test_PO_GRN_DISCOUNT_{frappe.generate_hash(length=6)}")
+		po = _purchase_order(
+			qty=10,
+			warehouse=warehouse,
+			rate=100,
+			discount_percentage=10,
+		)
+
+		grn = _purchase_order_grn(po, qty=10)
+		grn.submit()
+		grn.reload()
+
+		self.assertAlmostEqual(grn.items[0].rate, 90)
+		self.assertAlmostEqual(grn.items[0].amount, 900)
+		self.assertAlmostEqual(grn.total, 900)
+
+		sle = frappe.db.get_value(
+			"Stock Ledger Entry",
+			{
+				"voucher_type": "Goods Received Note",
+				"voucher_no": grn.name,
+				"voucher_detail_no": grn.items[0].name,
+				"is_cancelled": 0,
+			},
+			["rate", "stock_value_difference"],
+			as_dict=True,
+		)
+		self.assertIsNotNone(sle)
+		self.assertAlmostEqual(sle.rate, 90)
+		self.assertAlmostEqual(sle.stock_value_difference, 900)
+
+	def test_partial_po_grn_applies_discount_after_stock_uom_conversion(self):
+		from yrp.stock.test_uom import _dependent_item_variant, _ensure_uom
+
+		warehouse = _warehouse(f"_Test_PO_GRN_DISCOUNT_UOM_{frappe.generate_hash(length=6)}")
+		_item, variant = _dependent_item_variant(
+			_ensure_uom("Piece"), _ensure_uom("Box")
+		)
+		po = _purchase_order(
+			qty=2,
+			warehouse=warehouse,
+			rate=100,
+			discount_percentage=10,
+			item_variant=variant.name,
+		)
+
+		# Receive one purchase UOM: net value 1 x 90 = 90, stock qty 1 x 10 = 10.
+		grn = _purchase_order_grn(po, qty=1)
+		grn.submit()
+		grn.reload()
+
+		self.assertAlmostEqual(grn.items[0].stock_qty, 10)
+		self.assertAlmostEqual(grn.items[0].rate, 9)
+		self.assertAlmostEqual(grn.items[0].amount, 90)
+		self.assertAlmostEqual(grn.total, 90)
+
+		po.reload()
+		self.assertAlmostEqual(po.items[0].pending_quantity, 1)
+		self.assertAlmostEqual(po.items[0].received_quantity, 1)
 
 	def test_po_grn_blocks_over_receipt(self):
 		warehouse = _warehouse("_Test_PO_GRN_OVER_WH")

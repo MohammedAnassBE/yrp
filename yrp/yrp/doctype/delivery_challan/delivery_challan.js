@@ -21,6 +21,7 @@ frappe.ui.form.on("Delivery Challan", {
 	refresh(frm) {
 		mount_dc_editor(frm);
 		add_complete_transfer_button(frm);
+		add_return_button(frm);
 	},
 
 	work_order(frm) {
@@ -202,6 +203,153 @@ function add_complete_transfer_button(frm) {
 			},
 		});
 	});
+}
+
+function add_return_button(frm) {
+	if (frm.doc.docstatus !== 1 || !frappe.model.can_create("Goods Received Note")) {
+		return;
+	}
+	frm.add_custom_button(__("Return"), () => {
+		frappe.call({
+			method: "yrp.yrp.doctype.delivery_challan.delivery_challan.get_return_delivery_items",
+			args: { doc_name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Loading returnable items..."),
+			callback(r) {
+				if (!r.message) return;
+				show_return_dialog(frm, r.message);
+			},
+		});
+	});
+}
+
+function show_return_dialog(frm, data) {
+	const fields = [];
+	if (data.has_received_type) {
+		fields.push({
+			fieldname: "received_type",
+			fieldtype: "Link",
+			options: "Received Type",
+			label: __("Received Type"),
+			reqd: 1,
+			default: data.default_received_type,
+		});
+	}
+	fields.push({
+		fieldname: "items",
+		fieldtype: "Table",
+		label: __("Return Items"),
+		cannot_add_rows: true,
+		cannot_delete_rows: true,
+		in_place_edit: true,
+		data: data.items,
+		fields: [
+			{
+				fieldname: "delivery_challan_item",
+				fieldtype: "Data",
+				hidden: 1,
+			},
+			{
+				fieldname: "item_variant",
+				fieldtype: "Link",
+				options: "Item Variant",
+				label: __("Item Variant"),
+				in_list_view: 1,
+				read_only: 1,
+				columns: 4,
+			},
+			{
+				fieldname: "uom",
+				fieldtype: "Link",
+				options: "UOM",
+				label: __("UOM"),
+				in_list_view: 1,
+				read_only: 1,
+				columns: 1,
+			},
+			{
+				fieldname: "delivered_quantity",
+				fieldtype: "Float",
+				label: __("DC Qty"),
+				in_list_view: 1,
+				read_only: 1,
+				columns: 1,
+			},
+			{
+				fieldname: "consumed_quantity",
+				fieldtype: "Float",
+				label: __("Consumed"),
+				in_list_view: 1,
+				read_only: 1,
+				columns: 1,
+			},
+			{
+				fieldname: "already_returned",
+				fieldtype: "Float",
+				label: __("Returned"),
+				in_list_view: 1,
+				read_only: 1,
+				columns: 1,
+			},
+			{
+				fieldname: "returnable_quantity",
+				fieldtype: "Float",
+				label: __("Returnable"),
+				in_list_view: 1,
+				read_only: 1,
+				columns: 1,
+			},
+			{
+				fieldname: "return_quantity",
+				fieldtype: "Float",
+				label: __("Return Qty"),
+				in_list_view: 1,
+				non_negative: 1,
+				columns: 1,
+			},
+		],
+	});
+
+	const dialog = new frappe.ui.Dialog({
+		title: __("Return Items from {0}", [frm.doc.name]),
+		fields,
+		size: "extra-large",
+		primary_action_label: __("Create Return GRN"),
+		primary_action(values) {
+			const selected = (values.items || []).filter((row) => flt(row.return_quantity) > 0);
+			if (!selected.length) {
+				frappe.msgprint(__("Enter at least one Return Qty."));
+				return;
+			}
+			for (const row of selected) {
+				if (flt(row.return_quantity) > flt(row.returnable_quantity)) {
+					frappe.msgprint(
+						__("Return Qty for {0} cannot exceed {1}.", [
+							row.item_variant,
+							row.returnable_quantity,
+						])
+					);
+					return;
+				}
+			}
+			frappe.call({
+				method: "yrp.yrp.doctype.delivery_challan.delivery_challan.create_return_grn",
+				args: {
+					doc_name: frm.doc.name,
+					items: selected,
+					received_type: values.received_type || "",
+				},
+				freeze: true,
+				freeze_message: __("Creating Return GRN..."),
+				callback(r) {
+					if (!r.message) return;
+					dialog.hide();
+					frappe.set_route("Form", "Goods Received Note", r.message);
+				},
+			});
+		},
+	});
+	dialog.show();
 }
 
 function has_delivery_qty(item_details) {

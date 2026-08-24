@@ -44,6 +44,7 @@
    "in_list_view": 1,
    "label": "UOM",
    "options": "UOM",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -55,7 +56,8 @@
    "fieldname": "secondary_uom",
    "fieldtype": "Link",
    "label": "Secondary UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   },
   {
    "fieldname": "comments",

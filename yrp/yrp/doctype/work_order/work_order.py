@@ -27,9 +27,20 @@ class WorkOrder(Document):
 
 	def before_validate(self):
 		self.prepare_process_cost_links()
+		self.set_item_uoms()
 		self.set_stock_dimension_values()
 		self.set_linked_process_and_supplier_flags()
 		self.set_default_terms()
+
+	def set_item_uoms(self):
+		"""Derive every transaction UOM from the Item and selected stage."""
+		from yrp.stock.uom import apply_item_uoms
+
+		apply_item_uoms(
+			(self.get("deliverables") or [])
+			+ (self.get("receivables") or [])
+			+ (self.get("work_order_excess_usage_items") or [])
+		)
 
 	def set_linked_process_and_supplier_flags(self):
 		if self.supplier:

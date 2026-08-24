@@ -9,7 +9,13 @@
   "item_variant",
   "excess_quantity",
   "rate",
-  "uom"
+  "actual_value",
+  "uom",
+  "stock_quantity",
+  "stock_uom",
+  "work_order_deliverable",
+  "source_sle",
+  "stock_dimensions"
  ],
  "fields": [
   {
@@ -32,11 +38,54 @@
    "label": "Rate"
   },
   {
+   "fieldname": "actual_value",
+   "fieldtype": "Currency",
+   "label": "Actual Consumed Value",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
    "fieldname": "uom",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_quantity",
+   "fieldtype": "Float",
+   "label": "Stock Quantity",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "work_order_deliverable",
+   "fieldtype": "Link",
+   "label": "Work Order Deliverable",
+   "options": "Work Order Deliverables",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_sle",
+   "fieldtype": "Link",
+   "label": "Consumption Stock Ledger Entry",
+   "options": "Stock Ledger Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_dimensions",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Stock Dimensions",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

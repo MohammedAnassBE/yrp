@@ -155,6 +155,7 @@ scheduler_events = {
 	],
 	"hourly": [
 		"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost_entries",
+		"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.recover_stalled_adjustments",
 	],
 	"cron": {
 		"0 1 * * *": [

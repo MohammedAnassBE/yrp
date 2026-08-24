@@ -46,6 +46,7 @@ class StockUpdate(Document):
 	def validate(self):
 		if not self.stock_update_details:
 			frappe.throw(_("At least one item is required"))
+		from yrp.stock.uom import apply_item_uom
 		from yrp.stock.utils import get_stock_balance
 		from yrp.stock.dimensions import get_stock_dimensions
 
@@ -54,14 +55,7 @@ class StockUpdate(Document):
 			if not row.update_diff_qty or row.update_diff_qty <= 0:
 				frappe.throw(_("Row {0}: qty must be > 0").format(row.idx))
 
-			# Auto-fill UOM from Item Variant if not set
-			if not row.uom:
-				parent = frappe.db.get_value("Item Variant", row.item_variant, "item")
-				row.uom = frappe.db.get_value("Item", parent, "default_unit_of_measure") if parent else None
-			if not row.uom:
-				frappe.throw(_("Row {0}: UOM is required").format(row.idx))
-
-			row.conversion_factor = row.conversion_factor or 1.0
+			apply_item_uom(row)
 			row.stock_qty = row.update_diff_qty * row.conversion_factor
 
 			# For Reduce: enforce reservation-aware available stock (H.2).
