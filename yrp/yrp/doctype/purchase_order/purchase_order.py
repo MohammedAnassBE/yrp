@@ -191,21 +191,10 @@ class PurchaseOrder(Document):
 			self.terms_and_condition = get_default_terms("PO", self.supplier)
 
 	def set_item_defaults(self):
-		from yrp.stock.utils import get_conversion_factor
+		from yrp.stock.uom import apply_item_uom
 
 		for row in self.get("items") or []:
-			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
-			default_uom = (
-				frappe.get_cached_value("Item", parent_item, "default_unit_of_measure")
-				if parent_item
-				else None
-			)
-			row.uom = row.uom or default_uom
-			conversion = get_conversion_factor(row.item_variant, row.uom) if row.uom else {}
-			row.conversion_factor = flt(row.conversion_factor) or flt(
-				conversion.get("conversion_factor")
-			) or 1
-			row.stock_uom = row.stock_uom or conversion.get("stock_uom") or row.uom or default_uom
+			apply_item_uom(row)
 			row.stock_qty = flt(row.qty) * flt(row.conversion_factor)
 			row.delivery_location = row.delivery_location or self.default_delivery_location
 			row.delivery_date = row.delivery_date or self.expected_delivery_date
@@ -247,8 +236,6 @@ class PurchaseOrder(Document):
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if flt(row.qty) <= 0:
 				frappe.throw(_("Row {0}: Qty must be greater than zero.").format(row.idx))
-			if not row.uom:
-				frappe.throw(_("Row {0}: UOM is required.").format(row.idx))
 			if flt(row.rate) < 0:
 				frappe.throw(_("Row {0}: Rate cannot be negative.").format(row.idx))
 			if flt(row.discount_percentage) < 0 or flt(row.discount_percentage) > 100:

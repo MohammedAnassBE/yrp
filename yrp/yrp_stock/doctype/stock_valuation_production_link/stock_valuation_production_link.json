@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-08-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "consumption_sle",
+  "output_receipt_sle",
+  "source_doctype",
+  "source_name",
+  "source_row",
+  "input_quantity",
+  "allocation_weight",
+  "stock_dimensions",
+  "active",
+  "idempotency_key"
+ ],
+ "fields": [
+  {"fieldname": "consumption_sle", "fieldtype": "Link", "in_list_view": 1, "label": "Consumption SLE", "options": "Stock Ledger Entry", "read_only": 1, "reqd": 1, "search_index": 1},
+  {"fieldname": "output_receipt_sle", "fieldtype": "Link", "in_list_view": 1, "label": "Output Receipt SLE", "options": "Stock Ledger Entry", "read_only": 1, "reqd": 1, "search_index": 1},
+  {"fieldname": "source_doctype", "fieldtype": "Link", "label": "Source DocType", "options": "DocType", "read_only": 1, "reqd": 1},
+  {"fieldname": "source_name", "fieldtype": "Dynamic Link", "label": "Source Document", "options": "source_doctype", "read_only": 1, "reqd": 1},
+  {"fieldname": "source_row", "fieldtype": "Data", "label": "Source Row", "read_only": 1},
+  {"fieldname": "input_quantity", "fieldtype": "Float", "label": "Input Stock Quantity", "precision": "6", "read_only": 1},
+  {"fieldname": "allocation_weight", "fieldtype": "Float", "label": "Allocation Weight", "precision": "6", "read_only": 1, "reqd": 1},
+  {"fieldname": "stock_dimensions", "fieldtype": "JSON", "hidden": 1, "label": "Stock Dimensions", "read_only": 1},
+  {"default": "1", "fieldname": "active", "fieldtype": "Check", "in_list_view": 1, "label": "Active", "read_only": 1},
+  {"fieldname": "idempotency_key", "fieldtype": "Data", "hidden": 1, "label": "Idempotency Key", "read_only": 1, "unique": 1}
+ ],
+ "hide_toolbar": 1,
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-08-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP Stock",
+ "name": "Stock Valuation Production Link",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {"export": 1, "read": 1, "report": 1, "role": "Stock Manager"},
+  {"export": 1, "read": 1, "report": 1, "role": "System Manager"}
+ ],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 0
+}

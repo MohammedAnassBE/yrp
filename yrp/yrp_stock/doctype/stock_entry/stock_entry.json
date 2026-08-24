@@ -112,7 +112,7 @@
    "fieldtype": "Link",
    "label": "Default Target Warehouse",
    "options": "Warehouse",
-   "depends_on": "eval:[\"Material Receipt\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
+   "depends_on": "eval:[\"Material Receipt\",\"Send to Warehouse\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
   },
   {
    "fieldname": "section_break_2",
@@ -234,7 +234,7 @@
    "options": "Supplier",
    "fetch_from": "to_warehouse.supplier",
    "fetch_if_empty": 0,
-   "depends_on": "eval:[\"Material Receipt\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
+   "depends_on": "eval:[\"Material Receipt\",\"Send to Warehouse\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
   }
  ],
  "is_submittable": 1,

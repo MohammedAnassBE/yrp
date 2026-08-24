@@ -17,11 +17,12 @@ The stock_queue stored on each SLE is a JSON array of [qty, rate] pairs:
   e.g. [[100, 50.0], [50, 45.0]] means 100 units at 50 and 50 units at 45.
 """
 
+import hashlib
 import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, nowdate
+from frappe.utils import cint, flt, formatdate, getdate, nowdate
 
 from yrp.stock.dimensions import (
 	assert_safe_fieldname,
@@ -41,8 +42,318 @@ class NegativeStockError(frappe.ValidationError):
 	pass
 
 
+class StockValuationPeriodClosedError(frappe.ValidationError):
+	pass
+
+
 ACTIVE_REPOST_STATUSES = ("Queued", "In Progress", "Failed")
 MAX_REPOST_RETRY_COUNT = 3
+
+
+def get_last_stock_valuation_closing_date():
+	"""Return the system-maintained stock cutoff, or None before first close."""
+	settings_meta = frappe.get_meta("YRP Stock Settings")
+	if not settings_meta.get_field("last_stock_valuation_closing_date"):
+		return None
+	value = frappe.db.get_single_value(
+		"YRP Stock Settings",
+		"last_stock_valuation_closing_date",
+		cache=False,
+	)
+	closing_date = getdate(value) if value else None
+	# Frappe casts a missing Single Date value to date.min (0001-01-01).
+	# Treat that sentinel as the intended blank initial state.
+	return None if not closing_date or closing_date.year <= 1 else closing_date
+
+
+def validate_stock_valuation_period(posting_date, voucher_type=None, voucher_no=None):
+	"""Block stock creation, cancellation, or repost inside a closed period."""
+	if not posting_date:
+		return
+	closing_date = get_last_stock_valuation_closing_date()
+	if not closing_date or getdate(posting_date) > closing_date:
+		return
+
+	voucher = " ".join(str(value) for value in (voucher_type, voucher_no) if value)
+	if voucher:
+		message = _(
+			"Stock valuation is closed through {0}. {1} dated {2} cannot update stock. "
+			"Cancel the latest Stock Valuation Closing or use a posting date after {0}."
+		).format(formatdate(closing_date), voucher, formatdate(posting_date))
+	else:
+		message = _(
+			"Stock valuation is closed through {0}. Stock dated {1} cannot be updated. "
+			"Cancel the latest Stock Valuation Closing or use a posting date after {0}."
+		).format(formatdate(closing_date), formatdate(posting_date))
+	frappe.throw(
+		message,
+		title=_("Stock Valuation Period Closed"),
+		exc=StockValuationPeriodClosedError,
+	)
+
+
+def _validate_sl_entries_period(sl_entries):
+	from yrp.yrp_stock.doctype.stock_valuation_closing.stock_valuation_closing import (
+		lock_stock_valuation_period,
+	)
+
+	lock_stock_valuation_period(shared=True)
+	checked = set()
+	for entry in sl_entries:
+		key = (
+			entry.get("posting_date"),
+			entry.get("voucher_type"),
+			entry.get("voucher_no"),
+		)
+		if key in checked:
+			continue
+		checked.add(key)
+		validate_stock_valuation_period(*key)
+
+
+def _validate_no_active_valuation_for_cancel(sl_entries):
+	"""Do not remove ledger nodes owned by unfinished or unreversed valuation."""
+	if not sl_entries or not frappe.db.exists("DocType", "Stock Valuation Adjustment"):
+		return
+	voucher_type = sl_entries[0].get("voucher_type")
+	voucher_no = sl_entries[0].get("voucher_no")
+	if not voucher_type or not voucher_no:
+		return
+	sle_names = frappe.get_all(
+		"Stock Ledger Entry",
+		filters={
+			"voucher_type": voucher_type,
+			"voucher_no": voucher_no,
+			"is_cancelled": 0,
+		},
+		pluck="name",
+	)
+	if not sle_names:
+		return
+	blocking_condition = """
+		(
+			adjustment.status NOT IN ('Completed', 'Reversed')
+			OR (
+				adjustment.status = 'Completed'
+				AND COALESCE(adjustment.reversal_of, '') = ''
+			)
+		)
+	"""
+	active = frappe.db.sql(
+		"""
+		SELECT DISTINCT adjustment.name, adjustment.status, adjustment.reversal_of
+		FROM `tabStock Valuation Adjustment` adjustment
+		INNER JOIN `tabStock Valuation Adjustment Source` source
+			ON source.parent = adjustment.name
+		WHERE adjustment.docstatus = 1
+		  AND {blocking_condition}
+		  AND (source.target_sle IN %(sle_names)s OR source.source_sle IN %(sle_names)s)
+		ORDER BY adjustment.creation, adjustment.name
+		LIMIT 1
+		FOR UPDATE
+		""".format(blocking_condition=blocking_condition),
+		{"sle_names": tuple(sle_names)},
+		as_dict=True,
+	)
+	if not active:
+		active = frappe.db.sql(
+			"""
+			SELECT DISTINCT adjustment.name, adjustment.status, adjustment.reversal_of
+			FROM `tabStock Valuation Adjustment` adjustment
+			INNER JOIN `tabStock Valuation Propagation Entry` propagation
+				ON propagation.adjustment = adjustment.name
+			WHERE adjustment.docstatus = 1
+			  AND {blocking_condition}
+			  AND (propagation.target_sle IN %(sle_names)s OR propagation.source_sle IN %(sle_names)s)
+			ORDER BY adjustment.creation, adjustment.name
+			LIMIT 1
+			FOR UPDATE
+			""".format(blocking_condition=blocking_condition),
+			{"sle_names": tuple(sle_names)},
+			as_dict=True,
+		)
+	if active:
+		adjustment = active[0]
+		if adjustment.status == "Completed" and not adjustment.reversal_of:
+			frappe.throw(
+				_(
+					"{0} {1} is part of completed Stock Valuation Adjustment {2}. "
+					"Reverse that valuation and wait for the signed reversal to complete before cancelling this voucher."
+				).format(voucher_type, voucher_no, adjustment.name),
+				title=_("Completed Valuation Lineage"),
+			)
+		frappe.throw(
+			_(
+				"{0} {1} is part of unfinished Stock Valuation Adjustment {2}. "
+				"Wait for its valuation or reversal to complete before cancelling this voucher."
+			).format(voucher_type, voucher_no, adjustment.name),
+			title=_("Valuation Update In Progress"),
+		)
+
+
+def _deactivate_production_links_for_cancel(sle_names):
+	"""Retain production lineage audit but stop traversal through cancelled SLEs."""
+	if not sle_names or not frappe.db.exists(
+		"DocType", "Stock Valuation Production Link"
+	):
+		return
+	links = frappe.db.sql(
+		"""
+		SELECT name
+		FROM `tabStock Valuation Production Link`
+		WHERE active=1
+		  AND (consumption_sle IN %(sle_names)s OR output_receipt_sle IN %(sle_names)s)
+		ORDER BY name
+		FOR UPDATE
+		""",
+		{"sle_names": tuple(sle_names)},
+		pluck=True,
+	)
+	for link_name in links:
+		frappe.db.set_value(
+			"Stock Valuation Production Link",
+			link_name,
+			"active",
+			0,
+			update_modified=False,
+		)
+
+
+def lock_valuation_bucket(bucket):
+	"""Serialize every replay that shares one valuation-dimension bucket.
+
+	A Bin row alone cannot protect a brand-new bucket: two transactions can
+	create different tracking-dimension Bins inside the same valuation bucket
+	without seeing one another's uncommitted rows.  The transaction-scoped
+	advisory mutex closes that bootstrap gap; Bin row locks retain the normal
+	database serialization once rows exist.
+	"""
+	_acquire_valuation_bucket_mutex(bucket)
+	filters = {
+		"item_code": bucket.get("item"),
+		"warehouse": bucket.get("warehouse"),
+	}
+	for fieldname in get_valuation_dimensions():
+		filters[fieldname] = bucket.get(fieldname)
+	bin_names = frappe.get_all(
+		"Bin", filters=filters, pluck="name", order_by="name asc"
+	)
+	for bin_name in bin_names:
+		frappe.db.sql("SELECT name FROM `tabBin` WHERE name=%s FOR UPDATE", (bin_name,))
+
+
+def _valuation_bucket_mutex_name(bucket):
+	values = (
+		frappe.conf.get("db_name") or frappe.local.site,
+		str(bucket.get("item") or ""),
+		str(bucket.get("warehouse") or ""),
+		tuple(
+			(fieldname, str(bucket.get(fieldname) or ""))
+			for fieldname in get_valuation_dimensions()
+		),
+	)
+	digest = hashlib.sha256(repr(values).encode()).hexdigest()[:40]
+	return f"yrp-valuation-{digest}"
+
+
+def _acquire_valuation_bucket_mutex(bucket):
+	"""Hold a MariaDB named lock until the current transaction ends."""
+	lock_name = _valuation_bucket_mutex_name(bucket)
+	acquired = getattr(frappe.local, "yrp_valuation_bucket_mutexes", None)
+	if acquired is None:
+		acquired = set()
+		frappe.local.yrp_valuation_bucket_mutexes = acquired
+	if lock_name in acquired:
+		return
+
+	timeout = cint(frappe.conf.get("stock_valuation_lock_timeout")) or 30
+	result = frappe.db.sql("SELECT GET_LOCK(%s, %s)", (lock_name, timeout))
+	if not result or cint(result[0][0]) != 1:
+		frappe.throw(
+			_("Could not lock the stock valuation bucket. Please retry the transaction."),
+			title=_("Valuation Update Busy"),
+		)
+	acquired.add(lock_name)
+
+	def release():
+		try:
+			# DO avoids opening a new consistent-read snapshot in the fresh
+			# transaction that Frappe starts immediately after commit/rollback.
+			frappe.db.sql("DO RELEASE_LOCK(%s)", (lock_name,))
+		except Exception:
+			frappe.logger("yrp").exception(
+				"Unable to release stock valuation mutex %s", lock_name
+			)
+		finally:
+			acquired.discard(lock_name)
+
+	frappe.db.after_commit.add(release)
+	frappe.db.after_rollback.add(release)
+
+
+def _valuation_bucket_key(row, dimension_fields):
+	return (
+		str(row.get("item") or ""),
+		str(row.get("warehouse") or ""),
+		tuple(
+			(fieldname, str(row.get(fieldname) or ""))
+			for fieldname in dimension_fields
+			if fieldname in get_valuation_dimensions()
+		),
+	)
+
+
+def _lock_entry_buckets(rows, dimension_fields):
+	"""Lock all touched valuation buckets in one deterministic order."""
+	buckets = {}
+	for row in rows or []:
+		row = frappe._dict(row)
+		if not row.item or not row.warehouse:
+			continue
+		bucket = {"item": row.item, "warehouse": row.warehouse}
+		for fieldname in dimension_fields:
+			bucket[fieldname] = row.get(fieldname)
+		buckets[_valuation_bucket_key(bucket, dimension_fields)] = bucket
+	for key in sorted(buckets):
+		bucket = buckets[key]
+		lock_valuation_bucket(bucket)
+
+
+def _is_effective_sl_entry(row):
+	"""Return whether a controller row can produce an SLE."""
+	row = frappe._dict(row)
+	if not row.item:
+		return False
+	parent_item = frappe.get_cached_value("Item Variant", row.item, "item")
+	if not parent_item or not frappe.get_cached_value("Item", parent_item, "is_stock_item"):
+		return False
+	return bool(row.get("qty") or row.get("voucher_type") == "Stock Reconciliation")
+
+
+def _lock_voucher_sles_for_cancel(sl_entries, dimension_fields):
+	"""Freeze the voucher's ledger nodes before checking valuation ownership."""
+	if not sl_entries:
+		return []
+	voucher_type = sl_entries[0].get("voucher_type")
+	voucher_no = sl_entries[0].get("voucher_no")
+	if not voucher_type or not voucher_no:
+		return []
+	rows = frappe.get_all(
+		"Stock Ledger Entry",
+		filters={
+			"voucher_type": voucher_type,
+			"voucher_no": voucher_no,
+			"is_cancelled": 0,
+		},
+		fields=["name", "item", "warehouse", *dimension_fields],
+	)
+	_lock_entry_buckets(rows, dimension_fields)
+	for name in sorted(row.name for row in rows):
+		frappe.db.sql(
+			"SELECT name FROM `tabStock Ledger Entry` WHERE name=%s FOR UPDATE",
+			(name,),
+		)
+	return sorted(row.name for row in rows)
 
 
 def _should_queue_repost(args):
@@ -245,7 +556,13 @@ def _item_allows_negative_stock(item_variant):
 # make_sl_entries — called by Stock Entry, Stock Update, Stock
 # Reconciliation controllers on submit and cancel
 # ======================================================================
-def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
+def make_sl_entries(
+	sl_entries,
+	cancel=False,
+	allow_negative_stock=False,
+	return_details=False,
+	force_inline=False,
+):
 	"""Create Stock Ledger Entries and recompute valuation.
 
 	For each SLE dict in the list:
@@ -258,22 +575,45 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 	``_transfer_role`` markers. After valuing the outgoing side, its actual
 	value reduction becomes the incoming rate. This guarantees that an
 	internal movement cannot create or destroy stock value.
+
+	Production consumers may add a private ``_result_key`` marker and request
+	``return_details=True``. The returned detail contains the exact value that
+	FIFO or Moving Average removed for that outgoing entry. ``force_inline`` is
+	used by compound production receipts whose incoming output value depends on
+	the consumed value in the same database transaction.
 	"""
 	if not sl_entries:
-		return {}
+		return {"transfer_rates": {}, "entries": {}} if return_details else {}
+	# This must run before cancellation marks the voucher's existing SLEs as
+	# cancelled. A closed-period rejection therefore leaves the ledger untouched.
+	_validate_sl_entries_period(sl_entries)
+	dim_fields = get_dimension_fieldnames()
+	# Multi-row vouchers lock every bucket globally before creating/replaying any
+	# SLE. Two transactions touching A+B in opposite row order therefore cannot
+	# deadlock one another while each holds half of the voucher's buckets.
+	effective_entries = [row for row in sl_entries if _is_effective_sl_entry(row)]
+	_lock_entry_buckets(effective_entries, dim_fields)
 
 	# When cancelling, first mark all existing SLEs for this voucher as cancelled
 	if cancel:
+		# The ownership query must be protected by the same SLE locks acquired by
+		# adjustment creation. A new SVA can no longer commit between a clean guard
+		# result and cancellation of its target receipt.
+		cancelled_sles = _lock_voucher_sles_for_cancel(sl_entries, dim_fields)
+		_validate_no_active_valuation_for_cancel(sl_entries)
+		_deactivate_production_links_for_cancel(cancelled_sles)
 		_set_voucher_cancelled(sl_entries[0])
 
-	dim_fields = get_dimension_fieldnames()
 	transfer_rates = {}
+	transfer_sles = {}
+	result_details = {}
 
 	for raw_sle in sl_entries:
 		# Controller-only transfer markers must not be persisted on the SLE.
 		sle = dict(raw_sle)
 		transfer_key = sle.pop("_transfer_key", None)
 		transfer_role = sle.pop("_transfer_role", None)
+		result_key = sle.pop("_result_key", None)
 		if (
 			not cancel
 			and transfer_role == "incoming"
@@ -303,6 +643,25 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 
 		# Step 1: Create the SLE document
 		sle_doc = _create_sle_document(sle)
+		if not cancel and transfer_key:
+			if transfer_role == "outgoing":
+				transfer_sles[transfer_key] = sle_doc.name
+			elif transfer_role == "incoming" and transfer_key in transfer_sles:
+				outgoing_sle = transfer_sles[transfer_key]
+				frappe.db.set_value(
+					"Stock Ledger Entry",
+					outgoing_sle,
+					"paired_stock_ledger_entry",
+					sle_doc.name,
+					update_modified=False,
+				)
+				frappe.db.set_value(
+					"Stock Ledger Entry",
+					sle_doc.name,
+					"paired_stock_ledger_entry",
+					outgoing_sle,
+					update_modified=False,
+				)
 		args = sle_doc.as_dict()
 		args["posting_datetime"] = get_combine_datetime(args.posting_date, args.posting_time)
 
@@ -310,10 +669,9 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 		dimension_values = {fn: args.get(fn) for fn in dim_fields}
 		bin_name = get_or_make_bin(args["item"], args["warehouse"], **dimension_values)
 
-		# Lock the Bin row for the duration of this transaction. This serializes
-		# concurrent SLE inserts to the same bucket so the valuation engine
-		# always sees a consistent view of qty_by_dims and FIFO state (Gap #9).
-		frappe.db.sql("SELECT name FROM `tabBin` WHERE name=%s FOR UPDATE", bin_name)
+		# Lock every Bin sharing the valuation dimensions before replay. This is
+		# also the lock order used by SVA and RIV workers.
+		lock_valuation_bucket(args)
 
 		# Reservation no longer mutates Bin in the new design (D-008).
 		# Compute reserved-stock fresh from active SREs.
@@ -327,7 +685,7 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 		# exist in this bucket, queue a background repost instead of running
 		# the engine inline. Inline path is preferred for the common case
 		# (no/few future SLEs) because it commits the new state atomically.
-		queued_repost = _should_queue_repost(args)
+		queued_repost = False if force_inline else _should_queue_repost(args)
 		if queued_repost:
 			_enqueue_backdated_repost(args)
 		else:
@@ -361,10 +719,27 @@ def make_sl_entries(sl_entries, cancel=False, allow_negative_stock=False):
 				)
 			transfer_rates[transfer_key] = transfer_rate
 
+		if not cancel and result_key:
+			stock_value_difference = flt(
+				frappe.db.get_value(
+					"Stock Ledger Entry", sle_doc.name, "stock_value_difference"
+				)
+			)
+			qty = abs(flt(sle.get("qty")))
+			result_details[result_key] = {
+				"sle": sle_doc.name,
+				"qty": qty,
+				"value": abs(stock_value_difference),
+				"rate": abs(stock_value_difference) / qty if qty else 0.0,
+				"queued_repost": queued_repost,
+			}
+
 		# Step 4: Refresh the Bin with updated qty and rate
 		from yrp.yrp_stock.doctype.bin.bin import update_qty as update_bin_qty
 		update_bin_qty(bin_name, args)
 
+	if return_details:
+		return {"transfer_rates": transfer_rates, "entries": result_details}
 	return transfer_rates
 
 
@@ -397,6 +772,9 @@ def repost_current_voucher(args, allow_negative_stock=False):
 		return
 	if not args.get("posting_date"):
 		args["posting_date"] = nowdate()
+	validate_stock_valuation_period(
+		args.get("posting_date"), args.get("voucher_type"), args.get("voucher_no")
+	)
 
 	engine_args = {
 		"item": args.get("item"),
@@ -740,7 +1118,15 @@ class UpdateEntriesAfter:
 				alert=True,
 			)
 
-		valuator.add_stock(flt(sle.qty), flt(sle.rate))
+		qty = flt(sle.qty)
+		# Late-cost propagation keeps the voucher's original incoming rate as an
+		# immutable audit value.  Applied Stock Valuation Propagation Entries add
+		# a signed value overlay to this exact receipt SLE; dividing by the receipt
+		# quantity yields its effective replay rate without changing stock qty.
+		effective_rate = flt(sle.rate)
+		if qty:
+			effective_rate += flt(sle.get("valuation_adjustment_value")) / qty
+		valuator.add_stock(qty, effective_rate)
 		return current_dim_qty + flt(sle.qty)
 
 	def _handle_outgoing(self, sle, valuator, current_dim_qty):
@@ -806,6 +1192,11 @@ def repost_future_sle(repost_doc):
 	Processes one valuation bucket at a time, commits after each, and supports
 	resuming from where it left off if a previous run failed.
 	"""
+	validate_stock_valuation_period(
+		repost_doc.posting_date,
+		repost_doc.voucher_type or repost_doc.doctype,
+		repost_doc.voucher_no or repost_doc.name,
+	)
 	dim_fields = get_dimension_fieldnames()
 	val_dim_fields = get_valuation_dimensions()
 
@@ -844,6 +1235,17 @@ def repost_future_sle(repost_doc):
 		args["allow_zero_rate"] = repost_doc.allow_zero_rate
 
 		# Run the engine for this bucket
+		from yrp.yrp_stock.doctype.stock_valuation_closing.stock_valuation_closing import (
+			lock_stock_valuation_period,
+		)
+
+		lock_stock_valuation_period(shared=True)
+		validate_stock_valuation_period(
+			repost_doc.posting_date,
+			repost_doc.voucher_type or repost_doc.doctype,
+			repost_doc.voucher_no or repost_doc.name,
+		)
+		lock_valuation_bucket(bucket)
 		UpdateEntriesAfter(args, allow_negative_stock=repost_doc.allow_negative_stock).run()
 
 		# Refresh ALL Bins in this valuation bucket (e.g., both Fresh and Used Bins for LOT-001)

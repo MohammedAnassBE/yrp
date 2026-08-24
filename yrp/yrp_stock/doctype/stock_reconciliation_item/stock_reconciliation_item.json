@@ -59,7 +59,8 @@
    "fieldname": "uom",
    "fieldtype": "Link",
    "label": "UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   },
   {
    "fieldname": "table_index",
@@ -108,18 +109,21 @@
   {
    "fieldname": "stock_qty",
    "fieldtype": "Float",
-   "label": "Stock Qty"
+   "label": "Stock Qty",
+   "read_only": 1
   },
   {
    "fieldname": "stock_uom",
    "fieldtype": "Link",
    "label": "Stock UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   },
   {
    "fieldname": "conversion_factor",
    "fieldtype": "Float",
-   "label": "Conversion Factor"
+   "label": "Conversion Factor",
+   "read_only": 1
   },
   {
    "fieldname": "stock_uom_rate",
@@ -146,7 +150,8 @@
    "fieldname": "secondary_uom",
    "fieldtype": "Link",
    "label": "Secondary UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   }
  ],
  "istable": 1,

@@ -151,7 +151,8 @@
    "fieldname": "secondary_uom",
    "fieldtype": "Link",
    "label": "Secondary UOM",
-   "options": "UOM"
+   "options": "UOM",
+   "read_only": 1
   },
   {
    "fieldname": "supplier",

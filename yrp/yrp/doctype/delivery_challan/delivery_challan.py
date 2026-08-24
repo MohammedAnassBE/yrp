@@ -52,7 +52,12 @@ class DeliveryChallan(Document):
 		self.make_repost_action()
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation", "Stock Entry")
+		self.ignore_linked_doctypes = (
+			"Stock Ledger Entry",
+			"Repost Item Valuation",
+			"Stock Valuation Adjustment",
+			"Stock Entry",
+		)
 		if self.is_internal_unit:
 			ste_names = frappe.get_all(
 				"Stock Entry",
@@ -131,13 +136,11 @@ class DeliveryChallan(Document):
 		apply_dimension_defaults((self.get("items") or []) + (self.get("correction_items") or []))
 
 	def set_item_defaults(self):
+		from yrp.stock.uom import apply_item_uom
+
 		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			row.delivered_quantity = flt(row.qty)
-			row.conversion_factor = flt(row.conversion_factor) or 1
-			parent_item = frappe.get_cached_value("Item Variant", row.item_variant, "item")
-			default_uom = frappe.get_cached_value("Item", parent_item, "default_unit_of_measure") if parent_item else None
-			row.uom = row.uom or default_uom
-			row.stock_uom = row.stock_uom or row.uom or default_uom
+			apply_item_uom(row)
 			row.stock_qty = flt(row.delivered_quantity) * flt(row.conversion_factor)
 			rate = get_delivery_row_valuation_rate(
 				row,
@@ -178,8 +181,6 @@ class DeliveryChallan(Document):
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if check_qty and flt(row.delivered_quantity or row.qty) <= 0:
 				frappe.throw(_("Row {0}: Qty must be greater than zero.").format(row.idx))
-			if not row.uom:
-				frappe.throw(_("Row {0}: UOM is required.").format(row.idx))
 
 	def calculate_totals(self):
 		all_rows = (self.get("items") or []) + (self.get("correction_items") or [])
@@ -694,6 +695,226 @@ def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delt
 		{"delivered_qty": delivered_qty, "status": sre.status},
 		update_modified=False,
 	)
+
+
+def _validate_return_source(delivery_challan):
+	if delivery_challan.docstatus != 1:
+		frappe.throw(_("Delivery Challan {0} must be submitted.").format(delivery_challan.name))
+	if delivery_challan.get("is_internal_unit") and not delivery_challan.get("transfer_complete"):
+		frappe.throw(
+			_("Complete the internal-unit transfer for Delivery Challan {0} before returning items.").format(
+				delivery_challan.name
+			)
+		)
+	docstatus, open_status = frappe.db.get_value(
+		"Work Order", delivery_challan.work_order, ["docstatus", "open_status"]
+	)
+	if docstatus != 1:
+		frappe.throw(_("Work Order {0} must be submitted.").format(delivery_challan.work_order))
+	if open_status == "Close":
+		frappe.throw(_("Work Order {0} is closed.").format(delivery_challan.work_order))
+
+
+def _submitted_dc_return_quantities(delivery_challan):
+	return_grns = frappe.get_all(
+		"Goods Received Note",
+		filters={
+			"against": "Work Order",
+			"delivery_challan": delivery_challan,
+			"is_return": 1,
+			"docstatus": 1,
+		},
+		pluck="name",
+	)
+	if not return_grns:
+		return {}
+	quantities = {}
+	for row in frappe.get_all(
+		"Goods Received Note Item",
+		filters={
+			"parent": ["in", return_grns],
+			"parentfield": "items",
+			"parenttype": "Goods Received Note",
+		},
+		fields=["delivery_challan_item", "quantity"],
+	):
+		if not row.delivery_challan_item:
+			continue
+		quantities[row.delivery_challan_item] = (
+			flt(quantities.get(row.delivery_challan_item)) + flt(row.quantity)
+		)
+	return quantities
+
+
+def _dc_item_dimension_values(delivery_challan, row):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	base = _sle_base(delivery_challan, row)
+	return {fieldname: base.get(fieldname) for fieldname in get_dimension_fieldnames()}
+
+
+@frappe.whitelist()
+def get_return_delivery_items(doc_name):
+	"""Return F15-style DC return choices with authoritative available qty."""
+	from yrp.stock.utils import get_stock_balance
+
+	delivery_challan = frappe.get_doc("Delivery Challan", doc_name)
+	delivery_challan.check_permission("read")
+	_validate_return_source(delivery_challan)
+	work_order = frappe.get_doc("Work Order", delivery_challan.work_order)
+	work_order.check_permission("read")
+	deliverables = {row.name: row for row in work_order.get("deliverables") or []}
+	previous_returns = _submitted_dc_return_quantities(delivery_challan.name)
+	rows = []
+	for dc_item in delivery_challan.get("items") or []:
+		if dc_item.get("ref_doctype") != "Work Order Deliverables":
+			continue
+		deliverable = deliverables.get(dc_item.get("ref_docname"))
+		if not deliverable:
+			continue
+		dispatched = flt(dc_item.delivered_quantity or dc_item.qty)
+		already_returned = flt(previous_returns.get(dc_item.name))
+		dc_remaining = max(dispatched - already_returned, 0)
+		net_delivered = flt(deliverable.qty) - flt(deliverable.pending_quantity)
+		unconsumed = max(net_delivered - flt(deliverable.stock_update), 0)
+		conversion_factor = flt(dc_item.conversion_factor) or 1
+		dimensions = _dc_item_dimension_values(delivery_challan, dc_item)
+		source_stock = get_stock_balance(
+			dc_item.item_variant,
+			delivery_challan.to_warehouse,
+			**dimensions,
+		)
+		stock_available_in_uom = max(flt(source_stock) / conversion_factor, 0)
+		returnable = min(dc_remaining, unconsumed, stock_available_in_uom)
+		if returnable <= 0:
+			continue
+		rows.append(
+			{
+				"delivery_challan_item": dc_item.name,
+				"item_variant": dc_item.item_variant,
+				"uom": dc_item.uom,
+				"delivered_quantity": dispatched,
+				"already_returned": already_returned,
+				"consumed_quantity": flt(deliverable.stock_update),
+				"returnable_quantity": flt(returnable),
+				"return_quantity": 0,
+			}
+		)
+	if not rows:
+		frappe.throw(_("No unconsumed quantity is available to return for this Delivery Challan."))
+
+	item_meta = frappe.get_meta("Goods Received Note Item")
+	has_received_type = bool(item_meta.get_field("received_type"))
+	default_received_type = None
+	if has_received_type:
+		default_received_type = frappe.db.get_single_value(
+			"YRP Stock Settings", "default_received_type"
+		)
+	return {
+		"items": rows,
+		"has_received_type": has_received_type,
+		"default_received_type": default_received_type,
+	}
+
+
+@frappe.whitelist()
+def create_return_grn(doc_name, items, received_type=None):
+	"""Create the F15-style draft return GRN against a submitted DC."""
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	frappe.has_permission("Goods Received Note", "create", throw=True)
+	delivery_challan = frappe.get_doc("Delivery Challan", doc_name)
+	delivery_challan.check_permission("read")
+	_validate_return_source(delivery_challan)
+	items = frappe.parse_json(items) if isinstance(items, str) else items
+	if not isinstance(items, list):
+		frappe.throw(_("Return Items must be a list."))
+
+	defaults = get_return_delivery_items(delivery_challan.name)
+	available_by_row = {
+		row["delivery_challan_item"]: row for row in defaults["items"]
+	}
+	if defaults["has_received_type"]:
+		received_type = received_type or defaults["default_received_type"]
+		if not received_type:
+			frappe.throw(_("Received Type is required for returned stock."))
+		if not frappe.db.exists("Received Type", received_type):
+			frappe.throw(_("Received Type {0} does not exist.").format(received_type))
+
+	dc_items = {row.name: row for row in delivery_challan.get("items") or []}
+	return_rows = []
+	for selected in items:
+		selected = frappe._dict(selected)
+		quantity = flt(selected.get("return_quantity"))
+		if quantity <= 0:
+			continue
+		dc_item_name = selected.get("delivery_challan_item")
+		available = available_by_row.get(dc_item_name)
+		dc_item = dc_items.get(dc_item_name)
+		if not available or not dc_item:
+			frappe.throw(_("Delivery Challan Item {0} is not returnable.").format(dc_item_name))
+		if quantity > flt(available["returnable_quantity"]) + 0.0001:
+			frappe.throw(
+				_("Return qty {0} exceeds available qty {1} for {2}.").format(
+					quantity, available["returnable_quantity"], dc_item.item_variant
+				)
+			)
+		row = {
+			"item_variant": dc_item.item_variant,
+			"quantity": quantity,
+			"max_receivable_quantity": flt(available["returnable_quantity"]),
+			"uom": dc_item.uom,
+			"stock_uom": dc_item.stock_uom,
+			"conversion_factor": flt(dc_item.conversion_factor) or 1,
+			"ref_doctype": "Work Order Deliverables",
+			"ref_docname": dc_item.ref_docname,
+			"delivery_challan_item": dc_item.name,
+			"table_index": dc_item.table_index,
+			"row_index": dc_item.row_index,
+			"set_combination": dc_item.set_combination,
+			"comments": _("Return against {0}").format(delivery_challan.name),
+		}
+		for fieldname in get_dimension_fieldnames():
+			if dc_item.meta.get_field(fieldname):
+				row[fieldname] = dc_item.get(fieldname)
+		if defaults["has_received_type"]:
+			row["received_type"] = received_type
+		return_rows.append(row)
+
+	if not return_rows:
+		frappe.throw(_("Select at least one Return Quantity."))
+
+	grn = frappe.new_doc("Goods Received Note")
+	grn.update(
+		{
+			"against": "Work Order",
+			"against_id": delivery_challan.work_order,
+			"delivery_challan": delivery_challan.name,
+			"is_return": 1,
+			"is_rework": delivery_challan.is_rework,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"process_name": delivery_challan.process_name,
+			"item": delivery_challan.item,
+			"production_detail": delivery_challan.production_detail,
+			"supplier": delivery_challan.supplier,
+			"supplier_address": delivery_challan.get("supplier_address"),
+			"supplier_address_display": delivery_challan.get("supplier_address_details"),
+			"delivery_location": delivery_challan.from_location,
+			"delivery_address": delivery_challan.get("from_address"),
+			"delivery_address_display": delivery_challan.get("from_address_details"),
+			"from_warehouse": delivery_challan.to_warehouse,
+			"to_warehouse": delivery_challan.from_warehouse,
+			"supplier_document_no": delivery_challan.name,
+			"vehicle_no": delivery_challan.vehicle_no or "NA",
+			"comments": _("Material returned against Delivery Challan {0}.").format(
+				delivery_challan.name
+			),
+		}
+	)
+	grn.set("items", return_rows)
+	grn.insert()
+	return grn.name
 
 
 @frappe.whitelist()

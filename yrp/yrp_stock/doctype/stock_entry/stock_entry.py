@@ -158,7 +158,20 @@ class StockEntry(Document):
 		self.update_grn_completion(cancel=False)
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ("Stock Ledger Entry", "Repost Item Valuation")
+		# Preserve an owning voucher's explicit backlink exemption.  Custom
+		# workflows may generate and control this Stock Entry, then cancel it from
+		# the owner's before_cancel hook.  Replacing the tuple here would make the
+		# generated child impossible to cancel through the normal stock engine.
+		self.ignore_linked_doctypes = tuple(
+			dict.fromkeys(
+				(
+					*(self.get("ignore_linked_doctypes") or ()),
+					"Stock Ledger Entry",
+					"Repost Item Valuation",
+					"Stock Valuation Adjustment",
+				)
+			)
+		)
 
 	def on_cancel(self):
 		from yrp.stock.stock_ledger import make_sl_entries
@@ -186,6 +199,8 @@ class StockEntry(Document):
 	def validate_items(self):
 		if not self.items:
 			frappe.throw(_("At least one item is required"))
+		from yrp.stock.uom import apply_item_uom
+
 		for row in self.items:
 			if not row.qty or row.qty <= 0:
 				frappe.throw(_("Row {0}: qty must be > 0").format(row.idx))
@@ -195,9 +210,7 @@ class StockEntry(Document):
 						row.idx
 					)
 				)
-			if not row.uom:
-				row.uom = frappe.db.get_value("Item Variant", row.item, "stock_uom")
-			row.conversion_factor = row.conversion_factor or 1.0
+			apply_item_uom(row, item_field="item")
 			row.stock_qty = (row.qty or 0) * (row.conversion_factor or 1.0)
 			row.amount = (row.qty or 0) * (row.rate or 0)
 

@@ -1,6 +1,8 @@
 <template>
     <div class="grn-compact-editor">
-        <div v-if="!logicalRows.length" class="text-muted small">No pending receivables</div>
+        <div v-if="!logicalRows.length" class="text-muted small">
+			{{ returnMode ? 'No return items' : 'No pending receivables' }}
+		</div>
         <div v-for="(row, rowIndex) in logicalRows" :key="row.key" class="grn-receive-block">
             <table class="table table-sm table-bordered grn-receive-table">
                 <thead>
@@ -12,9 +14,15 @@
                             {{ col.label }}
                         </th>
                         <th class="grn-total">Total</th>
-                        <th class="grn-total">Pending</th>
-                        <th class="grn-total">Allowed</th>
-                        <th class="grn-total">Bal.</th>
+						<template v-if="returnMode">
+							<th class="grn-total">Returnable</th>
+							<th class="grn-total">Remaining</th>
+						</template>
+						<template v-else>
+							<th class="grn-total">Pending</th>
+							<th class="grn-total">Allowed</th>
+							<th class="grn-total">Bal.</th>
+						</template>
                     </tr>
                 </thead>
                 <tbody>
@@ -47,19 +55,27 @@
                             <span v-else>{{ formatQty(qty(split.entry, col.key)) }}</span>
                         </td>
                         <td>{{ formatQty(splitTotal(split, row.columns)) }}</td>
-                        <td v-if="splitIndex === 0" :rowspan="row.splits.length">
+						<td v-if="returnMode && splitIndex === 0" :rowspan="row.splits.length">
+							{{ formatQty(rowAllowed(row)) }}
+						</td>
+						<td v-if="returnMode && splitIndex === 0"
+							:rowspan="row.splits.length"
+							:class="{ 'text-danger': rowBalance(row) < 0 }">
+							{{ formatQty(rowBalance(row)) }}
+						</td>
+						<td v-if="!returnMode && splitIndex === 0" :rowspan="row.splits.length">
                             {{ formatQty(rowPending(row)) }}
                         </td>
-                        <td v-if="splitIndex === 0" :rowspan="row.splits.length">
+						<td v-if="!returnMode && splitIndex === 0" :rowspan="row.splits.length">
                             {{ formatQty(rowAllowed(row)) }}
                         </td>
-                        <td v-if="splitIndex === 0"
+						<td v-if="!returnMode && splitIndex === 0"
                             :rowspan="row.splits.length"
                             :class="{ 'text-danger': rowBalance(row) < 0 }">
                             {{ formatQty(rowBalance(row)) }}
                         </td>
                     </tr>
-                    <tr v-if="edit && unusedRTs(row).length" class="grn-rt-add-row">
+					<tr v-if="edit && !returnMode && unusedRTs(row).length" class="grn-rt-add-row">
                         <td></td>
                         <td></td>
                         <td :colspan="row.columns.length + 5">
@@ -83,6 +99,7 @@ import { computed, onMounted, ref } from 'vue';
 const props = defineProps({
     items: { type: Array, default: () => [] },
     edit: { type: Boolean, default: true },
+	returnMode: { type: Boolean, default: false },
 });
 const emit = defineEmits(['itemupdated']);
 
@@ -264,9 +281,15 @@ function allowedQty(row, key) {
     for (const split of row.splits) {
         const allowed = valueDetail(split.entry, key).max_receivable_quantity;
         if (allowed !== undefined && allowed !== null && allowed !== '') {
-            return Math.max(toNumber(allowed), 0);
+			const normalized = Math.max(toNumber(allowed), 0);
+			if (!props.returnMode || normalized > 0) {
+				return normalized;
+			}
         }
     }
+	if (props.returnMode) {
+		return row.splits.reduce((total, split) => total + qty(split.entry, key), 0);
+	}
     return Math.max(pendingQty(row, key), 0);
 }
 

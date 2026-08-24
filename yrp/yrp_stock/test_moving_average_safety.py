@@ -217,6 +217,58 @@ class TestMovingAverageSafety(FrappeTestCase):
 			sum(flt(row.stock_value_difference) for row in sles), 0.0
 		)
 
+	def test_compound_receipt_can_read_actual_moving_average_issue_value(self):
+		from yrp.stock.stock_ledger import make_sl_entries
+
+		warehouse = _warehouse("Production_Result")
+		_stock_entry(
+			"Material Receipt",
+			10,
+			10,
+			to_warehouse=warehouse,
+			posting_time="09:10:00.000000",
+		).submit()
+		_stock_entry(
+			"Material Receipt",
+			10,
+			20,
+			to_warehouse=warehouse,
+			posting_time="09:11:00.000000",
+		).submit()
+		issue = _stock_entry(
+			"Material Issue",
+			5,
+			0,
+			from_warehouse=warehouse,
+			posting_time="09:12:00.000000",
+		)
+
+		result = make_sl_entries(
+			[
+				{
+					"item": ITEM_VARIANT,
+					"warehouse": warehouse,
+					"uom": ITEM_UOM,
+					"voucher_type": "Stock Entry",
+					"voucher_no": issue.name,
+					"voucher_detail_no": issue.items[0].name,
+					"posting_date": issue.posting_date,
+					"posting_time": issue.posting_time,
+					"qty": -5,
+					"rate": 0,
+					"outgoing_rate": 0,
+					"_result_key": "consumed-input",
+					**DIMENSIONS,
+				}
+			],
+			return_details=True,
+			force_inline=True,
+		)
+
+		detail = result["entries"]["consumed-input"]
+		self.assertAlmostEqual(detail["value"], 75)
+		self.assertAlmostEqual(detail["rate"], 15)
+
 	def test_same_timestamp_entries_are_processed_once(self):
 		warehouse = _warehouse("Same_Timestamp")
 		posting_time = "11:22:33.123456"

@@ -36,6 +36,9 @@ class PurchaseInvoice(Document):
 
 	def before_validate(self):
 		self.set_missing_values()
+		from yrp.stock.uom import apply_item_uoms
+
+		apply_item_uoms(self.get("items") or [], item_field="item")
 
 	def validate(self):
 		self.validate_bill_tracking()
@@ -65,9 +68,25 @@ class PurchaseInvoice(Document):
 
 	def on_submit(self):
 		self.close_bill_tracking()
+		from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+			create_purchase_invoice_adjustment,
+		)
+
+		create_purchase_invoice_adjustment(self)
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ("Goods Received Note", "Bill Tracking")
+		from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+			validate_reversal_allowed,
+		)
+
+		# Run the valuation/period preflight before releasing GRNs, billed quantity,
+		# or Bill Tracking. An exception therefore leaves the submitted PI intact.
+		validate_reversal_allowed(self.doctype, self.name)
+		self.ignore_linked_doctypes = (
+			"Goods Received Note",
+			"Bill Tracking",
+			"Stock Valuation Adjustment",
+		)
 		self.unlink_grns()
 		if self.against == "Work Order":
 			update_wo_billed_qty(self, docstatus=2)
@@ -76,6 +95,11 @@ class PurchaseInvoice(Document):
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled", update_modified=False)
+		from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+			create_reversal,
+		)
+
+		create_reversal(self.doctype, self.name)
 
 	def on_trash(self):
 		self.unlink_grns()
@@ -341,9 +365,16 @@ def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 				# bills *something* rather than silently zeroing — it should not occur
 				# in practice; if it does it signals a WO/GRN data mismatch to chase.
 				process_cost_rate = _get_wo_process_cost(work_order, grn_item.item_variant, set_combination)
-				rate = process_cost_rate if process_cost_rate is not None else ((flt(grn_item.amount) / qty) if qty else stock_rate)
+				conversion_factor = (
+					flt(grn_item.stock_qty) / qty if qty and flt(grn_item.stock_qty) else 1
+				)
+				rate = (
+					process_cost_rate * conversion_factor
+					if process_cost_rate is not None
+					else ((flt(grn_item.amount) / qty) if qty else stock_rate)
+				)
 			else:
-				rate = (flt(grn_item.amount) / qty) if qty else stock_rate
+				rate = _get_po_material_rate(grn, grn_item)
 			key = (
 				grn_item.item_variant,
 				grn_item.uom,
@@ -360,6 +391,7 @@ def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 					"qty": 0,
 					"uom": grn_item.uom,
 					"rate": rate,
+					"source_rate": rate,
 					"amount": 0,
 					"tax": tax,
 					"actual_rate": stock_rate,
@@ -398,6 +430,7 @@ def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 	item_rows = list(items.values())
 	for row in item_rows:
 		row["rate"] = flt(row["amount"]) / flt(row["qty"]) if flt(row["qty"]) else 0
+		row["source_rate"] = row["rate"]
 		row["actual_rate"] = (
 			flt(row.pop("_actual_amount")) / flt(row["actual_qty"])
 			if flt(row["actual_qty"])
@@ -569,6 +602,18 @@ def _get_wo_process_cost(work_order, item_variant, set_combination):
 		if row.item_variant == item_variant and _normal_json(row.get("set_combination")) == set_combination:
 			return flt(row.get("cost"))
 	return None
+
+
+def _get_po_material_rate(grn, grn_item):
+	"""Return the freight/tax-exclusive PO material rate in the form UOM."""
+	rate = grn._get_source_base_rate(grn_item)
+	if rate is None:
+		frappe.throw(
+			_(
+				"Goods Received Note row {0} has no Purchase Order material-rate source."
+			).format(grn_item.idx or grn_item.name)
+		)
+	return flt(rate)
 
 
 def _get_tax_rate(tax):

@@ -30,6 +30,8 @@ Coverage map (vs IMPLEMENTATION_PLAN.md):
   - A.1 : Stock Reconciliation cancel restores prior balance
 """
 
+from unittest.mock import Mock, patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import nowdate, nowtime
@@ -923,6 +925,39 @@ class TestEngineVerification(FrappeTestCase):
 		)
 		status = frappe.db.get_value("Repost Item Valuation", riv.name, "status")
 		self.assertEqual(status, "Queued")
+
+	def test_BugC_failed_riv_rolls_back_bucket_before_committing_failure(self):
+		"""A failed bucket must not be committed with the RIV failure status."""
+		from yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation import (
+			repost,
+		)
+
+		events = []
+		running = Mock(docstatus=1, status="Queued", retry_count=0)
+		failed = Mock(docstatus=1, status="In Progress", retry_count=0)
+		running.db_set.side_effect = lambda field, value: events.append(
+			("set", field, value)
+		)
+		failed.db_set.side_effect = lambda field, value: events.append(
+			("set", field, value)
+		)
+		with (
+			patch.object(frappe.db, "sql"),
+			patch.object(frappe.db, "commit", side_effect=lambda: events.append("commit")),
+			patch.object(frappe.db, "rollback", side_effect=lambda: events.append("rollback")),
+			patch.object(frappe, "get_doc", side_effect=[running, failed]),
+			patch(
+				"yrp.stock.stock_ledger.repost_future_sle",
+				side_effect=RuntimeError("bucket replay failed"),
+			),
+		):
+			with self.assertRaisesRegex(RuntimeError, "bucket replay failed"):
+				repost("RIV-FAILURE-TEST")
+
+		self.assertLess(
+			events.index("rollback"),
+			events.index(("set", "status", "Failed")),
+		)
 
 	# Bug D — SRE submit blocks over-reservation under live check
 	def test_BugD_sre_over_reservation_blocked(self):

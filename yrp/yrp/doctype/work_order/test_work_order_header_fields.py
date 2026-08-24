@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import frappe
@@ -6,6 +7,24 @@ from frappe.tests.utils import FrappeTestCase
 
 
 class TestWorkOrderHeaderFields(FrappeTestCase):
+	def test_address_links_are_filtered_by_their_selected_supplier(self):
+		client_script = Path(
+			frappe.get_app_path("yrp", "yrp", "doctype", "work_order", "work_order.js")
+		).read_text()
+		self.assertIn(
+			'frm.set_query("supplier_address", () =>\n\t\t\twork_order_party_address_query(frm, "supplier")',
+			client_script,
+		)
+		self.assertIn(
+			'frm.set_query("delivery_address", () =>\n\t\t\twork_order_party_address_query(frm, "delivery_location")',
+			client_script,
+		)
+		self.assertIn(
+			'query: "frappe.contacts.doctype.address.address.address_query"',
+			client_script,
+		)
+		self.assertIn('link_doctype: "Supplier"', client_script)
+
 	def test_generic_work_order_source_flags_are_owned_by_base_yrp(self):
 		work_order_meta = frappe.get_meta("Work Order", cached=False)
 		expected_date = work_order_meta.get_field("expected_delivery_date")

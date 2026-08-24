@@ -10,6 +10,13 @@ from frappe.utils import cint
 
 class RepostItemValuation(Document):
 	def validate(self):
+		from yrp.stock.stock_ledger import validate_stock_valuation_period
+
+		validate_stock_valuation_period(
+			self.posting_date,
+			self.voucher_type or self.doctype,
+			self.voucher_no or self.name,
+		)
 		if self.based_on == "Transaction" and not (self.voucher_type and self.voucher_no):
 			frappe.throw(_("Voucher Type/No required for Transaction-based repost"))
 		if self.based_on == "Item and Warehouse":
@@ -28,11 +35,15 @@ class RepostItemValuation(Document):
 
 	def on_submit(self):
 		self.db_set("status", "Queued")
+		queue = frappe.conf.get("stock_valuation_queue") or "long"
 		frappe.enqueue(
 			"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost",
 			doc=self.name,
-			queue="long",
+			queue=queue,
 			timeout=3600,
+			enqueue_after_commit=True,
+			job_id=f"repost-valuation:{self.name}",
+			deduplicate=True,
 		)
 
 
@@ -40,16 +51,29 @@ def repost(doc):
 	"""Background entry point — runs the repost for the given doc name."""
 	from yrp.stock.stock_ledger import repost_future_sle
 
+	frappe.db.sql(
+		"SELECT name FROM `tabRepost Item Valuation` WHERE name=%s FOR UPDATE",
+		(doc,),
+	)
 	rv = frappe.get_doc("Repost Item Valuation", doc)
+	if rv.docstatus != 1 or rv.status in {"Completed", "In Progress"}:
+		return
 	try:
 		rv.db_set("status", "In Progress")
+		frappe.db.commit()
 		repost_future_sle(rv)
 		rv.db_set("status", "Completed")
 		frappe.db.commit()
 	except Exception:
+		error_log = traceback.format_exc()
+		# A bucket replay is atomic. Roll back every SLE/Bin mutation made since
+		# the last per-bucket checkpoint before persisting the failure state;
+		# otherwise the failure commit would also commit a half-replayed bucket.
+		frappe.db.rollback()
+		rv = frappe.get_doc("Repost Item Valuation", doc)
 		rv.db_set("status", "Failed")
 		rv.db_set("retry_count", cint(rv.retry_count) + 1)
-		rv.db_set("error_log", traceback.format_exc())
+		rv.db_set("error_log", error_log)
 		frappe.db.commit()
 		raise
 

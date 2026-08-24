@@ -228,12 +228,24 @@ def get_stock_balance(
 		rate = rate * cf
 
 	if with_stale:
-		stale = has_pending_repost(item, warehouse)
+		repost_stale = has_pending_repost(item, warehouse)
+		adjustment_stale = has_stale_valuation_sle(
+			item, warehouse, **dimension_filters
+		)
+		stale = repost_stale or adjustment_stale
+		if adjustment_stale and repost_stale:
+			stale_reason = "Stock valuation adjustment and repost in progress"
+		elif adjustment_stale:
+			stale_reason = "Stock Valuation Adjustment in progress"
+		elif repost_stale:
+			stale_reason = "Repost Item Valuation in progress"
+		else:
+			stale_reason = None
 		return {
 			"actual_qty": qty,
 			"valuation_rate": rate,
 			"stale": stale,
-			"stale_reason": "Repost Item Valuation in progress" if stale else None,
+			"stale_reason": stale_reason,
 		}
 
 	return (qty, rate) if with_valuation_rate else qty
@@ -409,6 +421,20 @@ def has_pending_repost(item, warehouse):
 			},
 		)
 	)
+
+
+def has_stale_valuation_sle(item, warehouse, **dimension_filters):
+	"""True while an SVA owns any active SLE in this valuation bucket."""
+	filters = {
+		"item": item,
+		"warehouse": warehouse,
+		"is_cancelled": 0,
+		"valuation_is_stale": 1,
+	}
+	for fieldname in get_valuation_dimensions():
+		if fieldname in dimension_filters:
+			filters[fieldname] = dimension_filters.get(fieldname)
+	return bool(frappe.db.exists("Stock Ledger Entry", filters))
 
 
 def future_sle_exists(args):

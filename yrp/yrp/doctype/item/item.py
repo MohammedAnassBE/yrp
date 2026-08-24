@@ -433,6 +433,47 @@ def get_complete_item_details(item_name):
 # Variant creation and lookup
 # ======================================================================
 
+def build_variant_attributes(my_attributes, stage, item_or_ipd):
+	"""Build the valid Item Variant attributes for a dependent stage.
+
+	The Item Dependent Attribute Mapping is authoritative for which attributes
+	belong to a stage. Callers may pass every value they know; unrelated values
+	are discarded and the dependent attribute itself is stamped automatically.
+	"""
+	from yrp.yrp.doctype.item_dependent_attribute_mapping.item_dependent_attribute_mapping import (
+		get_dependent_attribute_details,
+	)
+
+	if hasattr(item_or_ipd, "dependent_attribute_mapping"):
+		mapping_name = item_or_ipd.dependent_attribute_mapping
+		source = getattr(item_or_ipd, "name", item_or_ipd)
+	elif frappe.db.exists("Item Production Detail", item_or_ipd):
+		mapping_name = frappe.get_cached_value(
+			"Item Production Detail", item_or_ipd, "dependent_attribute_mapping"
+		)
+		source = item_or_ipd
+	else:
+		mapping_name = frappe.get_cached_value(
+			"Item", item_or_ipd, "dependent_attribute_mapping"
+		)
+		source = item_or_ipd
+
+	if not mapping_name:
+		frappe.throw(f"Dependent Attribute Mapping is not configured for {source}")
+
+	details = get_dependent_attribute_details(mapping_name)
+	stage_details = details.get("attr_list", {}).get(stage)
+	if not stage_details:
+		frappe.throw(
+			f"Stage '{stage}' is not defined in the dependent attribute mapping of {source}"
+		)
+
+	args = {details["attribute"]: stage}
+	for attribute in stage_details.get("attributes") or []:
+		if attribute in my_attributes:
+			args[attribute] = my_attributes[attribute]
+	return args
+
 def get_or_create_variant(template, args, dependent_attr=None):
 	"""Find an existing variant or create a new one."""
 	variant_name = get_variant(template, args)

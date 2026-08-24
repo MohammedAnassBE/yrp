@@ -6,6 +6,7 @@
             v-if="useReceivedTypeGrnEditor"
             :items="items"
             :edit="docstatus === 0"
+			:return-mode="returnMode"
             @itemupdated="updated">
         </goods-received-note-editor>
         <item-dimension-fetcher
@@ -48,6 +49,7 @@ const props = defineProps({
     showSecondary: { type: Boolean, default: false },
     aggregateDisplay: { type: Boolean, default: false },
     aggregateRouteFields: { type: Array, default: () => [] },
+	returnMode: { type: Boolean, default: false },
 });
 
 const SECONDARY_COLUMNS = [

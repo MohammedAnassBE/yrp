@@ -25,6 +25,7 @@ frappe.ui.form.on("Goods Received Note", {
 	},
 
 	refresh(frm) {
+		configure_return_form(frm);
 		mount_grn_editor(frm);
 		add_complete_transfer_button(frm);
 		add_create_inspection_button(frm);
@@ -47,14 +48,19 @@ frappe.ui.form.on("Goods Received Note", {
 	},
 
 	against_id(frm) {
-		if (!frm.doc.against_id || frm.doc.docstatus !== 0) {
+		if (!frm.doc.against_id || frm.doc.docstatus !== 0 || frm.doc.is_return) {
 			return;
 		}
 		load_source_defaults(frm);
 	},
 
 	delivery_challan(frm) {
-		if (frm.doc.docstatus !== 0 || frm.doc.against !== "Work Order" || !frm.doc.against_id) {
+		if (
+			frm.doc.docstatus !== 0
+			|| frm.doc.against !== "Work Order"
+			|| !frm.doc.against_id
+			|| frm.doc.is_return
+		) {
 			return;
 		}
 		load_source_defaults(frm);
@@ -126,6 +132,9 @@ function load_source_defaults(frm) {
 }
 
 function get_source_defaults_method(frm) {
+	if (frm.doc.is_return) {
+		return null;
+	}
 	if (frm.doc.against === "Work Order") {
 		return {
 			method: "yrp.yrp.doctype.goods_received_note.goods_received_note.get_work_order_defaults",
@@ -184,18 +193,21 @@ function mount_grn_editor(frm) {
 	frm.set_df_property("item_html", "hidden", 0);
 	$(frm.fields_dict.item_html.wrapper).html("");
 	frm.itemEditor = new frappe.yrp.work_order.ItemEditor(frm.fields_dict.item_html.wrapper, {
-		title: "Receive Items",
+		title: frm.doc.is_return ? "Return Items" : "Receive Items",
 		editorType: "goods_received_note",
 		sourceType: frm.doc.against || "Work Order",
 		showDimensions: true,
 		allowCreate: false,
 		allowEdit: false,
 		allowRemove: false,
+		returnMode: Boolean(frm.doc.is_return),
 	});
 	const data = get_item_details(frm);
 	frm.itemEditor.load_data(data);
 	frm.itemEditor.update_status();
-	mount_grn_correction_editor(frm);
+	if (!frm.doc.is_return) {
+		mount_grn_correction_editor(frm);
+	}
 	bind_grn_dirty_handler(frm);
 }
 
@@ -276,6 +288,7 @@ function add_complete_transfer_button(frm) {
 
 function add_create_inspection_button(frm) {
 	if (frm.doc.docstatus !== 1) return;
+	if (frm.doc.is_return) return;
 	if (frm.doc.is_rework) return;
 	frappe.db.count("Inspection Entry", {
 		filters: {
@@ -299,6 +312,33 @@ function add_create_inspection_button(frm) {
 			frappe.set_route("Form", "Inspection Entry", ie.name);
 		});
 	});
+}
+
+function configure_return_form(frm) {
+	if (!frm.doc.is_return) return;
+	for (const fieldname of [
+		"against",
+		"against_id",
+		"delivery_challan",
+		"supplier",
+		"delivery_location",
+		"from_warehouse",
+		"to_warehouse",
+		"freight_charges",
+	]) {
+		if (frm.fields_dict[fieldname]) {
+			frm.set_df_property(fieldname, "read_only", 1);
+		}
+	}
+	for (const fieldname of [
+		"correction_items_section",
+		"correction_items",
+		"correction_item_html",
+	]) {
+		if (frm.fields_dict[fieldname]) {
+			frm.set_df_property(fieldname, "hidden", 1);
+		}
+	}
 }
 
 function has_received_qty(item_details) {

@@ -4,6 +4,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
+from yrp.stock.test_uom import _dependent_item_variant, _ensure_uom
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
@@ -198,14 +199,22 @@ class TestPurchaseInvoice(FrappeTestCase):
 		)
 
 	def test_fetch_keeps_same_item_with_different_prices_as_separate_rows(self):
+		supplier = _supplier(f"_Test PI Price Supplier {frappe.generate_hash(length=6)}")
 		po = _purchase_order(
-			qty=5,
+			qty=2,
 			warehouse=_warehouse(f"_Test_PI_Price_Group_WH_{frappe.generate_hash(length=6)}"),
+			supplier=supplier,
+			rate=25,
+		)
+		second_po = _purchase_order(
+			qty=3,
+			warehouse=_warehouse(f"_Test_PI_Price_Group_WH_{frappe.generate_hash(length=6)}"),
+			supplier=supplier,
+			rate=35,
 		)
 		first_grn = _purchase_order_grn(po, qty=2)
 		first_grn.submit()
-		second_grn = _purchase_order_grn(po, qty=3)
-		second_grn.items[0].rate = flt(second_grn.items[0].rate) + 10
+		second_grn = _purchase_order_grn(second_po, qty=3)
 		second_grn.submit()
 
 		data = frappe.get_attr(
@@ -235,6 +244,230 @@ class TestPurchaseInvoice(FrappeTestCase):
 		invoice.cancel()
 		grn.reload()
 		self.assertFalse(grn.purchase_invoice_name)
+
+	def test_purchase_invoice_rate_difference_creates_and_applies_adjustment(self):
+		po = _purchase_order(
+			qty=4,
+			warehouse=_warehouse(
+				f"_Test_PI_Adjustment_WH_{frappe.generate_hash(length=6)}"
+			),
+			rate=25,
+		)
+		grn = _purchase_order_grn(po, qty=4)
+		grn.submit()
+		invoice = _purchase_invoice("Purchase Order", po.supplier, grn)
+		invoice.allow_to_change_rate = 1
+		invoice.items[0].rate = flt(invoice.items[0].source_rate) + 5
+		invoice.save(ignore_permissions=True)
+		with patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.enqueue_adjustment"
+		):
+			invoice.submit()
+
+		adjustment = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			{
+				"source_doctype": invoice.doctype,
+				"source_name": invoice.name,
+				"adjustment_type": "Purchase Invoice Rate Difference",
+			},
+			["name", "status", "total_source_difference"],
+			as_dict=True,
+		)
+		self.assertIsNotNone(adjustment)
+		self.assertEqual(adjustment.status, "Queued")
+		self.assertAlmostEqual(flt(adjustment.total_source_difference), 20)
+		adjustment_name = adjustment.name
+
+		from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+			process_adjustment,
+		)
+
+		process_adjustment(adjustment_name)
+		adjustment = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			adjustment_name,
+			["status", "propagated_stock_difference", "terminal_difference"],
+			as_dict=True,
+		)
+		target_sle = frappe.db.get_value(
+			"Stock Ledger Entry",
+			{
+				"voucher_type": grn.doctype,
+				"voucher_no": grn.name,
+				"voucher_detail_no": grn.items[0].name,
+				"qty": [">", 0],
+				"is_cancelled": 0,
+			},
+			["name", "rate", "valuation_adjustment_value"],
+			as_dict=True,
+		)
+		self.assertEqual(adjustment.status, "Completed")
+		self.assertAlmostEqual(flt(adjustment.propagated_stock_difference), 20)
+		self.assertAlmostEqual(flt(adjustment.terminal_difference), 0)
+		self.assertAlmostEqual(flt(target_sle.valuation_adjustment_value), 20)
+		current_rate, current_value = frappe.db.get_value(
+			"Goods Received Note Item",
+			grn.items[0].name,
+			["current_valuation_rate", "current_valuation_value"],
+		)
+		self.assertAlmostEqual(flt(current_rate), flt(target_sle.rate) + 5)
+		self.assertAlmostEqual(
+			flt(current_value), flt(target_sle.rate) * flt(grn.items[0].stock_qty) + 20
+		)
+
+		with patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.enqueue_adjustment"
+		):
+			invoice.cancel()
+		reversal = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			{"reversal_of": adjustment_name, "docstatus": 1},
+			"name",
+		)
+		self.assertTrue(reversal)
+
+		# A corrected bill cannot race ahead of the old bill's signed reversal.
+		# It may be prepared as a draft, but its submission must wait until the
+		# previous valuation revision has reached its terminal Reversed state.
+		pending_replacement = _purchase_invoice("Purchase Order", po.supplier, grn)
+		pending_replacement.allow_to_change_rate = 1
+		# Zero delta is intentional: it must still obey revision ordering even
+		# though it will not create a new adjustment after the reversal finishes.
+		pending_replacement.items[0].rate = flt(
+			pending_replacement.items[0].source_rate
+		)
+		pending_replacement.save(ignore_permissions=True)
+		frappe.db.savepoint("before_pending_replacement_submit")
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "still Reversal Queued"
+		):
+			pending_replacement.submit()
+		frappe.db.rollback(save_point="before_pending_replacement_submit")
+		pending_replacement.reload()
+		pending_replacement.delete(ignore_permissions=True)
+
+		process_adjustment(reversal)
+		self.assertAlmostEqual(
+			flt(
+				frappe.db.get_value(
+					"Stock Ledger Entry", target_sle.name, "valuation_adjustment_value"
+				)
+			),
+			0,
+		)
+		current_rate, current_value = frappe.db.get_value(
+			"Goods Received Note Item",
+			grn.items[0].name,
+			["current_valuation_rate", "current_valuation_value"],
+		)
+		self.assertAlmostEqual(flt(current_rate), flt(target_sle.rate))
+		self.assertAlmostEqual(
+			flt(current_value), flt(target_sle.rate) * flt(grn.items[0].stock_qty)
+		)
+		self.assertEqual(
+			frappe.db.get_value(
+				"Stock Valuation Adjustment", adjustment_name, "status"
+			),
+			"Reversed",
+		)
+
+		# A corrected PI is a new independent revision. It is allowed only after
+		# the old signed reversal completed, and it applies exactly once.
+		replacement = _purchase_invoice("Purchase Order", po.supplier, grn)
+		replacement.allow_to_change_rate = 1
+		replacement.items[0].rate = flt(replacement.items[0].source_rate) + 7
+		replacement.save(ignore_permissions=True)
+		with patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.enqueue_adjustment"
+		):
+			replacement.submit()
+		replacement_adjustment = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			{
+				"source_doctype": replacement.doctype,
+				"source_name": replacement.name,
+				"adjustment_type": "Purchase Invoice Rate Difference",
+			},
+			"name",
+		)
+		process_adjustment(replacement_adjustment)
+		replacement_source = frappe.db.get_value(
+			"Stock Valuation Adjustment Source",
+			{"parent": replacement_adjustment},
+			["target_sle", "difference"],
+			as_dict=True,
+		)
+		self.assertEqual(replacement_source.target_sle, target_sle.name)
+		self.assertAlmostEqual(flt(replacement_source.difference), 28)
+		self.assertEqual(
+			frappe.db.get_value(
+				"Stock Valuation Adjustment", replacement_adjustment, "status"
+			),
+			"Completed",
+		)
+		self.assertAlmostEqual(
+			flt(
+				frappe.db.get_value(
+					"Stock Ledger Entry", target_sle.name, "valuation_adjustment_value"
+				)
+			),
+			28,
+		)
+
+	def test_grn_can_cancel_after_pi_valuation_reversal_completes(self):
+		po = _purchase_order(
+			qty=4,
+			warehouse=_warehouse(
+				f"_Test_PI_GRN_Cancel_WH_{frappe.generate_hash(length=6)}"
+			),
+			rate=25,
+		)
+		grn = _purchase_order_grn(po, qty=4)
+		grn.submit()
+		invoice = _purchase_invoice("Purchase Order", po.supplier, grn)
+		invoice.allow_to_change_rate = 1
+		invoice.items[0].rate = flt(invoice.items[0].source_rate) + 5
+		invoice.save(ignore_permissions=True)
+		with patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.enqueue_adjustment"
+		):
+			invoice.submit()
+
+		from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+			process_adjustment,
+		)
+
+		adjustment = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			{"source_doctype": invoice.doctype, "source_name": invoice.name},
+			"name",
+		)
+		process_adjustment(adjustment)
+		with patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.enqueue_adjustment"
+		):
+			invoice.cancel()
+		reversal = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			{"reversal_of": adjustment, "docstatus": 1},
+			"name",
+		)
+		process_adjustment(reversal)
+
+		grn.reload()
+		grn.cancel()
+		self.assertEqual(grn.docstatus, 2)
+		self.assertFalse(
+			frappe.db.exists(
+				"Stock Ledger Entry",
+				{
+					"voucher_type": grn.doctype,
+					"voucher_no": grn.name,
+					"is_cancelled": 0,
+				},
+			)
+		)
 
 	def test_work_order_invoice_updates_billed_qty(self):
 		original_get_single_value = frappe.db.get_single_value
@@ -266,7 +499,10 @@ class TestPurchaseInvoice(FrappeTestCase):
 			return original_get_single_value(doctype, fieldname, *args, **kwargs)
 
 		with patch.object(frappe.db, "get_single_value", side_effect=get_single_value):
-			item_variant = _test_item_variant()
+			_item, variant = _dependent_item_variant(
+				_ensure_uom("Piece"), _ensure_uom("Box")
+			)
+			item_variant = variant.name
 			uom = _item_uom(item_variant)
 			warehouse = _warehouse(f"_Test_PI_Freight_CF_{frappe.generate_hash(length=6)}")
 			po = frappe.get_doc({
@@ -320,5 +556,51 @@ class TestPurchaseInvoice(FrappeTestCase):
 			data = frappe.get_attr("yrp.yrp.doctype.purchase_invoice.purchase_invoice.fetch_grn_details")(
 				[grn.name], "Purchase Order", po.supplier
 			)
-			self.assertAlmostEqual(flt(data["items"][0]["rate"]), 110, places=4)
-			self.assertAlmostEqual(flt(data["items"][0]["amount"]), 220, places=2)
+			# The PI bills the net material component only. Freight stays in the
+			# submitted GRN/SLE and is not treated as supplier material rate again.
+			self.assertAlmostEqual(flt(data["items"][0]["rate"]), 100, places=4)
+			self.assertAlmostEqual(flt(data["items"][0]["amount"]), 200, places=2)
+
+			invoice = _purchase_invoice("Purchase Order", po.supplier, grn)
+			invoice.allow_to_change_rate = 1
+			invoice.items[0].rate = 120
+			invoice.save(ignore_permissions=True)
+			with patch(
+				"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.enqueue_adjustment"
+			):
+				invoice.submit()
+			adjustment = frappe.db.get_value(
+				"Stock Valuation Adjustment",
+				{
+					"source_doctype": invoice.doctype,
+					"source_name": invoice.name,
+					"adjustment_type": "Purchase Invoice Rate Difference",
+				},
+				["name", "total_source_difference"],
+				as_dict=True,
+			)
+			self.assertAlmostEqual(flt(adjustment.total_source_difference), 40)
+			from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
+				process_adjustment,
+			)
+
+			process_adjustment(adjustment.name)
+			target = frappe.db.get_value(
+				"Stock Ledger Entry",
+				{
+					"voucher_no": grn.name,
+					"voucher_detail_no": grn.items[0].name,
+					"qty": [">", 0],
+					"is_cancelled": 0,
+				},
+				["rate", "valuation_adjustment_value"],
+				as_dict=True,
+			)
+			self.assertAlmostEqual(flt(target.rate), 11)
+			self.assertAlmostEqual(flt(target.valuation_adjustment_value), 40)
+			current_rate = frappe.db.get_value(
+				"Goods Received Note Item",
+				grn.items[0].name,
+				"current_valuation_rate",
+			)
+			self.assertAlmostEqual(flt(current_rate), 13)
