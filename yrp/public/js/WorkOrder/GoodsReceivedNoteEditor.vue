@@ -141,10 +141,12 @@ const logicalRows = computed(() => {
             const dimensionsWithoutType = stripReceivedType(entry.dimensions || {});
             const attributes = entry.attributes || {};
             const columns = getColumns(group, entry);
+            const setCombination = normalizedSetCombination(entry.set_combination);
             const key = stableKey({
                 name: entry.name,
                 dimensions: dimensionsWithoutType,
                 attributes,
+                setCombination,
                 columns: columns.map((col) => col.key),
             });
             if (!byKey.has(key)) {
@@ -156,6 +158,7 @@ const logicalRows = computed(() => {
                         (fieldname) => dimensionsWithoutType[fieldname],
                     ),
                     attributes,
+                    setCombination,
                     attributeFields: Object.keys(attributes).filter(
                         (fieldname) => attributes[fieldname],
                     ),
@@ -192,6 +195,18 @@ function stripReceivedType(dimensionsIn) {
 
 function receivedType(entry) {
     return (entry.dimensions || {}).received_type || '';
+}
+
+function normalizedSetCombination(value) {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value);
+        } catch (_error) {
+            return { value };
+        }
+    }
+    return value;
 }
 
 function getColumns(group, entry) {
@@ -244,6 +259,11 @@ function rowMeta(row) {
         if (value) {
             parts.push(value);
         }
+    }
+    const setColour = row.setCombination?.major_colour;
+    const setPart = row.setCombination?.major_part;
+    if (setColour || setPart) {
+        parts.push(`Set: ${[setColour, setPart].filter(Boolean).join(' / ')}`);
     }
     return parts.join(' | ');
 }
@@ -364,6 +384,7 @@ function addSplit(row, rt) {
                 name: entry.name,
                 dimensions: stripped,
                 attributes: entry.attributes || {},
+                setCombination: normalizedSetCombination(entry.set_combination),
                 columns: getColumns(group, entry).map((col) => col.key),
             });
             if (dimsWithoutTypeKey !== row.key) continue;
