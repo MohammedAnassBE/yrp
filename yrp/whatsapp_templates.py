@@ -71,11 +71,11 @@ def _upsert_local_template(template_data, whatsapp_account):
     upserted doc's name (docname).
     """
     existing = frappe.db.get_value(
-        "YRP WhatsApp Template", {"template_id": template_data.get("id")}, "name"
+        'YRP YRP WhatsApp Template', {"template_id": template_data.get("id")}, "name"
     )
 
     if existing:
-        doc = frappe.get_doc("YRP WhatsApp Template", existing)
+        doc = frappe.get_doc('YRP YRP WhatsApp Template', existing)
         # applicable_doctypes is pure user config (which enabled DocTypes may
         # send this template) -- never Meta-sourced, so it must survive a
         # re-sync untouched. Snapshot it before any field below is touched and
@@ -118,7 +118,7 @@ def _upsert_local_template(template_data, whatsapp_account):
         return doc.name
 
     doc = frappe.get_doc({
-        "doctype": "YRP WhatsApp Template",
+        "doctype": 'YRP YRP WhatsApp Template',
         "template_name": template_data.get("name"),
         "template_id": template_data.get("id"),
         "language_code": template_data.get("language"),
@@ -160,7 +160,7 @@ def get_template_variables(template_name):
     child rows (matched on variable_number + variable_type), else "".
     Used by the YRP WhatsApp Template form JS / future consumers.
     """
-    template = frappe.get_doc("YRP WhatsApp Template", template_name)
+    template = frappe.get_doc('YRP YRP WhatsApp Template', template_name)
 
     variables = []
 

@@ -91,7 +91,7 @@ app_include_js = ["yrp.bundle.js"]
 # ------------
 
 # before_install = "yrp.install.before_install"
-after_install = "yrp.yrp.doctype.notification_template.notification_template.add_whatsapp_communication_medium"
+after_install = "yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium"
 
 # Uninstallation
 # ------------
@@ -150,12 +150,12 @@ after_install = "yrp.yrp.doctype.notification_template.notification_template.add
 
 scheduler_events = {
 	"daily": [
-		"yrp.yrp_stock.doctype.stock_integrity_check.stock_integrity_check.run_daily_check",
+		"yrp.yrp_stock.doctype.yrp_stock_integrity_check.yrp_stock_integrity_check.run_daily_check",
 		"yrp.whatsapp_templates.sync_templates_from_hub",
 	],
 	"hourly": [
-		"yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation.repost_entries",
-		"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.recover_stalled_adjustments",
+		"yrp.yrp_stock.doctype.yrp_repost_item_valuation.yrp_repost_item_valuation.repost_entries",
+		"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment.recover_stalled_adjustments",
 	],
 	"cron": {
 		"0 1 * * *": [
@@ -165,7 +165,7 @@ scheduler_events = {
 }
 
 doc_events = {
-	"YRP Stock Settings": {
+	'YRP YRP Stock Settings': {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
 	"User": {
@@ -180,7 +180,7 @@ doc_events = {
 after_migrate = [
 	"yrp.stock.dimensions.create_dimension_fields",
 	"yrp.patches.add_sle_composite_index.execute",
-	"yrp.yrp.doctype.notification_template.notification_template.add_whatsapp_communication_medium",
+	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium",
 ]
 
 # Testing

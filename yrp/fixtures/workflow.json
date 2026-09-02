@@ -2,7 +2,7 @@
  {
   "docstatus": 0,
   "doctype": "Workflow",
-  "document_type": "Item Price",
+  "document_type": "YRP Item Price",
   "enable_action_confirmation": 0,
   "is_active": 1,
   "modified": "2026-03-26 17:23:32.210432",
@@ -134,7 +134,7 @@
  {
   "docstatus": 0,
   "doctype": "Workflow",
-  "document_type": "Process Cost",
+  "document_type": "YRP Process Cost",
   "enable_action_confirmation": 0,
   "is_active": 1,
   "modified": "2026-03-26 17:36:51.601519",

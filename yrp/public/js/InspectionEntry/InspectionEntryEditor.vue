@@ -634,7 +634,7 @@ function submitEdit() {
 async function loadReceivedTypes() {
     try {
         const r = await frappe.call({
-            method: 'yrp.yrp.doctype.inspection_entry.inspection_entry.get_received_types',
+            method: 'yrp.yrp.doctype.yrp_inspection_entry.yrp_inspection_entry.get_received_types',
         });
         receivedTypes.value = r.message || [];
     } catch (_) {

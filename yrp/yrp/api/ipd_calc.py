@@ -2,7 +2,7 @@
 
 import frappe
 
-from yrp.yrp.doctype.item_production_detail import item_production_detail as ipd
+from yrp.yrp.doctype.yrp_item_production_detail import yrp_item_production_detail as ipd
 
 
 @frappe.whitelist()

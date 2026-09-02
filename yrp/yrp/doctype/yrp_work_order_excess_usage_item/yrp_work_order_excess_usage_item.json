@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-09-17 16:12:15.701939",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_variant",
+  "excess_quantity",
+  "rate",
+  "actual_value",
+  "uom",
+  "stock_quantity",
+  "stock_uom",
+  "work_order_deliverable",
+  "source_sle",
+  "stock_dimensions"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_variant",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Variant",
+   "options": "YRP Item Variant"
+  },
+  {
+   "fieldname": "excess_quantity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Excess Quantity"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Rate"
+  },
+  {
+   "fieldname": "actual_value",
+   "fieldtype": "Currency",
+   "label": "Actual Consumed Value",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "UOM",
+   "options": "YRP UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_quantity",
+   "fieldtype": "Float",
+   "label": "Stock Quantity",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Stock UOM",
+   "options": "YRP UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "work_order_deliverable",
+   "fieldtype": "Link",
+   "label": "Work Order Deliverable",
+   "options": "YRP Work Order Deliverables",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_sle",
+   "fieldtype": "Link",
+   "label": "Consumption Stock Ledger Entry",
+   "options": "YRP Stock Ledger Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_dimensions",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Stock Dimensions",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-09-18 12:15:51.033948",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP Work Order Excess Usage Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

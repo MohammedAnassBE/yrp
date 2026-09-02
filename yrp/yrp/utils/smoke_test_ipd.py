@@ -34,27 +34,27 @@ def run():
 
 
 def _clean():
-	smoke_items = frappe.get_all("Item", filters={"name1": ITEM_CODE}, pluck="name")
+	smoke_items = frappe.get_all('YRP Item', filters={"name1": ITEM_CODE}, pluck="name")
 	for item_name in smoke_items:
-		for n in frappe.get_all("IPD Process Matrix", filters={"ipd": ["like", f"IPD-{item_name}-%"]}, pluck="name"):
-			_force_delete("IPD Process Matrix", n)
-		for n in frappe.get_all("Item Production Detail", filters={"item": item_name}, pluck="name"):
-			_force_delete("Item Production Detail", n)
-		item = frappe.get_doc("Item", item_name)
+		for n in frappe.get_all('YRP IPD Process Matrix', filters={"ipd": ["like", f"IPD-{item_name}-%"]}, pluck="name"):
+			_force_delete('YRP IPD Process Matrix', n)
+		for n in frappe.get_all('YRP Item Production Detail', filters={"item": item_name}, pluck="name"):
+			_force_delete('YRP Item Production Detail', n)
+		item = frappe.get_doc('YRP Item', item_name)
 		for ar in item.get("attributes") or []:
-			if ar.mapping and frappe.db.exists("Item Item Attribute Mapping", ar.mapping):
-				frappe.delete_doc("Item Item Attribute Mapping", ar.mapping, force=1, ignore_permissions=True)
-		_force_delete("Item", item_name)
-		for n in frappe.get_all("Item Dependent Attribute Mapping", filters={"item": item_name}, pluck="name"):
-			_force_delete("Item Dependent Attribute Mapping", n)
+			if ar.mapping and frappe.db.exists('YRP Item Item Attribute Mapping', ar.mapping):
+				frappe.delete_doc('YRP Item Item Attribute Mapping', ar.mapping, force=1, ignore_permissions=True)
+		_force_delete('YRP Item', item_name)
+		for n in frappe.get_all('YRP Item Dependent Attribute Mapping', filters={"item": item_name}, pluck="name"):
+			_force_delete('YRP Item Dependent Attribute Mapping', n)
 	for attr_name, values in ATTRS.items():
 		for v in values:
-			if frappe.db.exists("Item Attribute Value", v):
-				_force_delete("Item Attribute Value", v)
-		if frappe.db.exists("Item Attribute", attr_name):
-			_force_delete("Item Attribute", attr_name)
-	if frappe.db.exists("Process", "_SMOKE_Stitching"):
-		_force_delete("Process", "_SMOKE_Stitching")
+			if frappe.db.exists('YRP Item Attribute Value', v):
+				_force_delete('YRP Item Attribute Value', v)
+		if frappe.db.exists('YRP Item Attribute', attr_name):
+			_force_delete('YRP Item Attribute', attr_name)
+	if frappe.db.exists('YRP Process', "_SMOKE_Stitching"):
+		_force_delete('YRP Process', "_SMOKE_Stitching")
 	frappe.db.commit()
 
 
@@ -70,26 +70,26 @@ def _force_delete(dt, name):
 
 def _seed_attributes():
 	for attr_name, values in ATTRS.items():
-		if not frappe.db.exists("Item Attribute", attr_name):
-			doc = frappe.new_doc("Item Attribute")
+		if not frappe.db.exists('YRP Item Attribute', attr_name):
+			doc = frappe.new_doc('YRP Item Attribute')
 			doc.attribute_name = attr_name
 			doc.insert(ignore_permissions=True)
 		for v in values:
 			value_name = f"{attr_name}-{v}"
-			if not frappe.db.exists("Item Attribute Value", value_name):
-				vdoc = frappe.new_doc("Item Attribute Value")
+			if not frappe.db.exists('YRP Item Attribute Value', value_name):
+				vdoc = frappe.new_doc('YRP Item Attribute Value')
 				vdoc.attribute_name = attr_name
 				vdoc.attribute_value = v
 				vdoc.insert(ignore_permissions=True)
 
 
 def _seed_item():
-	existing = frappe.get_all("Item", filters={"name1": ITEM_CODE}, pluck="name", limit=1)
+	existing = frappe.get_all('YRP Item', filters={"name1": ITEM_CODE}, pluck="name", limit=1)
 	if existing:
 		return existing[0]
-	doc = frappe.new_doc("Item")
+	doc = frappe.new_doc('YRP Item')
 	doc.name1 = ITEM_CODE
-	doc.item_group = frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups"
+	doc.item_group = frappe.db.get_value('YRP Item Group', {"is_group": 0}, "name") or "All Item Groups"
 	for attr_name in ATTRS:
 		doc.append("attributes", {"attribute": attr_name})
 	doc.insert(ignore_permissions=True)
@@ -98,17 +98,17 @@ def _seed_item():
 
 def _seed_attribute_mapping(item):
 	"""Create Item Item Attribute Mapping per attribute and link from Item.attributes rows."""
-	item_doc = frappe.get_doc("Item", item)
+	item_doc = frappe.get_doc('YRP Item', item)
 	for attr_row in item_doc.attributes:
 		if attr_row.mapping:
 			# pre-existing — populate values
-			mapping = frappe.get_doc("Item Item Attribute Mapping", attr_row.mapping)
+			mapping = frappe.get_doc('YRP Item Item Attribute Mapping', attr_row.mapping)
 			mapping.values = []
 			for v in ATTRS[attr_row.attribute]:
 				mapping.append("values", {"attribute_value": v})
 			mapping.save(ignore_permissions=True)
 		else:
-			mapping = frappe.new_doc("Item Item Attribute Mapping")
+			mapping = frappe.new_doc('YRP Item Item Attribute Mapping')
 			mapping.attribute_name = attr_row.attribute
 			for v in ATTRS[attr_row.attribute]:
 				mapping.append("values", {"attribute_value": v})
@@ -118,15 +118,15 @@ def _seed_attribute_mapping(item):
 
 
 def _seed_process():
-	if not frappe.db.exists("Process", "_SMOKE_Stitching"):
-		doc = frappe.new_doc("Process")
+	if not frappe.db.exists('YRP Process', "_SMOKE_Stitching"):
+		doc = frappe.new_doc('YRP Process')
 		doc.process_name = "_SMOKE_Stitching"
 		doc.insert(ignore_permissions=True)
 	return "_SMOKE_Stitching"
 
 
 def _seed_ipd(item, process):
-	ipd = frappe.new_doc("Item Production Detail")
+	ipd = frappe.new_doc('YRP Item Production Detail')
 	ipd.item = item
 	ipd.version = "smoke"
 	ipd.approval_status = "Approved"
@@ -140,7 +140,7 @@ def _seed_ipd(item, process):
 		"out_stage": "_smk_Stitched",
 	})
 	# dependent_attribute_mapping is required when dependent_attribute is set
-	dam = frappe.new_doc("Item Dependent Attribute Mapping")
+	dam = frappe.new_doc('YRP Item Dependent Attribute Mapping')
 	dam.item = item
 	dam.dependent_attribute = "_SMOKE_Stage"
 	try:
@@ -155,7 +155,7 @@ def _seed_ipd(item, process):
 
 
 def _seed_matrix(ipd_name, process):
-	matrix = frappe.new_doc("IPD Process Matrix")
+	matrix = frappe.new_doc('YRP IPD Process Matrix')
 	matrix.ipd = ipd_name
 	matrix.process_name = process
 	for a in ["_SMOKE_Panel", "_SMOKE_Colour", "_SMOKE_Size"]:

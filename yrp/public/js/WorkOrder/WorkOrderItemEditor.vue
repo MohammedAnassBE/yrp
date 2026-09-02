@@ -134,7 +134,7 @@ const grnSourceType = computed(() => {
     return '';
 });
 const useReceivedTypeGrnEditor = computed(() => (
-    props.editorType === 'goods_received_note' && grnSourceType.value === 'Work Order'
+    props.editorType === 'goods_received_note' && grnSourceType.value === 'YRP Work Order'
 ));
 
 // Empty-state message for the source-derived, read-only editors (DC / GRN,
@@ -159,7 +159,7 @@ const emptyMessage = computed(() => (
         : 'No deliverables on this Work Order.'
 ));
 const useInlineReceiveEditor = computed(() => (
-    props.editorType === 'goods_received_note' && grnSourceType.value === 'Purchase Order'
+    props.editorType === 'goods_received_note' && grnSourceType.value === 'YRP Purchase Order'
 ));
 const inlineQtyEdit = computed(() => (
     props.editorType === 'delivery_challan' || useInlineReceiveEditor.value
@@ -242,7 +242,7 @@ async function validateItem(row) {
 function getPurchaseOrderPrice(row) {
     return new Promise((resolve) => {
         frappe.call({
-            method: 'yrp.yrp.doctype.purchase_order.purchase_order.get_item_price_for_ui',
+            method: 'yrp.yrp.doctype.yrp_purchase_order.yrp_purchase_order.get_item_price_for_ui',
             args: {
                 item_detail: JSON.stringify(row),
                 supplier: cur_frm.doc.supplier,

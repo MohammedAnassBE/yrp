@@ -10,14 +10,14 @@ from yrp.yrp.utils.ipd_engine import get_process_io
 
 def run():
 	ipd_name = "IPD-Item-00021-1"
-	parent_item = frappe.db.get_value("Item Production Detail", ipd_name, "item")
+	parent_item = frappe.db.get_value('YRP Item Production Detail', ipd_name, "item")
 	print(f"IPD: {ipd_name}  parent_item: {parent_item}")
-	print(f"  bom_rows: {len(frappe.get_all('Item BOM', filters={'parent': ipd_name}))}")
-	for p in frappe.get_all("IPD Process", filters={"parent": ipd_name}, fields=["process_name", "in_stage", "out_stage"], order_by="idx"):
-		ms = frappe.get_all("IPD Process Matrix", filters={"ipd": ipd_name, "process_name": p.process_name}, pluck="name")
+	print(f"  bom_rows: {len(frappe.get_all('YRP Item BOM', filters={'parent': ipd_name}))}")
+	for p in frappe.get_all('YRP IPD Process', filters={"parent": ipd_name}, fields=["process_name", "in_stage", "out_stage"], order_by="idx"):
+		ms = frappe.get_all('YRP IPD Process Matrix', filters={"ipd": ipd_name, "process_name": p.process_name}, pluck="name")
 		groups_total = 0
 		for m in ms:
-			groups_total += len({c.group_index for c in frappe.get_doc("IPD Process Matrix", m).combinations})
+			groups_total += len({c.group_index for c in frappe.get_doc('YRP IPD Process Matrix', m).combinations})
 		print(f"  {p.process_name}: stage {p.in_stage}->{p.out_stage}  matrices={len(ms)}  total_groups={groups_total}")
 
 	# Source WO-2526-02527: Stitching, Steel Blue, qty 213 across 8 sizes — consumes panels, produces 8 pieces

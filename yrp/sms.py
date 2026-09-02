@@ -8,10 +8,10 @@ Template sender fork. Spec: docs/superpowers/specs/2026-07-04-yrp-sms-supplier-n
 
 import frappe
 from frappe import _
-from yrp.yrp.doctype.notification_template.notification_template import (
+from yrp.yrp.doctype.yrp_notification_template.yrp_notification_template import (
 	validate_receiver_nos,
 )
-from yrp.yrp.doctype.yrp_sms_settings.yrp_sms_settings import get_sms_config
+from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import get_sms_config
 
 
 def deliver_flow_sms(*, reference_doctype: str, mobile_no: str, params=None,
@@ -114,7 +114,7 @@ def deliver_sms(message: str, mobile_no: str, dynamic_params=None) -> dict:
 
 
 def _send_and_capture(number, message, dynamic_params):
-	from yrp.yrp.doctype.notification_template import notification_template as nt
+	from yrp.yrp.doctype.yrp_notification_template import yrp_notification_template as nt
 
 	ss = frappe.get_doc("SMS Settings", "SMS Settings")
 	if not ss.sms_gateway_url:

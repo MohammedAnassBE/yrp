@@ -13,10 +13,10 @@ class TestWhatsAppTemplates(IntegrationTestCase):
         The local account_name equals the hub account_name in a single-account
         spoke, so it doubles as the whatsapp_account link target here."""
         name = "yrp-wa-tmpl-acct"
-        if not frappe.db.exists("YRP WhatsApp Account", name):
+        if not frappe.db.exists('YRP YRP WhatsApp Account', name):
             frappe.get_doc(
                 {
-                    "doctype": "YRP WhatsApp Account",
+                    "doctype": 'YRP YRP WhatsApp Account',
                     "account_name": name,
                     "enabled": 1,
                 }
@@ -41,11 +41,11 @@ class TestWhatsAppTemplates(IntegrationTestCase):
 
     def _drop_by_template_id(self, template_id):
         existing = frappe.db.get_value(
-            "YRP WhatsApp Template", {"template_id": template_id}, "name"
+            'YRP YRP WhatsApp Template', {"template_id": template_id}, "name"
         )
         if existing:
             frappe.delete_doc(
-                "YRP WhatsApp Template", existing, ignore_permissions=True, force=True
+                'YRP YRP WhatsApp Template', existing, ignore_permissions=True, force=True
             )
 
     def test_upsert_creates_then_updates_by_template_id(self):
@@ -59,8 +59,8 @@ class TestWhatsAppTemplates(IntegrationTestCase):
             ),
             account,
         )
-        self.assertTrue(frappe.db.exists("YRP WhatsApp Template", name1))
-        doc1 = frappe.get_doc("YRP WhatsApp Template", name1)
+        self.assertTrue(frappe.db.exists('YRP YRP WhatsApp Template', name1))
+        doc1 = frappe.get_doc('YRP YRP WhatsApp Template', name1)
         self.assertEqual(doc1.template_id, "MTID-100")
         # from_meta_sync bypasses the DRAFT-forcing validate guard -> APPROVED kept
         self.assertEqual(doc1.status, "APPROVED")
@@ -74,11 +74,11 @@ class TestWhatsAppTemplates(IntegrationTestCase):
             account,
         )
         self.assertEqual(name2, name1)  # keyed on template_id, not a fresh row
-        doc2 = frappe.get_doc("YRP WhatsApp Template", name2)
+        doc2 = frappe.get_doc('YRP YRP WhatsApp Template', name2)
         self.assertEqual(doc2.status, "PAUSED")
         self.assertEqual(doc2.body_text, "Order {{1}} is delayed.")
         self.assertEqual(
-            frappe.db.count("YRP WhatsApp Template", {"template_id": "MTID-100"}), 1
+            frappe.db.count('YRP YRP WhatsApp Template', {"template_id": "MTID-100"}), 1
         )
 
     def test_upsert_preserves_applicable_doctypes_on_resync(self):
@@ -92,9 +92,9 @@ class TestWhatsAppTemplates(IntegrationTestCase):
             self._meta_template("MTID-300", "yrp_wa_preserve", "APPROVED", "Hello {{1}}"),
             account,
         )
-        doc = frappe.get_doc("YRP WhatsApp Template", name)
-        doc.append("applicable_doctypes", {"reference_doctype": "Purchase Order"})
-        doc.append("applicable_doctypes", {"reference_doctype": "Stock Entry"})
+        doc = frappe.get_doc('YRP YRP WhatsApp Template', name)
+        doc.append("applicable_doctypes", {"reference_doctype": 'YRP Purchase Order'})
+        doc.append("applicable_doctypes", {"reference_doctype": 'YRP Stock Entry'})
         doc.flags.from_meta_sync = True
         doc.save(ignore_permissions=True)
         self.assertEqual(len(doc.applicable_doctypes), 2)
@@ -107,11 +107,11 @@ class TestWhatsAppTemplates(IntegrationTestCase):
             account,
         )
         self.assertEqual(name2, name)
-        reloaded = frappe.get_doc("YRP WhatsApp Template", name2)
+        reloaded = frappe.get_doc('YRP YRP WhatsApp Template', name2)
         self.assertEqual(reloaded.status, "PAUSED")
         self.assertEqual(reloaded.body_text, "Hello {{1}}, updated")
         applicable = sorted(r.reference_doctype for r in reloaded.applicable_doctypes)
-        self.assertEqual(applicable, ["Purchase Order", "Stock Entry"])
+        self.assertEqual(applicable, ['YRP Purchase Order', 'YRP Stock Entry'])
 
     def test_get_template_variables_body_and_header_sorted(self):
         account = self._ensure_account()
@@ -167,7 +167,7 @@ class TestWhatsAppTemplates(IntegrationTestCase):
         # The daily scheduler_events entry hits this same function while the
         # hub is dormant/unconfigured -> must degrade to a benign skip, never
         # frappe.throw (which would write a fresh Error Log every day).
-        settings = frappe.get_single("YRP WhatsApp Hub Settings")
+        settings = frappe.get_single('YRP YRP WhatsApp Hub Settings')
         original_enabled = settings.enabled
         settings.enabled = 0
         settings.save(ignore_permissions=True)
@@ -175,7 +175,7 @@ class TestWhatsAppTemplates(IntegrationTestCase):
             result = whatsapp_templates.sync_templates_from_hub()
             self.assertEqual(result, {"skipped": True, "reason": "WhatsApp hub disabled"})
         finally:
-            settings = frappe.get_single("YRP WhatsApp Hub Settings")
+            settings = frappe.get_single('YRP YRP WhatsApp Hub Settings')
             settings.enabled = original_enabled
             settings.save(ignore_permissions=True)
 

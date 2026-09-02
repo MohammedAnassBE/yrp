@@ -9,7 +9,7 @@ def execute():
 	Idempotent patch: reads YRP Stock Settings and creates Custom Fields
 	on stock/operational DocTypes for each configured stock dimension.
 	"""
-	if not frappe.db.exists("DocType", "YRP Stock Settings"):
+	if not frappe.db.exists("DocType", 'YRP YRP Stock Settings'):
 		return
 
 	from yrp.stock.dimensions import create_dimension_fields

@@ -29,7 +29,7 @@ def _get_doc_and_supplier(doctype, docname, supplier_key):
 	supplier_name = doc.get(supplier_key)
 	if not supplier_name:
 		frappe.throw(_("{0} {1} has no supplier to notify").format(_(doctype), docname))
-	return doc, frappe.get_doc("Supplier", supplier_name)
+	return doc, frappe.get_doc('YRP Supplier', supplier_name)
 
 
 @frappe.whitelist()
@@ -83,7 +83,7 @@ def get_sms_context(doctype: str, docname: str, supplier_key: str = "supplier"):
 	numbers = _extract_numbers(details["contact"], details["mobile"])
 
 	template_names = frappe.get_all(
-		"Notification Template",
+		'YRP Notification Template',
 		filters={"document_type": doctype, "channel": "SMS", "enabled": 1},
 		pluck="name",
 		order_by="name",
@@ -93,7 +93,7 @@ def get_sms_context(doctype: str, docname: str, supplier_key: str = "supplier"):
 
 	templates = []
 	for name in template_names:
-		template = frappe.get_doc("Notification Template", name)
+		template = frappe.get_doc('YRP Notification Template', name)
 		templates.append({"name": name, "message": template.get_message(docname=docname)})
 
 	return {
@@ -121,7 +121,7 @@ def send_sms_notification(
 	details = _get_recipient_details(supplier)
 	number = (mobile_no or details["mobile"]).strip()
 
-	template_doc = frappe.get_doc("Notification Template", template)
+	template_doc = frappe.get_doc('YRP Notification Template', template)
 	if not template_doc.enabled or template_doc.channel != "SMS" or template_doc.document_type != doctype:
 		frappe.throw(_("{0} is not an enabled SMS template for {1}").format(template, doctype))
 
@@ -136,7 +136,7 @@ def send_sms_notification(
 	from yrp.sms import deliver_sms
 	result = deliver_sms(body, number, dynamic_params)
 
-	from yrp.yrp.doctype.sms_notification_log.sms_notification_log import create_sms_log
+	from yrp.yrp.doctype.yrp_sms_notification_log.yrp_sms_notification_log import create_sms_log
 	create_sms_log(reference_doctype=doctype, reference_name=docname, supplier=supplier.name,
 		contact=details["contact"], mobile_no=number, template=template, message=body,
 		send_path="Legacy", result=result)
@@ -179,8 +179,8 @@ def get_flow_sms_context(doctype: str, docname: str, supplier_key: str = "suppli
 	details = _get_recipient_details(supplier)
 	numbers = _extract_numbers(details["contact"], details["mobile"])
 
-	from yrp.yrp.doctype.yrp_sms_settings.yrp_sms_settings import parse_template_variables
-	settings = frappe.get_cached_doc("YRP SMS Settings")
+	from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import parse_template_variables
+	settings = frappe.get_cached_doc('YRP YRP SMS Settings')
 	if not settings.enabled:
 		frappe.throw(_("YRP SMS Settings is disabled"))
 	rows = settings.get_templates_for_doctype(doctype)
@@ -246,7 +246,7 @@ def send_flow_sms_notification(
 	result = deliver_flow_sms(reference_doctype=doctype, mobile_no=number, params=params,
 		template_name=template_name)
 
-	from yrp.yrp.doctype.sms_notification_log.sms_notification_log import create_sms_log
+	from yrp.yrp.doctype.yrp_sms_notification_log.yrp_sms_notification_log import create_sms_log
 	create_sms_log(
 		reference_doctype=doctype, reference_name=docname, supplier=supplier.name,
 		contact=details["contact"], mobile_no=number, send_path="Flow",
@@ -281,7 +281,7 @@ def _log_communication(doctype, docname, message, number):
 def resend_sms_notification_log(log_name):
 	"""Re-send a previously logged SMS to the same number with the same
 	message, updating that same log row in place."""
-	log = frappe.get_doc("SMS Notification Log", log_name)
+	log = frappe.get_doc('YRP SMS Notification Log', log_name)
 	# Guard the deleted-reference case: without this, an Administrator resend
 	# would SEND the SMS and then roll back the status update when
 	# _log_communication hits a dangling dynamic link (Communication.insert
@@ -301,7 +301,7 @@ def resend_sms_notification_log(log_name):
 	else:
 		dynamic_params = []
 		if log.template:
-			template_doc = frappe.get_doc("Notification Template", log.template)
+			template_doc = frappe.get_doc('YRP Notification Template', log.template)
 			dynamic_params = [
 				{"parameter": p.parameter, "value": p.value, "header": p.header}
 				for p in (template_doc.parameters or [])

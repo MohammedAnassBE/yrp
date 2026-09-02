@@ -5,7 +5,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from yrp.whatsapp_inbound import process_payload, process_status_update
-from yrp.yrp.doctype.whatsapp_notification_log.whatsapp_notification_log import (
+from yrp.yrp.doctype.yrp_whatsapp_notification_log.yrp_whatsapp_notification_log import (
     create_whatsapp_log,
 )
 
@@ -16,7 +16,7 @@ class TestWhatsAppInbound(IntegrationTestCase):
         meta_message_id (the shape create_whatsapp_log writes after a
         successful send)."""
         return create_whatsapp_log(
-            reference_doctype="Supplier",
+            reference_doctype='YRP Supplier',
             reference_name="_T WA Inbound Ref",
             supplier=None,
             contact=None,
@@ -36,22 +36,22 @@ class TestWhatsAppInbound(IntegrationTestCase):
         """Seed a DRAFT YRP WhatsApp Template (from_meta_sync so validate()
         keeps the given status instead of forcing DRAFT for a manual doc)."""
         fq = f"{template_name}-en"
-        if frappe.db.exists("YRP WhatsApp Template", fq):
+        if frappe.db.exists('YRP YRP WhatsApp Template', fq):
             frappe.delete_doc(
-                "YRP WhatsApp Template", fq, ignore_permissions=True, force=True
+                'YRP YRP WhatsApp Template', fq, ignore_permissions=True, force=True
             )
         acct = "yrp-wa-inbound-acct"
-        if not frappe.db.exists("YRP WhatsApp Account", acct):
+        if not frappe.db.exists('YRP YRP WhatsApp Account', acct):
             frappe.get_doc(
                 {
-                    "doctype": "YRP WhatsApp Account",
+                    "doctype": 'YRP YRP WhatsApp Account',
                     "account_name": acct,
                     "enabled": 1,
                 }
             ).insert(ignore_permissions=True)
         doc = frappe.get_doc(
             {
-                "doctype": "YRP WhatsApp Template",
+                "doctype": 'YRP YRP WhatsApp Template',
                 "template_name": template_name,
                 "language_code": "en",
                 "category": "UTILITY",
@@ -136,7 +136,7 @@ class TestWhatsAppInbound(IntegrationTestCase):
     def test_process_payload_routes_statuses_and_counts_messages(self):
         log = self._make_sent_log("wamid.PP1")
         webhook_log = frappe.get_doc(
-            {"doctype": "YRP WhatsApp Webhook Log", "raw": "{}"}
+            {"doctype": 'YRP YRP WhatsApp Webhook Log', "raw": "{}"}
         )
         webhook_log.insert(ignore_permissions=True)
         payload = {

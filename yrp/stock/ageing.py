@@ -67,7 +67,7 @@ class FIFOSlots:
 		for d in self.sle:
 			key, fifo_queue, transfer_key = self.__init_key_stores(d)
 
-			if d.voucher_type == "Stock Reconciliation":
+			if d.voucher_type == 'YRP Stock Reconciliation':
 				prev = self.item_details[key].get("qty_after_transaction", 0)
 				d.qty = flt(d.qty_after_transaction) - flt(prev)
 
@@ -181,7 +181,7 @@ class FIFOSlots:
 		if self.filters.get("item"):
 			filters["item"] = self.filters["item"]
 		return frappe.get_all(
-			"Stock Ledger Entry",
+			'YRP Stock Ledger Entry',
 			filters=filters,
 			fields=fields,
 			order_by="posting_date asc, posting_time asc, creation asc",

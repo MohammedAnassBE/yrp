@@ -137,7 +137,7 @@ def process_status_update(status_data):
     frappe.db.savepoint(save_point)
     try:
         row = frappe.db.get_value(
-            "WhatsApp Notification Log",
+            'YRP WhatsApp Notification Log',
             {"meta_message_id": meta_message_id},
             ["name", "status"],
             for_update=True,  # ROW LOCK -- serialise concurrent status writes
@@ -165,7 +165,7 @@ def process_status_update(status_data):
                     }
         if update:
             frappe.db.set_value(
-                "WhatsApp Notification Log", row.name, update
+                'YRP WhatsApp Notification Log', row.name, update
             )
         frappe.db.release_savepoint(save_point)
         return bool(update)
@@ -193,14 +193,14 @@ def _apply_template_status_update(payload):
         return
     normalized = template_name.lower().replace(" ", "_")
     candidates = frappe.get_all(
-        "YRP WhatsApp Template",
+        'YRP YRP WhatsApp Template',
         filters=[["template_name", "in", [template_name, normalized]]],
         fields=["name"],
         limit=1,
     )
     if not candidates:
         return
-    doc = frappe.get_doc("YRP WhatsApp Template", candidates[0].name)
+    doc = frappe.get_doc('YRP YRP WhatsApp Template', candidates[0].name)
     event = (payload.get("event") or "").upper()
     mapped = _TEMPLATE_STATUS_MAP.get(event)
     if mapped:
@@ -240,7 +240,7 @@ def _stamp_webhook_log(
     if error:
         fields["error"] = error
     frappe.db.set_value(
-        "YRP WhatsApp Webhook Log", webhook_log.name, fields
+        'YRP YRP WhatsApp Webhook Log', webhook_log.name, fields
     )
     for key, value in fields.items():
         setattr(webhook_log, key, value)

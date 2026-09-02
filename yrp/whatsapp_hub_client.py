@@ -9,7 +9,7 @@ import requests
 
 def _get_settings():
 	"""Load the hub connection Single; throw when the integration is off."""
-	settings = frappe.get_single("YRP WhatsApp Hub Settings")
+	settings = frappe.get_single('YRP YRP WhatsApp Hub Settings')
 	if not settings.enabled:
 		frappe.throw("WhatsApp Hub integration is not enabled")
 	return settings
@@ -45,7 +45,7 @@ def _get_account_name(account=None):
 def hub_enabled():
 	"""Check if hub integration is enabled. Never raises."""
 	try:
-		settings = frappe.get_single("YRP WhatsApp Hub Settings")
+		settings = frappe.get_single('YRP YRP WhatsApp Hub Settings')
 		return bool(settings.enabled)
 	except Exception:
 		return False

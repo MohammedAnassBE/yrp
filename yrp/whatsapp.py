@@ -194,7 +194,7 @@ def _get_hub_max_content_length():
     """Best-effort read of YRP WhatsApp Hub Settings.hub_max_content_length;
     falls back to the hub's 25 MB default when the field/DocType is absent."""
     try:
-        settings = frappe.get_single("YRP WhatsApp Hub Settings")
+        settings = frappe.get_single('YRP YRP WhatsApp Hub Settings')
         val = settings.get("hub_max_content_length")
         if val:
             return int(val)

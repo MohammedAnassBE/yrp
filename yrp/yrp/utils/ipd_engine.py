@@ -6,8 +6,8 @@ Reads `IPD Process Matrix` (main I/O groups) and `Item Production Detail.item_bo
 
 import frappe
 
-from yrp.yrp.doctype.item.item import get_or_create_variant
-from yrp.yrp.doctype.item_bom.item_bom import validate_bom_item_variant_mapping
+from yrp.yrp.doctype.yrp_item.yrp_item import get_or_create_variant
+from yrp.yrp.doctype.yrp_item_bom.yrp_item_bom import validate_bom_item_variant_mapping
 
 
 def get_process_io(ipd_name, process_name, output_demand):
@@ -26,14 +26,14 @@ def get_process_io(ipd_name, process_name, output_demand):
 	    {"item": str, "attrs": {...}, "qty": float, "uom": str}.
 	"""
 	matrix_names = frappe.get_all(
-		"IPD Process Matrix",
+		'YRP IPD Process Matrix',
 		filters={"ipd": ipd_name, "process_name": process_name, "docstatus": ["<", 2]},
 		pluck="name",
 	)
 	if not matrix_names:
 		frappe.throw(f"No IPD Process Matrix found for IPD {ipd_name} / process {process_name}.")
 
-	ipd_doc = frappe.get_doc("Item Production Detail", ipd_name)
+	ipd_doc = frappe.get_doc('YRP Item Production Detail', ipd_name)
 	parent_item = ipd_doc.item
 	dep_attr = ipd_doc.dependent_attribute
 	# Look up in_stage / out_stage for this process from IPD Process row
@@ -46,7 +46,7 @@ def get_process_io(ipd_name, process_name, output_demand):
 
 	matrices = []
 	for mname in matrix_names:
-		mdoc = frappe.get_doc("IPD Process Matrix", mname)
+		mdoc = frappe.get_doc('YRP IPD Process Matrix', mname)
 		matrices.append({
 			"name": mname,
 			"reference_item_variant": mdoc.reference_item_variant,
@@ -143,7 +143,7 @@ def calculate_major_deliverables(ipd_name, variant_demands, process_names=None, 
 
 	Returns aggregated rows with `process_name`, `item_variant`, `required_qty`, and `uom`.
 	"""
-	ipd = frappe.get_doc("Item Production Detail", ipd_name)
+	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
 	demands = _normalize_variant_demands(ipd, variant_demands)
 	process_filter = _normalize_process_filter(process_names)
 	stage_by_process = _get_process_stage_map(ipd)
@@ -325,7 +325,7 @@ def _scaled_combo_qty(combo, scale, side):
 
 def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
 	"""Scale `Item Production Detail.item_bom` rows for the same demand payload."""
-	ipd = frappe.get_doc("Item Production Detail", ipd_name)
+	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
 	demands = _normalize_variant_demands(ipd, variant_demands)
 	variants = [
 		{"attrs": demand["attrs"], "qty": demand["qty"]}
@@ -394,7 +394,7 @@ def _normalize_variant_demands(ipd, variant_demands):
 			frappe.throw("Item Variant is required to calculate BOM.")
 		if qty <= 0:
 			continue
-		variant_item = frappe.db.get_value("Item Variant", variant, "item")
+		variant_item = frappe.db.get_value('YRP Item Variant', variant, "item")
 		if variant_item != ipd.item:
 			frappe.throw(f"Item Variant {variant} does not belong to IPD item {ipd.item}.")
 		demands.append({
@@ -419,15 +419,15 @@ def _normalize_process_filter(process_names):
 
 def _get_variant_attrs(variant):
 	rows = frappe.get_all(
-		"Item Variant Attribute",
-		filters={"parent": variant, "parenttype": "Item Variant"},
+		'YRP Item Variant Attribute',
+		filters={"parent": variant, "parenttype": 'YRP Item Variant'},
 		fields=["attribute", "attribute_value"],
 	)
 	return {row.attribute: row.attribute_value for row in rows}
 
 
 def _project_attrs_for_item(item, source_attrs):
-	item_doc = frappe.get_cached_doc("Item", item)
+	item_doc = frappe.get_cached_doc('YRP Item', item)
 	item_attrs = {row.attribute for row in item_doc.get("attributes") or []}
 	return {
 		attr: value
@@ -441,7 +441,7 @@ def _add_accessory_row(aggregated, item, process_name, uom, qty, attrs):
 	key = (process_name, item_variant, uom)
 	if key not in aggregated:
 		aggregated[key] = {
-			"source": "Item BOM",
+			"source": 'YRP Item BOM',
 			"process_name": process_name,
 			"item": item,
 			"item_variant": item_variant,
@@ -471,14 +471,14 @@ def _get_process_matrices(ipd_name, process_filter=None):
 		filters["process_name"] = ["in", list(process_filter)]
 
 	matrix_names = frappe.get_all(
-		"IPD Process Matrix",
+		'YRP IPD Process Matrix',
 		filters=filters,
 		pluck="name",
 		order_by="process_name asc, idx asc, name asc",
 	)
 	matrices_by_process = {}
 	for matrix_name in matrix_names:
-		matrix = frappe.get_doc("IPD Process Matrix", matrix_name)
+		matrix = frappe.get_doc('YRP IPD Process Matrix', matrix_name)
 		matrices_by_process.setdefault(matrix.process_name, []).append(matrix)
 	return matrices_by_process
 
@@ -546,7 +546,7 @@ def _add_matrix_group_rows(
 		key = (side, matrix.process_name, item_variant, combo.get("uom"))
 		if key not in aggregated:
 			aggregated[key] = {
-				"source": "IPD Process Matrix",
+				"source": 'YRP IPD Process Matrix',
 				"side": side,
 				"process_name": matrix.process_name,
 				"item": matrix_item,
@@ -581,7 +581,7 @@ def get_consumables(ipd_name, total_output_qty, variants=None, process_name=None
 
 	Returns list of {"item": str, "qty": float, "uom": str, "process": str, "attrs": {...}}.
 	"""
-	ipd = frappe.get_doc("Item Production Detail", ipd_name)
+	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
 	out = []
 
 	for row in ipd.item_bom:
@@ -611,7 +611,7 @@ def get_consumables(ipd_name, total_output_qty, variants=None, process_name=None
 
 def _resolve_mode_b(bom_row, variants, wastage_factor):
 	"""Resolve Mode B per-variant qty by looking up Item BOM Attribute Mapping."""
-	mapping = frappe.get_doc("Item BOM Attribute Mapping", bom_row.attribute_mapping)
+	mapping = frappe.get_doc('YRP Item BOM Attribute Mapping', bom_row.attribute_mapping)
 	results = []
 	for variant in variants:
 		variant_attrs = variant["attrs"]

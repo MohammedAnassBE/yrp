@@ -3,7 +3,7 @@ from frappe.model.rename_doc import rename_doc
 
 
 def execute():
-	if frappe.db.exists("DocType", "Process Details"):
+	if frappe.db.exists("DocType", 'YRP Process Details'):
 		return
 	if not frappe.db.exists("DocType", "Process Detail"):
 		return
@@ -11,7 +11,7 @@ def execute():
 	rename_doc(
 		"DocType",
 		"Process Detail",
-		"Process Details",
+		'YRP Process Details',
 		force=True,
 		ignore_permissions=True,
 	)

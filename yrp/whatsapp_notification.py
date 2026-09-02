@@ -33,7 +33,7 @@ from yrp.notification import (
     _get_doc_and_supplier,
     _get_recipient_details,
 )
-from yrp.yrp.doctype.yrp_whatsapp_hub_settings.yrp_whatsapp_hub_settings import (
+from yrp.yrp.doctype.yrp_yrp_whatsapp_hub_settings.yrp_yrp_whatsapp_hub_settings import (
     parse_whatsapp_variables,
 )
 
@@ -140,7 +140,7 @@ def get_whatsapp_context(doctype, docname, supplier_key="supplier"):
     """
     frappe.has_permission(doctype, ptype="read", doc=docname, throw=True)
 
-    settings = frappe.get_cached_doc("YRP WhatsApp Hub Settings")
+    settings = frappe.get_cached_doc('YRP YRP WhatsApp Hub Settings')
     if not settings.is_doctype_enabled(doctype):
         frappe.throw(
             _("WhatsApp is not enabled for {0} in YRP WhatsApp Hub Settings").format(_(doctype))
@@ -151,11 +151,11 @@ def get_whatsapp_context(doctype, docname, supplier_key="supplier"):
     numbers = _extract_numbers(details["contact"], details["mobile"])
 
     mirror_names = frappe.get_all(
-        "YRP WhatsApp Template", filters={"status": "APPROVED"}, pluck="name"
+        'YRP YRP WhatsApp Template', filters={"status": "APPROVED"}, pluck="name"
     )
     templates = []
     for name in mirror_names:
-        mirror = frappe.get_doc("YRP WhatsApp Template", name)
+        mirror = frappe.get_doc('YRP YRP WhatsApp Template', name)
         if mirror.is_applicable_for(doctype):
             templates.append(_template_context(mirror, doc))
 
@@ -225,7 +225,7 @@ def _render_body_preview(mirror_name, body_vars):
     a since-deleted (or never-found) mirror by returning ""."""
     if not mirror_name:
         return ""
-    body = frappe.db.get_value("YRP WhatsApp Template", mirror_name, "body_text") or ""
+    body = frappe.db.get_value('YRP YRP WhatsApp Template', mirror_name, "body_text") or ""
     for i, val in enumerate(body_vars or [], start=1):
         body = body.replace("{{%d}}" % i, _as_text(val))
     return body
@@ -237,7 +237,7 @@ def _default_account_name():
     deliver_whatsapp_template, which resolves the default account itself; this
     is purely so WhatsApp Notification Log records which account a send used."""
     try:
-        return frappe.get_cached_doc("YRP WhatsApp Hub Settings").get_default_account_name()
+        return frappe.get_cached_doc('YRP YRP WhatsApp Hub Settings').get_default_account_name()
     except Exception:
         return None
 
@@ -266,7 +266,7 @@ def send_whatsapp_notification(doctype, docname, template_name, language_code,
     header_vars, body_vars = _split_params(params)
 
     mirror_name = frappe.db.get_value(
-        "YRP WhatsApp Template",
+        'YRP YRP WhatsApp Template',
         {"template_name": template_name, "language_code": language_code},
         "name",
     )
@@ -274,13 +274,13 @@ def send_whatsapp_notification(doctype, docname, template_name, language_code,
         frappe.throw(
             _("WhatsApp template {0} ({1}) not found").format(template_name, language_code)
         )
-    mirror = frappe.get_doc("YRP WhatsApp Template", mirror_name)
+    mirror = frappe.get_doc('YRP YRP WhatsApp Template', mirror_name)
 
     # Same governance gate as get_whatsapp_context: write permission on the doc
     # is NOT enough on its own -- without this, any write-permitted user could
     # fire ANY approved template at ANY doctype, bypassing both the Hub
     # Settings allowlist and the template's own applicable_doctypes.
-    settings = frappe.get_cached_doc("YRP WhatsApp Hub Settings")
+    settings = frappe.get_cached_doc('YRP YRP WhatsApp Hub Settings')
     if not settings.is_doctype_enabled(doctype):
         frappe.throw(
             _("WhatsApp is not enabled for {0} in YRP WhatsApp Hub Settings").format(_(doctype))
@@ -325,7 +325,7 @@ def send_whatsapp_notification(doctype, docname, template_name, language_code,
         header_source=header_dict,
     )
 
-    from yrp.yrp.doctype.whatsapp_notification_log.whatsapp_notification_log import (
+    from yrp.yrp.doctype.yrp_whatsapp_notification_log.yrp_whatsapp_notification_log import (
         create_whatsapp_log,
     )
     create_whatsapp_log(
@@ -363,7 +363,7 @@ def resend_whatsapp_notification_log(log_name):
     """Re-send a logged WhatsApp attempt to the same number, rebuilding the send
     from the row's stored message_variables / header_source / (template_name,
     language_code) and patching that same row in place."""
-    log = frappe.get_doc("WhatsApp Notification Log", log_name)
+    log = frappe.get_doc('YRP WhatsApp Notification Log', log_name)
     # Deleted-reference guard FIRST: block before any send. Without it an
     # Administrator resend would fire the WhatsApp and only then fail on a
     # dangling reference (mirrors the SMS resend guard).
@@ -378,7 +378,7 @@ def resend_whatsapp_notification_log(log_name):
 
     # Same allowlist gate as send: a doctype pulled off the allowlist after
     # the log row was written must not still be resendable.
-    settings = frappe.get_cached_doc("YRP WhatsApp Hub Settings")
+    settings = frappe.get_cached_doc('YRP YRP WhatsApp Hub Settings')
     if not settings.is_doctype_enabled(log.reference_doctype):
         frappe.throw(
             _("WhatsApp is not enabled for {0} in YRP WhatsApp Hub Settings").format(
@@ -440,6 +440,6 @@ def get_enabled_whatsapp_doctypes():
 
     Returns {"doctypes": {<reference_doctype>: <supplier_key>, ...}}.
     """
-    settings = frappe.get_cached_doc("YRP WhatsApp Hub Settings")
+    settings = frappe.get_cached_doc('YRP YRP WhatsApp Hub Settings')
     enabled = settings.get_enabled_doctypes()
     return {"doctypes": {dt: settings.get_supplier_key(dt) for dt in enabled}}

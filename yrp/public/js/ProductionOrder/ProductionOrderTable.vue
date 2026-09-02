@@ -229,7 +229,7 @@ function remove_block(blockIdx) {
 function on_item_selected(blockIdx, item_name) {
     if (!item_name || loading) return;
     frappe.call({
-        method: "yrp.yrp.doctype.production_order.production_order.get_item_production_attributes",
+        method: "yrp.yrp.doctype.yrp_production_order.yrp_production_order.get_item_production_attributes",
         args: { item: item_name },
         async: false,
         callback(r) {
@@ -342,7 +342,7 @@ function create_item_input(blockIdx) {
         df: {
             fieldtype: 'Link',
             fieldname: 'item_' + blockIdx,
-            options: 'Item',
+            options: 'YRP Item',
             placeholder: __('Select Item'),
             onchange() {
                 on_item_selected(blockIdx, this.get_value());
@@ -455,11 +455,11 @@ function create_add_row_inputs(blockIdx) {
             df: {
                 fieldtype: 'Link',
                 fieldname: 'add_' + ra + '_' + blockIdx,
-                options: 'Item Attribute Value',
+                options: 'YRP Item Attribute Value',
                 placeholder: ra,
                 get_query() {
                     return {
-                        query: 'yrp.yrp.doctype.item.item.get_item_attribute_values',
+                        query: 'yrp.yrp.doctype.yrp_item.yrp_item.get_item_attribute_values',
                         filters: { item: item_name, attribute: attr_name },
                     };
                 },

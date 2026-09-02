@@ -279,14 +279,14 @@ export default {
             let df = {
                 fieldtype: 'Link',
                 fieldname: this.get_attribute_name(type, attribute)+"_"+index,
-                options: 'Item Attribute Value',
+                options: 'YRP Item Attribute Value',
             };
             if (type == "item") {
                 df["read_only"] = true;
             } else if (type == "bom") {
                 df["get_query"] = function() {
                     return {
-                        query: "yrp.yrp.doctype.item.item.get_item_attribute_values",
+                        query: "yrp.yrp.doctype.yrp_item.yrp_item.get_item_attribute_values",
                         filters: {
                             "item": me.bom_item,
                             "attribute": attribute,

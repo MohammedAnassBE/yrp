@@ -107,13 +107,13 @@ def _wo_child_rows(child_doctype, extra_filters=None):
 	``has_permission`` gate alone would let a User-Permission-restricted user
 	aggregate GLOBAL child-row totals.
 	"""
-	filters = {"parenttype": "Work Order", "docstatus": 1}
+	filters = {"parenttype": 'YRP Work Order', "docstatus": 1}
 	filters.update(extra_filters or {})
 	return frappe.get_all(
 		child_doctype,
 		filters=filters,
 		fields=["parent", "qty", "pending_quantity"],
-		parent_doctype="Work Order",
+		parent_doctype='YRP Work Order',
 	)
 
 
@@ -121,23 +121,23 @@ def _wo_child_rows(child_doctype, extra_filters=None):
 
 
 def _open_wos():
-	return _count("Work Order", OPEN_WO_FILTERS)
+	return _count('YRP Work Order', OPEN_WO_FILTERS)
 
 
 def _draft_dcs():
-	return _count("Delivery Challan", DRAFT_DC_FILTERS)
+	return _count('YRP Delivery Challan', DRAFT_DC_FILTERS)
 
 
 def _draft_grns():
-	return _count("Goods Received Note", DRAFT_GRN_FILTERS)
+	return _count('YRP Goods Received Note', DRAFT_GRN_FILTERS)
 
 
 def _stock_entries():
-	return _count("Stock Entry", [])
+	return _count('YRP Stock Entry', [])
 
 
 def _total_wo():
-	return _count("Work Order", [])
+	return _count('YRP Work Order', [])
 
 
 def _permitted_submitted_wos():
@@ -147,7 +147,7 @@ def _permitted_submitted_wos():
 	and produced sides always aggregate the SAME scope (2026-07-16 review) — a
 	restricted user can never see global produced totals or >100% completion."""
 	return frappe.get_list(
-		"Work Order",
+		'YRP Work Order',
 		filters=[["docstatus", "=", 1]],
 		fields=["name", "planned_quantity"],
 		limit=0,
@@ -175,7 +175,7 @@ def _produced_qty(wos=None):
 		return 0.0
 	return _received_from_rows(
 		_wo_child_rows(
-			"Work Order Receivables", {"parent": ["in", [row.name for row in wos]]}
+			'YRP Work Order Receivables', {"parent": ["in", [row.name for row in wos]]}
 		)
 	)
 
@@ -192,7 +192,7 @@ def _completion():
 
 
 def _delayed():
-	return _count("Work Order", _delayed_wo_filters())
+	return _count('YRP Work Order', _delayed_wo_filters())
 
 
 # ── METRICS registry ─────────────────────────────────────────────────────────
@@ -203,57 +203,57 @@ def _delayed():
 METRICS = {
 	"open_wos": {
 		"label": "Open Work Orders",
-		"doctypes": ["Work Order"],
+		"doctypes": ['YRP Work Order'],
 		"compute": _open_wos,
-		"goto": lambda: {"doctype": "Work Order", "filters": deepcopy(OPEN_WO_FILTERS)},
+		"goto": lambda: {"doctype": 'YRP Work Order', "filters": deepcopy(OPEN_WO_FILTERS)},
 	},
 	"draft_dcs": {
 		"label": "Draft Delivery Challans",
-		"doctypes": ["Delivery Challan"],
+		"doctypes": ['YRP Delivery Challan'],
 		"compute": _draft_dcs,
-		"goto": lambda: {"doctype": "Delivery Challan", "filters": deepcopy(DRAFT_DC_FILTERS)},
+		"goto": lambda: {"doctype": 'YRP Delivery Challan', "filters": deepcopy(DRAFT_DC_FILTERS)},
 	},
 	"draft_grns": {
 		"label": "Draft GRNs",
-		"doctypes": ["Goods Received Note"],
+		"doctypes": ['YRP Goods Received Note'],
 		"compute": _draft_grns,
-		"goto": lambda: {"doctype": "Goods Received Note", "filters": deepcopy(DRAFT_GRN_FILTERS)},
+		"goto": lambda: {"doctype": 'YRP Goods Received Note', "filters": deepcopy(DRAFT_GRN_FILTERS)},
 	},
 	"stock_entries": {
 		"label": "Stock Entries",
-		"doctypes": ["Stock Entry"],
+		"doctypes": ['YRP Stock Entry'],
 		"compute": _stock_entries,
-		"goto": lambda: {"doctype": "Stock Entry", "filters": []},
+		"goto": lambda: {"doctype": 'YRP Stock Entry', "filters": []},
 	},
 	"total_wo": {
 		"label": "Work Orders",
-		"doctypes": ["Work Order"],
+		"doctypes": ['YRP Work Order'],
 		"compute": _total_wo,
-		"goto": lambda: {"doctype": "Work Order", "filters": []},
+		"goto": lambda: {"doctype": 'YRP Work Order', "filters": []},
 	},
 	"ordered_qty": {
 		"label": "Pieces Ordered",
-		"doctypes": ["Work Order"],
+		"doctypes": ['YRP Work Order'],
 		"compute": _ordered_qty,
-		"goto": lambda: {"doctype": "Work Order", "filters": [["docstatus", "=", 1]]},
+		"goto": lambda: {"doctype": 'YRP Work Order', "filters": [["docstatus", "=", 1]]},
 	},
 	"produced_qty": {
 		"label": "Pieces Produced",
-		"doctypes": ["Work Order"],
+		"doctypes": ['YRP Work Order'],
 		"compute": _produced_qty,
-		"goto": lambda: {"doctype": "Work Order", "filters": [["docstatus", "=", 1]]},
+		"goto": lambda: {"doctype": 'YRP Work Order', "filters": [["docstatus", "=", 1]]},
 	},
 	"completion": {
 		"label": "Completion %",
-		"doctypes": ["Work Order"],
+		"doctypes": ['YRP Work Order'],
 		"compute": _completion,
-		"goto": lambda: {"doctype": "Work Order", "filters": [["docstatus", "=", 1]]},
+		"goto": lambda: {"doctype": 'YRP Work Order', "filters": [["docstatus", "=", 1]]},
 	},
 	"delayed": {
 		"label": "Delayed WOs",
-		"doctypes": ["Work Order"],
+		"doctypes": ['YRP Work Order'],
 		"compute": _delayed,
-		"goto": lambda: {"doctype": "Work Order", "filters": _delayed_wo_filters()},
+		"goto": lambda: {"doctype": 'YRP Work Order', "filters": _delayed_wo_filters()},
 	},
 }
 

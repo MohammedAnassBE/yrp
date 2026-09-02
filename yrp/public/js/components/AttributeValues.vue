@@ -12,7 +12,7 @@
         </table>
         <p v-else>No available values for {{ attr_name }}</p>
         <p v-if="!is_numeric">
-            <button class="btn btn-xs btn-default btn-address" @click="addValue('Item Attribute Value', attr_name)">
+            <button class="btn btn-xs btn-default btn-address" @click="addValue('YRP Item Attribute Value', attr_name)">
                 {{ "New " + attr_name }}
             </button>
         </p>

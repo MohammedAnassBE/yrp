@@ -158,7 +158,7 @@ def _require_enabled_layout(layout):
 			_("layout is required and must be a UI Layout name"),
 			title=_("Invalid Layout Assignment"),
 		)
-	row = frappe.db.get_value("UI Layout", layout, ["disabled"], as_dict=True)
+	row = frappe.db.get_value('YRP UI Layout', layout, ["disabled"], as_dict=True)
 	if not row:
 		frappe.throw(
 			_("UI Layout {0} does not exist").format(frappe.bold(layout)),
@@ -198,7 +198,7 @@ def _upsert_layout(user, layout):
 	pattern (§3.2): ``autoname: field:user`` makes a concurrent first save
 	collide on the primary key instead of silently duplicating; the loser
 	rolls back its failed insert only and updates the now-existing row."""
-	if frappe.db.exists("YRP UI Preference", user):
+	if frappe.db.exists('YRP YRP UI Preference', user):
 		_update_layout_only(user, layout)
 		return
 
@@ -206,7 +206,7 @@ def _upsert_layout(user, layout):
 	frappe.db.savepoint(savepoint)
 	try:
 		frappe.get_doc(
-			{"doctype": "YRP UI Preference", "user": user, "layout": layout}
+			{"doctype": 'YRP YRP UI Preference', "user": user, "layout": layout}
 		).insert(ignore_permissions=True)
 	except frappe.DuplicateEntryError:
 		# Lost the race — the row now exists. Undo the failed insert, then
@@ -216,7 +216,7 @@ def _upsert_layout(user, layout):
 
 
 def _update_layout_only(user, layout):
-	doc = frappe.get_doc("YRP UI Preference", user)
+	doc = frappe.get_doc('YRP YRP UI Preference', user)
 	doc.layout = layout
 	doc.save(ignore_permissions=True)
 
@@ -315,13 +315,13 @@ def _ensure_preference(user):
 	on the record existing so a fixture-less site still seeds); an existing
 	preference is kept verbatim. Returns whether it was created. Shared by
 	both verification-user seeders."""
-	if frappe.db.exists("YRP UI Preference", user):
+	if frappe.db.exists('YRP YRP UI Preference', user):
 		return False
 	layout = (
-		DEFAULT_LAYOUT_NAME if frappe.db.exists("UI Layout", DEFAULT_LAYOUT_NAME) else None
+		DEFAULT_LAYOUT_NAME if frappe.db.exists('YRP UI Layout', DEFAULT_LAYOUT_NAME) else None
 	)
 	frappe.get_doc(
-		{"doctype": "YRP UI Preference", "user": user, "layout": layout}
+		{"doctype": 'YRP YRP UI Preference', "user": user, "layout": layout}
 	).insert(ignore_permissions=True)
 	return True
 

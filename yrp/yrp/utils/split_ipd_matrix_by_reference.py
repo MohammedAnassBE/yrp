@@ -2,8 +2,8 @@
 
 import frappe
 
-from yrp.yrp.doctype.item.item import get_or_create_variant
-from yrp.yrp.doctype.item_dependent_attribute_mapping.item_dependent_attribute_mapping import (
+from yrp.yrp.doctype.yrp_item.yrp_item import get_or_create_variant
+from yrp.yrp.doctype.yrp_item_dependent_attribute_mapping.yrp_item_dependent_attribute_mapping import (
 	get_dependent_attribute_details,
 )
 
@@ -14,14 +14,14 @@ def run(ipd, reference_stage=None, delete_original=True, dry_run=False):
 	The reference variant is inferred from each group's input/output attributes,
 	filtered to the attributes valid for `reference_stage`.
 	"""
-	ipd_doc = frappe.get_doc("Item Production Detail", ipd)
+	ipd_doc = frappe.get_doc('YRP Item Production Detail', ipd)
 	reference_stage = reference_stage or getattr(ipd_doc, "pack_in_stage", None) or getattr(
 		ipd_doc, "pack_out_stage", None
 	)
 	allowed_attrs = _reference_attributes(ipd_doc, reference_stage)
 
 	matrix_names = frappe.get_all(
-		"IPD Process Matrix",
+		'YRP IPD Process Matrix',
 		filters={
 			"ipd": ipd,
 			"reference_item_variant": ["in", ["", None]],
@@ -31,7 +31,7 @@ def run(ipd, reference_stage=None, delete_original=True, dry_run=False):
 	)
 	summary = []
 	for matrix_name in matrix_names:
-		matrix = frappe.get_doc("IPD Process Matrix", matrix_name)
+		matrix = frappe.get_doc('YRP IPD Process Matrix', matrix_name)
 		group_refs = _group_reference_variants(matrix, ipd_doc, reference_stage, allowed_attrs)
 		created = []
 		for reference_variant, group_indexes in sorted(group_refs.items()):
@@ -45,7 +45,7 @@ def run(ipd, reference_stage=None, delete_original=True, dry_run=False):
 			new_doc.insert(ignore_permissions=True)
 			created.append(new_doc.name)
 		if not dry_run and delete_original and created:
-			frappe.delete_doc("IPD Process Matrix", matrix.name, ignore_permissions=True, force=True)
+			frappe.delete_doc('YRP IPD Process Matrix', matrix.name, ignore_permissions=True, force=True)
 		summary.append({
 			"source": matrix_name,
 			"process": matrix.process_name,
@@ -65,7 +65,7 @@ def merge_process_to_single_matrix(ipd, process_name, delete_original=True, dry_
 	`reference_item_variant` blank.
 	"""
 	matrix_names = frappe.get_all(
-		"IPD Process Matrix",
+		'YRP IPD Process Matrix',
 		filters={
 			"ipd": ipd,
 			"process_name": process_name,
@@ -77,7 +77,7 @@ def merge_process_to_single_matrix(ipd, process_name, delete_original=True, dry_
 	if not matrix_names:
 		frappe.throw(f"No IPD Process Matrix found for IPD {ipd} / process {process_name}.")
 
-	matrices = [frappe.get_doc("IPD Process Matrix", name) for name in matrix_names]
+	matrices = [frappe.get_doc('YRP IPD Process Matrix', name) for name in matrix_names]
 	if dry_run:
 		return {
 			"ipd": ipd,
@@ -87,7 +87,7 @@ def merge_process_to_single_matrix(ipd, process_name, delete_original=True, dry_
 			"will_delete_original": bool(delete_original),
 		}
 
-	new_doc = frappe.new_doc("IPD Process Matrix")
+	new_doc = frappe.new_doc('YRP IPD Process Matrix')
 	new_doc.ipd = ipd
 	new_doc.process_name = process_name
 	new_doc.reference_item_variant = None
@@ -109,7 +109,7 @@ def merge_process_to_single_matrix(ipd, process_name, delete_original=True, dry_
 
 	if delete_original:
 		for matrix_name in matrix_names:
-			frappe.delete_doc("IPD Process Matrix", matrix_name, ignore_permissions=True, force=True)
+			frappe.delete_doc('YRP IPD Process Matrix', matrix_name, ignore_permissions=True, force=True)
 
 	frappe.db.commit()
 	return {
@@ -232,7 +232,7 @@ def _copy_matrix_for_groups(matrix, reference_variant, group_indexes):
 	group_indexes = list(group_indexes)
 	group_map = {old: idx + 1 for idx, old in enumerate(group_indexes)}
 
-	new_doc = frappe.new_doc("IPD Process Matrix")
+	new_doc = frappe.new_doc('YRP IPD Process Matrix')
 	new_doc.ipd = matrix.ipd
 	new_doc.process_name = matrix.process_name
 	new_doc.reference_item_variant = reference_variant

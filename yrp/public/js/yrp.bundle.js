@@ -73,7 +73,7 @@ frappe.yrp.work_order.get_close_reason_fields = function (defaults = {}) {
 };
 
 frappe.yrp.work_order.open_close_dialog = function (frm, workOrder) {
-    const factory = frm.doctype === 'Purchase Invoice'
+    const factory = frm.doctype === 'YRP Purchase Invoice'
         ? frappe.yrp.work_order.make_purchase_invoice_close_dialog
         : frappe.yrp.work_order.make_work_order_close_dialog;
     if (typeof factory !== 'function') {

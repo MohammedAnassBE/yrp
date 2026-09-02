@@ -84,7 +84,7 @@ async function validate_row(row) {
 async function refresh_row_rate(row) {
     if (!row || !cur_frm.doc.warehouse) return;
     const response = await frappe.call({
-        method: 'yrp.yrp_stock.doctype.stock_update.stock_update.get_stock_update_rates',
+        method: 'yrp.yrp_stock.doctype.yrp_stock_update.yrp_stock_update.get_stock_update_rates',
         args: {
             item: row.name,
             attributes: row.attributes || {},

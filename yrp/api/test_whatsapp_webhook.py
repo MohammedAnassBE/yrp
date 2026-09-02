@@ -62,7 +62,7 @@ class TestWhatsAppWebhookReceive(IntegrationTestCase):
 				"user_type": "System User",
 			}).insert(ignore_permissions=True)
 		frappe.db.set_single_value(
-			"YRP WhatsApp Hub Settings", "webhook_user", _WEBHOOK_USER
+			'YRP YRP WhatsApp Hub Settings', "webhook_user", _WEBHOOK_USER
 		)
 
 	def tearDown(self):
@@ -88,10 +88,10 @@ class TestWhatsAppWebhookReceive(IntegrationTestCase):
 	def test_webhook_user_accepted_returns_ok_and_writes_log(self):
 		frappe.set_user(_WEBHOOK_USER)
 		_post(_unique_status_payload())
-		before = frappe.db.count("YRP WhatsApp Webhook Log")
+		before = frappe.db.count('YRP YRP WhatsApp Webhook Log')
 		result = receive()
 		self.assertEqual(result, {"ok": True})
-		after = frappe.db.count("YRP WhatsApp Webhook Log")
+		after = frappe.db.count('YRP YRP WhatsApp Webhook Log')
 		self.assertEqual(after, before + 1, "a webhook-log row must be written")
 
 	# --- resilience ----------------------------------------------------------
@@ -110,13 +110,13 @@ class TestWhatsAppWebhookReceive(IntegrationTestCase):
 		frappe.set_user(_WEBHOOK_USER)
 		garbage = '{"entry": [ this is not valid json'
 		_post(garbage)
-		before = frappe.db.count("YRP WhatsApp Webhook Log")
+		before = frappe.db.count('YRP YRP WhatsApp Webhook Log')
 		result = receive()
 		self.assertEqual(result, {"ok": True})
-		after = frappe.db.count("YRP WhatsApp Webhook Log")
+		after = frappe.db.count('YRP YRP WhatsApp Webhook Log')
 		self.assertEqual(after, before + 1)
 		latest = frappe.get_all(
-			"YRP WhatsApp Webhook Log",
+			'YRP YRP WhatsApp Webhook Log',
 			fields=["payload", "raw"],
 			order_by="creation desc",
 			limit=1,
@@ -141,7 +141,7 @@ class TestWhatsAppWebhookReceivePush(IntegrationTestCase):
 				"user_type": "System User",
 			}).insert(ignore_permissions=True)
 		frappe.db.set_single_value(
-			"YRP WhatsApp Hub Settings", "webhook_user", _WEBHOOK_USER
+			'YRP YRP WhatsApp Hub Settings', "webhook_user", _WEBHOOK_USER
 		)
 
 	def tearDown(self):

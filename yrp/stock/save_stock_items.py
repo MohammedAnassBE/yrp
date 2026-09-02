@@ -27,33 +27,33 @@ from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 #   entry_fields: fields stored once per logical item row in the Vue editor
 # ---------------------------------------------------------------------------
 PARENT_CHILD_MAP = {
-	"Stock Entry": {
+	'YRP Stock Entry': {
 		"child_table_field": "items",
-		"child_doctype": "Stock Entry Detail",
+		"child_doctype": 'YRP Stock Entry Detail',
 		"item_field": "item",
 		"qty_field": "qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
-	"Stock Update": {
+	'YRP Stock Update': {
 		"child_table_field": "stock_update_details",
-		"child_doctype": "Stock Update Detail",
+		"child_doctype": 'YRP Stock Update Detail',
 		"item_field": "item_variant",
 		"qty_field": "update_diff_qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
-	"Stock Reconciliation": {
+	'YRP Stock Reconciliation': {
 		"child_table_field": "items",
-		"child_doctype": "Stock Reconciliation Item",
+		"child_doctype": 'YRP Stock Reconciliation Item',
 		"item_field": "item",
 		"qty_field": "qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
-	"Work Order Deliverables": {
+	'YRP Work Order Deliverables': {
 		"child_table_field": "deliverables",
-		"child_doctype": "Work Order Deliverables",
+		"child_doctype": 'YRP Work Order Deliverables',
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": ["pending_quantity", "stock_update", "valuation_rate"],
@@ -63,9 +63,9 @@ PARENT_CHILD_MAP = {
 			"is_calculated", "source_grn", "source_grn_item",
 		],
 	},
-	"Work Order Receivables": {
+	'YRP Work Order Receivables': {
 		"child_table_field": "receivables",
-		"child_doctype": "Work Order Receivables",
+		"child_doctype": 'YRP Work Order Receivables',
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": ["cost", "pending_quantity", "total_cost"],
@@ -74,9 +74,9 @@ PARENT_CHILD_MAP = {
 			"additional_parameters", "set_combination",
 		],
 	},
-	"Delivery Challan": {
+	'YRP Delivery Challan': {
 		"child_table_field": "items",
-		"child_doctype": "Delivery Challan Item",
+		"child_doctype": 'YRP Delivery Challan Item',
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": [
@@ -89,9 +89,9 @@ PARENT_CHILD_MAP = {
 			"set_combination", "comments",
 		],
 	},
-	"Goods Received Note": {
+	'YRP Goods Received Note': {
 		"child_table_field": "items",
-		"child_doctype": "Goods Received Note Item",
+		"child_doctype": 'YRP Goods Received Note Item',
 		"item_field": "item_variant",
 		"qty_field": "quantity",
 		"value_fields": [
@@ -105,9 +105,9 @@ PARENT_CHILD_MAP = {
 			"comments",
 		],
 	},
-	"Purchase Order": {
+	'YRP Purchase Order': {
 		"child_table_field": "items",
-		"child_doctype": "Purchase Order Item",
+		"child_doctype": 'YRP Purchase Order Item',
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": [
@@ -314,7 +314,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 
 	def _get_attr_details(parent_item):
 		if parent_item not in _attr_cache:
-			from yrp.yrp.doctype.item.item import get_attribute_details
+			from yrp.yrp.doctype.yrp_item.yrp_item import get_attribute_details
 			_attr_cache[parent_item] = get_attribute_details(parent_item)
 		return _attr_cache[parent_item]
 
@@ -336,11 +336,11 @@ def group_items_for_ui(child_rows, parent_doctype):
 		first = variants[0]
 
 		# Resolve variant → parent item
-		parent_item = frappe.db.get_value("Item Variant", first[item_field], "item")
+		parent_item = frappe.db.get_value('YRP Item Variant', first[item_field], "item")
 		if not parent_item:
 			continue
 		attr_details = _get_attr_details(parent_item)
-		first_variant_doc = frappe.get_doc("Item Variant", first[item_field])
+		first_variant_doc = frappe.get_doc('YRP Item Variant', first[item_field])
 
 		# Non-primary attributes for this item entry
 		all_attrs = list(attr_details.get("attributes") or [])
@@ -378,7 +378,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 				item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
 			# Fill actual values from variants (multiple rows share same row_index)
 			for variant_row in variants:
-				variant_doc = frappe.get_doc("Item Variant", variant_row[item_field])
+				variant_doc = frappe.get_doc('YRP Item Variant', variant_row[item_field])
 				v_attrs = _variant_attrs(variant_doc, [primary])
 				pv = v_attrs.get(primary, "")
 				if pv and pv in item_entry["values"]:
@@ -533,7 +533,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
 				# Skip zero-qty items — except for Stock Reconciliation where
 				# qty=0 is valid (make_qty_zero or manual zero entry), or when
 				# the caller opts into keep_zero (DC draft saves).
-				if not qty and parent_doctype != "Stock Reconciliation" and not keep_zero:
+				if not qty and parent_doctype != 'YRP Stock Reconciliation' and not keep_zero:
 					row_index += 1
 					continue
 				variant_name = _resolve_or_create_variant(parent_item, base_attrs)
@@ -582,7 +582,7 @@ def _resolve_or_create_variant(parent_item, attributes):
 	same variant simultaneously, the second insert catches the duplicate error
 	and falls back to re-querying.
 	"""
-	from yrp.yrp.doctype.item.item import create_variant, get_variant
+	from yrp.yrp.doctype.yrp_item.yrp_item import create_variant, get_variant
 
 	# Strip empty-value keys — dependent stages may leave inapplicable attributes blank
 	attrs = {k: v for k, v in attributes.items() if v}

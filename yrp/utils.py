@@ -31,7 +31,7 @@ def get_panel_colour_combination(ipd_doc):
 
 def get_variant_attr_details(variant):
 	attr_details = frappe.db.sql(
-		""" SELECT attribute, attribute_value FROM `tabItem Variant Attribute` WHERE parent = %(parent)s """,
+		""" SELECT attribute, attribute_value FROM `tabYRP Item Variant Attribute` WHERE parent = %(parent)s """,
 		{"parent": variant},
 		as_dict=True,
 	)

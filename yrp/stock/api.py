@@ -89,7 +89,7 @@ def get_total_stock(item_code, filters=None):
 		f"""
 		SELECT COALESCE(SUM(actual_qty), 0) AS actual_qty,
 		       COALESCE(SUM(stock_value), 0) AS stock_value
-		FROM `tabBin`
+		FROM `tabYRP Bin`
 		WHERE {' AND '.join(conds)}
 		""",
 		tuple(values),
@@ -104,15 +104,15 @@ def get_total_stock(item_code, filters=None):
 @frappe.whitelist()
 def get_item_uom_and_rate(item):
 	"""UOM, conversion factors, and last incoming rate for an item variant."""
-	parent = frappe.db.get_value("Item Variant", item, "item")
-	stock_uom = frappe.db.get_value("Item", parent, "default_unit_of_measure") if parent else None
+	parent = frappe.db.get_value('YRP Item Variant', item, "item")
+	stock_uom = frappe.db.get_value('YRP Item', parent, "default_unit_of_measure") if parent else None
 	conversions = frappe.get_all(
-		"UOM Conversion Detail",
+		'YRP UOM Conversion Detail',
 		filters={"parent": parent},
 		fields=["uom", "conversion_factor"],
 	) if parent else []
 	last_rate = frappe.db.get_value(
-		"Stock Ledger Entry",
+		'YRP Stock Ledger Entry',
 		{"item": item, "is_cancelled": 0, "qty": [">", 0]},
 		"valuation_rate",
 		order_by="posting_datetime desc, creation desc",
@@ -134,7 +134,7 @@ def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 	# Only allow filtering on known Warehouse fields
 	ALLOWED_FILTER_FIELDS = {"name", "disabled", "is_transit", "default_supplier"}
 
-	wh = frappe.qb.DocType("Warehouse")
+	wh = frappe.qb.DocType('YRP Warehouse')
 	q = frappe.qb.from_(wh).select(wh.name).where(wh.disabled == 0)
 
 	# Apply user-provided filters (only whitelisted fields)
@@ -151,7 +151,7 @@ def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 	# Restrict to warehouses this user has access to
 	user = frappe.session.user
 	restricted = frappe.db.sql_list(
-		"SELECT DISTINCT parent FROM `tabWarehouse User` WHERE user=%s", user
+		"SELECT DISTINCT parent FROM `tabYRP Warehouse User` WHERE user=%s", user
 	)
 	if restricted:
 		q = q.where(wh.name.isin(restricted))

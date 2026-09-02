@@ -115,7 +115,7 @@ onMounted(() => {
         },
     });
     frappe.call({
-        method: 'yrp.yrp.doctype.goods_received_note.goods_received_note.get_rework_output_received_types',
+        method: 'yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note.get_rework_output_received_types',
         callback: (r) => {
             if (r && r.message) {
                 availableRTs.value = r.message.received_types || [];

@@ -60,10 +60,10 @@ class TestAssignLayout(IntegrationTestCase):
 					}
 				).insert(ignore_permissions=True)
 		for layout_name in (DEFAULT_LAYOUT_NAME, FLEET_LAYOUT, SECOND_LAYOUT, DISABLED_LAYOUT):
-			if not frappe.db.exists("UI Layout", layout_name):
+			if not frappe.db.exists('YRP UI Layout', layout_name):
 				frappe.get_doc(
 					{
-						"doctype": "UI Layout",
+						"doctype": 'YRP UI Layout',
 						"layout_name": layout_name,
 						"config": json.dumps(get_skeleton()),
 						"disabled": 1 if layout_name == DISABLED_LAYOUT else 0,
@@ -75,9 +75,9 @@ class TestAssignLayout(IntegrationTestCase):
 		# Clean slate per test — the class-level transaction persists records
 		# across test methods, so each test resets its own preference rows.
 		for user in ALL_TEST_USERS:
-			if frappe.db.exists("YRP UI Preference", user):
+			if frappe.db.exists('YRP YRP UI Preference', user):
 				frappe.delete_doc(
-					"YRP UI Preference", user, ignore_permissions=True, force=True
+					'YRP YRP UI Preference', user, ignore_permissions=True, force=True
 				)
 
 	def tearDown(self):
@@ -91,7 +91,7 @@ class TestAssignLayout(IntegrationTestCase):
 		self.assertEqual(out["skipped"], {})
 		for user in FLEET_USERS:
 			self.assertEqual(
-				frappe.db.get_value("YRP UI Preference", user, "layout"), FLEET_LAYOUT
+				frappe.db.get_value('YRP YRP UI Preference', user, "layout"), FLEET_LAYOUT
 			)
 		json.dumps(out)  # wire-safe
 
@@ -112,14 +112,14 @@ class TestAssignLayout(IntegrationTestCase):
 		self.assertEqual(out["assigned"], [FLEET_USERS[0], FLEET_USERS[1]])
 		self.assertIn("unknown", out["skipped"]["no-such-user@example.com"])
 		self.assertIn("disabled", out["skipped"][DISABLED_USER])
-		self.assertFalse(frappe.db.exists("YRP UI Preference", DISABLED_USER))
+		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', DISABLED_USER))
 		for user in (FLEET_USERS[0], FLEET_USERS[1]):
 			self.assertEqual(
-				frappe.db.get_value("YRP UI Preference", user, "layout"), FLEET_LAYOUT
+				frappe.db.get_value('YRP YRP UI Preference', user, "layout"), FLEET_LAYOUT
 			)
 
 	def test_builtin_accounts_are_skipped_never_repointed(self):
-		prior = frappe.db.get_value("YRP UI Preference", "Administrator", "layout")
+		prior = frappe.db.get_value('YRP YRP UI Preference', "Administrator", "layout")
 		out = assign_layout(
 			FLEET_LAYOUT, json.dumps(["Administrator", "Guest", FLEET_USERS[0]])
 		)
@@ -128,9 +128,9 @@ class TestAssignLayout(IntegrationTestCase):
 		self.assertIn("built-in", out["skipped"]["Administrator"])
 		self.assertIn("built-in", out["skipped"]["Guest"])
 		self.assertEqual(
-			frappe.db.get_value("YRP UI Preference", "Administrator", "layout"), prior
+			frappe.db.get_value('YRP YRP UI Preference', "Administrator", "layout"), prior
 		)
-		self.assertFalse(frappe.db.exists("YRP UI Preference", "Guest"))
+		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', "Guest"))
 
 	def test_non_string_entries_skip_with_reason(self):
 		out = assign_layout(FLEET_LAYOUT, json.dumps([42, FLEET_USERS[0]]))
@@ -143,7 +143,7 @@ class TestAssignLayout(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			assign_layout(DISABLED_LAYOUT, json.dumps([FLEET_USERS[0]]))
 		self.assertIn("disabled", str(ctx.exception))
-		self.assertFalse(frappe.db.exists("YRP UI Preference", FLEET_USERS[0]))
+		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', FLEET_USERS[0]))
 
 	def test_unknown_layout_is_rejected(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -168,7 +168,7 @@ class TestAssignLayout(IntegrationTestCase):
 		with self.assertRaises(frappe.PermissionError):
 			assign_layout(FLEET_LAYOUT, json.dumps([FLEET_USERS[1]]))
 		frappe.set_user("Administrator")
-		self.assertFalse(frappe.db.exists("YRP UI Preference", FLEET_USERS[1]))
+		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', FLEET_USERS[1]))
 
 	# ── upsert semantics: only the layout field is written ────────────────
 
@@ -176,7 +176,7 @@ class TestAssignLayout(IntegrationTestCase):
 		overrides = {"schema_version": 1, "theme": {"accent": "#EA580C"}}
 		frappe.get_doc(
 			{
-				"doctype": "YRP UI Preference",
+				"doctype": 'YRP YRP UI Preference',
 				"user": FLEET_USERS[2],
 				"layout": FLEET_LAYOUT,
 				"overrides": json.dumps(overrides),
@@ -188,7 +188,7 @@ class TestAssignLayout(IntegrationTestCase):
 		self.assertEqual(out["assigned"], [FLEET_USERS[2]])
 
 		row = frappe.db.get_value(
-			"YRP UI Preference",
+			'YRP YRP UI Preference',
 			FLEET_USERS[2],
 			["layout", "overrides", "notes"],
 			as_dict=True,
@@ -221,9 +221,9 @@ class TestFloorVerifyRole(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		# Order-independent methods: reset the floor user + role + its grants.
 		# Drop the user first so no Has Role blocks deleting the role.
-		if frappe.db.exists("YRP UI Preference", FLOOR_VERIFY_USER):
+		if frappe.db.exists('YRP YRP UI Preference', FLOOR_VERIFY_USER):
 			frappe.delete_doc(
-				"YRP UI Preference", FLOOR_VERIFY_USER, ignore_permissions=True, force=True
+				'YRP YRP UI Preference', FLOOR_VERIFY_USER, ignore_permissions=True, force=True
 			)
 		if frappe.db.exists("User", FLOOR_VERIFY_USER):
 			frappe.delete_doc("User", FLOOR_VERIFY_USER, ignore_permissions=True, force=True)
@@ -243,7 +243,7 @@ class TestFloorVerifyRole(IntegrationTestCase):
 			self.skipTest("no /web catalog declared on this site (bare-yrp)")
 		# Item Production Detail grants read to System Manager ONLY today — the
 		# very reason a bespoke read-only floor role is required.
-		self.assertIn("Item Production Detail", dts)
+		self.assertIn('YRP Item Production Detail', dts)
 
 	def test_ensure_floor_role_grants_readonly_over_every_catalog_doctype(self):
 		dts = _floor_catalog_doctypes()

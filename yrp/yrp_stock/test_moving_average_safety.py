@@ -13,8 +13,8 @@ def _stock_item_variant():
 	rows = frappe.db.sql(
 		"""
 		SELECT iv.name, COALESCE(i.default_unit_of_measure, 'Piece')
-		FROM `tabItem Variant` iv
-		INNER JOIN `tabItem` i ON i.name = iv.item
+		FROM `tabYRP Item Variant` iv
+		INNER JOIN `tabYRP Item` i ON i.name = iv.item
 		WHERE i.is_stock_item = 1
 		ORDER BY iv.creation
 		LIMIT 1
@@ -34,7 +34,7 @@ def _dimension_values():
 		fieldname = dimension["fieldname"]
 		if fieldname == "received_type":
 			value = frappe.db.get_single_value(
-				"YRP Stock Settings", "default_received_type"
+				'YRP YRP Stock Settings', "default_received_type"
 			)
 		else:
 			value = frappe.db.get_value(
@@ -54,8 +54,8 @@ DIMENSIONS = _dimension_values()
 
 def _warehouse(suffix):
 	name = f"_Test_MA_{suffix}"
-	if not frappe.db.exists("Warehouse", name):
-		frappe.get_doc({"doctype": "Warehouse", "name1": name}).insert(
+	if not frappe.db.exists('YRP Warehouse', name):
+		frappe.get_doc({"doctype": 'YRP Warehouse', "name1": name}).insert(
 			ignore_permissions=True
 		)
 	return name
@@ -73,7 +73,7 @@ def _stock_entry(
 ):
 	doc = frappe.get_doc(
 		{
-			"doctype": "Stock Entry",
+			"doctype": 'YRP Stock Entry',
 			"purpose": purpose,
 			"from_warehouse": from_warehouse,
 			"to_warehouse": to_warehouse,
@@ -102,15 +102,15 @@ class TestMovingAverageSafety(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
 		self.original_method = frappe.db.get_single_value(
-			"YRP Stock Settings", "default_valuation_method"
+			'YRP YRP Stock Settings', "default_valuation_method"
 		)
 		frappe.db.set_single_value(
-			"YRP Stock Settings", "default_valuation_method", "Moving Average"
+			'YRP YRP Stock Settings', "default_valuation_method", "Moving Average"
 		)
 
 	def tearDown(self):
 		frappe.db.set_single_value(
-			"YRP Stock Settings",
+			'YRP YRP Stock Settings',
 			"default_valuation_method",
 			self.original_method or "FIFO",
 		)
@@ -141,7 +141,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		).submit()
 		template = frappe.get_doc(
 			{
-				"doctype": "Stock Entry",
+				"doctype": 'YRP Stock Entry',
 				"items": [
 					{
 						"item": ITEM_VARIANT,
@@ -155,10 +155,10 @@ class TestMovingAverageSafety(FrappeTestCase):
 				],
 			}
 		)
-		grouped = group_items_for_ui(template.items, "Stock Entry")
+		grouped = group_items_for_ui(template.items, 'YRP Stock Entry')
 		receipt = frappe.get_doc(
 			{
-				"doctype": "Stock Entry",
+				"doctype": 'YRP Stock Entry',
 				"purpose": "Material Receipt",
 				"to_warehouse": warehouse,
 				"item_details": json.dumps(grouped),
@@ -197,7 +197,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		transfer.submit()
 
 		sles = frappe.get_all(
-			"Stock Ledger Entry",
+			'YRP Stock Ledger Entry',
 			filters={"voucher_no": transfer.name, "is_cancelled": 0},
 			fields=[
 				"qty",
@@ -249,7 +249,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 					"item": ITEM_VARIANT,
 					"warehouse": warehouse,
 					"uom": ITEM_UOM,
-					"voucher_type": "Stock Entry",
+					"voucher_type": 'YRP Stock Entry',
 					"voucher_no": issue.name,
 					"voucher_detail_no": issue.items[0].name,
 					"posting_date": issue.posting_date,
@@ -290,7 +290,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		second.submit()
 
 		latest = frappe.db.get_value(
-			"Stock Ledger Entry",
+			'YRP Stock Ledger Entry',
 			{"voucher_no": second.name, "is_cancelled": 0},
 			[
 				"posting_datetime",

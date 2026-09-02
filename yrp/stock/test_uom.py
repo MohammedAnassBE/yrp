@@ -4,23 +4,23 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from yrp.stock.uom import apply_item_uom, resolve_item_uom
-from yrp.yrp.doctype.item.item import create_variant
+from yrp.yrp.doctype.yrp_item.yrp_item import create_variant
 
 
 def _ensure_uom(name):
-	if not frappe.db.exists("UOM", name):
+	if not frappe.db.exists('YRP UOM', name):
 		frappe.get_doc(
-			{"doctype": "UOM", "uom_name": name, "enabled": 1}
+			{"doctype": 'YRP UOM', "uom_name": name, "enabled": 1}
 		).insert(ignore_permissions=True)
 	return name
 
 
 def _item_group():
-	item_group = frappe.db.get_value("Item Group", {"is_group": 0}, "name")
+	item_group = frappe.db.get_value('YRP Item Group', {"is_group": 0}, "name")
 	if not item_group:
 		item_group = frappe.get_doc(
 			{
-				"doctype": "Item Group",
+				"doctype": 'YRP Item Group',
 				"item_group_name": f"_Test UOM Group {frappe.generate_hash(length=8)}",
 				"is_group": 0,
 			}
@@ -30,18 +30,18 @@ def _item_group():
 
 def _attribute(name, value):
 	frappe.get_doc(
-		{"doctype": "Item Attribute", "attribute_name": name}
+		{"doctype": 'YRP Item Attribute', "attribute_name": name}
 	).insert(ignore_permissions=True)
 	frappe.get_doc(
 		{
-			"doctype": "Item Attribute Value",
+			"doctype": 'YRP Item Attribute Value',
 			"attribute_name": name,
 			"attribute_value": value,
 		}
 	).insert(ignore_permissions=True)
 	return frappe.get_doc(
 		{
-			"doctype": "Item Item Attribute Mapping",
+			"doctype": 'YRP Item Item Attribute Mapping',
 			"attribute_name": name,
 			"values": [{"attribute_value": value}],
 		}
@@ -51,7 +51,7 @@ def _attribute(name, value):
 def _simple_item_variant(stock_uom):
 	item = frappe.get_doc(
 		{
-			"doctype": "Item",
+			"doctype": 'YRP Item',
 			"name1": f"_Test Default UOM {frappe.generate_hash(length=8)}",
 			"item_group": _item_group(),
 			"default_unit_of_measure": stock_uom,
@@ -59,7 +59,7 @@ def _simple_item_variant(stock_uom):
 		}
 	).insert(ignore_permissions=True)
 	return frappe.get_doc(
-		{"doctype": "Item Variant", "item": item.name}
+		{"doctype": 'YRP Item Variant', "item": item.name}
 	).insert(ignore_permissions=True)
 
 
@@ -74,7 +74,7 @@ def _dependent_item_variant(stock_uom, alternate_uom):
 
 	item = frappe.get_doc(
 		{
-			"doctype": "Item",
+			"doctype": 'YRP Item',
 			"name1": f"_Test Dependent UOM {suffix}",
 			"item_group": _item_group(),
 			"default_unit_of_measure": stock_uom,
@@ -97,14 +97,14 @@ def _dependent_item_variant(stock_uom, alternate_uom):
 	item.save(ignore_permissions=True)
 
 	mapping = frappe.get_doc(
-		"Item Dependent Attribute Mapping", item.dependent_attribute_mapping
+		'YRP Item Dependent Attribute Mapping', item.dependent_attribute_mapping
 	)
 	for row in mapping.details:
 		if row.attribute_value == stage_value:
 			row.uom = alternate_uom
 	mapping.save(ignore_permissions=True)
-	frappe.clear_document_cache("Item", item.name)
-	frappe.clear_document_cache("Item Dependent Attribute Mapping", mapping.name)
+	frappe.clear_document_cache('YRP Item', item.name)
+	frappe.clear_document_cache('YRP Item Dependent Attribute Mapping', mapping.name)
 
 	variant = create_variant(
 		item.name,
@@ -142,7 +142,7 @@ class TestMasterDerivedUOM(FrappeTestCase):
 	def test_purchase_order_overwrites_client_uom_and_preserves_dimensions(self):
 		row = frappe.get_doc(
 			{
-				"doctype": "Purchase Order Item",
+				"doctype": 'YRP Purchase Order Item',
 				"item_variant": self.dependent_variant.name,
 				"qty": 2,
 				"uom": self.stock_uom,
@@ -152,7 +152,7 @@ class TestMasterDerivedUOM(FrappeTestCase):
 			}
 		)
 		dimension_values = {}
-		for fieldname in frappe.get_meta("Purchase Order Item").fields:
+		for fieldname in frappe.get_meta('YRP Purchase Order Item').fields:
 			if fieldname.fieldname == "received_type":
 				row.received_type = "Accepted"
 				dimension_values["received_type"] = "Accepted"
@@ -169,7 +169,7 @@ class TestMasterDerivedUOM(FrappeTestCase):
 	def test_stock_entry_controller_uses_master_uom(self):
 		entry = frappe.get_doc(
 			{
-				"doctype": "Stock Entry",
+				"doctype": 'YRP Stock Entry',
 				"purpose": "Material Receipt",
 				"items": [
 					{
@@ -195,7 +195,7 @@ class TestMasterDerivedUOM(FrappeTestCase):
 	def test_stock_entry_ledger_uses_stock_uom_for_stock_quantity(self):
 		entry = frappe.get_doc(
 			{
-				"doctype": "Stock Entry",
+				"doctype": 'YRP Stock Entry',
 				"name": "TEST-UOM-STOCK-ENTRY",
 				"purpose": "Material Issue",
 				"from_warehouse": "TEST-WAREHOUSE",
@@ -218,7 +218,7 @@ class TestMasterDerivedUOM(FrappeTestCase):
 		self.assertEqual(ledger["uom"], self.stock_uom)
 
 	def test_missing_master_conversion_is_the_only_uom_error(self):
-		item = frappe.get_doc("Item", self.dependent_item.name)
+		item = frappe.get_doc('YRP Item', self.dependent_item.name)
 		item.set(
 			"uom_conversion_details",
 			[
@@ -230,7 +230,7 @@ class TestMasterDerivedUOM(FrappeTestCase):
 		original_get_cached_doc = frappe.get_cached_doc
 
 		def get_cached_doc(doctype, name):
-			if doctype == "Item" and name == item.name:
+			if doctype == 'YRP Item' and name == item.name:
 				return item
 			return original_get_cached_doc(doctype, name)
 
@@ -242,18 +242,18 @@ class TestMasterDerivedUOM(FrappeTestCase):
 
 	def test_transaction_uom_fields_are_read_only(self):
 		fields = {
-			"Purchase Order Item": ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
-			"Goods Received Note Item": ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
-			"Delivery Challan Item": ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
-			"Work Order Deliverables": ("uom", "secondary_uom"),
-			"Work Order Receivables": ("uom", "secondary_uom"),
-			"Work Order Excess Usage Item": ("uom",),
-			"Purchase Invoice Item": ("uom",),
-			"Stock Entry Detail": ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
-			"Stock Reconciliation Item": ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
-			"Stock Update Detail": ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
-			"Stock Reservation Entry": ("stock_uom", "secondary_uom"),
-			"Stock Ledger Entry": ("uom",),
+			'YRP Purchase Order Item': ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
+			'YRP Goods Received Note Item': ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
+			'YRP Delivery Challan Item': ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
+			'YRP Work Order Deliverables': ("uom", "secondary_uom"),
+			'YRP Work Order Receivables': ("uom", "secondary_uom"),
+			'YRP Work Order Excess Usage Item': ("uom",),
+			'YRP Purchase Invoice Item': ("uom",),
+			'YRP Stock Entry Detail': ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
+			'YRP Stock Reconciliation Item': ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
+			'YRP Stock Update Detail': ("uom", "stock_uom", "conversion_factor", "secondary_uom"),
+			'YRP Stock Reservation Entry': ("stock_uom", "secondary_uom"),
+			'YRP Stock Ledger Entry': ("uom",),
 		}
 		for doctype, fieldnames in fields.items():
 			meta = frappe.get_meta(doctype)

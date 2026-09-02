@@ -14,7 +14,7 @@ from yrp.stock.save_stock_items import (
 class TestStockItemEntryFieldExtensions(UnitTestCase):
 	def test_padded_secondary_uom_is_blank_not_numeric_zero(self):
 		defaults = _empty_value_fields(
-			["secondary_qty", "secondary_uom"], "Delivery Challan Item"
+			["secondary_qty", "secondary_uom"], 'YRP Delivery Challan Item'
 		)
 		self.assertEqual(defaults["secondary_qty"], 0)
 		self.assertEqual(defaults["secondary_uom"], "")
@@ -35,7 +35,7 @@ class TestStockItemEntryFieldExtensions(UnitTestCase):
 		)
 
 	def test_consumer_fields_are_merged_without_duplicates(self):
-		config = PARENT_CHILD_MAP["Work Order Deliverables"]
+		config = PARENT_CHILD_MAP['YRP Work Order Deliverables']
 
 		def provider(**kwargs):
 			return ["fabric_reference_variant", "comments"]
@@ -50,7 +50,7 @@ class TestStockItemEntryFieldExtensions(UnitTestCase):
 				return_value=provider,
 			),
 		):
-			fields = _get_entry_fields("Work Order Deliverables", config)
+			fields = _get_entry_fields('YRP Work Order Deliverables', config)
 
 		self.assertIn("fabric_reference_variant", fields)
 		self.assertEqual(fields.count("comments"), 1)
@@ -92,7 +92,7 @@ class TestStockItemEntryFieldExtensions(UnitTestCase):
 			patch.object(frappe.db, "get_value", return_value="Test Garment"),
 			patch.object(frappe, "get_doc", return_value=variant),
 			patch(
-				"yrp.yrp.doctype.item.item.get_attribute_details",
+				"yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details",
 				return_value=attribute_details,
 			),
 			patch(
@@ -114,7 +114,7 @@ class TestStockItemEntryFieldExtensions(UnitTestCase):
 				return_value={},
 			),
 		):
-			grouped = group_items_for_ui(rows, "Goods Received Note")
+			grouped = group_items_for_ui(rows, 'YRP Goods Received Note')
 
 		items = grouped[0]["items"]
 		self.assertEqual(len(items), 2)

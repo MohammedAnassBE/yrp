@@ -69,7 +69,7 @@ let searchTimer = null;
 
 function fetchSuggestedDeliveryPersons(query = "") {
 	frappe.call({
-		method: "yrp.yrp.doctype.vendor_bill_delivery_person.vendor_bill_delivery_person.get_last_ten_delivery_persons",
+		method: "yrp.yrp.doctype.yrp_vendor_bill_delivery_person.yrp_vendor_bill_delivery_person.get_last_ten_delivery_persons",
 		args: {
 			supplier: supplier.value,
 			search: query,
@@ -85,7 +85,7 @@ function setCurrentFormDeliveryPerson(mobileNo) {
 }
 
 function createNewDeliveryPerson() {
-	frappe.ui.form.make_quick_entry("Vendor Bill Delivery Person", {
+	frappe.ui.form.make_quick_entry("YRP Vendor Bill Delivery Person", {
 		callback: (doc) => {
 			cur_frm.set_value("delivery_mob_no", doc.mobile_no || doc.delivery_mob_no || doc.name);
 			fetchSuggestedDeliveryPersons();

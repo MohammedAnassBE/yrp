@@ -21,26 +21,26 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 DEFAULT_RT_NAME = "Accepted"
 DIMENSION_FIELDNAME = "received_type"
-DIMENSION_LABEL = "Received Type"
+DIMENSION_LABEL = 'YRP Received Type'
 
 # Historical stock tables backfilled when Received Type was first introduced.
 # New dimension targets are populated by their normal document flow and must
 # not be added retroactively to this already-shipped data patch.
 BACKFILL_DOCTYPES = [
-	"Stock Ledger Entry",
-	"Bin",
-	"Stock Entry Detail",
-	"Stock Update Detail",
-	"Stock Reconciliation Item",
-	"Stock Reservation Entry",
-	"Repost Item Valuation",
+	'YRP Stock Ledger Entry',
+	'YRP Bin',
+	'YRP Stock Entry Detail',
+	'YRP Stock Update Detail',
+	'YRP Stock Reconciliation Item',
+	'YRP Stock Reservation Entry',
+	'YRP Repost Item Valuation',
 ]
 
 
 def execute():
-	if not frappe.db.exists("DocType", "YRP Stock Settings"):
+	if not frappe.db.exists("DocType", 'YRP YRP Stock Settings'):
 		return
-	if not frappe.db.exists("DocType", "Received Type"):
+	if not frappe.db.exists("DocType", 'YRP Received Type'):
 		# Received Type DocType not yet migrated — nothing to do this run.
 		return
 
@@ -60,15 +60,15 @@ def execute():
 
 
 def _ensure_default_received_type():
-	if frappe.db.exists("Received Type", DEFAULT_RT_NAME):
+	if frappe.db.exists('YRP Received Type', DEFAULT_RT_NAME):
 		# Make sure it's flagged as default.
-		if not frappe.db.get_value("Received Type", DEFAULT_RT_NAME, "is_default"):
-			frappe.db.set_value("Received Type", DEFAULT_RT_NAME, "is_default", 1)
+		if not frappe.db.get_value('YRP Received Type', DEFAULT_RT_NAME, "is_default"):
+			frappe.db.set_value('YRP Received Type', DEFAULT_RT_NAME, "is_default", 1)
 		return
 
 	doc = frappe.get_doc(
 		{
-			"doctype": "Received Type",
+			"doctype": 'YRP Received Type',
 			"received_type_name": DEFAULT_RT_NAME,
 			"is_default": 1,
 		}
@@ -77,10 +77,10 @@ def _ensure_default_received_type():
 
 
 def _ensure_settings_default():
-	current = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
+	current = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
 	if not current:
 		frappe.db.set_single_value(
-			"YRP Stock Settings", "default_received_type", DEFAULT_RT_NAME
+			'YRP YRP Stock Settings', "default_received_type", DEFAULT_RT_NAME
 		)
 
 
@@ -90,17 +90,17 @@ def _ensure_settings_field_on_yrp_stock_settings():
 	Adds default_received_type as a Custom Field if the standard field is missing.
 	The standard JSON field will take precedence on the next migrate.
 	"""
-	meta = frappe.get_meta("YRP Stock Settings", cached=False)
+	meta = frappe.get_meta('YRP YRP Stock Settings', cached=False)
 	if meta.get_field("default_received_type"):
 		return
 	create_custom_fields(
 		{
-			"YRP Stock Settings": [
+			'YRP YRP Stock Settings': [
 				{
 					"fieldname": "default_received_type",
 					"fieldtype": "Link",
 					"label": "Default Received Type",
-					"options": "Received Type",
+					"options": 'YRP Received Type',
 					"insert_after": "transit_warehouse",
 				}
 			]
@@ -110,14 +110,14 @@ def _ensure_settings_field_on_yrp_stock_settings():
 
 
 def _ensure_dimension_row():
-	settings = frappe.get_single("YRP Stock Settings")
+	settings = frappe.get_single('YRP YRP Stock Settings')
 	for row in settings.get("stock_dimensions") or []:
 		if row.fieldname == DIMENSION_FIELDNAME:
 			return
 	settings.append(
 		"stock_dimensions",
 		{
-			"dimension_doctype": "Received Type",
+			"dimension_doctype": 'YRP Received Type',
 			"fieldname": DIMENSION_FIELDNAME,
 			"label": DIMENSION_LABEL,
 			"mandatory": 1,

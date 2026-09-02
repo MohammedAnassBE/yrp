@@ -17,7 +17,7 @@ def _assert_webhook_user():
 	``frappe.PermissionError`` on mismatch.
 	"""
 	webhook_user = frappe.db.get_single_value(
-		"YRP WhatsApp Hub Settings", "webhook_user"
+		'YRP YRP WhatsApp Hub Settings', "webhook_user"
 	)
 	# Opt-in pin: enforce ONLY when a webhook_user is configured. When it is unset,
 	# fall back to the base guarantee (allow_guest=False + Frappe token auth) so an
@@ -98,7 +98,7 @@ def receive(**kwargs):
 	log = None
 	try:
 		log = frappe.get_doc({
-			"doctype": "YRP WhatsApp Webhook Log",
+			"doctype": 'YRP YRP WhatsApp Webhook Log',
 			"payload": frappe.as_json(data) if data else None,
 			"raw": raw_text,
 			"processed": 0,

@@ -425,7 +425,7 @@ function create_dimension_item_inputs() {
         df: {
             fieldtype: 'Link',
             fieldname: 'item',
-            options: 'Item',
+            options: 'YRP Item',
             label: 'Item',
             reqd: true,
             get_query: function () {
@@ -489,7 +489,7 @@ function get_item_details() {
     }
     cur_item.value = {};
     frappe.call({
-        method: 'yrp.yrp.doctype.item.item.get_attribute_details',
+        method: 'yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details',
         args: { item_name: item_input.get_value() },
         callback: function (r) {
             if (r.message) {
@@ -556,12 +556,12 @@ function get_attribute_field(attribute, attribute_name, default_value, classname
         df: {
             fieldtype: 'Link',
             fieldname: attribute_name,
-            options: 'Item Attribute Value',
+            options: 'YRP Item Attribute Value',
             label: attribute_name,
             only_select: true,
             get_query: function () {
                 return {
-                    query: "yrp.yrp.doctype.item.item.get_item_attribute_values",
+                    query: "yrp.yrp.doctype.yrp_item.yrp_item.get_item_attribute_values",
                     filters: { "item": cur_item.value.item, "attribute": attribute_name }
                 };
             },

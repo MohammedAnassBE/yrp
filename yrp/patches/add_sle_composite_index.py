@@ -10,14 +10,14 @@ INDEX_COLS = ["item", "warehouse", "is_cancelled", "posting_datetime", "creation
 
 
 def execute():
-	if not frappe.db.exists("DocType", "Stock Ledger Entry"):
+	if not frappe.db.exists("DocType", 'YRP Stock Ledger Entry'):
 		return
 	existing = frappe.db.sql(
-		"SHOW INDEX FROM `tabStock Ledger Entry` WHERE Key_name = %s", INDEX_NAME
+		"SHOW INDEX FROM `tabYRP Stock Ledger Entry` WHERE Key_name = %s", INDEX_NAME
 	)
 	if existing:
 		return
 	col_list = ", ".join(f"`{c}`" for c in INDEX_COLS)
 	frappe.db.sql_ddl(
-		f"ALTER TABLE `tabStock Ledger Entry` ADD INDEX `{INDEX_NAME}` ({col_list})"
+		f"ALTER TABLE `tabYRP Stock Ledger Entry` ADD INDEX `{INDEX_NAME}` ({col_list})"
 	)

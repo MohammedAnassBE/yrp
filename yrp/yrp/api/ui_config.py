@@ -448,7 +448,7 @@ NON_LISTABLE_FIELDTYPES = (
 	"Button",
 	"Image",
 	"Geolocation",
-	"Signature",
+	'SD YRP Signature',
 )
 
 # Soft-checked vocabularies for the structural knobs. An off-vocabulary value
@@ -3248,14 +3248,14 @@ def _load_layout_terminology(layout):
 	if not layout:
 		return {}
 	try:
-		if not frappe.db.table_exists("YRP UI Terminology") or not frappe.db.table_exists("YRP UI Term"):
+		if not frappe.db.table_exists('YRP YRP UI Terminology') or not frappe.db.table_exists('YRP YRP UI Term'):
 			return {}
-		parent = frappe.db.get_value("YRP UI Terminology", {"ui_layout": layout}, "name")
+		parent = frappe.db.get_value('YRP YRP UI Terminology', {"ui_layout": layout}, "name")
 		if not parent:
 			return {}
 		rows = frappe.get_all(
-			"YRP UI Term",
-			filters={"parent": parent, "parenttype": "YRP UI Terminology", "parentfield": "terms"},
+			'YRP YRP UI Term',
+			filters={"parent": parent, "parenttype": 'YRP YRP UI Terminology', "parentfield": "terms"},
 			fields=["term_key", "source_text", "tamil_text"],
 			order_by="idx asc",
 		)
@@ -3281,7 +3281,7 @@ def _layout_row_fields():
 	"""
 	fields = ["config", "disabled"]
 	try:
-		columns = set(frappe.db.get_table_columns("UI Layout"))
+		columns = set(frappe.db.get_table_columns('YRP UI Layout'))
 	except Exception:
 		return fields
 	return fields + [
@@ -3346,7 +3346,7 @@ def _load_layout_config(requested, warnings):
 	for name in candidates:
 		label = _("layout '{0}'").format(name)
 		row = frappe.db.get_value(
-			"UI Layout",
+			'YRP UI Layout',
 			name,
 			_layout_row_fields(),
 			as_dict=True,
@@ -3381,7 +3381,7 @@ def _resolve_config(user):
 		# Point-read 1 of 2 (docname == user; §4.1). SM-only DocTypes read in
 		# code, scoped to the passed user — the sidebar_view isolation pattern.
 		pref = frappe.db.get_value(
-			"YRP UI Preference", user, ["layout", "overrides"], as_dict=True
+			'YRP YRP UI Preference', user, ["layout", "overrides"], as_dict=True
 		)
 
 	# Point-read 2 of 2 (+ fallback hops only on degradation).
@@ -3439,8 +3439,8 @@ def delete_ui_preference_for_user(doc, method=None):
 	``LinkExistsError`` after ``on_trash`` hooks run, so without this hook
 	user offboarding is blocked by a cosmetic record.
 	"""
-	if frappe.db.exists("YRP UI Preference", doc.name):
-		frappe.delete_doc("YRP UI Preference", doc.name, ignore_permissions=True, force=True)
+	if frappe.db.exists('YRP YRP UI Preference', doc.name):
+		frappe.delete_doc('YRP YRP UI Preference', doc.name, ignore_permissions=True, force=True)
 
 
 def merge_ui_preference_for_user(doc, method=None, old=None, new=None, merge=False):
@@ -3460,8 +3460,8 @@ def merge_ui_preference_for_user(doc, method=None, old=None, new=None, merge=Fal
 	"""
 	if not merge:
 		return
-	if frappe.db.exists("YRP UI Preference", old) and frappe.db.exists("YRP UI Preference", new):
-		frappe.delete_doc("YRP UI Preference", old, ignore_permissions=True, force=True)
+	if frappe.db.exists('YRP YRP UI Preference', old) and frappe.db.exists('YRP YRP UI Preference', new):
+		frappe.delete_doc('YRP YRP UI Preference', old, ignore_permissions=True, force=True)
 
 
 def rename_ui_preference_for_user(doc, method=None, old=None, new=None, merge=False):
@@ -3470,16 +3470,16 @@ def rename_ui_preference_for_user(doc, method=None, old=None, new=None, merge=Fa
 	Frappe's rename machinery updates the ``user`` Link value on the
 	preference but not its docname; rename the record to match.
 	"""
-	if not old or not frappe.db.exists("YRP UI Preference", old):
+	if not old or not frappe.db.exists('YRP YRP UI Preference', old):
 		return
-	if frappe.db.exists("YRP UI Preference", new):
+	if frappe.db.exists('YRP YRP UI Preference', new):
 		# Normally unreachable: merge collisions are resolved up front by
 		# merge_ui_preference_for_user (before_rename). Kept as cheap defense —
 		# the surviving user keeps their own preference; drop the stray record
 		# instead of failing the rename.
-		frappe.delete_doc("YRP UI Preference", old, ignore_permissions=True, force=True)
+		frappe.delete_doc('YRP YRP UI Preference', old, ignore_permissions=True, force=True)
 		return
-	frappe.rename_doc("YRP UI Preference", old, new, force=True)
+	frappe.rename_doc('YRP YRP UI Preference', old, new, force=True)
 
 
 # ── Whitelisted endpoints + boot hook (§4) ──────────────────────────────────
@@ -3661,7 +3661,7 @@ def get_my_ui_overrides():
 	"""
 	user = _require_logged_in_session_user()
 	warnings = []
-	raw = frappe.db.get_value("YRP UI Preference", user, "overrides")
+	raw = frappe.db.get_value('YRP YRP UI Preference', user, "overrides")
 	overrides = _prepare_layer(raw, "overrides", warnings)
 	return {"overrides": overrides or {}, "warnings": warnings}
 
@@ -3685,10 +3685,10 @@ def reset_my_ui_overrides():
 	"""
 	user = _require_logged_in_session_user()
 
-	if frappe.db.exists("YRP UI Preference", user):
-		doc = frappe.get_doc("YRP UI Preference", user)
+	if frappe.db.exists('YRP YRP UI Preference', user):
+		doc = frappe.get_doc('YRP YRP UI Preference', user)
 		if not doc.layout and not (doc.notes or "").strip():
-			frappe.delete_doc("YRP UI Preference", user, ignore_permissions=True)
+			frappe.delete_doc('YRP YRP UI Preference', user, ignore_permissions=True)
 		elif doc.overrides:
 			doc.overrides = None
 			doc.save(ignore_permissions=True)
@@ -3738,7 +3738,7 @@ def _upsert_my_overrides(user, serialized):
 	rolls back its failed insert only (not the whole request transaction) and
 	updates the now-existing row so its save is not dropped.
 	"""
-	if frappe.db.exists("YRP UI Preference", user):
+	if frappe.db.exists('YRP YRP UI Preference', user):
 		_update_overrides_only(user, serialized)
 		return
 
@@ -3746,7 +3746,7 @@ def _upsert_my_overrides(user, serialized):
 	frappe.db.savepoint(savepoint)
 	try:
 		frappe.get_doc(
-			{"doctype": "YRP UI Preference", "user": user, "overrides": serialized}
+			{"doctype": 'YRP YRP UI Preference', "user": user, "overrides": serialized}
 		).insert(ignore_permissions=True)
 	except frappe.DuplicateEntryError:
 		# Lost the race — the row now exists. Undo the failed insert, then
@@ -3756,7 +3756,7 @@ def _upsert_my_overrides(user, serialized):
 
 
 def _update_overrides_only(user, serialized):
-	doc = frappe.get_doc("YRP UI Preference", user)
+	doc = frappe.get_doc('YRP YRP UI Preference', user)
 	doc.overrides = serialized
 	doc.save(ignore_permissions=True)
 
@@ -3800,7 +3800,7 @@ def _resolve_layout_preview(layout):
 		return get_skeleton(), _meta(None, False, [_("ui config disabled by site config")])
 
 	row = frappe.db.get_value(
-		"UI Layout",
+		'YRP UI Layout',
 		layout,
 		_layout_row_fields(),
 		as_dict=True,

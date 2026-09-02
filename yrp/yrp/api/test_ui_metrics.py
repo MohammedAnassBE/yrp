@@ -77,9 +77,9 @@ class TestMetricsRegistry(IntegrationTestCase):
 		contribution = {
 			"consumer_metric": {
 				"label": "Consumer",
-				"doctypes": ["Work Order"],
+				"doctypes": ['YRP Work Order'],
 				"compute": lambda: 0,
-				"goto": lambda: {"doctype": "Work Order", "filters": []},
+				"goto": lambda: {"doctype": 'YRP Work Order', "filters": []},
 			}
 		}
 		with (
@@ -94,9 +94,9 @@ class TestMetricsRegistry(IntegrationTestCase):
 		def spec(label):
 			return {
 				"label": label,
-				"doctypes": ["Work Order"],
+				"doctypes": ['YRP Work Order'],
 				"compute": lambda: 0,
-				"goto": lambda: {"doctype": "Work Order", "filters": []},
+				"goto": lambda: {"doctype": 'YRP Work Order', "filters": []},
 			}
 
 		contribution = {
@@ -145,13 +145,13 @@ class TestGetUIMetrics(IntegrationTestCase):
 		out = {m["key"]: m["value"] for m in get_ui_metrics()["metrics"]}
 		expected = {
 			"open_wos": frappe.db.count(
-				"Work Order",
+				'YRP Work Order',
 				{"docstatus": 1, "status": ("not in", ["Closed", "Cancelled"])},
 			),
-			"draft_dcs": frappe.db.count("Delivery Challan", {"docstatus": 0}),
-			"draft_grns": frappe.db.count("Goods Received Note", {"docstatus": 0}),
-			"stock_entries": frappe.db.count("Stock Entry"),
-			"total_wo": frappe.db.count("Work Order"),
+			"draft_dcs": frappe.db.count('YRP Delivery Challan', {"docstatus": 0}),
+			"draft_grns": frappe.db.count('YRP Goods Received Note', {"docstatus": 0}),
+			"stock_entries": frappe.db.count('YRP Stock Entry'),
+			"total_wo": frappe.db.count('YRP Work Order'),
 		}
 		for key, value in expected.items():
 			self.assertEqual(out[key], value, key)
@@ -188,7 +188,7 @@ class TestGetUIMetrics(IntegrationTestCase):
 
 	def test_permission_gating_omits_unreadable_doctypes_silently(self):
 		def deny_work_order(doctype, ptype="read", *args, **kwargs):
-			return doctype != "Work Order"
+			return doctype != 'YRP Work Order'
 
 		with patch.object(ui_metrics.frappe, "has_permission", side_effect=deny_work_order):
 			out = get_ui_metrics(json.dumps(["open_wos", "draft_dcs"]))
@@ -278,10 +278,10 @@ class TestRowLevelPermissionScope(IntegrationTestCase):
 		given parents (permission-bypassing on purpose: it builds the expected
 		values for both the restricted and the global view)."""
 		rows = frappe.get_all(
-			"Work Order Receivables",
-			filters={"parenttype": "Work Order", "docstatus": 1, "parent": ["in", wo_names]},
+			'YRP Work Order Receivables',
+			filters={"parenttype": 'YRP Work Order', "docstatus": 1, "parent": ["in", wo_names]},
 			fields=["parent", "qty", "pending_quantity"],
-			parent_doctype="Work Order",
+			parent_doctype='YRP Work Order',
 		)
 		per_wo = {}
 		for row in rows:
@@ -292,7 +292,7 @@ class TestRowLevelPermissionScope(IntegrationTestCase):
 
 	def test_ordered_and_produced_share_the_user_permission_scope(self):
 		all_wos = frappe.get_all(
-			"Work Order",
+			'YRP Work Order',
 			filters={"docstatus": 1},
 			fields=["name", "planned_quantity"],
 			order_by="name",
@@ -304,11 +304,11 @@ class TestRowLevelPermissionScope(IntegrationTestCase):
 		expected_produced = self._engine_produced([target.name])
 		expected_ordered = flt(target.planned_quantity)
 
-		self._restrict_to("Work Order", target.name)
+		self._restrict_to('YRP Work Order', target.name)
 		frappe.set_user(self.RESTRICTED_USER)
 		# Sanity: the User Permission really bites on the permitted-names fetch.
 		self.assertEqual(
-			frappe.get_list("Work Order", filters=[["docstatus", "=", 1]], pluck="name", limit=0),
+			frappe.get_list('YRP Work Order', filters=[["docstatus", "=", 1]], pluck="name", limit=0),
 			[target.name],
 		)
 		out = {
@@ -326,11 +326,11 @@ class TestRowLevelPermissionScope(IntegrationTestCase):
 			self.assertNotEqual(flt(out["produced_qty"]), flt(global_produced))
 
 	def test_no_permitted_submitted_wos_yields_zero_quantities(self):
-		draft = frappe.get_all("Work Order", filters={"docstatus": 0}, pluck="name", limit=1)
+		draft = frappe.get_all('YRP Work Order', filters={"docstatus": 0}, pluck="name", limit=1)
 		if not draft:
 			self.skipTest("no draft Work Order on this site")
 		# Permitted to a DRAFT WO only → the permitted SUBMITTED set is empty.
-		self._restrict_to("Work Order", draft[0])
+		self._restrict_to('YRP Work Order', draft[0])
 		frappe.set_user(self.RESTRICTED_USER)
 		out = {
 			m["key"]: m["value"]

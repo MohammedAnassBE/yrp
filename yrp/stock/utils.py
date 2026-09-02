@@ -48,13 +48,13 @@ def get_combine_datetime(posting_date, posting_time):
 # Item / UOM
 # ----------------------------------------------------------------------
 def get_conversion_factor(item_variant, uom):
-	variant_of = frappe.db.get_value("Item Variant", item_variant, "item", cache=True)
+	variant_of = frappe.db.get_value('YRP Item Variant', item_variant, "item", cache=True)
 	if not variant_of:
 		frappe.throw(_("Item Variant {0} not found").format(item_variant))
-	conv = frappe.db.get_value("UOM Conversion Detail", {"parent": variant_of, "uom": uom}, "conversion_factor")
+	conv = frappe.db.get_value('YRP UOM Conversion Detail', {"parent": variant_of, "uom": uom}, "conversion_factor")
 	return {
 		"conversion_factor": conv or 1.0,
-		"stock_uom": frappe.db.get_value("Item", variant_of, "default_unit_of_measure", cache=True),
+		"stock_uom": frappe.db.get_value('YRP Item', variant_of, "default_unit_of_measure", cache=True),
 	}
 
 
@@ -90,7 +90,7 @@ def get_last_sle_rate(item, warehouse=None, **dimension_filters):
 				values.append(val)
 		row = frappe.db.sql(
 			f"""
-			SELECT valuation_rate FROM `tabStock Ledger Entry`
+			SELECT valuation_rate FROM `tabYRP Stock Ledger Entry`
 			WHERE {' AND '.join(conds)}
 			ORDER BY posting_datetime DESC, creation DESC
 			LIMIT 1
@@ -139,7 +139,7 @@ def get_or_make_bin(item_code, warehouse, **dimension_filters):
 	for fn in get_dimension_fieldnames():
 		filters[fn] = dimension_filters.get(fn)
 
-	bin_name = frappe.db.get_value("Bin", filters, "name")
+	bin_name = frappe.db.get_value('YRP Bin', filters, "name")
 	if bin_name:
 		return bin_name
 
@@ -151,7 +151,7 @@ def get_or_make_bin(item_code, warehouse, **dimension_filters):
 	import time
 
 	for attempt in range(5):
-		bin_doc = frappe.new_doc("Bin")
+		bin_doc = frappe.new_doc('YRP Bin')
 		bin_doc.item_code = item_code
 		bin_doc.warehouse = warehouse
 		for fn, val in filters.items():
@@ -165,12 +165,12 @@ def get_or_make_bin(item_code, warehouse, **dimension_filters):
 		except frappe.DuplicateEntryError:
 			frappe.db.rollback(save_point=savepoint)
 			# Snapshot may now see the winner's row; if not, sleep + retry.
-			existing = frappe.db.get_value("Bin", filters, "name")
+			existing = frappe.db.get_value('YRP Bin', filters, "name")
 			if existing:
 				return existing
 			time.sleep(0.05 * (attempt + 1))
 	# Final fallback — by this point the row should be visible.
-	existing = frappe.db.get_value("Bin", filters, "name")
+	existing = frappe.db.get_value('YRP Bin', filters, "name")
 	if existing:
 		return existing
 	frappe.throw(
@@ -284,7 +284,7 @@ def close_voucher_reservations(voucher_type, voucher_name):
 	to SREs via voucher_type/voucher_name.
 	"""
 	srs = frappe.get_all(
-		"Stock Reservation Entry",
+		'YRP Stock Reservation Entry',
 		filters={
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_name,
@@ -294,7 +294,7 @@ def close_voucher_reservations(voucher_type, voucher_name):
 		pluck="name",
 	)
 	for sre in srs:
-		doc = frappe.get_doc("Stock Reservation Entry", sre)
+		doc = frappe.get_doc('YRP Stock Reservation Entry', sre)
 		doc.flags.ignore_permissions = True
 		doc.cancel()
 
@@ -373,7 +373,7 @@ def get_sre_reserved_qty(
 	row = frappe.db.sql(
 		f"""
 		SELECT COALESCE(SUM(GREATEST(reserved_qty - delivered_qty - COALESCE(closed_qty, 0), 0)), 0) AS qty
-		FROM `tabStock Reservation Entry`
+		FROM `tabYRP Stock Reservation Entry`
 		WHERE {where_sql}
 		""",
 		tuple(values),
@@ -401,7 +401,7 @@ def future_sle_count(args):
 		conds.append("voucher_no != %s")
 		values.append(args.get("voucher_no"))
 	row = frappe.db.sql(
-		f"SELECT COUNT(*) FROM `tabStock Ledger Entry` WHERE {' AND '.join(conds)}",
+		f"SELECT COUNT(*) FROM `tabYRP Stock Ledger Entry` WHERE {' AND '.join(conds)}",
 		tuple(values),
 	)
 	return int(row[0][0]) if row else 0
@@ -412,7 +412,7 @@ def has_pending_repost(item, warehouse):
 	or in progress (Gap #22)."""
 	return bool(
 		frappe.db.exists(
-			"Repost Item Valuation",
+			'YRP Repost Item Valuation',
 			{
 				"item": item,
 				"warehouse": warehouse,
@@ -434,7 +434,7 @@ def has_stale_valuation_sle(item, warehouse, **dimension_filters):
 	for fieldname in get_valuation_dimensions():
 		if fieldname in dimension_filters:
 			filters[fieldname] = dimension_filters.get(fieldname)
-	return bool(frappe.db.exists("Stock Ledger Entry", filters))
+	return bool(frappe.db.exists('YRP Stock Ledger Entry', filters))
 
 
 def future_sle_exists(args):
@@ -451,7 +451,7 @@ def future_sle_exists(args):
 		val = args.get(fn)
 		if val is not None:
 			conds[fn] = val
-	return bool(frappe.db.exists("Stock Ledger Entry", conds))
+	return bool(frappe.db.exists('YRP Stock Ledger Entry', conds))
 
 
 # ----------------------------------------------------------------------
@@ -460,7 +460,7 @@ def future_sle_exists(args):
 def get_incoming_outgoing_rate_for_cancel(item, voucher_type, voucher_no, voucher_detail_no):
 	rows = frappe.db.sql(
 		"""SELECT CASE WHEN qty = 0 THEN 0 ELSE abs(stock_value_difference / qty) END
-		FROM `tabStock Ledger Entry`
+		FROM `tabYRP Stock Ledger Entry`
 		WHERE voucher_type=%s AND voucher_no=%s AND item=%s AND voucher_detail_no=%s
 		ORDER BY creation DESC LIMIT 1""",
 		(voucher_type, voucher_no, item, voucher_detail_no),

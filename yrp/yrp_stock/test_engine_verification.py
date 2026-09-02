@@ -54,13 +54,13 @@ ITEM_VARIANT_CANDIDATES = (
 
 def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
-		if frappe.db.exists("Item Variant", item_variant):
+		if frappe.db.exists('YRP Item Variant', item_variant):
 			return item_variant
 	fallback = frappe.db.sql(
 		"""
 		SELECT iv.name
-		FROM `tabItem Variant` iv
-		INNER JOIN `tabItem` i ON i.name = iv.item
+		FROM `tabYRP Item Variant` iv
+		INNER JOIN `tabYRP Item` i ON i.name = iv.item
 		WHERE i.is_stock_item = 1
 		ORDER BY iv.creation
 		LIMIT 1
@@ -74,8 +74,8 @@ def _test_item_variant():
 ITEM_VARIANT = _test_item_variant()
 ITEM_UOM = (
 	frappe.db.get_value(
-		"Item",
-		frappe.db.get_value("Item Variant", ITEM_VARIANT, "item"),
+		'YRP Item',
+		frappe.db.get_value('YRP Item Variant', ITEM_VARIANT, "item"),
 		"default_unit_of_measure",
 	)
 	or "Piece"
@@ -88,7 +88,7 @@ def _test_dimensions():
 		fieldname = dimension["fieldname"]
 		value = None
 		if fieldname == "received_type":
-			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
+			value = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
 		value = value or frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
 		if value:
 			values[fieldname] = value
@@ -101,8 +101,8 @@ ACCEPTED_DIMS = _test_dimensions()
 def _wh(suffix):
 	"""Per-test isolated warehouse name."""
 	name = f"_Test_Verify_{suffix}"
-	if not frappe.db.exists("Warehouse", name):
-		frappe.get_doc({"doctype": "Warehouse", "name1": name}).insert(
+	if not frappe.db.exists('YRP Warehouse', name):
+		frappe.get_doc({"doctype": 'YRP Warehouse', "name1": name}).insert(
 			ignore_permissions=True
 		)
 	return name
@@ -111,7 +111,7 @@ def _wh(suffix):
 def _seed(qty, rate, warehouse):
 	se = frappe.get_doc(
 		{
-			"doctype": "Stock Entry",
+			"doctype": 'YRP Stock Entry',
 			"purpose": "Material Receipt",
 			"to_warehouse": warehouse,
 			"posting_date": nowdate(),
@@ -150,7 +150,7 @@ class TestEngineVerification(FrappeTestCase):
 		bin_name = get_or_make_bin(ITEM_VARIANT, wh, **ACCEPTED_DIMS)
 		self.assertTrue(bin_name)
 		self.assertEqual(
-			frappe.db.get_value("Bin", bin_name, "warehouse"), wh
+			frappe.db.get_value('YRP Bin', bin_name, "warehouse"), wh
 		)
 
 	# ------------------------------------------------------------------
@@ -159,12 +159,12 @@ class TestEngineVerification(FrappeTestCase):
 	def _make_sre(self, qty, voucher_no, warehouse):
 		sre = frappe.get_doc(
 			{
-				"doctype": "Stock Reservation Entry",
+				"doctype": 'YRP Stock Reservation Entry',
 				"item_code": ITEM_VARIANT,
 				"warehouse": warehouse,
 				"reserved_qty": qty,
 				"available_qty": 9999,
-				"voucher_type": "Stock Update",
+				"voucher_type": 'YRP Stock Update',
 				"voucher_no": voucher_no,
 				**ACCEPTED_DIMS,
 			}
@@ -196,7 +196,7 @@ class TestEngineVerification(FrappeTestCase):
 		excluded = get_sre_reserved_qty(
 			item_code=ITEM_VARIANT,
 			warehouse=wh,
-			exclude_voucher_type="Stock Update",
+			exclude_voucher_type='YRP Stock Update',
 			exclude_voucher_name="SRE-VERIFY-H1-1",
 			**ACCEPTED_DIMS,
 		)
@@ -208,7 +208,7 @@ class TestEngineVerification(FrappeTestCase):
 		_seed(50, 100, wh)
 		sre = self._make_sre(7, "SRE-VERIFY-H3-1", wh)
 
-		close_voucher_reservations("Stock Update", "SRE-VERIFY-H3-1")
+		close_voucher_reservations('YRP Stock Update', "SRE-VERIFY-H3-1")
 		sre.reload()
 		self.assertEqual(sre.docstatus, 2)
 
@@ -268,20 +268,20 @@ class TestEngineVerification(FrappeTestCase):
 	# M — integrity check end-to-end
 	# ------------------------------------------------------------------
 	def test_M_integrity_run(self):
-		from yrp.yrp_stock.doctype.stock_integrity_check.stock_integrity_check import (
+		from yrp.yrp_stock.doctype.yrp_stock_integrity_check.yrp_stock_integrity_check import (
 			run_daily_check,
 		)
 
 		name = run_daily_check()
 		self.assertEqual(
-			frappe.db.get_value("Stock Integrity Check", name, "status"), "Completed"
+			frappe.db.get_value('YRP Stock Integrity Check', name, "status"), "Completed"
 		)
 
 	# ------------------------------------------------------------------
 	# K — pending transit report
 	# ------------------------------------------------------------------
 	def test_K_pending_transit_executes(self):
-		from yrp.yrp_stock.report.pending_transit.pending_transit import execute
+		from yrp.yrp_stock.report.yrp_pending_transit.yrp_pending_transit import execute
 
 		columns, rows = execute({})
 		self.assertTrue(columns)
@@ -293,7 +293,7 @@ class TestEngineVerification(FrappeTestCase):
 	def test_N_availability_flat(self):
 		wh = _wh("Na")
 		_seed(10, 50, wh)
-		from yrp.yrp_stock.report.stock_availability.stock_availability import (
+		from yrp.yrp_stock.report.yrp_stock_availability.yrp_stock_availability import (
 			execute,
 		)
 
@@ -305,7 +305,7 @@ class TestEngineVerification(FrappeTestCase):
 	def test_N_availability_grouped(self):
 		wh = _wh("Nb")
 		_seed(10, 50, wh)
-		from yrp.yrp_stock.report.stock_availability.stock_availability import (
+		from yrp.yrp_stock.report.yrp_stock_availability.yrp_stock_availability import (
 			execute,
 		)
 
@@ -318,8 +318,8 @@ class TestEngineVerification(FrappeTestCase):
 	# C.1 — dim removal blocked when data exists
 	# ------------------------------------------------------------------
 	def test_C1_dim_removal_blocked(self):
-		# received_type is registered + has data in tabBin / tabSLE.
-		settings = frappe.get_single("YRP Stock Settings")
+		# received_type is registered + has data in tabYRP Bin / tabSLE.
+		settings = frappe.get_single('YRP YRP Stock Settings')
 		original_rows = list(settings.stock_dimensions)
 		settings.stock_dimensions = [
 			d for d in original_rows if d.fieldname != "received_type"
@@ -332,8 +332,8 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_I2_uncheck_blocked_while_negative(self):
 		wh = _wh("I2")
-		parent_item = frappe.get_cached_value("Item Variant", ITEM_VARIANT, "item")
-		item = frappe.get_doc("Item", parent_item)
+		parent_item = frappe.get_cached_value('YRP Item Variant', ITEM_VARIANT, "item")
+		item = frappe.get_doc('YRP Item', parent_item)
 		original = item.allow_negative_stock
 		item.allow_negative_stock = 1
 		item.flags.ignore_permissions = True
@@ -343,7 +343,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Drive negative
 		reduce_doc = frappe.get_doc(
 			{
-				"doctype": "Stock Update",
+				"doctype": 'YRP Stock Update',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"warehouse": wh,
@@ -405,7 +405,7 @@ class TestEngineVerification(FrappeTestCase):
 	# C.2 — fieldname rename blocked when data exists
 	# ------------------------------------------------------------------
 	def test_C2_fieldname_rename_blocked(self):
-		settings = frappe.get_single("YRP Stock Settings")
+		settings = frappe.get_single('YRP YRP Stock Settings')
 		original_rows = list(settings.stock_dimensions)
 		# Find received_type row and rename it.
 		for row in settings.stock_dimensions:
@@ -427,7 +427,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Attempt to reduce 25 (within actual=50, but actual-reserved=20).
 		reduce_doc = frappe.get_doc(
 			{
-				"doctype": "Stock Update",
+				"doctype": 'YRP Stock Update',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"warehouse": wh,
@@ -454,8 +454,8 @@ class TestEngineVerification(FrappeTestCase):
 	def test_H2_negative_does_not_bypass_reservation(self):
 		wh = _wh("H2")
 		# Item must allow negative stock.
-		parent_item = frappe.get_cached_value("Item Variant", ITEM_VARIANT, "item")
-		item = frappe.get_doc("Item", parent_item)
+		parent_item = frappe.get_cached_value('YRP Item Variant', ITEM_VARIANT, "item")
+		item = frappe.get_doc('YRP Item', parent_item)
 		original = item.allow_negative_stock
 		item.allow_negative_stock = 1
 		item.flags.ignore_permissions = True
@@ -469,7 +469,7 @@ class TestEngineVerification(FrappeTestCase):
 		# negative stock allowed, this must fail because it eats reservation.
 		reduce_doc = frappe.get_doc(
 			{
-				"doctype": "Stock Update",
+				"doctype": 'YRP Stock Update',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"warehouse": wh,
@@ -502,7 +502,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Default flag is 0; reduce 8 must throw.
 		reduce_doc = frappe.get_doc(
 			{
-				"doctype": "Stock Update",
+				"doctype": 'YRP Stock Update',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"warehouse": wh,
@@ -525,8 +525,8 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_I7_recon_wipes_negative(self):
 		wh = _wh("I7")
-		parent_item = frappe.get_cached_value("Item Variant", ITEM_VARIANT, "item")
-		item = frappe.get_doc("Item", parent_item)
+		parent_item = frappe.get_cached_value('YRP Item Variant', ITEM_VARIANT, "item")
+		item = frappe.get_doc('YRP Item', parent_item)
 		original = item.allow_negative_stock
 		item.allow_negative_stock = 1
 		item.flags.ignore_permissions = True
@@ -536,7 +536,7 @@ class TestEngineVerification(FrappeTestCase):
 			_seed(2, 50, wh)
 			frappe.get_doc(
 				{
-					"doctype": "Stock Update",
+					"doctype": 'YRP Stock Update',
 					"posting_date": nowdate(),
 					"posting_time": nowtime(),
 					"warehouse": wh,
@@ -557,8 +557,8 @@ class TestEngineVerification(FrappeTestCase):
 			# Reconcile to 50 at rate 60 → wipe and reset.
 			recon = frappe.get_doc(
 				{
-					"doctype": "Stock Reconciliation",
-					"purpose": "Stock Reconciliation",
+					"doctype": 'YRP Stock Reconciliation',
+					"purpose": 'YRP Stock Reconciliation',
 					"posting_date": nowdate(),
 					"posting_time": nowtime(),
 					"default_warehouse": wh,
@@ -578,14 +578,14 @@ class TestEngineVerification(FrappeTestCase):
 			recon.submit()
 
 			sle_qty = frappe.db.get_value(
-				"Stock Ledger Entry",
-				{"voucher_type": "Stock Reconciliation", "voucher_no": recon.name},
+				'YRP Stock Ledger Entry',
+				{"voucher_type": 'YRP Stock Reconciliation', "voucher_no": recon.name},
 				"qty",
 			)
 			self.assertAlmostEqual(sle_qty, 58.0)
 			reconciled_qty = frappe.db.get_value(
-				"Stock Ledger Entry",
-				{"voucher_type": "Stock Reconciliation", "voucher_no": recon.name},
+				'YRP Stock Ledger Entry',
+				{"voucher_type": 'YRP Stock Reconciliation', "voucher_no": recon.name},
 				"reconciled_qty",
 			)
 			self.assertAlmostEqual(reconciled_qty, 50.0)
@@ -595,7 +595,7 @@ class TestEngineVerification(FrappeTestCase):
 
 			frappe.get_doc(
 				{
-					"doctype": "Stock Update",
+					"doctype": 'YRP Stock Update',
 					"posting_date": nowdate(),
 					"posting_time": nowtime(),
 					"warehouse": wh,
@@ -615,7 +615,7 @@ class TestEngineVerification(FrappeTestCase):
 
 			dc = frappe.get_doc(
 				{
-					"doctype": "Delivery Challan",
+					"doctype": 'YRP Delivery Challan',
 					"posting_date": nowdate(),
 					"posting_time": nowtime(),
 					"from_warehouse": wh,
@@ -651,7 +651,7 @@ class TestEngineVerification(FrappeTestCase):
 
 		# Find the SLE we just created.
 		sle_name = frappe.db.get_value(
-			"Stock Ledger Entry",
+			'YRP Stock Ledger Entry',
 			{"warehouse": wh, "item": ITEM_VARIANT, "is_cancelled": 0},
 			"name",
 			order_by="creation desc",
@@ -659,17 +659,17 @@ class TestEngineVerification(FrappeTestCase):
 		self.assertTrue(sle_name)
 		# Wipe its received_type to simulate legacy-data leakage.
 		frappe.db.sql(
-			"UPDATE `tabStock Ledger Entry` SET received_type = NULL WHERE name = %s",
+			"UPDATE `tabYRP Stock Ledger Entry` SET received_type = NULL WHERE name = %s",
 			sle_name,
 		)
 
-		from yrp.yrp_stock.doctype.stock_integrity_check.stock_integrity_check import (
+		from yrp.yrp_stock.doctype.yrp_stock_integrity_check.yrp_stock_integrity_check import (
 			run_daily_check,
 		)
 
 		check_name = run_daily_check()
 		categories = frappe.get_all(
-			"Stock Integrity Check Item",
+			'YRP Stock Integrity Check Item',
 			filters={"parent": check_name},
 			pluck="category",
 		)
@@ -684,7 +684,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Insert SRE with NULL received_type via direct SQL.
 		sre = self._make_sre(7, "SRE-VERIFY-C6-NULL-1", wh)
 		frappe.db.sql(
-			"UPDATE `tabStock Reservation Entry` SET received_type = NULL WHERE name = %s",
+			"UPDATE `tabYRP Stock Reservation Entry` SET received_type = NULL WHERE name = %s",
 			sre.name,
 		)
 
@@ -703,7 +703,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Create a queued RIV directly.
 		riv = frappe.get_doc(
 			{
-				"doctype": "Repost Item Valuation",
+				"doctype": 'YRP Repost Item Valuation',
 				"based_on": "Item and Warehouse",
 				"item": ITEM_VARIANT,
 				"warehouse": wh,
@@ -731,7 +731,7 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_D3_composite_sle_index_exists(self):
 		rows = frappe.db.sql(
-			"SHOW INDEX FROM `tabStock Ledger Entry` WHERE Key_name = 'idx_sle_bucket'",
+			"SHOW INDEX FROM `tabYRP Stock Ledger Entry` WHERE Key_name = 'idx_sle_bucket'",
 			as_dict=True,
 		)
 		# Index should have item, warehouse, is_cancelled, posting_datetime, creation.
@@ -751,14 +751,14 @@ class TestEngineVerification(FrappeTestCase):
 		wh = _wh("D4_Bucket_Dedupe")
 		se = _seed(10, 50, wh)
 		values = {
-			"doctype": "Repost Item Valuation",
+			"doctype": 'YRP Repost Item Valuation',
 			"based_on": "Item and Warehouse",
 			"item": ITEM_VARIANT,
 			"warehouse": wh,
 			**ACCEPTED_DIMS,
 			"posting_date": nowdate(),
 			"posting_time": "10:00:00",
-			"voucher_type": "Stock Entry",
+			"voucher_type": 'YRP Stock Entry',
 			"voucher_no": se.name,
 			"allow_negative_stock": 1,
 		}
@@ -777,9 +777,9 @@ class TestEngineVerification(FrappeTestCase):
 		wh = _wh("D4_Txn_Dedupe")
 		se = _seed(10, 50, wh)
 		values = {
-			"doctype": "Repost Item Valuation",
+			"doctype": 'YRP Repost Item Valuation',
 			"based_on": "Transaction",
-			"voucher_type": "Stock Entry",
+			"voucher_type": 'YRP Stock Entry',
 			"voucher_no": se.name,
 			"posting_date": nowdate(),
 			"posting_time": "10:00:00",
@@ -798,10 +798,10 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_G5_material_consumed_blocks_non_accepted(self):
 		# Create a Rejected Received Type so we have something non-default.
-		if not frappe.db.exists("Received Type", "_Verify_Rejected"):
+		if not frappe.db.exists('YRP Received Type', "_Verify_Rejected"):
 			frappe.get_doc(
 				{
-					"doctype": "Received Type",
+					"doctype": 'YRP Received Type',
 					"received_type_name": "_Verify_Rejected",
 					"is_default": 0,
 				}
@@ -813,7 +813,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Try a Material Consumed referencing _Verify_Rejected.
 		se = frappe.get_doc(
 			{
-				"doctype": "Stock Entry",
+				"doctype": 'YRP Stock Entry',
 				"purpose": "Material Consumed",
 				"from_warehouse": wh,
 				"posting_date": nowdate(),
@@ -850,7 +850,9 @@ class TestEngineVerification(FrappeTestCase):
 		"""
 		import inspect
 
-		from yrp.yrp_stock.doctype.yrp_stock_settings import yrp_stock_settings
+		from yrp.yrp_stock.doctype.yrp_yrp_stock_settings import (
+			yrp_yrp_stock_settings as yrp_stock_settings,
+		)
 
 		src = inspect.getsource(yrp_stock_settings.YRPStockSettings.on_update)
 		self.assertIn("create_dimension_fields", src)
@@ -866,7 +868,7 @@ class TestEngineVerification(FrappeTestCase):
 		# mandatory=1, but verify the engine setting on the actual Custom Field.
 		cf = frappe.db.get_value(
 			"Custom Field",
-			{"dt": "Stock Ledger Entry", "fieldname": "received_type"},
+			{"dt": 'YRP Stock Ledger Entry', "fieldname": "received_type"},
 			"reqd",
 		)
 		self.assertEqual(cf, 1)
@@ -876,7 +878,7 @@ class TestEngineVerification(FrappeTestCase):
 		"""r-010 Critical #6: hourly scheduler resets stuck reposts."""
 		from frappe.utils import add_to_date, now_datetime
 
-		from yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation import (
+		from yrp.yrp_stock.doctype.yrp_repost_item_valuation.yrp_repost_item_valuation import (
 			repost_entries,
 		)
 
@@ -885,7 +887,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Force-create a stale RIV.
 		riv = frappe.get_doc(
 			{
-				"doctype": "Repost Item Valuation",
+				"doctype": 'YRP Repost Item Valuation',
 				"based_on": "Item and Warehouse",
 				"item": ITEM_VARIANT,
 				"warehouse": wh,
@@ -900,7 +902,7 @@ class TestEngineVerification(FrappeTestCase):
 		stale_when = add_to_date(now_datetime(), hours=-3)
 		frappe.db.sql(
 			"""
-			UPDATE `tabRepost Item Valuation`
+			UPDATE `tabYRP Repost Item Valuation`
 			SET status = 'In Progress',
 			    docstatus = 1,
 			    modified = %s
@@ -915,7 +917,7 @@ class TestEngineVerification(FrappeTestCase):
 		threshold = _atd(_ndt(), hours=-2)
 		frappe.db.sql(
 			"""
-			UPDATE `tabRepost Item Valuation`
+			UPDATE `tabYRP Repost Item Valuation`
 			SET status = 'Queued'
 			WHERE status = 'In Progress'
 			  AND modified < %s
@@ -923,12 +925,12 @@ class TestEngineVerification(FrappeTestCase):
 			""",
 			threshold,
 		)
-		status = frappe.db.get_value("Repost Item Valuation", riv.name, "status")
+		status = frappe.db.get_value('YRP Repost Item Valuation', riv.name, "status")
 		self.assertEqual(status, "Queued")
 
 	def test_BugC_failed_riv_rolls_back_bucket_before_committing_failure(self):
 		"""A failed bucket must not be committed with the RIV failure status."""
-		from yrp.yrp_stock.doctype.repost_item_valuation.repost_item_valuation import (
+		from yrp.yrp_stock.doctype.yrp_repost_item_valuation.yrp_repost_item_valuation import (
 			repost,
 		)
 
@@ -968,12 +970,12 @@ class TestEngineVerification(FrappeTestCase):
 		# First SRE: 80 — should succeed.
 		sre1 = frappe.get_doc(
 			{
-				"doctype": "Stock Reservation Entry",
+				"doctype": 'YRP Stock Reservation Entry',
 				"item_code": ITEM_VARIANT,
 				"warehouse": wh,
 				"reserved_qty": 80,
 				"available_qty": 9999,
-				"voucher_type": "Stock Update",
+				"voucher_type": 'YRP Stock Update',
 				"voucher_no": "SRE-VERIFY-BUGD-1",
 				**ACCEPTED_DIMS,
 			}
@@ -988,12 +990,12 @@ class TestEngineVerification(FrappeTestCase):
 		# reserved=80, only 20 available.
 		sre2 = frappe.get_doc(
 			{
-				"doctype": "Stock Reservation Entry",
+				"doctype": 'YRP Stock Reservation Entry',
 				"item_code": ITEM_VARIANT,
 				"warehouse": wh,
 				"reserved_qty": 50,
 				"available_qty": 9999,
-				"voucher_type": "Stock Update",
+				"voucher_type": 'YRP Stock Update',
 				"voucher_no": "SRE-VERIFY-BUGD-2",
 				**ACCEPTED_DIMS,
 			}
@@ -1065,8 +1067,8 @@ class TestEngineVerification(FrappeTestCase):
 
 		recon = frappe.get_doc(
 			{
-				"doctype": "Stock Reconciliation",
-				"purpose": "Stock Reconciliation",
+				"doctype": 'YRP Stock Reconciliation',
+				"purpose": 'YRP Stock Reconciliation',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"default_warehouse": wh,
@@ -1091,7 +1093,7 @@ class TestEngineVerification(FrappeTestCase):
 		# Reduce 20 → 180.
 		r2 = frappe.get_doc(
 			{
-				"doctype": "Stock Update",
+				"doctype": 'YRP Stock Update',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"warehouse": wh,

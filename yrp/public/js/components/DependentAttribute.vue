@@ -121,7 +121,7 @@ export default {
                     parent: $(this.$el).find('.'+a),
                     df: {
                         fieldtype: 'Link',
-                        options: 'UOM',
+                        options: 'YRP UOM',
                         label: 'UOM',
                         reqd: true,
                         onchange: () => {
@@ -176,7 +176,7 @@ export default {
                 frappe.msgprint("Please save this document before saving")
                 return;
             }
-            frappe.xcall("yrp.yrp.doctype.item.item.update_dependent_attribute_details", {
+            frappe.xcall("yrp.yrp.doctype.yrp_item.yrp_item.update_dependent_attribute_details", {
 				dependent_attribute_mapping: this.item.dependent_attribute_mapping,
 				detail: this.data,
 				freeze: true,

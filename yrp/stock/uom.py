@@ -21,11 +21,11 @@ def resolve_item_uom(item_variant):
 	if not item_variant:
 		return frappe._dict()
 
-	parent_item = frappe.get_cached_value("Item Variant", item_variant, "item")
+	parent_item = frappe.get_cached_value('YRP Item Variant', item_variant, "item")
 	if not parent_item:
 		frappe.throw(_("Item Variant {0} does not exist.").format(item_variant))
 
-	item = frappe.get_cached_doc("Item", parent_item)
+	item = frappe.get_cached_doc('YRP Item', parent_item)
 	stock_uom = item.default_unit_of_measure
 	if not stock_uom:
 		frappe.throw(
@@ -45,10 +45,10 @@ def resolve_item_uom(item_variant):
 			)
 
 		attribute_value = frappe.db.get_value(
-			"Item Variant Attribute",
+			'YRP Item Variant Attribute',
 			{
 				"parent": item_variant,
-				"parenttype": "Item Variant",
+				"parenttype": 'YRP Item Variant',
 				"attribute": item.dependent_attribute,
 			},
 			"attribute_value",
@@ -62,7 +62,7 @@ def resolve_item_uom(item_variant):
 			)
 
 		mapping = frappe.get_cached_doc(
-			"Item Dependent Attribute Mapping", item.dependent_attribute_mapping
+			'YRP Item Dependent Attribute Mapping', item.dependent_attribute_mapping
 		)
 		mapping_row = next(
 			(row for row in mapping.get("details") or [] if row.attribute_value == attribute_value),
