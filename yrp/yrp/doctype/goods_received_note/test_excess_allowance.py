@@ -1,7 +1,7 @@
 """Tests for the GRN excess-allowance feature.
 
 PO side: Item.po_excess_allowed_percentage controls the max qty receivable on
-GRN against Purchase Order, calculated as ordered_qty × (1 + pct/100).
+GRN against Purchase Order, calculated as ordered_qty * (1 + pct/100).
 
 WO side: Process.wo_excess_allowed_percentage controls the max qty receivable
 on GRN against Work Order (per receivable line), using the source WO's process.
@@ -39,6 +39,8 @@ def _wo_grn(wo, from_wh, to_wh, item_variant, uom, qty):
 		"posting_time": nowtime(),
 		"supplier": wo.supplier,
 		"delivery_location": wo.delivery_location,
+		"supplier_address": wo.supplier_address,
+		"delivery_address": wo.delivery_address,
 		"from_warehouse": from_wh,
 		"to_warehouse": to_wh,
 		"process_name": wo.process_name,

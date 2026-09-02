@@ -151,6 +151,29 @@ def _get_entry_fields(parent_doctype, config):
 	return fields
 
 
+def _empty_value_fields(value_fields, child_doctype):
+	"""Return type-correct empty values for padded primary-attribute cells."""
+	numeric_fieldtypes = {
+		"Currency",
+		"Float",
+		"Int",
+		"Percent",
+		"Rating",
+		"Duration",
+	}
+	meta = frappe.get_meta(child_doctype) if child_doctype else None
+	return {
+		fieldname: (
+			0
+			if meta
+			and meta.get_field(fieldname)
+			and meta.get_field(fieldname).fieldtype in numeric_fieldtypes
+			else ""
+		)
+		for fieldname in value_fields or []
+	}
+
+
 def _child_has_field(child_doctype, fieldname):
 	if not child_doctype or not fieldname:
 		return False
@@ -230,6 +253,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 	child_doctype = config.get("child_doctype")
 	value_fields = config.get("value_fields") or []
 	entry_fields = _get_entry_fields(parent_doctype, config)
+	empty_value_fields = _empty_value_fields(value_fields, child_doctype)
 
 	# Normalise to dicts
 	rows = []
@@ -244,11 +268,25 @@ def group_items_for_ui(child_rows, parent_doctype):
 		d["_original_order"] = idx
 		rows.append(d)
 
+	dim_fields = get_dimension_fieldnames()
+	dimension_fields = [
+		fieldname
+		for fieldname in dim_fields
+		if _child_has_field(child_doctype, fieldname)
+	]
+
 	def _row_group_key(row):
 		value = row.get("row_index")
 		if value is None or value == "":
 			return ""
 		return str(value)
+
+	def _dimension_group_key(row):
+		# A logical size row can legitimately be split across stock dimensions
+		# (most visibly Accepted + a mistake Received Type in a GRN).  Keep those
+		# splits as separate editor entries even when their saved row_index is the
+		# same; the Vue GRN editor will then recombine them as labelled splits.
+		return tuple(str(row.get(fieldname) or "") for fieldname in dimension_fields)
 
 	def _row_group_sort_key(row):
 		value = _row_group_key(row)
@@ -261,8 +299,13 @@ def group_items_for_ui(child_rows, parent_doctype):
 
 	# `row_index` is a Data field, so numeric indexes return as strings.
 	# Natural ordering keeps 2 before 10 and fabric indexes fc-2 before fc-10.
-	rows.sort(key=lambda r: (_row_group_sort_key(r), r.get("_original_order") or 0))
-	dim_fields = get_dimension_fieldnames()
+	rows.sort(
+		key=lambda r: (
+			_row_group_sort_key(r),
+			_dimension_group_key(r),
+			r.get("_original_order") or 0,
+		)
+	)
 
 	item_details = []  # final output — list of groups
 
@@ -285,7 +328,10 @@ def group_items_for_ui(child_rows, parent_doctype):
 	# Group consecutive rows by row_index (same as production_api).
 	# groupby returns (key, iterator). The iterator MUST be consumed immediately
 	# (with list()) because it becomes invalid on the next iteration.
-	for _row_idx, variants_iter in groupby(rows, _row_group_key):
+	for (_row_idx, _dimensions), variants_iter in groupby(
+		rows,
+		lambda row: (_row_group_key(row), _dimension_group_key(row)),
+	):
 		variants = list(variants_iter)  # consume iterator immediately
 		first = variants[0]
 
@@ -326,9 +372,10 @@ def group_items_for_ui(child_rows, parent_doctype):
 		# Populate values
 		if attr_details.get("primary_attribute") and attr_details.get("primary_attribute_values"):
 			primary = attr_details["primary_attribute"]
-			# Init all primary values with 0
+			# Pad missing primary values with fieldtype-correct empties. Link/Data
+			# fields such as Secondary UOM must stay blank, never the numeric 0.
 			for pv in attr_details["primary_attribute_values"]:
-				item_entry["values"][pv] = {"qty": 0, **{fn: 0 for fn in value_fields}}
+				item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
 			# Fill actual values from variants (multiple rows share same row_index)
 			for variant_row in variants:
 				variant_doc = frappe.get_doc("Item Variant", variant_row[item_field])

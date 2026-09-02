@@ -9,6 +9,9 @@ Mirrors the Delivery Challan internal-unit tests but for the receiving side:
   12:   missing transit warehouse blocks GRN submit
 """
 
+from contextlib import nullcontext
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
@@ -26,6 +29,38 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_test_item_variant,
 	_warehouse,
 )
+
+
+def _neutral_production_group_dimensions(item=None):
+	values = _production_group_dimensions()
+	for dimension in get_stock_dimensions():
+		if not dimension.get("is_production_group"):
+			continue
+		doctype = dimension["dimension_doctype"]
+		meta = frappe.get_meta(doctype)
+		if not meta.has_field("item"):
+			continue
+		matches = frappe.get_all(
+			doctype,
+			filters={"item": item, "name": ["like", "_Test Internal Transit %"]},
+			pluck="name",
+			order_by="name asc",
+			limit=1,
+		) if item else []
+		neutral = matches[0] if matches else None
+		if item and not neutral:
+			naming_field = (meta.autoname or "").removeprefix("field:")
+			if naming_field and meta.has_field(naming_field):
+				neutral = frappe.get_doc(
+					{
+						"doctype": doctype,
+						naming_field: f"_Test Internal Transit {frappe.generate_hash(length=8)}",
+						"item": item,
+					}
+				).insert(ignore_permissions=True).name
+		if neutral:
+			values[dimension["fieldname"]] = neutral
+	return values
 
 
 def _row_dimensions(row):
@@ -48,17 +83,35 @@ def _non_company_supplier(prefix):
 	return sup
 
 
+def _test_stock_item_variant():
+	variants = frappe.db.sql(
+		"""
+		SELECT iv.name
+		FROM `tabItem Variant` iv
+		INNER JOIN `tabItem` item ON item.name = iv.item
+		WHERE COALESCE(item.is_stock_item, 0) = 1
+		  AND COALESCE(item.default_unit_of_measure, '') != ''
+		ORDER BY iv.name
+		LIMIT 1
+		""",
+		pluck=True,
+	)
+	return variants[0] if variants else _test_item_variant()
+
+
 def _make_wo(sender_supplier, receiver_location, qty=10):
 	"""Build a submitted WO whose supplier (sender) and delivery_location
 	(receiver) match the GRN's flow direction: goods originate at `sender_supplier`
 	and arrive at `receiver_location`."""
-	item_variant = _test_item_variant()
+	item_variant = _test_stock_item_variant()
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
 	uom = _item_uom(item_variant)
 	from_wh = _supplier_warehouse(sender_supplier, f"_T_GRN_From_WH_{frappe.generate_hash(length=6)}")
 	to_wh = _supplier_warehouse(receiver_location, f"_T_GRN_To_WH_{frappe.generate_hash(length=6)}")
 	process_name = _process("_Test GRN Internal Process")
-	dimensions = _production_group_dimensions()
+	# Internal-unit routing itself is independent of production dimensions.
+	# Keep this base-YRP fixture isolated from any host app's live Lot rules.
+	dimensions = _neutral_production_group_dimensions(parent_item)
 	_process_cost(process_name, parent_item, sender_supplier, dimensions)
 	wo = frappe.get_doc({
 		"doctype": "Work Order",
@@ -95,8 +148,14 @@ def _make_wo(sender_supplier, receiver_location, qty=10):
 			"set_combination": {},
 		}],
 	})
-	wo.insert(ignore_permissions=True)
-	wo.submit()
+	host_validator = (
+		patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
+		if "essdee_yrp" in frappe.get_installed_apps()
+		else nullcontext()
+	)
+	with host_validator:
+		wo.insert(ignore_permissions=True)
+		wo.submit()
 	return wo, from_wh, to_wh, item_variant, uom
 
 
@@ -111,6 +170,8 @@ def _make_grn(wo, from_wh, to_wh, item_variant, uom, qty=5):
 		"posting_time": nowtime(),
 		"supplier": wo.supplier,
 		"delivery_location": wo.delivery_location,
+		"supplier_address": wo.supplier_address,
+		"delivery_address": wo.delivery_address,
 		"from_warehouse": from_wh,
 		"to_warehouse": to_wh,
 		"process_name": wo.process_name,
@@ -154,6 +215,32 @@ class TestGRNInternalUnitTransfer(FrappeTestCase):
 		super().tearDownClass()
 
 	# ---------- Tests 1-3: is_internal_unit computation ----------
+
+	def test_selected_delivery_location_controls_target_warehouse(self):
+		sender = _company_supplier("_T_GRN_Selected_Sender")
+		work_order_location = _company_supplier("_T_GRN_Default_Receiver")
+		selected_location = _company_supplier("_T_GRN_Selected_Receiver")
+		wo, _from_wh, _to_wh, _iv, _uom = _make_wo(sender, work_order_location)
+		grn = frappe.new_doc("Goods Received Note")
+		grn.against = "Work Order"
+		grn.against_id = wo.name
+		grn.delivery_location = selected_location
+
+		def warehouse_for(supplier):
+			return {
+				sender: "SOURCE-WAREHOUSE",
+				selected_location: "SELECTED-WAREHOUSE",
+			}[supplier]
+
+		with patch(
+			"yrp.yrp.doctype.goods_received_note.goods_received_note._get_warehouse_for_supplier",
+			side_effect=warehouse_for,
+		):
+			grn.set_missing_values()
+
+		self.assertEqual(grn.delivery_location, selected_location)
+		self.assertEqual(grn.from_warehouse, "SOURCE-WAREHOUSE")
+		self.assertEqual(grn.to_warehouse, "SELECTED-WAREHOUSE")
 
 	def test_01_internal_unit_false_when_supplier_not_company(self):
 		sender = _non_company_supplier("_T_GRN_SenderExt")
@@ -303,8 +390,13 @@ class TestGRNInternalUnitTransfer(FrappeTestCase):
 			fields=["warehouse", "qty"],
 		)
 		balances = {s.warehouse: flt(s.qty) for s in sles}
-		self.assertAlmostEqual(balances.get(self.transit_wh, 0), -5, places=3)
-		self.assertAlmostEqual(balances.get(to_wh, 0), 5, places=3)
+		expected_stock_qty = 5 * flt(ste.items[0].conversion_factor)
+		self.assertAlmostEqual(
+			balances.get(self.transit_wh, 0), -expected_stock_qty, places=3
+		)
+		self.assertAlmostEqual(
+			balances.get(to_wh, 0), expected_stock_qty, places=3
+		)
 
 	# ---------- Test 10: STE cancel rollback ----------
 

@@ -48,6 +48,9 @@ frappe.ui.form.on("Purchase Invoice", {
 				frm.set_value("total_quantity", r.message.total_quantity || 0);
 				frm.set_value("pi_work_order_billed_details", r.message.wo_items || []);
 				frm.set_value("allow_to_change_rate", r.message.allow_to_change_rate || 0);
+				for (const [fieldname, value] of Object.entries(r.message.additional_field_values || {})) {
+					if (frm.fields_dict[fieldname]) frm.set_value(fieldname, value);
+				}
 			},
 		});
 	},

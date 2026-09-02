@@ -147,7 +147,7 @@ function mount_po_editor(frm) {
 	frm.itemEditor = new frappe.yrp.work_order.ItemEditor(frm.fields_dict.item_html.wrapper, {
 		title: "",
 		editorType: "purchase_order",
-		showDimensions: false,
+		showDimensions: true,
 		allowCreate: true,
 		allowEdit: true,
 		allowRemove: true,

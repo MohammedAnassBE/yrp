@@ -27,6 +27,7 @@ CONSERVATION_TOLERANCE = 0.01
 DEFAULT_CHUNK_SIZE = 25
 DEFAULT_CHUNK_SECONDS = 45
 MAX_AUTOMATIC_RETRIES = 3
+ADJUSTMENT_JOB_TIMEOUT = 25 * 60
 ACTIVE_STATUSES = (
 	"Queued",
 	"Calculating",
@@ -75,6 +76,17 @@ class StockValuationAdjustment(Document):
 def _hash_key(*parts):
 	raw = "|".join(str(part or "") for part in parts)
 	return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def is_stock_adjustment_enabled():
+	"""Return the YRP Settings gate for creating new valuation adjustments."""
+	field = frappe.get_meta("YRP Settings").get_field("apply_stock_adjustment")
+	if not field:
+		# Preserve existing behavior during a rolling deploy until the DocType is
+		# synchronized and the new checkbox is available on the site.
+		return True
+	value = frappe.db.get_single_value("YRP Settings", "apply_stock_adjustment")
+	return bool(cint(value))
 
 
 def create_adjustment(
@@ -128,6 +140,10 @@ def create_adjustment(
 	)
 	if existing:
 		return existing
+	# The setting gates only new originals. Existing work and signed reversals
+	# must always finish so an applied value can never be stranded.
+	if not reversal_of and not is_stock_adjustment_enabled():
+		return None
 
 	from yrp.yrp_stock.doctype.stock_valuation_closing.stock_valuation_closing import (
 		lock_stock_valuation_period,
@@ -549,7 +565,7 @@ def enqueue_adjustment(adjustment, retry=False):
 		"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.process_adjustment",
 		adjustment=adjustment,
 		queue=queue,
-		timeout=300,
+		timeout=ADJUSTMENT_JOB_TIMEOUT,
 		enqueue_after_commit=True,
 		job_id=f"valuation:{adjustment}:{job_revision}",
 		deduplicate=True,
@@ -1437,7 +1453,7 @@ def register_production_links(source_doctype, source_name, links):
 		_lock_target_sles([row.consumption_sle, row.output_receipt_sle])
 		locked_sles = frappe.db.sql(
 			"""
-			SELECT name, qty, is_cancelled, posting_datetime, creation
+			SELECT name, qty, is_cancelled
 			FROM `tabStock Ledger Entry`
 			WHERE name IN %(sle_names)s
 			FOR UPDATE
@@ -1457,11 +1473,8 @@ def register_production_links(source_doctype, source_name, links):
 			or flt(output.qty) <= 0
 		):
 			frappe.throw(_("Production valuation links require active outgoing and incoming SLEs."))
-		if (output.posting_datetime, output.creation) < (
-			consumption.posting_datetime,
-			consumption.creation,
-		):
-			frappe.throw(_("A production output cannot precede its consumed input SLE."))
+		# A Work Order close records unreturned excess after its output receipt exists.
+		# The exact SLE link carries causality; posting order does not define it.
 		weight = flt(row.allocation_weight or row.input_quantity)
 		if weight <= 0:
 			frappe.throw(_("Production-link allocation weight must be greater than zero."))

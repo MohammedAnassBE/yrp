@@ -9,6 +9,8 @@ from yrp.stock.utils import get_stock_balance
 from yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment import (
 	create_adjustment,
 	create_reversal,
+	enqueue_adjustment,
+	is_stock_adjustment_enabled,
 	process_adjustment,
 	register_production_links,
 )
@@ -106,6 +108,15 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		super().setUpClass()
 		cls.item, cls.uom, cls.dimensions = _stock_context()
 
+	def setUp(self):
+		super().setUp()
+		setting = patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.is_stock_adjustment_enabled",
+			return_value=True,
+		)
+		setting.start()
+		self.addCleanup(setting.stop)
+
 	def _adjust(self, receipt, difference, *, apply=True):
 		sle = frappe.db.get_value(
 			"Stock Ledger Entry",
@@ -141,6 +152,60 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		if apply:
 			process_adjustment(name)
 		return name, sle.name
+
+	def test_settings_gate_skips_new_adjustment_creation(self):
+		warehouse = _warehouse("Disabled Adjustment")
+		receipt = _stock_entry(
+			self.item,
+			self.uom,
+			self.dimensions,
+			"Material Receipt",
+			10,
+			10,
+			to_warehouse=warehouse,
+		)
+		with patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.is_stock_adjustment_enabled",
+			return_value=False,
+		):
+			adjustment, sle_name = self._adjust(receipt, 10, apply=False)
+
+		self.assertIsNone(adjustment)
+		self.assertFalse(
+			frappe.db.exists(
+				"Stock Valuation Adjustment Source", {"target_sle": sle_name}
+			)
+		)
+		self.assertEqual(
+			frappe.db.get_value(
+				"Stock Ledger Entry", sle_name, "valuation_is_stale"
+			),
+			0,
+		)
+
+	def test_settings_gate_reads_the_checkbox_value(self):
+		with patch.object(frappe.db, "get_single_value", return_value=0):
+			self.assertFalse(is_stock_adjustment_enabled())
+		with patch.object(frappe.db, "get_single_value", return_value=1):
+			self.assertTrue(is_stock_adjustment_enabled())
+
+	def test_adjustment_job_timeout_is_twenty_five_minutes(self):
+		warehouse = _warehouse("Adjustment Timeout")
+		receipt = _stock_entry(
+			self.item,
+			self.uom,
+			self.dimensions,
+			"Material Receipt",
+			10,
+			10,
+			to_warehouse=warehouse,
+		)
+		adjustment, _sle_name = self._adjust(receipt, 10, apply=False)
+		with patch.object(frappe, "enqueue") as enqueue:
+			enqueue_adjustment(adjustment)
+
+		enqueue.assert_called_once()
+		self.assertEqual(enqueue.call_args.kwargs["timeout"], 25 * 60)
 
 	def test_adjustment_revalues_remaining_stock_without_changing_original_rate(self):
 		warehouse = _warehouse("Remaining")
@@ -789,3 +854,85 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			frappe.db.get_value("Stock Valuation Production Link", link_name, "active"),
 			0,
 		)
+
+	def test_late_consumption_can_revalue_an_earlier_production_output(self):
+		input_warehouse = _warehouse("Late Production Input")
+		output_warehouse = _warehouse("Earlier Production Output")
+		receipt = _stock_entry(
+			self.item,
+			self.uom,
+			self.dimensions,
+			"Material Receipt",
+			10,
+			10,
+			to_warehouse=input_warehouse,
+			posting_time="10:00:00",
+		)
+		output = _stock_entry(
+			self.item,
+			self.uom,
+			self.dimensions,
+			"Material Receipt",
+			5,
+			20,
+			to_warehouse=output_warehouse,
+			posting_time="10:01:00",
+		)
+		late_consumption = _stock_entry(
+			self.item,
+			self.uom,
+			self.dimensions,
+			"Material Issue",
+			5,
+			0,
+			from_warehouse=input_warehouse,
+			posting_time="10:02:00",
+		)
+		consumption_sle = frappe.db.get_value(
+			"Stock Ledger Entry",
+			{"voucher_no": late_consumption.name, "qty": ["<", 0], "is_cancelled": 0},
+			"name",
+		)
+		output_sle = frappe.db.get_value(
+			"Stock Ledger Entry",
+			{"voucher_no": output.name, "qty": [">", 0], "is_cancelled": 0},
+			"name",
+		)
+
+		link_name = register_production_links(
+			late_consumption.doctype,
+			late_consumption.name,
+			[
+				{
+					"consumption_sle": consumption_sle,
+					"output_receipt_sle": output_sle,
+					"source_row": late_consumption.items[0].name,
+					"input_quantity": 5,
+					"allocation_weight": 5,
+					"stock_dimensions": frappe.as_json(self.dimensions),
+				}
+			],
+		)[0]
+
+		adjustment, _sle_name = self._adjust(receipt, 10)
+		parent = frappe.db.get_value(
+			"Stock Valuation Adjustment",
+			adjustment,
+			["status", "propagated_stock_difference", "terminal_difference"],
+			as_dict=True,
+		)
+		self.assertEqual(
+			frappe.db.get_value("Stock Valuation Production Link", link_name, "active"),
+			1,
+		)
+		self.assertAlmostEqual(
+			flt(
+				frappe.db.get_value(
+					"Stock Ledger Entry", output_sle, "valuation_adjustment_value"
+				)
+			),
+			5,
+		)
+		self.assertEqual(parent.status, "Completed")
+		self.assertAlmostEqual(flt(parent.propagated_stock_difference), 10)
+		self.assertAlmostEqual(flt(parent.terminal_difference), 0)

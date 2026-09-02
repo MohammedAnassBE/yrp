@@ -207,6 +207,13 @@ def create_dimension_fields():
 					continue
 				doc_field_def = field_def.copy()
 				doc_field_def["insert_after"] = _get_insert_after(dim, dt)
+				if dt == "Purchase Order":
+					# A Purchase Order can procure the same Item for multiple
+					# production groups. Its header dimension is retained only as
+					# legacy storage; new planning happens on Purchase Order Item,
+					# like Stock Entry and every other dimension-aware matrix.
+					doc_field_def["hidden"] = 1
+					doc_field_def["reqd"] = 0
 				custom_fields.setdefault(dt, []).append(doc_field_def)
 
 	if custom_fields:

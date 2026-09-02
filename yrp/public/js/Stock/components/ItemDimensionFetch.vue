@@ -34,7 +34,25 @@
                                     <span v-else>0<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span></span>
                                     <span v-for="a in table_qty_fields" :key="a.name">
                                         <br>
-                                        <span>{{ a.label }}: {{ a.format ? a.format(attr[a.name]) : attr[a.name] }}</span>
+                                        <span v-if="a.inline_edit && edit" class="d-inline-flex align-items-center" style="gap: 0.35rem; min-width: 9rem;">
+                                            <span class="text-muted text-nowrap">{{ a.label }}:</span>
+                                            <input
+                                                class="form-control form-control-sm"
+                                                type="number"
+                                                :min="a.min ?? 0"
+                                                :max="a.max ?? null"
+                                                :step="a.step ?? 0.001"
+                                                v-model.number="attr[a.name]"
+                                                @input="on_inline_table_field_change(attr, a)"
+                                            >
+                                            <span v-if="a.uom_field && attr[a.uom_field]" class="text-muted text-nowrap">
+                                                {{ attr[a.uom_field] }}
+                                            </span>
+                                        </span>
+                                        <span v-else>
+                                            {{ a.label }}: {{ a.format ? a.format(attr[a.name]) : attr[a.name] }}
+                                            <span v-if="a.uom_field && attr[a.uom_field]"> {{ attr[a.uom_field] }}</span>
+                                        </span>
                                     </span>
                                 </div>
                                 <div v-else class="text-center">---</div>
@@ -78,7 +96,22 @@
                                 </span>
                             </td>
                             <td v-for="a in table_qty_fields" :key="a.name">
-                                <span>{{ (j.values && j.values['default']) ? (a.format ? a.format(j.values['default'][a.name]) : j.values['default'][a.name]) : '' }}</span>
+                                <input
+                                    v-if="a.inline_edit && edit && j.values && j.values['default']"
+                                    class="form-control form-control-sm"
+                                    type="number"
+                                    :min="a.min ?? 0"
+                                    :max="a.max ?? null"
+                                    :step="a.step ?? 0.001"
+                                    v-model.number="j.values['default'][a.name]"
+                                    @input="on_inline_table_field_change(j.values['default'], a)"
+                                >
+                                <span v-else>
+                                    {{ (j.values && j.values['default']) ? (a.format ? a.format(j.values['default'][a.name]) : j.values['default'][a.name]) : '' }}
+                                    <span v-if="a.uom_field && j.values && j.values['default'] && j.values['default'][a.uom_field]">
+                                        {{ j.values['default'][a.uom_field] }}
+                                    </span>
+                                </span>
                             </td>
                             <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
                             <td v-if="show_row_actions">
@@ -289,6 +322,17 @@ function on_inline_qty_change(value_detail) {
     if (Object.prototype.hasOwnProperty.call(value_detail, 'delivered_quantity')) {
         value_detail.delivered_quantity = qty;
     }
+    emit("itemupdated", true);
+}
+
+function on_inline_table_field_change(value_detail, field) {
+    if (!value_detail || !field?.name) return;
+    let value = Number(value_detail[field.name] || 0);
+    const minimum = field.min === undefined || field.min === null ? null : Number(field.min);
+    const maximum = field.max === undefined || field.max === null ? null : Number(field.max);
+    if (minimum !== null && value < minimum) value = minimum;
+    if (maximum !== null && value > maximum) value = maximum;
+    value_detail[field.name] = value;
     emit("itemupdated", true);
 }
 

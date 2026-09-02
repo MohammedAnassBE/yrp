@@ -10,6 +10,8 @@
   "default_letter_head",
   "advanced_section",
   "enable_tuple_attribute",
+  "stock_valuation_adjustment_section",
+  "apply_stock_adjustment",
   "purchase_settings_section",
   "enable_price_validation",
   "grn_settings_section",
@@ -73,6 +75,18 @@
    "fieldname": "enable_tuple_attribute",
    "fieldtype": "Check",
    "label": "Enable Tuple Attribute (Fast Variant Lookup)"
+  },
+  {
+   "fieldname": "stock_valuation_adjustment_section",
+   "fieldtype": "Section Break",
+   "label": "Stock Valuation Adjustment"
+  },
+  {
+   "default": "0",
+   "description": "Create and process new Stock Valuation Adjustments for Work Order excess usage and Purchase Invoice rate differences. Turning this off does not interrupt adjustments or reversals that already exist.",
+   "fieldname": "apply_stock_adjustment",
+   "fieldtype": "Check",
+   "label": "Apply Stock Adjustment"
   },
   {
    "fieldname": "purchase_settings_section",

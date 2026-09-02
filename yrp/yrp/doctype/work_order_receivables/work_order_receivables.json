@@ -95,7 +95,7 @@
    "fieldname": "cost",
    "fieldtype": "Float",
    "label": "Cost",
-   "precision": "3"
+   "precision": "9"
   },
   {
    "allow_on_submit": 1,
