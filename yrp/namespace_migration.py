@@ -98,6 +98,45 @@ def rename_owned_customization_records(app_names: tuple[str, ...]) -> None:
 		_rename_customization_record("Property Setter", row.name, desired_name)
 
 
+def drop_empty_legacy_namespace_tables(app_names: tuple[str, ...]) -> list[str]:
+	"""Drop only unregistered, empty tables superseded by namespaced DocTypes.
+
+	A combined ERPNext site may legitimately own the legacy identity (for example
+	``Supplier`` or ``Purchase Invoice``); those tables are never candidates. A
+	leftover custom table is removed only when the namespaced DocType is installed
+	and the old physical table contains no rows. Any non-empty residue fails the
+	patch closed so historical data cannot be discarded silently.
+	"""
+
+	dropped: list[str] = []
+	seen: set[str] = set()
+	for target_name, prefix, _fields in _iter_namespaced_doctypes(app_names):
+		legacy_name = target_name.removeprefix(prefix)
+		if legacy_name in seen:
+			continue
+		seen.add(legacy_name)
+		if frappe.db.exists("DocType", legacy_name):
+			continue
+		if not frappe.db.exists("DocType", target_name):
+			frappe.throw(
+				f"Cannot clean legacy table {legacy_name}: target DocType {target_name} is missing"
+			)
+		if not frappe.db.table_exists(legacy_name, cached=False):
+			continue
+
+		legacy_table = "tab" + legacy_name
+		quoted_table = "`" + legacy_table.replace("`", "``") + "`"
+		row_count = int(frappe.db.sql(f"SELECT COUNT(*) FROM {quoted_table}")[0][0])
+		if row_count:
+			frappe.throw(
+				f"Refusing to drop non-empty legacy namespace table {legacy_table} "
+				f"({row_count} rows); migrate or review it explicitly"
+			)
+		frappe.db.sql_ddl(f"DROP TABLE {quoted_table}")
+		dropped.append(legacy_name)
+	return dropped
+
+
 def _rename_customization_record(record_type: str, old_name: str, new_name: str) -> None:
 	if old_name == new_name:
 		return

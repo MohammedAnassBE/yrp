@@ -10,6 +10,54 @@ from yrp import namespace_migration
 
 
 class TestNamespaceMigration(unittest.TestCase):
+	def test_empty_unregistered_legacy_table_is_dropped_but_erpnext_table_is_preserved(self):
+		records = [
+			("YRP Supplier", "YRP ", []),
+			("YRP Legacy Child", "YRP ", []),
+		]
+		db = SimpleNamespace()
+		db.exists = lambda record_type, name: name in {
+			"Supplier",
+			"YRP Supplier",
+			"YRP Legacy Child",
+		}
+		db.table_exists = lambda name, cached=False: name == "Legacy Child"
+		db.sql = unittest.mock.Mock(return_value=[[0]])
+		db.sql_ddl = unittest.mock.Mock()
+		with (
+			patch.object(namespace_migration, "_iter_namespaced_doctypes", return_value=records),
+			patch.object(namespace_migration.frappe, "db", db),
+		):
+			dropped = namespace_migration.drop_empty_legacy_namespace_tables(("yrp",))
+
+		self.assertEqual(dropped, ["Legacy Child"])
+		db.sql.assert_called_once_with("SELECT COUNT(*) FROM `tabLegacy Child`")
+		db.sql_ddl.assert_called_once_with("DROP TABLE `tabLegacy Child`")
+
+	def test_nonempty_legacy_namespace_table_fails_closed(self):
+		db = SimpleNamespace()
+		db.exists = lambda record_type, name: name == "YRP Legacy Child"
+		db.table_exists = lambda name, cached=False: True
+		db.sql = unittest.mock.Mock(return_value=[[3]])
+		db.sql_ddl = unittest.mock.Mock()
+		with (
+			patch.object(
+				namespace_migration,
+				"_iter_namespaced_doctypes",
+				return_value=[("YRP Legacy Child", "YRP ", [])],
+			),
+			patch.object(namespace_migration.frappe, "db", db),
+			patch.object(
+				namespace_migration.frappe,
+				"throw",
+				side_effect=RuntimeError("non-empty"),
+			),
+		):
+			with self.assertRaisesRegex(RuntimeError, "non-empty"):
+				namespace_migration.drop_empty_legacy_namespace_tables(("yrp",))
+
+		db.sql_ddl.assert_not_called()
+
 	def test_stored_doctype_discriminators_are_rewritten(self):
 		records = [
 			(
