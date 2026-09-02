@@ -9,6 +9,12 @@ frappe.ui.form.on("Stock Update", {
 		});
 	},
 
+	warehouse(frm) {
+		if (frm.itemEditor) {
+			frm.itemEditor.refresh_rates();
+		}
+	},
+
 	refresh(frm) {
 		// Clean up previous Vue app and event listener before re-mounting
 		if (frm.itemEditor) {

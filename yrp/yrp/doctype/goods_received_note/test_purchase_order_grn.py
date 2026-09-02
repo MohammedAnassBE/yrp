@@ -1,3 +1,6 @@
+from contextlib import nullcontext
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import nowdate, nowtime
@@ -11,6 +14,9 @@ from yrp.yrp.doctype.purchase_order.purchase_order import (
 	reopen_purchase_order,
 )
 from yrp.yrp.doctype.goods_received_note.goods_received_note import _validate_defaults_source
+from yrp.yrp.doctype.goods_received_note.goods_received_note import (
+	_pending_purchase_order_rows,
+)
 
 
 ITEM_VARIANT_CANDIDATES = (
@@ -21,7 +27,15 @@ ITEM_VARIANT_CANDIDATES = (
 
 def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
-		if frappe.db.exists("Item Variant", item_variant):
+		parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
+		item = (
+			frappe.db.get_value(
+				"Item", parent_item, ["is_stock_item", "dependent_attribute"], as_dict=True
+			)
+			if parent_item
+			else None
+		)
+		if item and item.is_stock_item and not item.dependent_attribute:
 			return item_variant
 	# Most tests in this module assert stock quantities in the Item's default
 	# UOM.  Prefer a non-dependent Item so a stage-level alternate UOM does not
@@ -33,6 +47,7 @@ def _test_item_variant():
 		INNER JOIN `tabItem` i ON i.name = iv.item
 		WHERE COALESCE(i.dependent_attribute, '') = ''
 			AND COALESCE(i.default_unit_of_measure, '') != ''
+			AND COALESCE(i.is_stock_item, 0) = 1
 		ORDER BY iv.creation
 		LIMIT 1
 		""",
@@ -63,19 +78,27 @@ def _supplier(supplier_name):
 
 
 def _warehouse(name):
-	if not frappe.db.exists("Warehouse", name):
-		frappe.get_doc({"doctype": "Warehouse", "name1": name}).insert(ignore_permissions=True)
-	return name
+	existing = frappe.db.get_value("Warehouse", {"name": name}, "name") or frappe.db.get_value(
+		"Warehouse", {"name1": name}, "name"
+	)
+	if existing:
+		return existing
+	return frappe.get_doc({"doctype": "Warehouse", "name1": name}).insert(
+		ignore_permissions=True
+	).name
 
 
 def _supplier_warehouse(supplier, name):
-	if not frappe.db.exists("Warehouse", name):
-		frappe.get_doc(
+	existing = frappe.db.get_value("Warehouse", {"name": name}, "name") or frappe.db.get_value(
+		"Warehouse", {"name1": name}, "name"
+	)
+	if not existing:
+		existing = frappe.get_doc(
 			{"doctype": "Warehouse", "name1": name, "supplier": supplier}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True).name
 	else:
-		frappe.db.set_value("Warehouse", name, "supplier", supplier)
-	return name
+		frappe.db.set_value("Warehouse", existing, "supplier", supplier)
+	return existing
 
 
 def _process(name):
@@ -162,6 +185,26 @@ def _production_group_dimensions():
 	return values
 
 
+def _item_variant_for_production_dimensions(item_variant, dimensions):
+	"""Keep host production dimensions and the test Item internally consistent."""
+	for dimension in get_stock_dimensions():
+		if not dimension.get("is_production_group"):
+			continue
+		fieldname = dimension["fieldname"]
+		doctype = dimension["dimension_doctype"]
+		if not frappe.get_meta(doctype).has_field("item"):
+			continue
+		dimension_item = frappe.db.get_value(
+			doctype, dimensions.get(fieldname), "item"
+		)
+		dimension_variant = frappe.db.get_value(
+			"Item Variant", {"item": dimension_item}, "name"
+		)
+		if dimension_item and dimension_variant:
+			return dimension_variant
+	return item_variant
+
+
 def _purchase_order(
 	qty,
 	warehouse,
@@ -190,8 +233,14 @@ def _purchase_order(
 		}],
 	})
 	po.flags.ignore_permissions = True
-	po.insert(ignore_permissions=True)
-	po.submit()
+	# These tests supply explicit rates and exercise GRN valuation, not the
+	# separate Item Price resolver. Keep site-level price masters out of scope.
+	with patch(
+		"yrp.yrp.doctype.purchase_order.purchase_order.validate_price_details",
+		return_value=[],
+	):
+		po.insert(ignore_permissions=True)
+		po.submit()
 	return po
 
 
@@ -251,12 +300,13 @@ def _stock_availability_row(item_variant, warehouse, filters=None):
 
 def _work_order(qty, warehouse):
 	item_variant = _test_item_variant()
+	dimensions = _production_group_dimensions()
+	item_variant = _item_variant_for_production_dimensions(item_variant, dimensions)
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
 	uom = _item_uom(item_variant)
 	delivery_location = _supplier(f"_Test WO Availability Delivery {frappe.generate_hash(length=6)}")
 	supplier = _supplier("_Test WO Availability Supplier")
 	process_name = _process("_Test WO Availability Process")
-	dimensions = _production_group_dimensions()
 	_supplier_warehouse(delivery_location, warehouse)
 	_process_cost(process_name, parent_item, supplier, dimensions)
 	wo = frappe.get_doc({
@@ -284,12 +334,52 @@ def _work_order(qty, warehouse):
 			"row_index": 0,
 		}],
 	})
-	wo.insert(ignore_permissions=True)
-	wo.submit()
+	host_validator = (
+		patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
+		if "essdee_yrp" in frappe.get_installed_apps()
+		else nullcontext()
+	)
+	with host_validator:
+		wo.insert(ignore_permissions=True)
+		wo.submit()
 	return wo
 
 
 class TestPurchaseOrderGRN(FrappeTestCase):
+	def test_po_row_stock_dimensions_are_carried_to_grn_defaults(self):
+		row = frappe._dict(
+			name="POI-1",
+			item_variant="ITEM-1",
+			qty=5,
+			pending_quantity=5,
+			uom="Nos",
+			stock_uom="Nos",
+			conversion_factor=1,
+			table_index=0,
+			row_index=0,
+			set_combination="{}",
+			rate=10,
+			discount_percentage=0,
+			lot="LOT-ROW",
+			received_type="Accepted",
+		)
+		with (
+			patch(
+				"yrp.stock.dimensions.get_dimension_fieldnames",
+				return_value=["lot", "received_type"],
+			),
+			patch(
+				"yrp.yrp.doctype.goods_received_note.goods_received_note._po_excess_percentage",
+				return_value=0,
+			),
+		):
+			rows = _pending_purchase_order_rows(
+				frappe._dict(items=[row]), existing_rows=None
+			)
+
+		self.assertEqual(rows[0]["lot"], "LOT-ROW")
+		self.assertEqual(rows[0]["received_type"], "Accepted")
+
 	def test_source_defaults_require_submitted_open_document(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "must be submitted"):
 			_validate_defaults_source(frappe._dict(

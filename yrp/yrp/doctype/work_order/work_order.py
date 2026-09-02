@@ -351,11 +351,73 @@ class WorkOrder(Document):
 
 		self.process_cost = process_cost_name
 		process_cost = frappe.get_doc("Process Cost", process_cost_name)
+		self.apply_receivable_process_costs(process_cost)
+
+	def apply_receivable_process_costs(self, process_cost):
+		"""Set the process rate stored on each receivable stock unit.
+
+		When the Process Cost attribute also exists on the calculated finished
+		items, its price is a finished-item rate. Spread that finished-item value
+		over the matching receivable quantity instead of repeating the complete
+		rate on every output row. Company apps can override this method when their
+		production model has a more specific output-allocation rule.
+		"""
+		if self._apply_calculated_item_process_costs(process_cost):
+			return
+		self._apply_direct_receivable_process_costs(process_cost)
+
+	def _apply_calculated_item_process_costs(self, process_cost):
+		attribute = process_cost.get("attribute") if process_cost.get("depends_on_attribute") else None
+		calculated_items = self.get("work_order_calculated_items") or []
+		if not attribute or not calculated_items:
+			return False
+
+		attribute_cache = {}
+
+		def attributes(item_variant):
+			if item_variant not in attribute_cache:
+				attribute_cache[item_variant] = get_variant_attributes(item_variant)
+			return attribute_cache[item_variant]
+
+		calculated_groups = {}
+		for row in calculated_items:
+			attribute_value = attributes(row.item_variant).get(attribute)
+			if not attribute_value:
+				return False
+			group = calculated_groups.setdefault(
+				attribute_value,
+				{"quantity": 0, "item_variant": row.item_variant},
+			)
+			group["quantity"] += flt(row.quantity)
+
+		receivable_groups = {}
+		for row in self.receivables:
+			attribute_value = attributes(row.item_variant).get(attribute)
+			if not attribute_value or attribute_value not in calculated_groups:
+				return False
+			receivable_groups.setdefault(attribute_value, []).append(row)
+
+		if set(receivable_groups) != set(calculated_groups):
+			return False
+
+		for attribute_value, rows in receivable_groups.items():
+			calculated_group = calculated_groups[attribute_value]
+			calculated_qty = flt(calculated_group["quantity"])
+			receivable_qty = sum(flt(row.qty) for row in rows)
+			if calculated_qty <= 0 or receivable_qty <= 0:
+				return False
+			finished_item_rate = get_process_cost_rate(
+				calculated_group["item_variant"], calculated_qty, process_cost
+			)
+			unit_rate = flt(finished_item_rate) * calculated_qty / receivable_qty
+			for row in rows:
+				set_receivable_process_cost(row, process_cost.name, unit_rate)
+		return True
+
+	def _apply_direct_receivable_process_costs(self, process_cost):
 		for row in self.receivables:
 			rate = get_process_cost_rate(row.item_variant, row.qty, process_cost)
-			row.process_cost = process_cost_name
-			row.cost = round(rate, 3)
-			row.total_cost = round(rate * flt(row.qty), 2)
+			set_receivable_process_cost(row, process_cost.name, rate)
 
 	def get_receivable_process_cost(self):
 		if not self.process_name or not self.item or not self.wo_date:
@@ -497,6 +559,14 @@ def get_process_cost_rate(item_variant, quantity, process_cost):
 			low_price = flt(cost_row.price)
 
 	return round(rate if found else low_price, 3)
+
+
+def set_receivable_process_cost(row, process_cost_name, rate):
+	"""Persist one per-stock-unit process rate without currency-level rounding."""
+	rate = round(flt(rate), 9)
+	row.process_cost = process_cost_name
+	row.cost = rate
+	row.total_cost = round(rate * flt(row.qty), 9)
 
 
 def get_variant_attributes(item_variant):

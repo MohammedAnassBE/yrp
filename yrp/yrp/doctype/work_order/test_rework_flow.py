@@ -1,8 +1,14 @@
+from contextlib import nullcontext
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
 from yrp.stock.utils import get_stock_balance
+from yrp.yrp.doctype.delivery_challan.test_internal_unit_transfer import (
+	_neutral_production_group_dimensions,
+)
 from yrp.yrp.doctype.goods_received_note.goods_received_note import get_work_order_defaults
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_address,
@@ -10,7 +16,6 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_item_uom,
 	_process,
 	_process_cost,
-	_production_group_dimensions,
 	_supplier,
 	_supplier_warehouse,
 	_test_item_variant,
@@ -39,6 +44,13 @@ def _set_rejected_received_type(name):
 	frappe.db.set_single_value("YRP Stock Settings", "default_rejected_received_type", name)
 
 
+def _without_host_lot_process_validation():
+	"""Keep this base-YRP rework fixture independent of installed host apps."""
+	if "essdee_yrp" not in frappe.get_installed_apps():
+		return nullcontext()
+	return patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
+
+
 def _make_parent_work_order(qty=10):
 	item_variant = _test_item_variant()
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
@@ -48,7 +60,9 @@ def _make_parent_work_order(qty=10):
 	supplier_wh = _supplier_warehouse(supplier, f"_T_Rework_Parent_Supplier_WH_{frappe.generate_hash(length=6)}")
 	delivery_wh = _supplier_warehouse(delivery_location, f"_T_Rework_Location_WH_{frappe.generate_hash(length=6)}")
 	process_name = _process("_Test Rework Parent Process")
-	dimensions = _production_group_dimensions()
+	# Do not borrow an arbitrary live production Lot. On an Essdee host that
+	# would correctly bind this synthetic base-YRP Work Order to another item.
+	dimensions = _neutral_production_group_dimensions(parent_item)
 	_process_cost(process_name, parent_item, supplier, dimensions)
 
 	wo = frappe.get_doc({
@@ -76,8 +90,9 @@ def _make_parent_work_order(qty=10):
 			"row_index": 0,
 		}],
 	})
-	wo.insert(ignore_permissions=True)
-	wo.submit()
+	with _without_host_lot_process_validation():
+		wo.insert(ignore_permissions=True)
+		wo.submit()
 	return wo, supplier_wh, delivery_wh, item_variant, uom
 
 
@@ -91,6 +106,8 @@ def _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, received_t
 		"posting_time": nowtime(),
 		"supplier": wo.supplier,
 		"delivery_location": wo.delivery_location,
+		"supplier_address": wo.supplier_address,
+		"delivery_address": wo.delivery_address,
 		"from_warehouse": supplier_wh,
 		"to_warehouse": delivery_wh,
 		"process_name": wo.process_name,
@@ -124,16 +141,16 @@ class TestReworkFlow(FrappeTestCase):
 
 		sources = get_rework_source_rows(wo.name)
 		source = next(row for row in sources if row["received_type"] == rework_rt)
-		rework_wo_name = create_rework_work_order(
-			wo.name,
-			[{"source_key": source["source_key"], "qty": 6}],
-		)
-		rework_wo = frappe.get_doc("Work Order", rework_wo_name)
+		with _without_host_lot_process_validation():
+			rework_wo_name = create_rework_work_order(
+				wo.name,
+				[{"source_key": source["source_key"], "qty": 6}],
+			)
+			rework_wo = frappe.get_doc("Work Order", rework_wo_name)
+			rework_wo.submit()
 		self.assertEqual(rework_wo.is_rework, 1)
 		self.assertEqual(rework_wo.parent_wo, wo.name)
 		self.assertEqual(rework_wo.deliverables[0].received_type, rework_rt)
-
-		rework_wo.submit()
 		sre = frappe.get_doc(
 			"Stock Reservation Entry",
 			frappe.db.get_value(
@@ -155,6 +172,8 @@ class TestReworkFlow(FrappeTestCase):
 			"work_order": rework_wo.name,
 			"from_location": rework_wo.delivery_location,
 			"supplier": rework_wo.supplier,
+			"from_address": rework_wo.delivery_address,
+			"supplier_address": rework_wo.supplier_address,
 			"from_warehouse": delivery_wh,
 			"to_warehouse": supplier_wh,
 			"process_name": rework_wo.process_name,
@@ -193,6 +212,8 @@ class TestReworkFlow(FrappeTestCase):
 			"posting_time": nowtime(),
 			"supplier": rework_wo.supplier,
 			"delivery_location": rework_wo.delivery_location,
+			"supplier_address": rework_wo.supplier_address,
+			"delivery_address": rework_wo.delivery_address,
 			"from_warehouse": supplier_wh,
 			"to_warehouse": delivery_wh,
 			"process_name": rework_wo.process_name,

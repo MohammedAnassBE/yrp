@@ -193,7 +193,9 @@ class GoodsReceivedNote(Document):
 			self.supplier = self.supplier or wo.supplier
 			self.delivery_location = self.delivery_location or wo.delivery_location
 			self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(wo.supplier)
-			self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.delivery_location)
+			self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(
+				self.delivery_location
+			)
 			_copy_production_group_dimensions_from_source(self, wo)
 		elif self.against == "Purchase Order":
 			po = frappe.get_cached_doc("Purchase Order", self.against_id)
@@ -1283,6 +1285,8 @@ def _find_matching_receivable(rows, source_row):
 
 
 def _find_matching_purchase_order_item(rows, source_row):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
 	if source_row.get("ref_doctype") == "Purchase Order Item" and source_row.get("ref_docname"):
 		for row in rows:
 			if row.name == source_row.get("ref_docname"):
@@ -1291,7 +1295,11 @@ def _find_matching_purchase_order_item(rows, source_row):
 		if row.item_variant != source_row.get("item_variant"):
 			continue
 		if _normal_json(row.get("set_combination")) == _normal_json(source_row.get("set_combination")):
-			return row
+			if all(
+				(row.get(fieldname) or None) == (source_row.get(fieldname) or None)
+				for fieldname in get_dimension_fieldnames()
+			):
+				return row
 	return None
 
 
@@ -1346,10 +1354,14 @@ def has_mapped_grn_deliverables(grn):
 	deliverable tables working on their legacy path until they adopt the contract.
 	"""
 	field = grn.meta.get_field("grn_deliverables")
-	if not field or not field.options or not (grn.get("grn_deliverables") or []):
+	rows = grn.get("grn_deliverables") or []
+	if not field or not field.options or not rows:
 		return False
 	child_meta = frappe.get_meta(field.options)
-	return bool(child_meta.get_field("goods_received_note_item"))
+	return bool(
+		child_meta.get_field("goods_received_note_item")
+		and all(row.get("goods_received_note_item") for row in rows)
+	)
 
 
 def prepare_grn_deliverable_valuation(grn):
@@ -2006,6 +2018,8 @@ def _aggregate_rework_receivable_rows(rows):
 
 
 def _pending_purchase_order_rows(po, existing_rows=None):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
 	existing_quantities = (
 		_existing_purchase_receipt_quantities(po, existing_rows)
 		if existing_rows is not None
@@ -2025,7 +2039,7 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			quantity = existing_quantities.get(row.name, pending if pending > 0 else 0)
 		if max_receivable <= 0 and flt(quantity) <= 0:
 			continue
-		rows.append({
+		out = {
 			"item_variant": row.item_variant,
 			"quantity": quantity,
 			"uom": row.uom,
@@ -2040,7 +2054,11 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			"row_index": row.row_index,
 			"set_combination": row.set_combination,
 			"rate": _purchase_order_item_net_rate(row),
-		})
+		}
+		for fieldname in get_dimension_fieldnames():
+			if row.get(fieldname):
+				out[fieldname] = row.get(fieldname)
+		rows.append(out)
 	return rows
 
 

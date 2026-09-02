@@ -42,6 +42,15 @@ def _submitted_grn(qty=10):
 	warehouse = _warehouse(f"_T_IE_WH_{frappe.generate_hash(length=6)}")
 	po = _purchase_order(qty=qty, warehouse=warehouse)
 	grn = _purchase_order_grn(po, qty=qty)
+	# The test helper constructs the GRN directly instead of using the Desk
+	# defaults endpoint. Mirror that endpoint's stock-dimension propagation so
+	# the source SLE and the Inspection Entry payload address the same bin.
+	for fieldname in get_dimension_fieldnames():
+		if fieldname == "received_type":
+			continue
+		value = po.items[0].get(fieldname) or po.get(fieldname)
+		if value is not None:
+			grn.items[0].set(fieldname, value)
 	grn.submit()
 	return grn
 
@@ -175,6 +184,12 @@ class TestInspectionEntry(FrappeTestCase):
 
 		grn = _submitted_grn(qty=10)
 		ie = _new_ie_from_grn(grn)
+		source_sles = frappe.get_all(
+			"Stock Ledger Entry",
+			filters={"voucher_type": "Goods Received Note", "voucher_no": grn.name},
+			fields=["item", "warehouse", "qty", "lot", "received_type", "is_cancelled"],
+		)
+		self.assertTrue(source_sles, "The fixture GRN must post source stock before conversion")
 		# Split one row into source + rejected.
 		default_row = ie.items[0]
 		default_row.qty = 7

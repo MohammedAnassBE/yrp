@@ -239,7 +239,7 @@ class StockEntry(Document):
 			transfer_key = f"Stock Entry:{self.name}:{row.name}"
 			base = {
 				"item": row.item,
-				"uom": row.uom,
+				"uom": row.stock_uom or row.uom,
 				"voucher_type": "Stock Entry",
 				"voucher_no": self.name,
 				"voucher_detail_no": row.name,

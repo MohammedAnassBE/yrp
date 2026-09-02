@@ -84,6 +84,15 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 			self.assertEqual(field.insert_after, "item_variant")
 			self.assertIn("Managed by YRP Stock Dimension", field.description or "")
 
+	def test_desk_editor_exposes_dimensions_on_purchase_order_rows(self):
+		from pathlib import Path
+
+		source = (
+			Path(frappe.get_app_path("yrp"))
+			/ "yrp/doctype/purchase_order/purchase_order.js"
+		).read_text(encoding="utf-8")
+		self.assertIn("showDimensions: true", source)
+
 	def test_item_delivery_and_migration_fields_are_native_to_yrp(self):
 		meta = frappe.get_meta("Purchase Order Item", cached=False)
 		expected = {
@@ -108,16 +117,17 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 			}
 		)
 
-		def cached_value(doctype, name, fieldname):
-			if doctype == "Item Variant":
-				return "ITEM-A"
-			if doctype == "Item":
-				return "Nos"
-			return None
-
 		with (
-			patch.object(frappe, "get_cached_value", side_effect=cached_value),
-			patch("yrp.stock.utils.get_conversion_factor", return_value={"stock_uom": "Nos", "conversion_factor": 1}),
+			patch.object(frappe, "get_cached_value", return_value="ITEM-A"),
+			patch.object(
+				frappe,
+				"get_cached_doc",
+				return_value=frappe._dict(
+					default_unit_of_measure="Nos",
+					dependent_attribute=None,
+					secondary_unit_of_measure=None,
+				),
+			),
 		):
 			doc.set_item_defaults()
 

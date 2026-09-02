@@ -2,6 +2,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
+from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_stock_balance
 from yrp.yrp.doctype.goods_received_note.goods_received_note import (
 	get_work_order_defaults,
@@ -12,7 +13,6 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_item_uom,
 	_process,
 	_process_cost,
-	_production_group_dimensions,
 	_supplier,
 	_supplier_warehouse,
 	_test_item_variant,
@@ -22,6 +22,7 @@ from yrp.yrp.doctype.work_order.test_rework_flow import (
 	_make_parent_work_order,
 	_received_type,
 	_set_rejected_received_type,
+	_without_host_lot_process_validation,
 )
 from yrp.yrp.doctype.work_order.work_order import (
 	create_rework_work_order,
@@ -45,7 +46,11 @@ def _make_rework_cycle(parent_process_rate):
 	# Override the auto-resolved process cost with a known rate so we can
 	# assert exact valuation downstream.
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
-	dimensions = _production_group_dimensions()
+	dimensions = {
+		dimension["fieldname"]: wo.get(dimension["fieldname"])
+		for dimension in get_stock_dimensions()
+		if dimension.get("is_production_group") and wo.get(dimension["fieldname"])
+	}
 	_process_cost(
 		wo.process_name,
 		parent_item,
@@ -57,24 +62,28 @@ def _make_rework_cycle(parent_process_rate):
 	# the freshly-inserted Process Cost rate.
 	wo.reload()
 	wo.set_receivable_process_costs()
-	wo.save()
+	with _without_host_lot_process_validation():
+		wo.save()
 
 	_make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, rework_rt, qty=10)
 
 	sources = get_rework_source_rows(wo.name)
 	source = next(row for row in sources if row["received_type"] == rework_rt)
-	rework_wo_name = create_rework_work_order(
-		wo.name,
-		[{"source_key": source["source_key"], "qty": 6}],
-	)
-	rework_wo = frappe.get_doc("Work Order", rework_wo_name)
-	rework_wo.submit()
+	with _without_host_lot_process_validation():
+		rework_wo_name = create_rework_work_order(
+			wo.name,
+			[{"source_key": source["source_key"], "qty": 6}],
+		)
+		rework_wo = frappe.get_doc("Work Order", rework_wo_name)
+		rework_wo.submit()
 
 	dc = frappe.get_doc({
 		"doctype": "Delivery Challan",
 		"work_order": rework_wo.name,
 		"from_location": rework_wo.delivery_location,
 		"supplier": rework_wo.supplier,
+		"from_address": rework_wo.delivery_address,
+		"supplier_address": rework_wo.supplier_address,
 		"from_warehouse": delivery_wh,
 		"to_warehouse": supplier_wh,
 		"process_name": rework_wo.process_name,
@@ -108,6 +117,8 @@ def _make_rework_cycle(parent_process_rate):
 		"posting_time": nowtime(),
 		"supplier": rework_wo.supplier,
 		"delivery_location": rework_wo.delivery_location,
+		"supplier_address": rework_wo.supplier_address,
+		"delivery_address": rework_wo.delivery_address,
 		"from_warehouse": supplier_wh,
 		"to_warehouse": delivery_wh,
 		"process_name": rework_wo.process_name,

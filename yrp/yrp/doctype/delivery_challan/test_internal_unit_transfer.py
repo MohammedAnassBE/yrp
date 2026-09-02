@@ -9,11 +9,15 @@ Covers the 12 assertions from the design plan:
   12:   missing transit warehouse blocks DC submit
 """
 
+from contextlib import nullcontext
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
 from yrp.stock.dimensions import get_stock_dimensions
+from yrp.yrp.doctype.delivery_challan.delivery_challan import DeliveryChallan
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
@@ -26,6 +30,50 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_test_item_variant,
 	_warehouse,
 )
+
+
+def _neutral_production_group_dimensions(item=None):
+	"""Use dimension values that cannot impersonate a live production order.
+
+	Host apps may make a production dimension mandatory (Essdee uses Lot).  The
+	base transit tests still have to populate it, but selecting an arbitrary live
+	Lot can bind the test Item to another product.  Prefer a dimension record
+	whose optional ``item`` link is empty, while retaining the generic fallback
+	for dimensions without such a field.
+	"""
+	values = _production_group_dimensions()
+	for dimension in get_stock_dimensions():
+		if not dimension.get("is_production_group"):
+			continue
+		doctype = dimension["dimension_doctype"]
+		meta = frappe.get_meta(doctype)
+		if not meta.has_field("item"):
+			continue
+		if item:
+			matches = frappe.get_all(
+				doctype,
+				filters={"item": item, "name": ["like", "_Test Internal Transit %"]},
+				pluck="name",
+				order_by="name asc",
+				limit=1,
+			)
+			neutral = matches[0] if matches else None
+			if not neutral:
+				naming_field = (meta.autoname or "").removeprefix("field:")
+				if not naming_field or not meta.has_field(naming_field):
+					continue
+				neutral = frappe.get_doc(
+					{
+						"doctype": doctype,
+						naming_field: f"_Test Internal Transit {frappe.generate_hash(length=8)}",
+						"item": item,
+					}
+				).insert(ignore_permissions=True).name
+		else:
+			neutral = frappe.db.get_value(doctype, {"item": ["is", "not set"]}, "name")
+		if neutral:
+			values[dimension["fieldname"]] = neutral
+	return values
 
 
 def _company_supplier(prefix):
@@ -48,8 +96,32 @@ def _row_dimensions(row):
 	}
 
 
+def _test_stock_item_variant():
+	variants = frappe.db.sql(
+		"""
+		SELECT iv.name
+		FROM `tabItem Variant` iv
+		INNER JOIN `tabItem` item ON item.name = iv.item
+		WHERE COALESCE(item.is_stock_item, 0) = 1
+		  AND COALESCE(item.default_unit_of_measure, '') != ''
+		ORDER BY iv.name
+		LIMIT 1
+		""",
+		pluck=True,
+	)
+	return variants[0] if variants else _test_item_variant()
+
+
 def _seed_stock(item_variant, warehouse, qty, dimensions=None, posting_date=None):
-	dimensions = dimensions or _production_group_dimensions()
+	# Transit-flow tests are deliberately dimension-neutral.  Borrowing the
+	# first live production dimension (for example an Essdee Lot) couples this
+	# base-YRP test to unrelated host-app validation and mutable site data.
+	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
+	dimensions = (
+		_neutral_production_group_dimensions(parent_item)
+		if dimensions is None
+		else dimensions
+	)
 	ste = frappe.get_doc({
 		"doctype": "Stock Entry",
 		"purpose": "Material Receipt",
@@ -72,13 +144,13 @@ def _seed_stock(item_variant, warehouse, qty, dimensions=None, posting_date=None
 
 
 def _make_wo(from_location, to_supplier, qty=10):
-	item_variant = _test_item_variant()
+	item_variant = _test_stock_item_variant()
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
 	uom = _item_uom(item_variant)
 	from_wh = _supplier_warehouse(from_location, f"_T_DC_From_WH_{frappe.generate_hash(length=6)}")
 	to_wh = _supplier_warehouse(to_supplier, f"_T_DC_To_WH_{frappe.generate_hash(length=6)}")
 	process_name = _process("_Test DC Internal Process")
-	dimensions = _production_group_dimensions()
+	dimensions = _neutral_production_group_dimensions(parent_item)
 	_process_cost(process_name, parent_item, to_supplier, dimensions)
 	wo = frappe.get_doc({
 		"doctype": "Work Order",
@@ -115,8 +187,17 @@ def _make_wo(from_location, to_supplier, qty=10):
 			"set_combination": {},
 		}],
 	})
-	wo.insert(ignore_permissions=True)
-	wo.submit()
+	# This is a base-YRP routing fixture, not a host-app production-order
+	# fixture.  When Essdee is installed its Lot/IPD selector is independently
+	# covered in Essdee tests and must not turn this test into a garment setup.
+	host_validator = (
+		patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
+		if "essdee_yrp" in frappe.get_installed_apps()
+		else nullcontext()
+	)
+	with host_validator:
+		wo.insert(ignore_permissions=True)
+		wo.submit()
 	return wo, from_wh, to_wh, item_variant, uom
 
 
@@ -128,6 +209,8 @@ def _make_dc(wo, from_wh, to_wh, item_variant, uom, qty=5):
 		"work_order": wo.name,
 		"from_location": wo.delivery_location,
 		"supplier": wo.supplier,
+		"from_address": wo.delivery_address,
+		"supplier_address": wo.supplier_address,
 		"from_warehouse": from_wh,
 		"to_warehouse": to_wh,
 		"process_name": wo.process_name,
@@ -171,6 +254,35 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		super().tearDownClass()
 
 	# ---------- Tests 1-3: is_internal_unit computation ----------
+
+	def test_selected_from_location_controls_source_warehouse(self):
+		work_order_location = _company_supplier("_T_DC_Default_From")
+		selected_location = _company_supplier("_T_DC_Selected_From")
+		to_supplier = _company_supplier("_T_DC_Selected_To")
+		wo, _from_wh, _to_wh, _iv, _uom = _make_wo(
+			work_order_location, to_supplier
+		)
+		# Exercise the base controller directly: Essdee intentionally overrides
+		# this fallback and requires the operator to choose both source fields.
+		dc = DeliveryChallan({"doctype": "Delivery Challan"})
+		dc.work_order = wo.name
+		dc.from_location = selected_location
+
+		def warehouse_for(supplier):
+			return {
+				selected_location: "SELECTED-WAREHOUSE",
+				to_supplier: "TARGET-WAREHOUSE",
+			}[supplier]
+
+		with patch(
+			"yrp.yrp.doctype.delivery_challan.delivery_challan._get_warehouse_for_supplier",
+			side_effect=warehouse_for,
+		):
+			dc.set_missing_values()
+
+		self.assertEqual(dc.from_location, selected_location)
+		self.assertEqual(dc.from_warehouse, "SELECTED-WAREHOUSE")
+		self.assertEqual(dc.to_warehouse, "TARGET-WAREHOUSE")
 
 	def test_01_internal_unit_false_when_one_supplier_not_company(self):
 		from_loc = _company_supplier("_T_DC_From")
@@ -327,15 +439,21 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		self.assertAlmostEqual(dc.ste_transferred, 5, places=3)
 		self.assertAlmostEqual(dc.ste_transferred_percent, 100, places=1)
 
-		# SLE: transit -5, to_wh +5
+		# The ledger is always in the Item's stock UOM, while completion progress
+		# remains in the transaction UOM.
 		sles = frappe.db.get_all(
 			"Stock Ledger Entry",
 			filters={"voucher_no": ste.name, "is_cancelled": 0},
 			fields=["warehouse", "qty"],
 		)
 		balances = {s.warehouse: flt(s.qty) for s in sles}
-		self.assertAlmostEqual(balances.get(self.transit_wh, 0), -5, places=3)
-		self.assertAlmostEqual(balances.get(to_wh, 0), 5, places=3)
+		expected_stock_qty = 5 * flt(ste.items[0].conversion_factor)
+		self.assertAlmostEqual(
+			balances.get(self.transit_wh, 0), -expected_stock_qty, places=3
+		)
+		self.assertAlmostEqual(
+			balances.get(to_wh, 0), expected_stock_qty, places=3
+		)
 
 	# ---------- Test 10: STE cancel rollback ----------
 

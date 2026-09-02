@@ -7,6 +7,7 @@ Reads `IPD Process Matrix` (main I/O groups) and `Item Production Detail.item_bo
 import frappe
 
 from yrp.yrp.doctype.item.item import get_or_create_variant
+from yrp.yrp.doctype.item_bom.item_bom import validate_bom_item_variant_mapping
 
 
 def get_process_io(ipd_name, process_name, output_demand):
@@ -334,6 +335,7 @@ def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
 	for bom_row in ipd.item_bom:
 		if process_name and bom_row.process_name and bom_row.process_name != process_name:
 			continue
+		validate_bom_item_variant_mapping(bom_row)
 
 		wastage_factor = 1 + (bom_row.wastage_pct or 0) / 100.0
 		if bom_row.based_on_attribute_mapping and bom_row.attribute_mapping:
@@ -585,6 +587,7 @@ def get_consumables(ipd_name, total_output_qty, variants=None, process_name=None
 	for row in ipd.item_bom:
 		if process_name and row.process_name and row.process_name != process_name:
 			continue
+		validate_bom_item_variant_mapping(row)
 
 		wastage_factor = 1 + (row.wastage_pct or 0) / 100.0
 

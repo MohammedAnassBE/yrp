@@ -41,6 +41,7 @@ class DeliveryChallan(Document):
 		self.calculate_totals()
 
 	def before_submit(self):
+		_lock_work_order_deliverables(self.work_order)
 		self.validate_work_order()
 		self.validate_against_work_order_pending()
 		self.validate_stock_available()
@@ -52,6 +53,7 @@ class DeliveryChallan(Document):
 		self.make_repost_action()
 
 	def before_cancel(self):
+		_lock_work_order_deliverables(self.work_order)
 		self.ignore_linked_doctypes = (
 			"Stock Ledger Entry",
 			"Repost Item Valuation",
@@ -100,7 +102,9 @@ class DeliveryChallan(Document):
 		self.supplier = self.supplier or wo.supplier
 		self.from_location = self.from_location or wo.delivery_location
 		self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.supplier)
-		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(wo.delivery_location)
+		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(
+			self.from_location
+		)
 		_copy_production_group_dimensions_from_source(self, wo)
 
 	def sync_vue_item_details(self):
@@ -391,6 +395,83 @@ class DeliveryChallan(Document):
 		self.is_internal_unit = 1 if (flags.get(self.from_location) and flags.get(self.supplier)) else 0
 
 
+def _lock_work_order_deliverables(work_order):
+	"""Serialize DC pending-counter changes for one Work Order.
+
+	Stock validation already prevents a later transaction from consuming the
+	same physical balance, but the Work Order child counters are updated in the
+	same submit/cancel transaction and must not be calculated from two concurrent
+	stale snapshots.
+	"""
+	if not work_order:
+		return
+	frappe.db.sql(
+		"""
+			SELECT name
+			FROM `tabWork Order Deliverables`
+			WHERE parent = %s
+			ORDER BY name
+			FOR UPDATE
+		""",
+		work_order,
+	)
+
+
+def rebuild_work_order_deliverable_pending(work_order):
+	"""Rebuild pending quantities from committed DC and return-GRN evidence."""
+	_lock_work_order_deliverables(work_order)
+	work_order_doc = frappe.get_doc("Work Order", work_order)
+	delivered = {
+		row.ref_docname: flt(row.quantity)
+		for row in frappe.db.sql(
+			"""
+				SELECT item.ref_docname,
+				       SUM(COALESCE(NULLIF(item.delivered_quantity, 0), item.qty)) AS quantity
+				FROM `tabDelivery Challan Item` item
+				INNER JOIN `tabDelivery Challan` dc ON dc.name = item.parent
+				WHERE dc.work_order = %(work_order)s
+				  AND dc.docstatus = 1
+				  AND item.ref_doctype = 'Work Order Deliverables'
+				  AND COALESCE(item.ref_docname, '') != ''
+				GROUP BY item.ref_docname
+			""",
+			{"work_order": work_order},
+			as_dict=True,
+		)
+	}
+	returned = {
+		row.ref_docname: flt(row.quantity)
+		for row in frappe.db.sql(
+			"""
+				SELECT item.ref_docname, SUM(item.quantity) AS quantity
+				FROM `tabGoods Received Note Item` item
+				INNER JOIN `tabGoods Received Note` grn ON grn.name = item.parent
+				WHERE grn.against = 'Work Order'
+				  AND grn.against_id = %(work_order)s
+				  AND grn.docstatus = 1
+				  AND COALESCE(grn.is_return, 0) = 1
+				  AND item.ref_doctype = 'Work Order Deliverables'
+				  AND COALESCE(item.ref_docname, '') != ''
+				GROUP BY item.ref_docname
+			""",
+			{"work_order": work_order},
+			as_dict=True,
+		)
+	}
+	for row in work_order_doc.get("deliverables") or []:
+		pending = flt(row.qty) - flt(delivered.get(row.name)) + flt(returned.get(row.name))
+		row.db_set("pending_quantity", flt(pending, 3), update_modified=False)
+	_update_work_order_status(work_order)
+	return {
+		"work_order": work_order,
+		"deliverable_count": len(work_order_doc.get("deliverables") or []),
+		"pending_quantity": sum(
+			flt(row.qty) - flt(delivered.get(row.name)) + flt(returned.get(row.name))
+			for row in work_order_doc.get("deliverables") or []
+		),
+	}
+
+
 def _get_warehouse_for_supplier(supplier):
 	if not supplier or not frappe.db.exists("DocType", "Warehouse"):
 		return None
@@ -577,6 +658,7 @@ def _pending_deliverable_rows(wo):
 			"table_index": row.table_index,
 			"row_index": row.row_index,
 			"set_combination": row.set_combination,
+			"secondary_uom": row.get("secondary_uom"),
 		}
 		for fn in dim_fields:
 			if row.meta.get_field(fn) and row.get(fn):
@@ -613,6 +695,7 @@ def _pending_correction_deliverable_rows(wo):
 				"table_index": row.table_index,
 				"row_index": row.row_index,
 				"set_combination": row.set_combination,
+				"secondary_uom": row.get("secondary_uom"),
 			}
 			for fn in dim_fields:
 				if row.meta.get_field(fn) and row.get(fn):

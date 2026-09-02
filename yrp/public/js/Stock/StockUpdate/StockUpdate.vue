@@ -24,12 +24,8 @@ import { ref } from 'vue';
 const docstatus = ref(cur_frm.doc.docstatus);
 const items = ref([]);
 const otherInputs = ref([]);
-// Rate is intentionally NOT shown or entered here. It is auto-valued on the
-// server from the last Stock Ledger Entry (before_validate ->
-// set_rate_from_last_sle -> get_last_sle_rate). Showing it as a column only
-// displayed "Rate: 0" until save and read as a field the user had to fill in.
-// The child `rate` field is also read_only as a safeguard.
 const table_fields = ref([
+    { name: 'rate', label: 'Valuation Rate', uses_primary_attribute: 1 },
     { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
     { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
 ]);
@@ -40,12 +36,26 @@ const args = ref({
 });
 
 async function validate_row(row) {
-    // For "Reduce" updates, check available stock against entered qty per dimension combo
-    if (cur_frm.doc.update_type !== 'Reduce') return true;
     if (!cur_frm.doc.warehouse) {
         frappe.show_alert({ message: __('Set Warehouse on the form first'), indicator: 'red' });
         return false;
     }
+
+    await refresh_row_rate(row);
+    if (cur_frm.doc.update_type !== 'Reduce') {
+        const hasZeroRate = Object.values(row.values || {}).some(
+            (value) => Number(value?.qty || 0) > 0 && Number(value?.rate || 0) <= 0,
+        );
+        if (hasZeroRate) {
+            frappe.show_alert({
+                message: __('Valuation Rate is zero. This item can be saved, but an Add Stock Update cannot be submitted.'),
+                indicator: 'orange',
+            });
+        }
+        return true;
+    }
+
+    // For "Reduce" updates, check available stock against entered qty per dimension combo
     let qty = 0;
     Object.keys(row.values || {}).forEach((k) => { qty += (row.values[k].qty || 0); });
     if (qty <= 0) return true;
@@ -69,6 +79,33 @@ async function validate_row(row) {
             }
         });
     });
+}
+
+async function refresh_row_rate(row) {
+    if (!row || !cur_frm.doc.warehouse) return;
+    const response = await frappe.call({
+        method: 'yrp.yrp_stock.doctype.stock_update.stock_update.get_stock_update_rates',
+        args: {
+            item: row.name,
+            attributes: row.attributes || {},
+            primary_attribute: row.primary_attribute || '',
+            value_keys: Object.keys(row.values || {}),
+            warehouse: cur_frm.doc.warehouse,
+            dimensions: row.dimensions || {},
+        },
+    });
+    const rates = response.message || {};
+    Object.entries(row.values || {}).forEach(([key, value]) => {
+        value.rate = Number(rates[key] || 0);
+    });
+}
+
+async function refresh_rates() {
+    for (const group of items.value || []) {
+        for (const row of group.items || []) {
+            await refresh_row_rate(row);
+        }
+    }
 }
 
 function update_status() {
@@ -97,5 +134,5 @@ function get_items() { return items.value; }
 
 function updated() { EventBus.$emit('stock_updated', true); }
 
-defineExpose({ items, load_data, update_status, get_items });
+defineExpose({ items, load_data, update_status, get_items, refresh_rates });
 </script>

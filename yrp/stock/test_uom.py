@@ -192,6 +192,31 @@ class TestMasterDerivedUOM(FrappeTestCase):
 		self.assertEqual(row.conversion_factor, 10)
 		self.assertEqual(row.stock_qty, 30)
 
+	def test_stock_entry_ledger_uses_stock_uom_for_stock_quantity(self):
+		entry = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"name": "TEST-UOM-STOCK-ENTRY",
+				"purpose": "Material Issue",
+				"from_warehouse": "TEST-WAREHOUSE",
+				"posting_date": frappe.utils.nowdate(),
+				"posting_time": frappe.utils.nowtime(),
+				"items": [
+					{
+						"item": self.dependent_variant.name,
+						"qty": 1,
+						"rate": 5,
+					}
+				],
+			}
+		)
+		entry.validate_items()
+
+		ledger = entry.get_sl_entries()[0]
+
+		self.assertEqual(ledger["qty"], -10)
+		self.assertEqual(ledger["uom"], self.stock_uom)
+
 	def test_missing_master_conversion_is_the_only_uom_error(self):
 		item = frappe.get_doc("Item", self.dependent_item.name)
 		item.set(

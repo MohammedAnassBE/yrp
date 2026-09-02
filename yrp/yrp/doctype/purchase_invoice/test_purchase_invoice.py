@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest.mock import patch
 
 import frappe
@@ -5,10 +6,12 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
 from yrp.stock.test_uom import _dependent_item_variant, _ensure_uom
+from yrp.yrp.doctype.purchase_invoice.purchase_invoice import PurchaseInvoice
 from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
 	_item_uom,
+	_item_variant_for_production_dimensions,
 	_process,
 	_process_cost,
 	_production_group_dimensions,
@@ -23,7 +26,9 @@ from yrp.yrp.doctype.goods_received_note.test_purchase_order_grn import (
 
 def _work_order_for_invoice(qty=5):
 	dimensions = _production_group_dimensions()
-	item_variant = _test_item_variant()
+	item_variant = _item_variant_for_production_dimensions(
+		_test_item_variant(), dimensions
+	)
 	parent_item = frappe.db.get_value("Item Variant", item_variant, "item")
 	uom = frappe.db.get_value("Item", parent_item, "default_unit_of_measure") or "Piece"
 	supplier = _supplier(f"_Test PI WO Supplier {frappe.generate_hash(length=6)}")
@@ -65,8 +70,14 @@ def _work_order_for_invoice(qty=5):
 			"set_combination": {},
 		}],
 	})
-	wo.insert(ignore_permissions=True)
-	wo.submit()
+	host_validator = (
+		patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
+		if "essdee_yrp" in frappe.get_installed_apps()
+		else nullcontext()
+	)
+	with host_validator:
+		wo.insert(ignore_permissions=True)
+		wo.submit()
 	return wo
 
 
@@ -121,6 +132,15 @@ def _purchase_invoice(against, supplier, grn, approved=False):
 
 
 class TestPurchaseInvoice(FrappeTestCase):
+	def setUp(self):
+		super().setUp()
+		setting = patch(
+			"yrp.yrp_stock.doctype.stock_valuation_adjustment.stock_valuation_adjustment.is_stock_adjustment_enabled",
+			return_value=True,
+		)
+		setting.start()
+		self.addCleanup(setting.stop)
+
 	def test_eligible_grns_exclude_other_invoices_but_keep_current_selection(self):
 		po = _purchase_order(qty=2, warehouse=_warehouse(f"_Test_PI_Eligible_WH_{frappe.generate_hash(length=6)}"))
 		grn = _purchase_order_grn(po, qty=2)
@@ -481,14 +501,24 @@ class TestPurchaseInvoice(FrappeTestCase):
 			wo = _work_order_for_invoice(qty=3)
 			grn = _work_order_grn(wo, qty=3)
 			invoice = _purchase_invoice("Work Order", wo.supplier, grn, approved=True)
-			invoice.submit()
+			# This is the base controller's billed-quantity contract. A host app may
+			# require its own commercial projection before Work Order invoices.
+			with (
+				patch.object(
+					type(invoice), "before_submit", PurchaseInvoice.before_submit
+				),
+				patch.object(
+					type(invoice), "before_cancel", PurchaseInvoice.before_cancel
+				),
+			):
+				invoice.submit()
 
-			wo.reload()
-			self.assertAlmostEqual(wo.work_order_calculated_items[0].billed_qty, 3)
+				wo.reload()
+				self.assertAlmostEqual(wo.work_order_calculated_items[0].billed_qty, 3)
 
-			invoice.cancel()
-			wo.reload()
-			self.assertAlmostEqual(wo.work_order_calculated_items[0].billed_qty, 0)
+				invoice.cancel()
+				wo.reload()
+				self.assertAlmostEqual(wo.work_order_calculated_items[0].billed_qty, 0)
 
 	def test_purchase_order_invoice_uses_form_uom_rate_after_freight(self):
 		original_get_single_value = frappe.db.get_single_value

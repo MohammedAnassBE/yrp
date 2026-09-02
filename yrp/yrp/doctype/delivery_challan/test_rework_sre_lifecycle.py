@@ -17,6 +17,7 @@ from yrp.yrp.doctype.work_order.test_rework_flow import (
 	_make_parent_work_order,
 	_received_type,
 	_set_rejected_received_type,
+	_without_host_lot_process_validation,
 )
 from yrp.yrp.doctype.work_order.work_order import (
 	_stock_dimension_values,
@@ -51,12 +52,13 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 
 		sources = get_rework_source_rows(wo.name)
 		source = next(row for row in sources if row["received_type"] == rework_rt)
-		rework_wo_name = create_rework_work_order(
-			wo.name,
-			[{"source_key": source["source_key"], "qty": 6}],
-		)
-		rework_wo = frappe.get_doc("Work Order", rework_wo_name)
-		rework_wo.submit()
+		with _without_host_lot_process_validation():
+			rework_wo_name = create_rework_work_order(
+				wo.name,
+				[{"source_key": source["source_key"], "qty": 6}],
+			)
+			rework_wo = frappe.get_doc("Work Order", rework_wo_name)
+			rework_wo.submit()
 
 		# Step 1 — after rework WO submit, SRE is fully reserved, nothing delivered.
 		sre = _get_rework_sre(rework_wo)
@@ -70,6 +72,8 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 			"work_order": rework_wo.name,
 			"from_location": rework_wo.delivery_location,
 			"supplier": rework_wo.supplier,
+			"from_address": rework_wo.delivery_address,
+			"supplier_address": rework_wo.supplier_address,
 			"from_warehouse": delivery_wh,
 			"to_warehouse": supplier_wh,
 			"process_name": rework_wo.process_name,
@@ -162,6 +166,8 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 			"work_order": wo.name,
 			"from_location": wo.delivery_location,
 			"supplier": wo.supplier,
+			"from_address": wo.delivery_address,
+			"supplier_address": wo.supplier_address,
 			"from_warehouse": delivery_wh,
 			"to_warehouse": supplier_wh,
 			"process_name": wo.process_name,
