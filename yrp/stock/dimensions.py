@@ -74,8 +74,12 @@ def get_stock_dimensions():
 	if dims is None:
 		dims = frappe.get_all(
 			'YRP YRP Stock Dimension',
+			filters={
+				"parent": 'YRP YRP Stock Settings',
+				"parenttype": 'YRP YRP Stock Settings',
+				"parentfield": "stock_dimensions",
+			},
 			fields=["dimension_doctype", "fieldname", "label", "mandatory", "in_valuation", "is_production_group"],
-			parent_doctype='YRP YRP Stock Settings',
 			order_by="idx asc",
 		)
 		frappe.cache().set_value(CACHE_KEY, dims)
@@ -264,15 +268,20 @@ def _ensure_bin_unique_constraint(dimensions):
 	existing = frappe.db.sql(
 		"SHOW INDEX FROM `tabYRP Bin` WHERE Key_name = %s", index_name, as_dict=True
 	)
+	col_list = ", ".join(f"`{c}`" for c in columns)
 	if existing:
 		existing_cols = sorted(r["Column_name"] for r in existing)
 		if existing_cols != sorted(columns):
-			frappe.db.sql(f"ALTER TABLE `tabYRP Bin` DROP INDEX `{index_name}`")
+			frappe.db.sql_ddl(
+				f"ALTER TABLE `tabYRP Bin` DROP INDEX `{index_name}`, "
+				f"ADD UNIQUE INDEX `{index_name}` ({col_list})"
+			)
 		else:
 			return  # already correct
-
-	col_list = ", ".join(f"`{c}`" for c in columns)
-	frappe.db.sql(f"ALTER TABLE `tabYRP Bin` ADD UNIQUE INDEX `{index_name}` ({col_list})")
+	else:
+		frappe.db.sql_ddl(
+			f"ALTER TABLE `tabYRP Bin` ADD UNIQUE INDEX `{index_name}` ({col_list})"
+		)
 
 
 def _get_insert_after(dim, doctype=None):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import frappe
@@ -135,6 +136,120 @@ def drop_empty_legacy_namespace_tables(app_names: tuple[str, ...]) -> list[str]:
 		frappe.db.sql_ddl(f"DROP TABLE {quoted_table}")
 		dropped.append(legacy_name)
 	return dropped
+
+
+def reconcile_legacy_single_child_parents(app_names: tuple[str, ...]) -> dict[str, int]:
+	"""Move or deduplicate child rows left under a renamed Single identity.
+
+	Frappe renames the child ``parenttype`` when a Single DocType is renamed, but
+	the child's ``parent`` can retain the old Single name. If model sync or setup
+	later seeds the target identity too, an unscoped child query sees both copies.
+	Exact duplicates are removed; every old-only row is moved to the target Single
+	and appended after its existing rows so configuration data is never discarded.
+	"""
+
+	result = {"moved": 0, "deduplicated": 0}
+	for target_name, prefix, fields in _iter_namespaced_doctypes(app_names):
+		if not frappe.db.exists("DocType", target_name):
+			continue
+		if not frappe.db.get_value("DocType", target_name, "issingle"):
+			continue
+		legacy_name = target_name.removeprefix(prefix)
+		for field in fields:
+			if field.get("fieldtype") not in {"Table", "Table MultiSelect"}:
+				continue
+			fieldname = str(field.get("fieldname") or "")
+			child_doctype = str(field.get("options") or "")
+			if not fieldname or not child_doctype:
+				continue
+			if not frappe.db.table_exists(child_doctype, cached=False):
+				continue
+
+			base_filters = {
+				"parentfield": fieldname,
+				"parenttype": ["in", [legacy_name, target_name]],
+			}
+			legacy_rows = frappe.get_all(
+				child_doctype,
+				filters={**base_filters, "parent": legacy_name},
+				fields=["*"],
+				order_by="idx asc, name asc",
+				limit=0,
+			)
+			if not legacy_rows:
+				continue
+			target_rows = frappe.get_all(
+				child_doctype,
+				filters={
+					"parent": target_name,
+					"parenttype": target_name,
+					"parentfield": fieldname,
+				},
+				fields=["*"],
+				order_by="idx asc, name asc",
+				limit=0,
+			)
+			columns = set(frappe.db.get_table_columns(child_doctype))
+			comparison_fields = sorted(columns - _CHILD_IDENTITY_COLUMNS)
+			target_signatures = Counter(
+				_child_business_signature(row, comparison_fields) for row in target_rows
+			)
+			duplicate_names: list[str] = []
+			rows_to_move = []
+			for row in legacy_rows:
+				signature = _child_business_signature(row, comparison_fields)
+				if target_signatures[signature]:
+					target_signatures[signature] -= 1
+					duplicate_names.append(str(row.name))
+				else:
+					rows_to_move.append(row)
+
+			if duplicate_names:
+				frappe.db.delete(child_doctype, {"name": ["in", duplicate_names]})
+				result["deduplicated"] += len(duplicate_names)
+			next_idx = max((int(row.idx or 0) for row in target_rows), default=0)
+			for row in rows_to_move:
+				next_idx += 1
+				frappe.db.set_value(
+					child_doctype,
+					row.name,
+					{
+						"parent": target_name,
+						"parenttype": target_name,
+						"parentfield": fieldname,
+						"idx": next_idx,
+					},
+					update_modified=False,
+				)
+				result["moved"] += 1
+	return result
+
+
+_CHILD_IDENTITY_COLUMNS = {
+	"name",
+	"owner",
+	"creation",
+	"modified",
+	"modified_by",
+	"docstatus",
+	"idx",
+	"parent",
+	"parentfield",
+	"parenttype",
+	"_user_tags",
+	"_comments",
+	"_assign",
+	"_liked_by",
+}
+
+
+def _child_business_signature(row, fields: list[str]) -> str:
+	return json.dumps(
+		{field: row.get(field) for field in fields},
+		sort_keys=True,
+		separators=(",", ":"),
+		default=str,
+	)
 
 
 def _rename_customization_record(record_type: str, old_name: str, new_name: str) -> None:

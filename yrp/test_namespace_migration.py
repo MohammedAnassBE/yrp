@@ -10,6 +10,75 @@ from yrp import namespace_migration
 
 
 class TestNamespaceMigration(unittest.TestCase):
+	def test_legacy_single_children_are_deduplicated_or_moved_without_loss(self):
+		records = [
+			(
+				"YRP YRP Stock Settings",
+				"YRP ",
+				[
+					{
+						"fieldname": "stock_dimensions",
+						"fieldtype": "Table",
+						"options": "YRP YRP Stock Dimension",
+					}
+				],
+			)
+		]
+		legacy_rows = [
+			namespace_migration.frappe._dict(
+				name="old-lot", idx=1, fieldname="lot", label="Lot"
+			),
+			namespace_migration.frappe._dict(
+				name="old-received", idx=2, fieldname="received_type", label="Received Type"
+			),
+		]
+		target_rows = [
+			namespace_migration.frappe._dict(
+				name="new-lot", idx=1, fieldname="lot", label="Lot"
+			)
+		]
+		db = SimpleNamespace()
+		db.exists = lambda record_type, name: name == "YRP YRP Stock Settings"
+		db.get_value = lambda *args, **kwargs: 1
+		db.table_exists = lambda *args, **kwargs: True
+		db.get_table_columns = lambda *args, **kwargs: [
+			"name",
+			"idx",
+			"parent",
+			"parenttype",
+			"parentfield",
+			"fieldname",
+			"label",
+		]
+		db.delete = unittest.mock.Mock()
+		db.set_value = unittest.mock.Mock()
+		with (
+			patch.object(namespace_migration, "_iter_namespaced_doctypes", return_value=records),
+			patch.object(namespace_migration.frappe, "db", db),
+			patch.object(
+				namespace_migration.frappe,
+				"get_all",
+				side_effect=[legacy_rows, target_rows],
+			),
+		):
+			result = namespace_migration.reconcile_legacy_single_child_parents(("yrp",))
+
+		self.assertEqual(result, {"moved": 1, "deduplicated": 1})
+		db.delete.assert_called_once_with(
+			"YRP YRP Stock Dimension", {"name": ["in", ["old-lot"]]}
+		)
+		db.set_value.assert_called_once_with(
+			"YRP YRP Stock Dimension",
+			"old-received",
+			{
+				"parent": "YRP YRP Stock Settings",
+				"parenttype": "YRP YRP Stock Settings",
+				"parentfield": "stock_dimensions",
+				"idx": 2,
+			},
+			update_modified=False,
+		)
+
 	def test_empty_unregistered_legacy_table_is_dropped_but_erpnext_table_is_preserved(self):
 		records = [
 			("YRP Supplier", "YRP ", []),

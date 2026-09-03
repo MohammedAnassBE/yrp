@@ -21,3 +21,4 @@ yrp.patches.create_bill_tracking_received_via
 yrp.patches.migrate_supplier_terms_and_condition
 yrp.patches.create_ui_terminology_for_layouts
 yrp.patches.cleanup_empty_legacy_namespace_tables
+yrp.patches.reconcile_legacy_single_child_parents
