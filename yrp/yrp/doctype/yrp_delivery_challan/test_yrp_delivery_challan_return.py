@@ -3,6 +3,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt
 
 from yrp.stock.dimensions import get_stock_dimensions
+from yrp.stock.uom import resolve_item_uom
 from yrp.stock.utils import get_stock_balance
 from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import (
 	create_return_grn,
@@ -34,6 +35,8 @@ def _make_return_cycle(*, delivered=10, consumed=6, with_reservation=False):
 	reservation = None
 	if with_reservation:
 		dimensions = _row_dimensions(deliverable)
+		uom_details = resolve_item_uom(item_variant)
+		reserved_stock_qty = delivered * flt(uom_details.conversion_factor or 1)
 		reservation = frappe.get_doc(
 			{
 				"doctype": 'YRP Stock Reservation Entry',
@@ -42,10 +45,12 @@ def _make_return_cycle(*, delivered=10, consumed=6, with_reservation=False):
 				"voucher_type": 'YRP Work Order',
 				"voucher_no": work_order.name,
 				"voucher_detail_no": deliverable.name,
-				"stock_uom": uom,
-				"available_qty": delivered + 10,
-				"voucher_qty": delivered,
-				"reserved_qty": delivered,
+				"stock_uom": uom_details.stock_uom,
+				"available_qty": (delivered + 10) * flt(
+					uom_details.conversion_factor or 1
+				),
+				"voucher_qty": reserved_stock_qty,
+				"reserved_qty": reserved_stock_qty,
 				"delivered_qty": 0,
 				**dimensions,
 			}
@@ -231,8 +236,9 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			*_warehouses_and_item,
 			reservation,
 		) = _make_return_cycle(delivered=10, consumed=6, with_reservation=True)
+		conversion_factor = flt(delivery_challan.items[0].conversion_factor) or 1
 		reservation.reload()
-		self.assertAlmostEqual(reservation.delivered_qty, 10)
+		self.assertAlmostEqual(reservation.delivered_qty, 10 * conversion_factor)
 
 		grn_name = create_return_grn(
 			delivery_challan.name,
@@ -248,12 +254,12 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 		return_grn.submit()
 		reservation.reload()
 		work_order.reload()
-		self.assertAlmostEqual(reservation.delivered_qty, 6)
+		self.assertAlmostEqual(reservation.delivered_qty, 6 * conversion_factor)
 		self.assertAlmostEqual(work_order.deliverables[0].stock_update, 6)
 
 		return_grn.cancel()
 		reservation.reload()
-		self.assertAlmostEqual(reservation.delivered_qty, 10)
+		self.assertAlmostEqual(reservation.delivered_qty, 10 * conversion_factor)
 
 	def test_return_keeps_every_dimension_except_selected_received_type(self):
 		_, delivery_challan, *_rest = _make_return_cycle(delivered=10, consumed=6)

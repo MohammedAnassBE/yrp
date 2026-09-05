@@ -239,6 +239,7 @@ class YRPWorkOrder(Document):
 		if not self.get("is_rework"):
 			return
 
+		from yrp.stock.uom import resolve_item_uom
 		from yrp.stock.utils import get_available_stock
 		from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import _get_warehouse_for_supplier
 
@@ -247,9 +248,11 @@ class YRPWorkOrder(Document):
 			frappe.throw(_("No active Warehouse found for delivery location {0}.").format(self.delivery_location))
 
 		for row in self.get("deliverables") or []:
-			qty = flt(row.qty)
-			if qty <= 0:
+			voucher_qty = flt(row.qty)
+			if voucher_qty <= 0:
 				continue
+			uom_details = resolve_item_uom(row.item_variant)
+			stock_qty = voucher_qty * flt(uom_details.conversion_factor or 1)
 			existing = frappe.db.exists(
 				'YRP Stock Reservation Entry',
 				{
@@ -277,10 +280,14 @@ class YRPWorkOrder(Document):
 				"voucher_type": 'YRP Work Order',
 				"voucher_no": self.name,
 				"voucher_detail_no": row.name,
-				"stock_uom": row.uom,
+				"stock_uom": uom_details.stock_uom,
 				"available_qty": available,
-				"voucher_qty": qty,
-				"reserved_qty": qty,
+				# SLE/Bin balances are always stock-UOM quantities. Production API
+				# converted the voucher quantity before creating its reservation;
+				# retaining the voucher-UOM quantity here under-reserves any Item
+				# whose conversion factor is not one.
+				"voucher_qty": stock_qty,
+				"reserved_qty": stock_qty,
 				"delivered_qty": 0,
 				**dim_values,
 			})

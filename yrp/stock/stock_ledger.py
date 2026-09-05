@@ -367,6 +367,32 @@ def _should_queue_repost(args):
 	return future_sle_count(args) > int(threshold)
 
 
+def _valuation_bucket_has_active_reservation(args):
+	"""Return whether any active SRE shares this valuation bucket.
+
+	Reservation validation must finish in the voucher transaction. A queued
+	repost can report a violation only after the stock voucher has committed,
+	which is too late to protect reserved stock. Tracking-only dimensions are
+	deliberately omitted so a reservation on a sibling tracking bucket also
+	forces the whole valuation replay to stay inline.
+	"""
+	from yrp.stock.utils import get_sre_reserved_qty
+
+	dimension_values = {
+		fieldname: args.get(fieldname) for fieldname in get_valuation_dimensions()
+	}
+	return bool(
+		flt(
+			get_sre_reserved_qty(
+				item_code=args.get("item"),
+				warehouse=args.get("warehouse"),
+				for_update=True,
+				**dimension_values,
+			)
+		)
+	)
+
+
 def _is_retryable_repost(row):
 	if row.status != "Failed":
 		return True
@@ -677,7 +703,10 @@ def make_sl_entries(
 		# Compute reserved-stock fresh from active SREs.
 		from yrp.stock.utils import get_sre_reserved_qty
 		args["reserved_stock"] = get_sre_reserved_qty(
-			item_code=args["item"], warehouse=args["warehouse"], **dimension_values
+			item_code=args["item"],
+			warehouse=args["warehouse"],
+			for_update=True,
+			**dimension_values,
 		)
 
 		# Step 3: Recompute valuation from this SLE forward.
@@ -685,7 +714,13 @@ def make_sl_entries(
 		# exist in this bucket, queue a background repost instead of running
 		# the engine inline. Inline path is preferred for the common case
 		# (no/few future SLEs) because it commits the new state atomically.
-		queued_repost = False if force_inline else _should_queue_repost(args)
+		# A reservation violation must abort the voucher transaction. Never defer
+		# a valuation bucket carrying an active reservation to the background.
+		queued_repost = (
+			False
+			if force_inline or _valuation_bucket_has_active_reservation(args)
+			else _should_queue_repost(args)
+		)
 		if queued_repost:
 			_enqueue_backdated_repost(args)
 		else:
@@ -786,6 +821,8 @@ def repost_current_voucher(args, allow_negative_stock=False):
 		"sle_id": args.get("name"),
 		"creation": args.get("creation"),
 		"reserved_stock": args.get("reserved_stock"),
+		"validate_reserved_stock": args.get("reserved_stock") is not None,
+		"is_cancelled": args.get("is_cancelled"),
 	}
 	# Include all dimension values
 	for fn in get_dimension_fieldnames():
@@ -900,12 +937,22 @@ class UpdateEntriesAfter:
 		# Example: {("LOT-001", "Fresh"): 80.0, ("LOT-001", "Used"): 50.0}
 		self.qty_by_dims = {}
 
+		# Reservation rows do not change during one ledger replay. Cache their
+		# live totals per full stock-dimension bucket instead of querying once per
+		# future SLE in a long backdated replay.
+		self.reserved_qty_by_dims = {}
+
 	def run(self):
 		"""Main execution: load previous state, then process each SLE forward."""
 		self._init_previous()
 		entries = self._get_entries_to_process()
 		for sle in entries:
 			self._process_sle(sle)
+		# Cancelling an incoming SLE can leave no later outgoing row for
+		# _process_sle to validate. Check the affected current bucket explicitly
+		# after replay so cancelling stock cannot strand an active reservation.
+		if self.args.get("validate_reserved_stock") and self.args.get("is_cancelled"):
+			self._validate_current_bucket_reservation_floor()
 
 	# ------------------------------------------------------------------
 	# Helpers
@@ -921,6 +968,57 @@ class UpdateEntriesAfter:
 			value = row.get(fieldname) or ""
 			key_parts.append(value)
 		return tuple(key_parts)
+
+	def _dimension_values(self, row):
+		return {fieldname: row.get(fieldname) for fieldname in self.dim_fields}
+
+	def _get_reserved_stock(self, row):
+		"""Return the live active reservation for one full stock bucket."""
+		key = self._dim_key(row)
+		if key in self.reserved_qty_by_dims:
+			return self.reserved_qty_by_dims[key]
+
+		# make_sl_entries already resolves the current row's reservation while
+		# holding the bucket lock. Reuse it for that exact dimension key.
+		if key == self._dim_key(self.args) and self.args.get("reserved_stock") is not None:
+			reserved = flt(self.args.get("reserved_stock"))
+		else:
+			from yrp.stock.utils import get_sre_reserved_qty
+
+			reserved = flt(
+				get_sre_reserved_qty(
+					item_code=self.args.get("item"),
+					warehouse=self.args.get("warehouse"),
+					for_update=True,
+					**self._dimension_values(row),
+				)
+			)
+		self.reserved_qty_by_dims[key] = reserved
+		return reserved
+
+	def _validate_reservation_floor(self, row, balance):
+		"""Prevent any stock-out/reconciliation from consuming reserved stock."""
+		reserved = self._get_reserved_stock(row)
+		if reserved <= 0 or flt(balance) + 0.0001 >= reserved:
+			return
+		frappe.throw(
+			_(
+				"Stock balance {0} for {1} at {2} would fall below the active "
+				"reserved quantity {3}. Release or deliver the reservation first."
+			).format(
+				flt(balance),
+				row.get("item") or self.args.get("item"),
+				row.get("warehouse") or self.args.get("warehouse"),
+				reserved,
+			),
+			exc=NegativeStockError,
+			title=_("Insufficient Unreserved Stock"),
+		)
+
+	def _validate_current_bucket_reservation_floor(self):
+		key = self._dim_key(self.args)
+		balance = self.qty_by_dims.get(key, 0.0)
+		self._validate_reservation_floor(self.args, balance)
 
 	# ------------------------------------------------------------------
 	# Load previous state
@@ -1059,6 +1157,14 @@ class UpdateEntriesAfter:
 		else:
 			new_dim_qty = self._handle_outgoing(sle, valuator, current_dim_qty)
 
+		# This central check replaces the old Bin.reserved_qty guard. It also
+		# runs for future rows reached by a backdated replay, preserving the old
+		# protection against making a later balance fall below its reservation.
+		if self.args.get("validate_reserved_stock") and (
+			sle.voucher_type == 'YRP Stock Reconciliation' or flt(sle.qty) < 0
+		):
+			self._validate_reservation_floor(sle, new_dim_qty)
+
 		# Update the per-dimension qty
 		self.qty_by_dims[dim_key] = new_dim_qty
 
@@ -1133,7 +1239,7 @@ class UpdateEntriesAfter:
 		"""Handle outgoing stock (qty < 0) — remove from FIFO queue.
 
 		I.6: negative stock is allowed only when the per-Item flag is set.
-		Reservation check is enforced separately at the voucher layer (H.2).
+		Reservation is enforced centrally after the new bucket balance is known.
 		"""
 		new_qty = current_dim_qty + flt(sle.qty)  # sle.qty is negative
 

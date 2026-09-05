@@ -54,6 +54,7 @@ class YRPStockReservationEntry(Document):
 			warehouse=self.warehouse,
 			exclude_voucher_type='YRP Stock Reservation Entry',
 			exclude_voucher_name=self.name,
+			for_update=True,
 			**dim_filters,
 		)
 		# Subtract other SREs' active reservations (this SRE itself is excluded
