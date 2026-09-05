@@ -48,8 +48,13 @@ class DeliveryChallan(Document):
 
 	def on_submit(self):
 		self.update_work_order_deliverables()
-		self.make_stock_ledger_entries()
+		# Consume the exact Work Order reservation rows before posting stock, as
+		# production_api did before its central Bin.reserved_qty guard. The live
+		# SRE query then excludes only the quantity this DC actually delivers,
+		# while every unrelated reservation remains protected. A ledger failure
+		# rolls these db_set changes back with the voucher transaction.
 		self.update_work_order_reservations()
+		self.make_stock_ledger_entries()
 		self.make_repost_action()
 
 	def before_cancel(self):

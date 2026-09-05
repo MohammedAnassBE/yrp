@@ -5,6 +5,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from yrp.stock.uom import apply_item_uom, resolve_item_uom
 from yrp.yrp.doctype.item.item import create_variant
+from yrp.yrp.doctype.work_order.work_order import WorkOrder
 
 
 def _ensure_uom(name):
@@ -216,6 +217,64 @@ class TestMasterDerivedUOM(FrappeTestCase):
 
 		self.assertEqual(ledger["qty"], -10)
 		self.assertEqual(ledger["uom"], self.stock_uom)
+
+	def test_rework_reservation_uses_stock_uom_quantity(self):
+		suffix = frappe.generate_hash(length=8)
+		supplier = frappe.get_doc(
+			{
+				"doctype": "Supplier",
+				"supplier_name": f"_Test Reservation Supplier {suffix}",
+			}
+		).insert(ignore_permissions=True)
+		warehouse = frappe.get_doc(
+			{
+				"doctype": "Warehouse",
+				"name1": f"_Test Reservation Warehouse {suffix}",
+				"supplier": supplier.name,
+			}
+		).insert(ignore_permissions=True)
+		receipt = frappe.get_doc(
+			{
+				"doctype": "Stock Entry",
+				"purpose": "Material Receipt",
+				"to_warehouse": warehouse.name,
+				"items": [
+					{
+						"item": self.dependent_variant.name,
+						"qty": 5,
+						"rate": 10,
+					}
+				],
+			}
+		).insert(ignore_permissions=True)
+		receipt.submit()
+
+		work_order = frappe.get_doc(
+			{
+				"doctype": "Work Order",
+				"is_rework": 1,
+				"delivery_location": supplier.name,
+				"deliverables": [
+					{
+						"item_variant": self.dependent_variant.name,
+						"qty": 2,
+						"uom": self.alternate_uom,
+					}
+				],
+			}
+		)
+		work_order.name = f"_Test Rework Reservation {suffix}"
+		work_order.deliverables[0].name = f"_Test Rework Deliverable {suffix}"
+
+		WorkOrder.create_rework_reservations(work_order)
+
+		sre = frappe.get_last_doc(
+			"Stock Reservation Entry",
+			filters={"voucher_no": work_order.name, "docstatus": 1},
+		)
+		self.assertEqual(sre.stock_uom, self.stock_uom)
+		self.assertAlmostEqual(sre.voucher_qty, 20)
+		self.assertAlmostEqual(sre.reserved_qty, 20)
 
 	def test_missing_master_conversion_is_the_only_uom_error(self):
 		item = frappe.get_doc("Item", self.dependent_item.name)

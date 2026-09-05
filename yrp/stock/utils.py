@@ -305,6 +305,7 @@ def get_sre_reserved_qty(
 	exclude_voucher_type=None,
 	exclude_voucher_name=None,
 	filters=None,
+	for_update=False,
 	**dimension_filters,
 ):
 	"""Sum of reserved_qty - delivered_qty - closed_qty across active SRE rows.
@@ -326,6 +327,9 @@ def get_sre_reserved_qty(
 	  - Exclude-self (Gap #2): when the calling voucher consumes its own
 	    reservation, pass exclude_voucher_type/name to subtract that voucher's
 	    own SRE rows from the total.
+	  - ``for_update=True`` performs a locking current read. Use it only after
+	    locking the matching Bin/valuation bucket when a stock or reservation
+	    transaction must see reservations committed while it was waiting.
 	"""
 	# Normalize legacy dict arg.
 	if filters is not None:
@@ -370,6 +374,26 @@ def get_sre_reserved_qty(
 	# reserved_qty (e.g. excess delivery, 2026-07-10) must count as 0 remaining
 	# — a raw SUM would let that negative remainder INFLATE the apparent
 	# availability contributed by other reservations.
+	if for_update:
+		rows = frappe.db.sql(
+			f"""
+			SELECT reserved_qty, delivered_qty, COALESCE(closed_qty, 0) AS closed_qty
+			FROM `tabStock Reservation Entry`
+			WHERE {where_sql}
+			ORDER BY name
+			FOR UPDATE
+			""",
+			tuple(values),
+			as_dict=True,
+		)
+		return sum(
+			max(
+				flt(row.reserved_qty) - flt(row.delivered_qty) - flt(row.closed_qty),
+				0,
+			)
+			for row in rows
+		)
+
 	row = frappe.db.sql(
 		f"""
 		SELECT COALESCE(SUM(GREATEST(reserved_qty - delivered_qty - COALESCE(closed_qty, 0), 0)), 0) AS qty
