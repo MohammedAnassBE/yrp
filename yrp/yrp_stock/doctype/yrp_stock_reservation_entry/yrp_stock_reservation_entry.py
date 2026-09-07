@@ -1,10 +1,8 @@
 """Stock Reservation Entry — reserves stock against a voucher.
 
-D-002 / D-008: reservations are query-based. Bin no longer tracks
-reserved_qty; consumers call yrp.stock.utils.get_sre_reserved_qty(...)
-or get_available_stock(...) to compute reservations live.
-
-Status is computed from delivered vs reserved quantities.
+Stock Reservation Entry is authoritative. YRP Bin keeps ``reserved_qty`` as a
+visible, synchronized balance for its stock bucket; validations still query
+the submitted reservation rows directly so a cache cannot authorize stock.
 """
 
 import frappe
@@ -68,11 +66,36 @@ class YRPStockReservationEntry(Document):
 				).format(self.reserved_qty, available, actual, other_reserved)
 			)
 
+	def on_submit(self):
+		self.update_reserved_stock_in_bin()
+
+	def on_update_after_submit(self):
+		self.set_status()
+		self.db_set("status", self.status, update_modified=False)
+		self.update_reserved_stock_in_bin()
+
 	def before_cancel(self):
 		self.ignore_linked_doctypes = ('YRP Stock Ledger Entry', 'YRP Repost Item Valuation')
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled")
+		self.update_reserved_stock_in_bin()
+
+	def update_reserved_stock_in_bin(self):
+		"""Synchronize the YRP Bin balance for this reservation bucket."""
+		from yrp.stock.dimensions import get_stock_dimensions
+		from yrp.stock.utils import get_or_make_bin
+
+		dimension_values = {
+			dimension["fieldname"]: self.get(dimension["fieldname"])
+			for dimension in get_stock_dimensions()
+		}
+		bin_name = get_or_make_bin(
+			self.item_code,
+			self.warehouse,
+			**dimension_values,
+		)
+		frappe.get_doc('YRP Bin', bin_name).update_reserved_stock()
 
 	def set_status(self):
 		if self.docstatus == 0:
@@ -122,6 +145,7 @@ class YRPStockReservationEntry(Document):
 			{"closed_qty": new_closed, "status": self.status},
 			update_modified=False,
 		)
+		self.update_reserved_stock_in_bin()
 		return {"closed_qty": new_closed, "status": self.status}
 
 

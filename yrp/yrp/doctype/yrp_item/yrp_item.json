@@ -12,6 +12,7 @@
   "categories",
   "column_break_4",
   "name1",
+  "description",
   "disabled",
   "over_delivery_receipt_allowance",
   "po_excess_allowed_percentage",
@@ -48,6 +49,12 @@
    "permlevel": 1,
    "read_only_depends_on": "eval:!doc.__islocal",
    "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "permlevel": 1
   },
   {
    "fieldname": "hsn_code",

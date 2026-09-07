@@ -18,6 +18,7 @@
   "disabled",
   "is_company_location",
   "department",
+  "deparments",
   "contact_html",
   "section_break_8",
   "account_mappings"
@@ -90,6 +91,12 @@
    "fieldtype": "Link",
    "label": "Department",
    "options": "YRP Department"
+  },
+  {
+   "fieldname": "deparments",
+   "fieldtype": "Table MultiSelect",
+   "label": "Departments",
+   "options": "YRP Supplier Department"
   },
   {
    "fieldname": "gstin",

@@ -9,6 +9,7 @@
  "field_order": [
   "item_variant",
   "quantity",
+  "received_quantity",
   "uom",
   "secondary_qty",
   "secondary_uom",
@@ -30,7 +31,8 @@
   "table_index",
   "row_index",
   "set_combination",
-  "comments"
+  "comments",
+  "rework_details"
  ],
  "fields": [
   {
@@ -50,6 +52,15 @@
    "label": "Quantity",
    "precision": "3",
    "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "columns": 1,
+   "fieldname": "received_quantity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Received Quantity",
+   "precision": "9"
   },
   {
    "columns": 1,
@@ -189,6 +200,11 @@
    "fieldname": "comments",
    "fieldtype": "Small Text",
    "label": "Comments"
+  },
+  {
+   "fieldname": "rework_details",
+   "fieldtype": "Small Text",
+   "label": "Rework Details"
   },
   {
    "fieldname": "secondary_qty",

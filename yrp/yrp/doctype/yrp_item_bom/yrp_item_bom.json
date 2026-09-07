@@ -12,6 +12,7 @@
   "qty_of_bom_item",
   "uom",
   "based_on_attribute_mapping",
+  "attribute_mapping_based_on",
   "attribute_mapping",
   "wastage_pct"
  ],
@@ -72,6 +73,13 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Based on Attribute Mapping"
+  },
+  {
+   "fieldname": "attribute_mapping_based_on",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Attribute mapping based on ",
+   "options": "YRP Item Attribute"
   },
   {
    "depends_on": "based_on_attribute_mapping",

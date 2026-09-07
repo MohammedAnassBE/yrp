@@ -212,7 +212,7 @@ def bulk_assign_bills(assign_to, selected_docs, remarks=None):
 		try:
 			assign_vendor_bill(entry["name"], assign_to, remarks)
 		except Exception:
-			# Skip failures and continue (mirror production_api). A failed row
+			# Skip failures and continue. A failed row
 			# stays in its current state; the user will see error logs.
 			pass
 

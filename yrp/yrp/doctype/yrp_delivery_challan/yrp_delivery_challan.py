@@ -48,8 +48,7 @@ class YRPDeliveryChallan(Document):
 
 	def on_submit(self):
 		self.update_work_order_deliverables()
-		# Consume the exact Work Order reservation rows before posting stock, as
-		# production_api did before its central Bin.reserved_qty guard. The live
+		# Consume the exact Work Order reservation rows before posting stock. The live
 		# SRE query then excludes only the quantity this DC actually delivers,
 		# while every unrelated reservation remains protected. A ledger failure
 		# rolls these db_set changes back with the voucher transaction.
@@ -783,6 +782,7 @@ def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delt
 		{"delivered_qty": delivered_qty, "status": sre.status},
 		update_modified=False,
 	)
+	sre.update_reserved_stock_in_bin()
 
 
 def _validate_return_source(delivery_challan):

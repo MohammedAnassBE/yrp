@@ -3,8 +3,7 @@
 
 """Manual supplier notifications from supplier-linked documents.
 
-Ported from production_api.production_api.util.send_notification without the
-auto-send / MRP Settings machinery (v1 is user-initiated only). The event is
+This implementation is user-initiated only. The event is
 derived from the document's docstatus; templates are Notification Template
 records; the gateway is Frappe core's SMS Settings.
 Spec: docs/superpowers/specs/2026-07-04-yrp-sms-supplier-notification-design.md

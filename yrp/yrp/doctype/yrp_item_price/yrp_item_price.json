@@ -12,6 +12,7 @@
   "supplier_name",
   "section_break_uom",
   "uom",
+  "price",
   "column_break_date",
   "from_date",
   "to_date",
@@ -70,6 +71,13 @@
    "label": "UOM",
    "options": "YRP UOM",
    "reqd": 1
+  },
+  {
+   "fieldname": "price",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Price",
+   "precision": "9"
   },
   {
    "fieldname": "column_break_date",

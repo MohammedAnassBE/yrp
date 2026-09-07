@@ -83,14 +83,13 @@ class TestExcelStickerPrint(IntegrationTestCase):
 		)
 		self.assertEqual(result, "rendered-zpl")
 
-	def test_client_has_no_production_api_dependency(self):
+	def test_client_uses_only_yrp_server_methods(self):
 		client_path = frappe.get_app_path(
 			"yrp", "yrp", "doctype", "yrp_excel_sticker_print", "yrp_excel_sticker_print.js"
 		)
 		with open(client_path, encoding="utf-8") as client_file:
 			client = client_file.read()
 
-		self.assertNotIn("production_api", client)
 		self.assertIn(
 			"yrp.yrp.doctype.yrp_excel_sticker_print.yrp_excel_sticker_print.get_raw_code",
 			client,

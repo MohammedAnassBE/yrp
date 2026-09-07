@@ -159,6 +159,7 @@ def _address(title):
 		"address_type": "Office",
 		"address_line1": "Test Address",
 		"city": "Test City",
+		"state": "Tamil Nadu",
 		"country": "India",
 	}).insert(ignore_permissions=True).name
 

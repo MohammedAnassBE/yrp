@@ -19,6 +19,8 @@
   "process_name",
   "section_break_attr",
   "depends_on_attribute",
+  "dependent_attribute",
+  "dependent_attribute_values",
   "attribute",
   "tax_slab",
   "process_cost_values",
@@ -120,6 +122,19 @@
    "fieldname": "depends_on_attribute",
    "fieldtype": "Check",
    "label": "Depends On Attribute"
+  },
+  {
+   "depends_on": "eval: doc.depends_on_attribute",
+   "fieldname": "dependent_attribute",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute",
+   "options": "YRP Item Attribute"
+  },
+  {
+   "depends_on": "eval: doc.depends_on_attribute",
+   "fieldname": "dependent_attribute_values",
+   "fieldtype": "Select",
+   "label": "Dependent Attribute Values"
   },
   {
    "depends_on": "eval:doc.depends_on_attribute",

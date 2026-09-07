@@ -8,6 +8,7 @@
  "field_order": [
   "item_details_tab",
   "item",
+  "description",
   "version",
   "approval_status",
   "approved_by",
@@ -28,6 +29,7 @@
  "fields": [
   {"fieldname": "item_details_tab", "fieldtype": "Tab Break", "label": "Item Details"},
   {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "YRP Item", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "description", "fieldtype": "Small Text", "in_list_view": 1, "label": "Description"},
   {"fieldname": "version", "fieldtype": "Int", "label": "Version", "hidden": 1},
   {"fieldname": "approval_status", "fieldtype": "Select", "label": "Approval Status", "options": "Not Approved\nApproved", "default": "Not Approved", "read_only": 1, "in_list_view": 1, "in_standard_filter": 1},
   {"fieldname": "approved_by", "fieldtype": "Link", "label": "Approved By", "options": "User", "read_only": 1},

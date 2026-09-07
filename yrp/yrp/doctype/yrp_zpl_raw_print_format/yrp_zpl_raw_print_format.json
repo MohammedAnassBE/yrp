@@ -8,6 +8,7 @@
   "labels_per_row",
   "width",
   "height",
+  "raw_code",
   "section_break_details",
   "zpl_raw_print_format_details"
  ],
@@ -26,6 +27,11 @@
    "fieldname": "height",
    "fieldtype": "Float",
    "label": "Height (In Inches)"
+  },
+  {
+   "fieldname": "raw_code",
+   "fieldtype": "Code",
+   "label": "Raw Code"
   },
   {
    "fieldname": "section_break_details",

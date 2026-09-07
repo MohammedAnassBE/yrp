@@ -8,6 +8,8 @@
   "index",
   "attribute",
   "attribute_value",
+  "bom_item_attribute",
+  "product_attribute",
   "type",
   "quantity"
  ],
@@ -34,6 +36,20 @@
    "label": "Attribute Value",
    "options": "YRP Item Attribute Value",
    "reqd": 1
+  },
+  {
+   "fieldname": "bom_item_attribute",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "BOM Item Attribute",
+   "options": "YRP Item Attribute Value"
+  },
+  {
+   "fieldname": "product_attribute",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Product Attribute",
+   "options": "YRP Item Attribute Value"
   },
   {
    "fieldname": "type",

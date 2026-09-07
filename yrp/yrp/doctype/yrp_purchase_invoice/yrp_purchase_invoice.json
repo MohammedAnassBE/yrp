@@ -20,6 +20,9 @@
   "column_break_supplier_invoice",
   "bill_date",
   "bill_tracking",
+  "debit_type",
+  "debit_no",
+  "debit_value",
   "grn_section",
   "grn",
   "fetch_grn",
@@ -146,6 +149,23 @@
    "read_only": 1
   },
   {
+   "fieldname": "debit_type",
+   "fieldtype": "Select",
+   "label": "Debit Type",
+   "options": "\nPermanent\nTemporary"
+  },
+  {
+   "fieldname": "debit_no",
+   "fieldtype": "Data",
+   "label": "Debit No"
+  },
+  {
+   "fieldname": "debit_value",
+   "fieldtype": "Currency",
+   "label": "Debit Value",
+   "precision": "9"
+  },
+  {
    "fieldname": "grn_section",
    "fieldtype": "Section Break",
    "label": "GRNs"
@@ -250,8 +270,7 @@
   },
   {
    "fieldname": "debit_summary_section",
-   "fieldtype": "Section Break",
-   "label": "Debit Summary"
+   "fieldtype": "Section Break"
   },
   {
    "fieldname": "debit_summary_html",

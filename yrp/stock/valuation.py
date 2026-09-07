@@ -1,8 +1,6 @@
 """Stock valuation engine — FIFO and Moving Average.
 
-Pure functions, no DB access, no dimensions. Ported from
-production_api/mrp_stock/valuation.py with a Moving Average implementation
-added.
+Pure functions, no DB access, no dimensions.
 
 GL attribution scope (Gap #10):
 -------------------------------

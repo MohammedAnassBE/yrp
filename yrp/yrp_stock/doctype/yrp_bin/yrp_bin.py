@@ -2,6 +2,7 @@
 
 Each Bin tracks:
   - actual_qty:     per ALL dimensions (Fresh has its own qty, Used has its own qty)
+  - reserved_qty:   current active reservation balance for the same stock bucket
   - valuation_rate: per configured valuation-dimension bucket
   - stock_value:    actual_qty * valuation_rate
 
@@ -23,6 +24,28 @@ class YRPBin(Document):
 			parent = frappe.db.get_value('YRP Item Variant', self.item_code, "item")
 			if parent:
 				self.stock_uom = frappe.db.get_value('YRP Item', parent, "default_unit_of_measure")
+
+	def update_reserved_stock(self):
+		"""Refresh the displayed reservation balance from submitted SRE rows."""
+		from yrp.stock.utils import get_sre_reserved_qty
+
+		dimension_values = {
+			dimension["fieldname"]: self.get(dimension["fieldname"])
+			for dimension in get_stock_dimensions()
+		}
+		reserved_qty = flt(
+			get_sre_reserved_qty(
+				item_code=self.item_code,
+				warehouse=self.warehouse,
+				**dimension_values,
+			)
+		)
+		if reserved_qty < 0:
+			frappe.throw(_("Reserved Qty cannot be negative."))
+		if reserved_qty > flt(self.actual_qty) + 1e-9:
+			frappe.throw(_("Reserved Qty cannot be greater than Actual Qty."))
+		self.db_set("reserved_qty", reserved_qty, update_modified=False)
+		return reserved_qty
 
 def update_qty(bin_name, args):
 	"""Refresh Bin values from the Stock Ledger.

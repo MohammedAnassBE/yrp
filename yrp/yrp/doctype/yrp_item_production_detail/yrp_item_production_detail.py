@@ -8,7 +8,7 @@ from yrp.yrp.utils import ipd_engine
 
 class YRPItemProductionDetail(Document):
 	def autoname(self):
-		# Name as "<item>-<version>" (mirrors production_api), incrementing the
+		# Name as "<item>-<version>", incrementing the
 		# integer `version` per item, instead of Frappe's default random hash.
 		if not self.item:
 			return

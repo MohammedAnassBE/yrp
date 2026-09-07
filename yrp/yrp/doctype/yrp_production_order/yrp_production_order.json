@@ -9,6 +9,7 @@
   "naming_series",
   "delivery_date",
   "production_term",
+  "production_detail",
   "column_break_1",
   "dont_deliver_after",
   "posting_date",
@@ -50,6 +51,12 @@
    "options": "YRP Production Term"
   },
   {
+   "fieldname": "production_detail",
+   "fieldtype": "Link",
+   "label": "Production Detail",
+   "options": "YRP Item Production Detail"
+  },
+  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
   },
@@ -82,7 +89,7 @@
   {
    "fieldname": "details_html",
    "fieldtype": "HTML",
-   "label": "Details"
+   "label": "Details HTML"
   },
   {
    "allow_on_submit": 1,

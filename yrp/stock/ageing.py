@@ -1,8 +1,7 @@
 """Stock ageing — FIFO slot computation grouped by configured stock dimensions.
 
-Ported from production_api/mrp_stock/report/stock_ageing/stock_ageing.py and
-refactored to use yrp.stock.dimensions.get_dimension_fieldnames() instead of a
-hardcoded lot dimension. ``FIFOSlots`` builds a per-(item, warehouse, *dims)
+Uses yrp.stock.dimensions.get_dimension_fieldnames() instead of a hardcoded
+lot dimension. ``FIFOSlots`` builds a per-(item, warehouse, *dims)
 dictionary of FIFO entries that ageing reports / Stock Balance can consume.
 """
 

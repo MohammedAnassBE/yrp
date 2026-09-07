@@ -9,7 +9,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
 from yrp.stock.dimensions import get_dimension_fieldnames
-from yrp.stock.utils import get_sre_reserved_qty
+from yrp.stock.utils import get_or_make_bin, get_sre_reserved_qty
 from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_make_parent_grn,
 	_make_parent_work_order,
@@ -61,6 +61,8 @@ def _make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty):
 		"supplier": wo.supplier,
 		"from_warehouse": delivery_wh,
 		"to_warehouse": supplier_wh,
+		"from_address": wo.delivery_address,
+		"supplier_address": wo.supplier_address,
 		"process_name": wo.process_name,
 		"item": wo.item,
 		"posting_date": nowdate(),
@@ -84,6 +86,19 @@ def _make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty):
 	return dc
 
 
+def _bin_reserved_qty(sre):
+	dim_filters = {
+		fieldname: sre.get(fieldname)
+		for fieldname in get_dimension_fieldnames()
+	}
+	bin_name = get_or_make_bin(
+		sre.item_code,
+		sre.warehouse,
+		**dim_filters,
+	)
+	return flt(frappe.db.get_value('YRP Bin', bin_name, "reserved_qty"))
+
+
 class TestSREClose(FrappeTestCase):
 	def test_close_at_delivered_preserves_audit_and_releases_remaining(self):
 		"""Reserved 10, delivered 6, close: closed_qty=4, status='Closed',
@@ -92,11 +107,13 @@ class TestSREClose(FrappeTestCase):
 		wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt = _build_normal_wo_with_sre(
 			reserved=10, seed_qty=10,
 		)
+		self.assertAlmostEqual(_bin_reserved_qty(sre), 10)
 		_make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty=6)
 
 		sre.reload()
 		self.assertAlmostEqual(flt(sre.delivered_qty), 6)
 		self.assertEqual(sre.status, "Partially Delivered")
+		self.assertAlmostEqual(_bin_reserved_qty(sre), 4)
 
 		sre.close_at_delivered()
 
@@ -107,6 +124,7 @@ class TestSREClose(FrappeTestCase):
 		# Released qty recorded separately.
 		self.assertAlmostEqual(flt(sre.closed_qty), 4)
 		self.assertEqual(sre.status, "Closed")
+		self.assertAlmostEqual(_bin_reserved_qty(sre), 0)
 
 	def test_closed_sre_stops_counting_as_reserved(self):
 		"""After close, get_sre_reserved_qty must net the closed portion out —

@@ -1,5 +1,5 @@
 /**
- * Vue 3 EventBus replacement (ported from production_api).
+ * Vue 3 EventBus replacement used by the stock editors.
  */
 class Bus {
     constructor() {

@@ -1,6 +1,6 @@
 """Group/ungroup helpers for the dimension-aware Vue stock editor.
 
-Mirrors the production_api pattern where:
+The grouping contract is:
 - `row_index` groups all primary-attribute variants of the SAME logical item
   (e.g. T-Shirt Red in S/M/L all share row_index=0)
 - `table_index` encodes the group (attribute-structure) position
@@ -325,7 +325,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 				out[row.attribute] = row.attribute_value
 		return out
 
-	# Group consecutive rows by row_index (same as production_api).
+	# Group consecutive rows by row_index.
 	# groupby returns (key, iterator). The iterator MUST be consumed immediately
 	# (with list()) because it becomes invalid on the next iteration.
 	for (_row_idx, _dimensions), variants_iter in groupby(
@@ -459,7 +459,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
 
 	CRITICAL: row_index increments once per LOGICAL ITEM (not per variant row).
 	All primary-attribute variants of the same item share the same row_index,
-	matching production_api's convention. This is what allows group_items_for_ui
+	matching the stock editor's convention. This is what allows group_items_for_ui
 	to batch them back together on reload.
 
 	`keep_zero` (default False — preserves SE/SU/GRN/PO behaviour): when True,

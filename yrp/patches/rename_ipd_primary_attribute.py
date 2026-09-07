@@ -1,6 +1,6 @@
 """Rename Item Production Detail.primary_attribute → primary_item_attribute.
 
-Mirrors production_api's IPD field naming. Idempotent — safe to re-run.
+Idempotent — safe to re-run.
 """
 
 import frappe

@@ -6,7 +6,7 @@ from frappe.utils import nowdate
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.stock_ledger import NegativeStockError, UpdateEntriesAfter
-from yrp.stock.utils import get_stock_balance
+from yrp.stock.utils import get_or_make_bin, get_stock_balance
 
 
 class TestReservationEnforcementIntegration(FrappeTestCase):
@@ -39,9 +39,9 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 	@staticmethod
 	def _ensure_uom():
 		name = "_Test Reservation Unit"
-		if not frappe.db.exists("UOM", name):
+		if not frappe.db.exists("YRP UOM", name):
 			frappe.get_doc(
-				{"doctype": "UOM", "uom_name": name, "enabled": 1}
+				{"doctype": "YRP UOM", "uom_name": name, "enabled": 1}
 			).insert(ignore_permissions=True)
 		return name
 
@@ -54,7 +54,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 			value = None
 			if fieldname == "received_type":
 				value = frappe.db.get_single_value(
-					"YRP Stock Settings", "default_received_type"
+					"YRP YRP Stock Settings", "default_received_type"
 				)
 			value = value or frappe.db.get_value(doctype, {}, "name")
 			if dimension.get("mandatory") and not value:
@@ -147,6 +147,24 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 				},
 			)
 		)
+
+	def _bin_reserved_qty(self, warehouse):
+		bin_name = get_or_make_bin(
+			self.item_variant,
+			warehouse,
+			**self.dimensions,
+		)
+		return frappe.db.get_value('YRP Bin', bin_name, "reserved_qty") or 0
+
+	def test_bin_reserved_qty_tracks_reservation_submit_and_cancel(self):
+		warehouse = self._warehouse("Visible Bin Balance")
+		self._seed(warehouse)
+		sre = self._reserve(warehouse, 30)
+
+		self.assertAlmostEqual(self._bin_reserved_qty(warehouse), 30)
+		sre.flags.ignore_links = True
+		sre.cancel()
+		self.assertAlmostEqual(self._bin_reserved_qty(warehouse), 0)
 
 	def test_material_issue_cannot_consume_reserved_stock(self):
 		warehouse = self._warehouse("Issue")

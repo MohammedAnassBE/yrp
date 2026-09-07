@@ -282,8 +282,8 @@ class YRPWorkOrder(Document):
 				"voucher_detail_no": row.name,
 				"stock_uom": uom_details.stock_uom,
 				"available_qty": available,
-				# SLE/Bin balances are always stock-UOM quantities. Production API
-				# converted the voucher quantity before creating its reservation;
+				# SLE/Bin balances are always stock-UOM quantities. Convert the
+				# voucher quantity before creating its reservation;
 				# retaining the voucher-UOM quantity here under-reserves any Item
 				# whose conversion factor is not one.
 				"voucher_qty": stock_qty,

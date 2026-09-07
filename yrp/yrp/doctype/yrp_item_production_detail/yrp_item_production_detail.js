@@ -1,8 +1,6 @@
 // Item Production Detail — Desk client script.
 //
-// Mirrors production_api's IPD `item` change handler
-// (apps/production_api/.../item_production_detail/item_production_detail.js
-// line 665) so picking the parent Item auto-fills:
+// Picking the parent Item auto-fills:
 //   • primary_item_attribute
 //   • dependent_attribute
 //   • dependent_attribute_mapping

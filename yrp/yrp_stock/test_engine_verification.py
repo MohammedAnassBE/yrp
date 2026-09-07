@@ -416,7 +416,7 @@ class TestEngineVerification(FrappeTestCase):
 			settings.save(ignore_permissions=True)
 
 	# ------------------------------------------------------------------
-	# B.1 — SRE blocks over-reduce at validate (Bin.reserved_qty gone)
+	# B.1 — SRE blocks over-reduce from authoritative reservation rows
 	# ------------------------------------------------------------------
 	def test_B1_sre_blocks_over_reduce(self):
 		wh = _wh("B1")

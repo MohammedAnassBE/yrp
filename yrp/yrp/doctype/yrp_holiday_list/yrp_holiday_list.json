@@ -75,7 +75,7 @@
   {
    "fieldname": "get_weekly_off_dates",
    "fieldtype": "Button",
-   "label": "Get Weekly Off Dates",
+   "label": "Add to Holidays",
    "options": "get_weekly_off_dates"
   },
   {
@@ -98,7 +98,7 @@
   {
    "fieldname": "get_local_holidays",
    "fieldtype": "Button",
-   "label": "Get Local Holidays",
+   "label": "Add to Holidays",
    "options": "get_local_holidays"
   },
   {

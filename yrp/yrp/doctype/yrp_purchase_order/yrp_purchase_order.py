@@ -199,7 +199,7 @@ class YRPPurchaseOrder(Document):
 			row.delivery_location = row.delivery_location or self.default_delivery_location
 			row.delivery_date = row.delivery_date or self.expected_delivery_date
 			# Preserve the original committed date separately from later submitted
-			# delivery-date changes, matching Production API's row-level baseline.
+			# delivery-date changes, preserving the row-level baseline.
 			if self.docstatus == 0:
 				row.expected_delivery_date = row.delivery_date
 			elif not row.expected_delivery_date:

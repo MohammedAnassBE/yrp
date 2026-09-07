@@ -17,6 +17,8 @@
   "open_status",
   "status",
   "supplier_details_section",
+  "billing_address",
+  "billing_address_display",
   "supplier_address",
   "supplier_address_display",
   "supplier_contact_column",
@@ -132,6 +134,18 @@
    "label": "Supplier Address and Contact"
   },
   {
+   "fieldname": "billing_address",
+   "fieldtype": "Link",
+   "label": "Billing Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "billing_address_display",
+   "fieldtype": "Small Text",
+   "label": "Billing Address Details",
+   "read_only": 1
+  },
+  {
    "fieldname": "supplier_address",
    "fieldtype": "Link",
    "label": "Supplier Address",
@@ -210,7 +224,7 @@
   {
    "fieldname": "item_html",
    "fieldtype": "HTML",
-   "label": "Item HTML"
+   "label": "Item"
   },
   {
    "fieldname": "item_details",
