@@ -38,7 +38,7 @@
    "fieldname": "hub_url",
    "fieldtype": "Data",
    "label": "Hub URL",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.enabled"
   },
   {
    "fieldname": "column_break_connection",
@@ -49,14 +49,14 @@
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "API Key",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.enabled"
   },
   {
    "description": "API Secret of the dedicated hub-site user",
    "fieldname": "api_secret",
    "fieldtype": "Password",
    "label": "API Secret",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.enabled"
   },
   {
    "fieldname": "section_break_webhook",

@@ -1,4 +1,4 @@
-frappe.ui.form.on("YRP Purchase Order", {
+frappe.ui.form.on("Purchase Order", {
 	setup(frm) {
 		frm.set_query("supplier", () => ({
 			filters: { disabled: 0 },
@@ -68,7 +68,7 @@ function party_address_query(frm, partyField) {
 	return {
 		query: "frappe.contacts.doctype.address.address.address_query",
 		filters: {
-			link_doctype: "YRP Supplier",
+			link_doctype: "Supplier",
 			link_name: party,
 		},
 	};
@@ -81,7 +81,7 @@ function party_contact_query(frm) {
 	return {
 		query: "frappe.contacts.doctype.contact.contact.contact_query",
 		filters: {
-			link_doctype: "YRP Supplier",
+			link_doctype: "Supplier",
 			link_name: frm.doc.supplier,
 		},
 	};

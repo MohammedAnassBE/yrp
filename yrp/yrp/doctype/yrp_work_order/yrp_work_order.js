@@ -62,7 +62,7 @@ function work_order_party_address_query(frm, party_field) {
 	return {
 		query: "frappe.contacts.doctype.address.address.address_query",
 		filters: {
-			link_doctype: "YRP Supplier",
+			link_doctype: "Supplier",
 			link_name: party,
 		},
 	};
@@ -138,7 +138,7 @@ function open_create_rework_dialog(frm, sources) {
 				fieldtype: "Link",
 				fieldname: "supplier",
 				label: __("Supplier"),
-				options: "YRP Supplier",
+				options: "Supplier",
 				depends_on: "eval: doc.supplier_type == 'Different Supplier'",
 				mandatory_depends_on: "eval: doc.supplier_type == 'Different Supplier'",
 			},

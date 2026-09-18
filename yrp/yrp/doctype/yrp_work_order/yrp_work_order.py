@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt, getdate, nowdate, nowtime
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 class YRPWorkOrder(Document):
@@ -45,7 +46,7 @@ class YRPWorkOrder(Document):
 	def set_linked_process_and_supplier_flags(self):
 		if self.supplier:
 			self.is_internal_unit = cint(
-				frappe.db.get_value('YRP Supplier', self.supplier, "is_company_location")
+				frappe.db.get_value('Supplier', self.supplier, "is_company_location")
 			)
 		if self.process_name:
 			self.is_manual_entry = cint(frappe.db.get_value(
@@ -578,8 +579,8 @@ def set_receivable_process_cost(row, process_cost_name, rate):
 
 def get_variant_attributes(item_variant):
 	rows = frappe.get_all(
-		'YRP Item Variant Attribute',
-		filters={"parent": item_variant, "parenttype": 'YRP Item Variant'},
+		'Item Variant Attribute',
+		filters={"parent": item_variant, "parenttype": 'Item'},
 		fields=["attribute", "attribute_value"],
 	)
 	return {row.attribute: row.attribute_value for row in rows}
@@ -767,25 +768,26 @@ def _enrich_variant_attributes(rows):
 	variants = sorted({row.get("item_variant") for row in rows if row.get("item_variant")})
 	if not variants:
 		return
-	parent_by_variant = dict(
-		frappe.get_all(
-			'YRP Item Variant',
+	parent_by_variant = {
+		name: variant_of or name
+		for name, variant_of in frappe.get_all(
+			'Item',
 			filters={"name": ["in", variants]},
-			fields=["name", "item"],
+			fields=["name", "variant_of"],
 			as_list=True,
 		)
-	)
+	}
 	primary_by_item = dict(
 		frappe.get_all(
-			'YRP Item',
+			'Item',
 			filters={"name": ["in", list({v for v in parent_by_variant.values() if v})]},
 			fields=["name", "primary_attribute"],
 			as_list=True,
 		)
 	) if parent_by_variant else {}
 	attr_rows = frappe.get_all(
-		'YRP Item Variant Attribute',
-		filters={"parent": ["in", variants], "parenttype": 'YRP Item Variant'},
+		'Item Variant Attribute',
+		filters={"parent": ["in", variants], "parenttype": 'Item'},
 		fields=["parent", "attribute", "attribute_value"],
 	) if variants else []
 	attrs_by_variant = {}
@@ -1378,10 +1380,10 @@ def _primary_supplier_address(supplier):
 
 
 def _item_uom(item_variant):
-	parent_item = frappe.get_cached_value('YRP Item Variant', item_variant, "item")
+	parent_item = get_parent_item(item_variant)
 	if not parent_item:
 		return None
-	return frappe.get_cached_value('YRP Item', parent_item, "default_unit_of_measure")
+	return frappe.get_cached_value('Item', parent_item, "stock_uom")
 
 
 def _json_key(value):

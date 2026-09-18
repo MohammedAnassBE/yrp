@@ -81,13 +81,13 @@ class TestNamespaceMigration(unittest.TestCase):
 
 	def test_empty_unregistered_legacy_table_is_dropped_but_erpnext_table_is_preserved(self):
 		records = [
-			("YRP Supplier", "YRP ", []),
+			("Supplier", "YRP ", []),
 			("YRP Legacy Child", "YRP ", []),
 		]
 		db = SimpleNamespace()
 		db.exists = lambda record_type, name: name in {
 			"Supplier",
-			"YRP Supplier",
+			"Supplier",
 			"YRP Legacy Child",
 		}
 		db.table_exists = lambda name, cached=False: name == "Legacy Child"
@@ -141,7 +141,7 @@ class TestNamespaceMigration(unittest.TestCase):
 				],
 			),
 			("YRP Work Order", "YRP ", []),
-			("YRP Purchase Order", "YRP ", []),
+			("Purchase Order", "YRP ", []),
 		]
 		db = SimpleNamespace()
 		db.exists = lambda record_type, name: name == "YRP GRN Item"
@@ -175,7 +175,7 @@ class TestNamespaceMigration(unittest.TestCase):
 					"YRP GRN Item",
 					{"ref_doctype": "Purchase Order"},
 					"ref_doctype",
-					"YRP Purchase Order",
+					"Purchase Order",
 					update_modified=False,
 				),
 			],
@@ -183,13 +183,13 @@ class TestNamespaceMigration(unittest.TestCase):
 
 	def test_customization_record_names_are_aligned_with_the_target_doctype(self):
 		custom_field = SimpleNamespace(
-			name="Supplier-gstin",
-			dt="YRP Supplier",
-			fieldname="gstin",
+			name="Process-is_group",
+			dt="YRP Process",
+			fieldname="is_group",
 		)
 		property_setter = SimpleNamespace(
-			name="Supplier-main-title_field",
-			doc_type="YRP Supplier",
+			name="Process-main-title_field",
+			doc_type="YRP Process",
 			field_name=None,
 			row_name=None,
 			property="title_field",
@@ -198,7 +198,7 @@ class TestNamespaceMigration(unittest.TestCase):
 			patch.object(
 				namespace_migration,
 				"_iter_namespaced_doctypes",
-				return_value=[("YRP Supplier", "YRP ", [])],
+				return_value=[("YRP Process", "YRP ", [])],
 			),
 			patch.object(
 				namespace_migration.frappe,
@@ -211,11 +211,11 @@ class TestNamespaceMigration(unittest.TestCase):
 
 		rename.assert_has_calls(
 			[
-				call("Custom Field", "Supplier-gstin", "YRP Supplier-gstin"),
+				call("Custom Field", "Process-is_group", "YRP Process-is_group"),
 				call(
 					"Property Setter",
-					"Supplier-main-title_field",
-					"YRP Supplier-main-title_field",
+					"Process-main-title_field",
+					"YRP Process-main-title_field",
 				),
 			]
 		)

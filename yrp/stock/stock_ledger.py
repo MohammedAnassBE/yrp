@@ -36,6 +36,7 @@ from yrp.stock.utils import (
 	get_or_make_bin,
 )
 from yrp.stock.valuation import FIFOValuation, MovingAverageValuation, round_off_if_near_zero
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 class NegativeStockError(frappe.ValidationError):
@@ -324,8 +325,8 @@ def _is_effective_sl_entry(row):
 	row = frappe._dict(row)
 	if not row.item:
 		return False
-	parent_item = frappe.get_cached_value('YRP Item Variant', row.item, "item")
-	if not parent_item or not frappe.get_cached_value('YRP Item', parent_item, "is_stock_item"):
+	parent_item = get_parent_item(row.item)
+	if not parent_item or not frappe.get_cached_value('Item', parent_item, "is_stock_item"):
 		return False
 	return bool(row.get("qty") or row.get("voucher_type") == 'YRP Stock Reconciliation')
 
@@ -572,16 +573,24 @@ def _item_allows_negative_stock(item_variant):
 	"""Per-Item negative-stock flag (D-009). Resolves Item Variant -> parent Item."""
 	if not item_variant:
 		return False
-	parent = frappe.get_cached_value('YRP Item Variant', item_variant, "item")
+	parent = get_parent_item(item_variant)
 	if not parent:
 		return False
-	return bool(frappe.get_cached_value('YRP Item', parent, "allow_negative_stock"))
+	return bool(frappe.get_cached_value('Item', parent, "allow_negative_stock"))
 
 
 # ======================================================================
 # make_sl_entries — called by Stock Entry, Stock Update, Stock
 # Reconciliation controllers on submit and cancel
 # ======================================================================
+def _validate_warehouse_permissions(sl_entries):
+	"""Enforce the YRP Warehouse user allowlist at the stock posting boundary."""
+	if frappe.session.user == "Administrator":
+		return
+	for warehouse in sorted({row.get("warehouse") for row in sl_entries if row.get("warehouse")}):
+		frappe.get_cached_doc("Warehouse", warehouse).check_user_permission()
+
+
 def make_sl_entries(
 	sl_entries,
 	cancel=False,
@@ -610,6 +619,7 @@ def make_sl_entries(
 	"""
 	if not sl_entries:
 		return {"transfer_rates": {}, "entries": {}} if return_details else {}
+	_validate_warehouse_permissions(sl_entries)
 	# This must run before cancellation marks the voucher's existing SLEs as
 	# cancelled. A closed-period rejection therefore leaves the ledger untouched.
 	_validate_sl_entries_period(sl_entries)
@@ -651,8 +661,8 @@ def make_sl_entries(
 		item_variant = sle.get("item")
 		if not item_variant:
 			continue
-		parent_item = frappe.get_cached_value('YRP Item Variant', item_variant, "item")
-		if not parent_item or not frappe.get_cached_value('YRP Item', parent_item, "is_stock_item"):
+		parent_item = get_parent_item(item_variant)
+		if not parent_item or not frappe.get_cached_value('Item', parent_item, "is_stock_item"):
 			continue
 
 		# For cancellation, mark entry and derive outgoing rate if needed

@@ -7,7 +7,7 @@
  "fields": [
   {"fieldname":"reference_doctype","fieldtype":"Link","label":"Reference Doctype","options":"DocType","in_standard_filter":1},
   {"fieldname":"reference_name","fieldtype":"Dynamic Link","label":"Reference Name","options":"reference_doctype","in_standard_filter":1},
-  {"fieldname":"supplier","fieldtype":"Link","label":"Supplier","options":"YRP Supplier","in_standard_filter":1},
+  {"fieldname":"supplier","fieldtype":"Link","label":"Supplier","options":"Supplier","in_standard_filter":1},
   {"fieldname":"contact","fieldtype":"Link","label":"Contact","options":"Contact"},
   {"fieldname":"column_break_1","fieldtype":"Column Break"},
   {"fieldname":"status","fieldtype":"Select","label":"Status","options":"Sent\nFailed","in_list_view":1,"in_standard_filter":1},

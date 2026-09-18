@@ -38,7 +38,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "reqd": 1
   },
   {
@@ -164,7 +164,7 @@
    "fieldname": "assigned_to",
    "fieldtype": "Link",
    "label": "Assigned To",
-   "options": "YRP Department",
+   "options": "Department",
    "read_only": 1
   },
   {
@@ -188,7 +188,7 @@
    "fieldname": "department",
    "fieldtype": "Link",
    "label": "Department",
-   "options": "YRP Department"
+   "options": "Department"
   }
  ],
  "grid_page_length": 50,

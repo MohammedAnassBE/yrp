@@ -19,7 +19,7 @@
    "fieldname": "attribute_name",
    "fieldtype": "Link",
    "label": "Attribute Name",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   }
  ],
  "grid_page_length": 50,

@@ -69,7 +69,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Against",
-   "options": "YRP Work Order\nYRP Purchase Order",
+   "options": "YRP Work Order\nPurchase Order",
    "reqd": 1
   },
   {
@@ -148,7 +148,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item",
-   "options": "YRP Item",
+   "options": "Item",
    "read_only": 1
   },
   {
@@ -171,7 +171,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Supplier / Sender",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "reqd": 1
   },
   {
@@ -180,7 +180,7 @@
    "fieldname": "delivery_location",
    "fieldtype": "Link",
    "label": "Delivery Location",
-   "options": "YRP Supplier"
+   "options": "Supplier"
   },
   {
    "fieldname": "billing_address",
@@ -203,13 +203,13 @@
    "fieldtype": "Link",
    "label": "From Warehouse",
    "mandatory_depends_on": "eval:doc.against=='YRP Work Order'",
-   "options": "YRP Warehouse"
+   "options": "Warehouse"
   },
   {
    "fieldname": "to_warehouse",
    "fieldtype": "Link",
    "label": "To Warehouse",
-   "options": "YRP Warehouse",
+   "options": "Warehouse",
    "reqd": 1
   },
   {

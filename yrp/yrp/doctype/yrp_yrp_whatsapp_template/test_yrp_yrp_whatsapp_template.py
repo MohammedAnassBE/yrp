@@ -92,13 +92,13 @@ class TestYRPWhatsAppTemplate(IntegrationTestCase):
 
 	def test_is_applicable_for_reads_applicable_doctypes(self):
 		doc = self._make_template("yrp_wa_applic", status="APPROVED")
-		doc.append("applicable_doctypes", {"reference_doctype": 'YRP Purchase Order'})
+		doc.append("applicable_doctypes", {"reference_doctype": 'Purchase Order'})
 		doc.flags.from_meta_sync = True
 		doc.save(ignore_permissions=True)
 
-		self.assertTrue(doc.is_applicable_for('YRP Purchase Order'))
+		self.assertTrue(doc.is_applicable_for('Purchase Order'))
 		self.assertFalse(doc.is_applicable_for('YRP Stock Entry'))
 
 		reloaded = frappe.get_doc('YRP YRP WhatsApp Template', doc.name)
-		self.assertTrue(reloaded.is_applicable_for('YRP Purchase Order'))
+		self.assertTrue(reloaded.is_applicable_for('Purchase Order'))
 		self.assertFalse(reloaded.is_applicable_for('YRP Delivery Challan'))

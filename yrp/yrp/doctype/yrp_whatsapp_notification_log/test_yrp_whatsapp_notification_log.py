@@ -11,7 +11,7 @@ from yrp.yrp.doctype.yrp_whatsapp_notification_log.yrp_whatsapp_notification_log
 class TestWhatsAppNotificationLog(IntegrationTestCase):
     def test_create_log_sent_on_ok(self):
         log = create_whatsapp_log(
-            reference_doctype='YRP Supplier',
+            reference_doctype='Supplier',
             reference_name="_T WA Log Ref",
             supplier=None,
             contact=None,
@@ -38,7 +38,7 @@ class TestWhatsAppNotificationLog(IntegrationTestCase):
 
     def test_create_log_failed_on_not_ok_and_sent_at_null(self):
         log = create_whatsapp_log(
-            reference_doctype='YRP Supplier',
+            reference_doctype='Supplier',
             reference_name="_T WA Log Ref",
             supplier=None,
             contact=None,
@@ -66,7 +66,7 @@ class TestWhatsAppNotificationLog(IntegrationTestCase):
         # (create_sms_log contract). The JSON blobs must round-trip as strings
         # so a resend can rebuild header_source / message_variables.
         log = create_whatsapp_log(
-            reference_doctype='YRP Supplier',
+            reference_doctype='Supplier',
             reference_name="_T WA Nonexistent Supplier",
             supplier="_T WA Nonexistent Supplier",
             contact=None,

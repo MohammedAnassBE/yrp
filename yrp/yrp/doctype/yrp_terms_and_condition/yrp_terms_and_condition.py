@@ -50,7 +50,7 @@ def get_default_terms(transaction_type, supplier=None):
 
 	if supplier:
 		for supplier_field in supplier_fields:
-			mapped = frappe.db.get_value('YRP Supplier', supplier, supplier_field)
+			mapped = frappe.db.get_value('Supplier', supplier, supplier_field)
 			if mapped:
 				return mapped
 

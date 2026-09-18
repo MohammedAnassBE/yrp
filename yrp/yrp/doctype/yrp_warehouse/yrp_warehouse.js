@@ -1,12 +1,12 @@
 // Copyright (c) 2026, Mohammed Anas and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("YRP Warehouse", {
+frappe.ui.form.on("Warehouse", {
 	refresh(frm) {
 		frappe.dynamic_link = {
 			doc: frm.doc,
 			fieldname: "name",
-			doctype: "YRP Warehouse",
+			doctype: "Warehouse",
 		};
 
 		if (frm.doc.__islocal) {

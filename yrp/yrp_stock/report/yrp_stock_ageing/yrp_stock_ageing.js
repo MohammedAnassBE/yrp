@@ -11,19 +11,19 @@ frappe.query_reports["YRP Stock Ageing"] = {
 			fieldname: "warehouse",
 			label: __("Warehouse"),
 			fieldtype: "Link",
-			options: "YRP Warehouse",
+			options: "Warehouse",
 		},
 		{
 			fieldname: "item",
 			label: __("Item Variant"),
 			fieldtype: "Link",
-			options: "YRP Item Variant",
+			options: "Item",
 		},
 		{
 			fieldname: "parent_item",
 			label: __("Item"),
 			fieldtype: "Link",
-			options: "YRP Item",
+			options: "Item",
 		},
 		{
 			fieldname: "range1",

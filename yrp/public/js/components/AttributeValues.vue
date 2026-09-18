@@ -11,11 +11,6 @@
             </tr>
         </table>
         <p v-else>No available values for {{ attr_name }}</p>
-        <p v-if="!is_numeric">
-            <button class="btn btn-xs btn-default btn-address" @click="addValue('YRP Item Attribute Value', attr_name)">
-                {{ "New " + attr_name }}
-            </button>
-        </p>
     </div>
 </template>
 
@@ -24,15 +19,6 @@
 import { ref } from 'vue'
 const attr_values = ref(getAttrValues())
 const attr_name = ref(cur_frm.doc.attribute_name);
-const is_numeric = ref(cur_frm.doc.numeric_values);
-
-function addValue(doctype, attr_name) {
-    frappe.model.with_doctype(doctype, function() {
-        var new_doc = frappe.model.get_new_doc(doctype);
-        new_doc.attribute_name = attr_name;
-        frappe.ui.form.make_quick_entry(doctype, function(x){cur_frm && cur_frm.reload_doc();}, null, new_doc);
-    });
-}
 
 function getAttrValues() {
     if(cur_frm.doc.__onload.attr_values && cur_frm.doc.__onload.attr_values.length != 0) {

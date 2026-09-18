@@ -8,6 +8,8 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, nowdate
 
+from yrp.yrp.doctype.yrp_item.yrp_item import ensure_global_attribute_values
+
 
 EXTRA_TEST_RECORD_DEPENDENCIES = []
 IGNORE_TEST_RECORD_DEPENDENCIES = []
@@ -15,11 +17,11 @@ IGNORE_TEST_RECORD_DEPENDENCIES = []
 
 def create_item_attribute(attribute_name):
 	"""Create an Item Attribute if it doesn't exist."""
-	if frappe.db.exists('YRP Item Attribute', attribute_name):
-		return frappe.get_doc('YRP Item Attribute', attribute_name)
+	if frappe.db.exists('Item Attribute', attribute_name):
+		return frappe.get_doc('Item Attribute', attribute_name)
 
 	doc = frappe.get_doc({
-		"doctype": 'YRP Item Attribute',
+		"doctype": 'Item Attribute',
 		"attribute_name": attribute_name,
 	})
 	doc.insert(ignore_permissions=True)
@@ -28,16 +30,8 @@ def create_item_attribute(attribute_name):
 
 def create_item_attribute_value(attribute_name, value):
 	"""Create an Item Attribute Value if it doesn't exist."""
-	if frappe.db.exists('YRP Item Attribute Value', value):
-		return frappe.get_doc('YRP Item Attribute Value', value)
-
-	doc = frappe.get_doc({
-		"doctype": 'YRP Item Attribute Value',
-		"attribute_name": attribute_name,
-		"attribute_value": value,
-	})
-	doc.insert(ignore_permissions=True)
-	return doc
+	ensure_global_attribute_values(attribute_name, [value], check_permission=False)
+	return value
 
 
 def setup_test_attributes():
@@ -73,30 +67,38 @@ def make_test_yrp_settings(colour_as_grid=True):
 	})
 
 
-def create_test_item(name1="Test PO Item", attributes=None, primary_attribute=None):
+def create_test_item(item_name="Test PO Item", attributes=None, primary_attribute=None):
 	"""Create a test Item with attributes."""
 	if not attributes:
 		attributes = ["Colour", "Size"]
 
 	# Check if UOM exists
-	if not frappe.db.exists('YRP UOM', "Nos"):
-		frappe.get_doc({"doctype": 'YRP UOM', "uom_name": "Nos"}).insert(ignore_permissions=True)
+	if not frappe.db.exists('UOM', "Nos"):
+		frappe.get_doc({"doctype": 'UOM', "uom_name": "Nos"}).insert(ignore_permissions=True)
 
 	# Check if Item Group exists
-	if not frappe.db.exists('YRP Item Group', "Test Group"):
+	if not frappe.db.exists('Item Group', "Test Group"):
 		frappe.get_doc({
-			"doctype": 'YRP Item Group',
+			"doctype": 'Item Group',
 			"item_group_name": "Test Group",
 		}).insert(ignore_permissions=True)
 
-	doc = frappe.get_doc({
-		"doctype": 'YRP Item',
-		"name1": name1,
+	values = {
+		"doctype": 'Item',
+		"item_code": item_name,
+		"item_name": item_name,
 		"item_group": "Test Group",
-		"default_unit_of_measure": "Nos",
+		"stock_uom": "Nos",
+		"has_variants": 1,
 		"primary_attribute": primary_attribute or (attributes[0] if attributes else None),
 		"attributes": [{"attribute": attr} for attr in attributes],
-	})
+	}
+	if (
+		frappe.get_meta("Item").has_field("gst_hsn_code")
+		and frappe.db.exists("GST HSN Code", "999900")
+	):
+		values["gst_hsn_code"] = "999900"
+	doc = frappe.get_doc(values)
 	doc.insert(ignore_permissions=True)
 
 	# Add attribute values to mappings
@@ -146,9 +148,12 @@ def create_production_order(
 	dont_deliver_after = dont_deliver_after or add_days(today, 14)
 
 	doc = frappe.new_doc('YRP Production Order')
+	doc.naming_series = "PPO-"
 	doc.delivery_date = delivery_date
 	doc.dont_deliver_after = dont_deliver_after
 	doc.posting_date = today
+	if doc.meta.has_field("item") and frappe.db.exists("Item", "Test PO Item"):
+		doc.item = "Test PO Item"
 
 	if production_term:
 		doc.production_term = production_term
@@ -196,6 +201,22 @@ class TestProductionOrder(IntegrationTestCase):
 		)
 		cls._settings_patcher.start()
 		cls.addClassCleanup(cls._settings_patcher.stop)
+		# These tests exercise the base YRP Production Order lifecycle.  When the
+		# Essdee host app is installed it adds a separate PPO approval workflow
+		# (roles, request state, and mandatory commercial fields) which has its own
+		# test suite.  Isolate that host policy here so base validation remains
+		# testable on both a YRP-only site and the combined ERP/YRP/Essdee site.
+		if "essdee_yrp" in frappe.get_installed_apps():
+			for target in (
+				"essdee_yrp.production_order_workflow._validate_ppo_submission",
+				"essdee_yrp.production_order_workflow.validate_ppo_request_readiness",
+				"essdee_yrp.production_order_workflow._validate_tracked_date_update",
+				"essdee_yrp.production_order_workflow._validate_quantity_workflow_lock",
+				"essdee_yrp.production_order_workflow.validate_lot_price_overrides",
+			):
+				patcher = patch(target)
+				patcher.start()
+				cls.addClassCleanup(patcher.stop)
 		cls.test_item = create_test_item()
 
 	# ──────────────────────────────────────────────
@@ -294,8 +315,8 @@ class TestProductionOrder(IntegrationTestCase):
 		"""Cannot cancel if production_ordered_details have reference_name."""
 		doc = create_production_order()
 		doc.append("production_ordered_details", {
-			"reference_doctype": "Production Group",
-			"reference_name": "PG-00001",
+			"reference_doctype": "YRP Production Order",
+			"reference_name": doc.name,
 			"quantity": 10,
 		})
 		doc.save()
@@ -384,7 +405,7 @@ class TestProductionOrder(IntegrationTestCase):
 		)
 		row = doc.production_order_details[0]
 		self.assertTrue(row.item_variant)
-		self.assertTrue(frappe.db.exists('YRP Item Variant', row.item_variant))
+		self.assertTrue(frappe.db.exists('Item', row.item_variant))
 
 	def test_item_details_stores_attributes_json(self):
 		"""Each production_order_detail row stores attributes as JSON."""
@@ -461,11 +482,19 @@ class TestProductionOrder(IntegrationTestCase):
 		# Create item with non-configured attribute
 		other_attr = create_item_attribute("Weight")
 		item = frappe.get_doc({
-			"doctype": 'YRP Item',
-			"name1": "No Match Item",
+			"doctype": 'Item',
+			"item_code": "No Match Item",
+			"item_name": "No Match Item",
 			"item_group": "Test Group",
-			"default_unit_of_measure": "Nos",
+			"stock_uom": "Nos",
+			"has_variants": 1,
 			"attributes": [{"attribute": "Weight"}],
+			**(
+				{"gst_hsn_code": "999900"}
+				if frappe.get_meta("Item").has_field("gst_hsn_code")
+				and frappe.db.exists("GST HSN Code", "999900")
+				else {}
+			),
 		})
 		item.insert(ignore_permissions=True)
 

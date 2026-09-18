@@ -1,11 +1,6 @@
-# Copyright (c) 2021, Essdee and contributors
-# For license information, please see license.txt
+"""Compatibility import for ERPNext's Item Attribute Value child row."""
 
-# import frappe
-from frappe.model.document import Document
-
-class YRPItemAttributeValue(Document):
-	pass
+from erpnext.stock.doctype.item_attribute_value.item_attribute_value import ItemAttributeValue
 
 
-ItemAttributeValue = YRPItemAttributeValue
+YRPItemAttributeValue = ItemAttributeValue

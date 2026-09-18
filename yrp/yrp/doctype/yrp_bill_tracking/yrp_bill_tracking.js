@@ -100,7 +100,7 @@ function show_assign_dialog(frm) {
 	const dialog = new frappe.ui.Dialog({
 		title: __("Assign Bill"),
 		fields: [
-			{ label: "Assigned To", fieldname: "assigned_to", fieldtype: "Link", options: "YRP Department", reqd: 1 },
+			{ label: "Assigned To", fieldname: "assigned_to", fieldtype: "Link", options: "Department", reqd: 1 },
 			{ label: "Remarks", fieldname: "remarks", fieldtype: "Small Text" },
 		],
 		primary_action_label: __("Submit"),

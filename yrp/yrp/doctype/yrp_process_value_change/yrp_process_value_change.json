@@ -6,7 +6,7 @@
  "engine": "InnoDB",
  "field_order": ["attribute"],
  "fields": [
-  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "YRP Item Attribute", "reqd": 1, "in_list_view": 1}
+  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "Item Attribute", "reqd": 1, "in_list_view": 1}
  ],
  "istable": 1,
  "links": [],

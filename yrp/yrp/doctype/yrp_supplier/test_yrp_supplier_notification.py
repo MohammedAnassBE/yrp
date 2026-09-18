@@ -47,7 +47,7 @@ def _contact_for(supplier, mobile=None, email=None):
 		"doctype": "Contact",
 		"first_name": f"_T SMS Contact {frappe.generate_hash(length=6)}",
 		"is_primary_contact": 1,
-		"links": [{"link_doctype": 'YRP Supplier', "link_name": supplier}],
+		"links": [{"link_doctype": 'Supplier', "link_name": supplier}],
 	})
 	if mobile:
 		contact.append("phone_nos", {"phone": mobile, "is_primary_mobile_no": 1})
@@ -77,7 +77,7 @@ def _contact_with_phones(supplier, phones):
 		"doctype": "Contact",
 		"first_name": f"_T SMS Multi {frappe.generate_hash(length=6)}",
 		"is_primary_contact": 1,
-		"links": [{"link_doctype": 'YRP Supplier', "link_name": supplier}],
+		"links": [{"link_doctype": 'Supplier', "link_name": supplier}],
 	})
 	contact.insert(ignore_permissions=True)
 	for idx, (number, primary) in enumerate(phones, start=1):
@@ -95,7 +95,7 @@ def _contact_with_phones(supplier, phones):
 	return contact
 
 
-def _notification_template(name, channel="SMS", document_type='YRP Purchase Order',
+def _notification_template(name, channel="SMS", document_type='Purchase Order',
 		event="Submit", body="PO {{ doc.name }} for {{ doc.supplier }}"):
 	if frappe.db.exists('YRP Notification Template', name):
 		return frappe.get_doc('YRP Notification Template', name)
@@ -120,7 +120,7 @@ class TestSupplierNotification(_NotificationTestBase):
 
 	def test_get_primary_contact_details(self):
 		supplier = self._supplier_with_contact(mobile="98765 43210", email="s@example.com")
-		details = frappe.get_doc('YRP Supplier', supplier).get_primary_contact_details()
+		details = frappe.get_doc('Supplier', supplier).get_primary_contact_details()
 		self.assertEqual(details["mobile"], "98765 43210")
 		self.assertEqual(details["email"], "s@example.com")
 		self.assertTrue(details["contact"])
@@ -128,7 +128,7 @@ class TestSupplierNotification(_NotificationTestBase):
 	def test_no_default_contact_throws(self):
 		supplier = _supplier(f"_T SMS NoContact {frappe.generate_hash(length=6)}")
 		with self.assertRaises(frappe.ValidationError):
-			frappe.get_doc('YRP Supplier', supplier).get_primary_contact_details()
+			frappe.get_doc('Supplier', supplier).get_primary_contact_details()
 
 	def test_sms_without_mobile_throws(self):
 		supplier = self._supplier_with_contact(mobile=None, email="s@example.com")
@@ -136,8 +136,8 @@ class TestSupplierNotification(_NotificationTestBase):
 		po = _purchase_order(qty=1, warehouse=_warehouse("_T SMS WH"), supplier=supplier)
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
 			with self.assertRaises(frappe.ValidationError):
-				frappe.get_doc('YRP Supplier', supplier).send_notification(
-					'YRP Purchase Order', po.name, ["SMS"], "Submit")
+				frappe.get_doc('Supplier', supplier).send_notification(
+					'Purchase Order', po.name, ["SMS"], "Submit")
 		mock_send.assert_not_called()
 
 	def test_partial_channels_skip_not_throw(self):
@@ -149,11 +149,11 @@ class TestSupplierNotification(_NotificationTestBase):
 			body="Hello {{ doc.name }}")
 		po = _purchase_order(qty=1, warehouse=_warehouse("_T SMS WH"), supplier=supplier)
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			frappe.get_doc('YRP Supplier', supplier).send_notification(
-				'YRP Purchase Order', po.name, ["Email", "SMS"], "Submit")
+			frappe.get_doc('Supplier', supplier).send_notification(
+				'Purchase Order', po.name, ["Email", "SMS"], "Submit")
 		mock_send.assert_not_called()
 		self.assertTrue(frappe.db.exists("Communication", {
-			"reference_doctype": 'YRP Purchase Order',
+			"reference_doctype": 'Purchase Order',
 			"reference_name": po.name,
 			"communication_medium": "Email",
 		}))
@@ -164,8 +164,8 @@ class TestSupplierNotification(_NotificationTestBase):
 		# No template created for (Purchase Order, Submit, SMS) in this test's
 		# transaction -> msgprint path, no gateway call, no exception.
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			frappe.get_doc('YRP Supplier', supplier).send_notification(
-				'YRP Purchase Order', po.name, ["SMS"], "Submit")
+			frappe.get_doc('Supplier', supplier).send_notification(
+				'Purchase Order', po.name, ["SMS"], "Submit")
 		mock_send.assert_not_called()
 
 	def test_send_sms_happy_path(self):
@@ -173,15 +173,15 @@ class TestSupplierNotification(_NotificationTestBase):
 		_notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		po = _purchase_order(qty=1, warehouse=_warehouse("_T SMS WH"), supplier=supplier)
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			frappe.get_doc('YRP Supplier', supplier).send_notification(
-				'YRP Purchase Order', po.name, ["SMS"], "Submit")
+			frappe.get_doc('Supplier', supplier).send_notification(
+				'Purchase Order', po.name, ["SMS"], "Submit")
 		mock_send.assert_called_once()
 		gateway_url, params = mock_send.call_args.args[0], mock_send.call_args.args[1]
 		self.assertEqual(gateway_url, "http://127.0.0.1:8899/send")
 		self.assertEqual(params["to"], "9876543210")  # validate_receiver_nos strips the space
 		self.assertEqual(params["msg"], f"PO {po.name} for {supplier}")
 		self.assertTrue(frappe.db.exists("Communication", {
-			"reference_doctype": 'YRP Purchase Order',
+			"reference_doctype": 'Purchase Order',
 			"reference_name": po.name,
 			"communication_medium": "SMS",
 		}))
@@ -202,7 +202,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()  # docstatus 1 -> event Submit
 		_notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			send_notification('YRP Purchase Order', po.name, channels=["SMS"])
+			send_notification('Purchase Order', po.name, channels=["SMS"])
 		mock_send.assert_called_once()
 		self.assertEqual(mock_send.call_args.args[1]["msg"], f"PO {po.name} for {po.supplier}")
 
@@ -212,7 +212,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()
 		_notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			send_notification('YRP Purchase Order', po.name, channels='["SMS"]')
+			send_notification('Purchase Order', po.name, channels='["SMS"]')
 		mock_send.assert_called_once()
 
 	def test_doc_without_supplier_throws(self):
@@ -220,7 +220,7 @@ class TestNotificationAPI(_NotificationTestBase):
 
 		warehouse = _warehouse(f"_T SMS NoSup WH {frappe.generate_hash(length=4)}")
 		with self.assertRaises(frappe.ValidationError):
-			send_notification('YRP Warehouse', warehouse, channels=["SMS"])
+			send_notification('Warehouse', warehouse, channels=["SMS"])
 
 	def test_sms_context_lists_all_enabled_templates_regardless_of_event(self):
 		from yrp.notification import get_sms_context
@@ -230,7 +230,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		t2 = _notification_template(
 			f"_T PO Save SMS {frappe.generate_hash(length=6)}", event="Save", body="Saved {{ doc.name }}"
 		)
-		ctx = get_sms_context('YRP Purchase Order', po.name)
+		ctx = get_sms_context('Purchase Order', po.name)
 		self.assertEqual(ctx["mobile"], "98765 43210")
 		self.assertEqual(ctx["supplier"], po.supplier)
 		by_name = {t["name"]: t["message"] for t in ctx["templates"]}
@@ -242,7 +242,7 @@ class TestNotificationAPI(_NotificationTestBase):
 
 		po = self._submitted_po()
 		with self.assertRaises(frappe.ValidationError):
-			get_sms_context('YRP Purchase Order', po.name)
+			get_sms_context('Purchase Order', po.name)
 
 	def test_sms_context_without_mobile_throws(self):
 		from yrp.notification import get_sms_context
@@ -250,7 +250,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po(mobile=None)
 		_notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with self.assertRaises(frappe.ValidationError):
-			get_sms_context('YRP Purchase Order', po.name)
+			get_sms_context('Purchase Order', po.name)
 
 	def test_send_sms_notification_sends_edited_message(self):
 		from yrp.notification import send_sms_notification
@@ -259,13 +259,13 @@ class TestNotificationAPI(_NotificationTestBase):
 		template = _notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
 			send_sms_notification(
-				'YRP Purchase Order', po.name, template=template.name, message="Edited text for supplier"
+				'Purchase Order', po.name, template=template.name, message="Edited text for supplier"
 			)
 		mock_send.assert_called_once()
 		self.assertEqual(mock_send.call_args.args[1]["msg"], "Edited text for supplier")
 		self.assertEqual(mock_send.call_args.args[1]["to"], "9876543210")
 		self.assertTrue(frappe.db.exists("Communication", {
-			"reference_doctype": 'YRP Purchase Order',
+			"reference_doctype": 'Purchase Order',
 			"reference_name": po.name,
 			"communication_medium": "SMS",
 		}))
@@ -276,7 +276,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()
 		template = _notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			send_sms_notification('YRP Purchase Order', po.name, template=template.name)
+			send_sms_notification('Purchase Order', po.name, template=template.name)
 		self.assertEqual(mock_send.call_args.args[1]["msg"], f"PO {po.name} for {po.supplier}")
 
 	def test_send_sms_notification_carries_template_params(self):
@@ -287,7 +287,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		template.append("parameters", {"parameter": "dlt_template_id", "value": "1107ABC"})
 		template.save(ignore_permissions=True)
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
-			send_sms_notification('YRP Purchase Order', po.name, template=template.name, message="x")
+			send_sms_notification('Purchase Order', po.name, template=template.name, message="x")
 		self.assertEqual(mock_send.call_args.args[1]["dlt_template_id"], "1107ABC")
 
 	def test_send_sms_notification_rejects_foreign_template(self):
@@ -299,7 +299,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		)
 		with patch(SEND_REQUEST, return_value=_gw(200)) as mock_send:
 			with self.assertRaises(frappe.ValidationError):
-				send_sms_notification('YRP Purchase Order', po.name, template=wrong.name)
+				send_sms_notification('Purchase Order', po.name, template=wrong.name)
 		mock_send.assert_not_called()
 
 	def test_sms_context_lists_all_numbers_primary_first_comma_split(self):
@@ -309,7 +309,7 @@ class TestNotificationAPI(_NotificationTestBase):
 		_contact_with_phones(supplier, [("9000000001", False), ("9000000002,9000000003", True)])
 		po = _purchase_order(qty=1, warehouse=_warehouse("_T SMS WH"), supplier=supplier)
 		_notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
-		ctx = get_sms_context('YRP Purchase Order', po.name)
+		ctx = get_sms_context('Purchase Order', po.name)
 		# primary field held "9000000002,9000000003" -> split; primary number first
 		self.assertEqual(ctx["numbers"][0], "9000000002")
 		self.assertIn("9000000003", ctx["numbers"])
@@ -322,10 +322,10 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()
 		template = _notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(200, "REQ123")):
-			send_sms_notification('YRP Purchase Order', po.name, template=template.name,
+			send_sms_notification('Purchase Order', po.name, template=template.name,
 				message="edited", mobile_no="9000000009")
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		self.assertEqual(log.status, "Sent")
 		self.assertEqual(log.request_id, "REQ123")
 		self.assertEqual(log.mobile_no, "9000000009")
@@ -336,10 +336,10 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()
 		template = _notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(400, "ERR")):
-			send_sms_notification('YRP Purchase Order', po.name, template=template.name,
+			send_sms_notification('Purchase Order', po.name, template=template.name,
 				message="x", mobile_no="9000000009")
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		self.assertEqual(log.status, "Failed")
 
 	def test_resend_updates_the_log_row(self):
@@ -348,10 +348,10 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()
 		template = _notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(400, "ERR")):
-			send_sms_notification('YRP Purchase Order', po.name, template=template.name,
+			send_sms_notification('Purchase Order', po.name, template=template.name,
 				message="x", mobile_no="9000000009")
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		self.assertEqual(log.status, "Failed")
 		with patch(SEND_REQUEST, return_value=_gw(200, "REQ999")):
 			resend_sms_notification_log(log.name)
@@ -365,10 +365,10 @@ class TestNotificationAPI(_NotificationTestBase):
 		po = self._submitted_po()
 		template = _notification_template(f"_T PO Submit SMS {frappe.generate_hash(length=6)}")
 		with patch(SEND_REQUEST, return_value=_gw(200, "REQ")):
-			send_sms_notification('YRP Purchase Order', po.name, template=template.name,
+			send_sms_notification('Purchase Order', po.name, template=template.name,
 				message="x", mobile_no="9000000009")
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		# simulate the reference doc being gone (DB-level, bypasses link checks)
 		frappe.db.set_value('YRP SMS Notification Log', log.name, "reference_name", "NONEXISTENT-PO-XYZ")
 		with patch(SEND_REQUEST, return_value=_gw(200, "REQ2")) as mock_send:

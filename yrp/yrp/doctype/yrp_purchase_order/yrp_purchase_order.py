@@ -3,8 +3,14 @@ from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.model.document import Document
 from frappe.utils import add_days, flt, money_in_words, nowdate, today
+
+
+def _call_super(instance, method_name, *args, **kwargs):
+	method = getattr(super(YRPPurchaseOrderMixin, instance), method_name, None)
+	if method:
+		return method(*args, **kwargs)
+	return None
 
 
 def get_item_group_index(items, item_details):
@@ -21,9 +27,9 @@ def get_item_group_index(items, item_details):
 			continue
 		if not item.get("primary_attribute") == item_details.get("primary_attribute"):
 			continue
-		primary_attr_list1 = item.get("primary_attribute_values").copy()
-		primary_attr_list2 = item_details.get("primary_attribute_values").copy()
-		if not primary_attr_list1.sort() == primary_attr_list2.sort():
+		primary_attr_list1 = item.get("primary_attribute_values") or []
+		primary_attr_list2 = item_details.get("primary_attribute_values") or []
+		if sorted(primary_attr_list1) != sorted(primary_attr_list2):
 			continue
 		if not item.get("dependent_attribute") == item_details.get("dependent_attribute"):
 			continue
@@ -49,16 +55,26 @@ def get_item_group_index(items, item_details):
 	return index
 
 
-class YRPPurchaseOrder(Document):
+class YRPPurchaseOrderMixin:
+	def before_naming(self):
+		if self.is_yrp_managed:
+			self.naming_series = "YRP-PO-.YYYY.-"
+		return _call_super(self, "before_naming")
+
 	def onload(self):
+		_call_super(self, "onload")
+		if not self.is_yrp_managed:
+			return
 		from yrp.stock.save_stock_items import group_items_for_ui
 
 		self.set_onload(
 			"item_details",
-			group_items_for_ui(self.get("items") or [], 'YRP Purchase Order'),
+			group_items_for_ui(self.get("items") or [], 'Purchase Order'),
 		)
 
 	def before_validate(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "before_validate")
 		self.sync_vue_item_details()
 		self.set_default_terms()
 		self.remove_blank_item_rows()
@@ -71,20 +87,43 @@ class YRPPurchaseOrder(Document):
 		)
 		self.calculate_totals()
 		self.set_status()
+		_call_super(self, "before_validate")
 
 	def validate(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "validate")
+		# ERPNext's taxes-and-totals pass derives discount fields from its own
+		# price-list model. YRP-managed orders intentionally use YRP Item Price
+		# instead, so preserve those authoritative row values across the native
+		# validation pass while still retaining all standard link/UOM/date checks.
+		pricing = [
+			(flt(row.rate), flt(row.discount_percentage), row.tax)
+			for row in self.get("items") or []
+		]
+		_call_super(self, "validate")
+		for row, (rate, discount_percentage, tax) in zip(
+			self.get("items") or [], pricing, strict=False
+		):
+			row.rate = rate
+			row.discount_percentage = discount_percentage
+			row.tax = tax
+			self.calculate_row_amount(row)
 		self.validate_delivery_destination()
 		self.validate_items()
 		self.calculate_totals()
 		self.set_status()
 
 	def before_save(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "before_save")
 		if self.docstatus == 0:
 			self.initialize_pending_quantities(force=True)
 		self.calculate_totals()
 		self.set_status()
 
 	def before_submit(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "before_submit")
 		self.set_item_defaults()
 		self.apply_item_prices(strict=self.is_price_validation_enabled())
 		self.validate_items()
@@ -94,8 +133,10 @@ class YRPPurchaseOrder(Document):
 		self.approved_by = frappe.session.user
 
 	def before_cancel(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "before_cancel")
 		for row in self.get("items") or []:
-			if flt(row.received_quantity) > 0 or flt(row.pending_quantity) < flt(row.qty):
+			if flt(row.received_qty) > 0 or flt(row.pending_quantity) < flt(row.qty):
 				frappe.throw(
 					_(
 						"Cannot cancel Purchase Order {0} because receipt has started. "
@@ -106,13 +147,27 @@ class YRPPurchaseOrder(Document):
 			row.pending_quantity = 0
 		self.set_status(cancel=True)
 
+	def on_submit(self):
+		"""YRP PO submission must not update ERPNext Bin/projected stock."""
+		if not self.is_yrp_managed:
+			return _call_super(self, "on_submit")
+		self.set_status()
+		_update_status_fields(self)
+
 	def on_cancel(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "on_cancel")
+		self.yrp_fulfillment_status = "Cancelled"
 		self.db_set("status", "Cancelled", update_modified=False)
+		self.db_set("yrp_fulfillment_status", "Cancelled", update_modified=False)
 		self.db_set("open_status", "Close", update_modified=False)
 
 	def on_update_after_submit(self):
+		if not self.is_yrp_managed:
+			return _call_super(self, "on_update_after_submit")
 		self.set_status()
 		self.db_set("status", self.status, update_modified=False)
+		self.db_set("yrp_fulfillment_status", self.yrp_fulfillment_status, update_modified=False)
 		self.db_set("open_status", self.open_status, update_modified=False)
 
 	def sync_vue_item_details(self):
@@ -120,7 +175,7 @@ class YRPPurchaseOrder(Document):
 			return
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
-		rows = ungroup_items_from_ui(self.item_details, 'YRP Purchase Order')
+		rows = ungroup_items_from_ui(self.item_details, 'Purchase Order')
 		self.set("items", [])
 		for row in rows:
 			self.append("items", row)
@@ -133,24 +188,35 @@ class YRPPurchaseOrder(Document):
 			[
 				row
 				for row in self.get("items") or []
-				if row.item_variant or flt(row.qty) or row.uom
+				if row.item_code or flt(row.qty) or row.uom
 			],
 		)
 
-	def set_missing_values(self):
-		if not self.po_date:
-			self.po_date = nowdate()
+	def set_missing_values(self, for_validate=False):
+		# Preserve the standard Purchase Order controller contract. ERPNext calls
+		# this method with ``for_validate=True`` from AccountsController; omitting
+		# the argument breaks both ordinary and YRP-managed standard POs.
+		result = _call_super(self, "set_missing_values", for_validate=for_validate)
+		if not self.transaction_date:
+			self.transaction_date = nowdate()
+		if not self.schedule_date:
+			self.schedule_date = self.transaction_date
+		if not self.company:
+			self.company = frappe.defaults.get_user_default("Company") or frappe.db.get_single_value(
+				"Global Defaults", "default_company"
+			)
 		if not self.open_status:
 			self.open_status = "Open"
+		return result
 
 	def set_party_details(self):
-		self.supplier_address, self.supplier_address_display = _resolve_party_address(
+		self.supplier_address, self.address_display = _resolve_party_address(
 			self.supplier,
 			self.supplier_address,
 		)
-		self.delivery_address, self.delivery_address_display = _resolve_party_address(
+		self.shipping_address, self.shipping_address_display = _resolve_party_address(
 			self.default_delivery_location,
-			self.delivery_address,
+			self.shipping_address,
 		)
 
 		if not self.supplier or not self.contact_person or not _is_party_link(
@@ -171,7 +237,7 @@ class YRPPurchaseOrder(Document):
 		if not self.default_delivery_location:
 			return
 		is_company_location = frappe.db.get_value(
-			'YRP Supplier',
+			'Supplier',
 			self.default_delivery_location,
 			"is_company_location",
 		)
@@ -194,16 +260,17 @@ class YRPPurchaseOrder(Document):
 		from yrp.stock.uom import apply_item_uom
 
 		for row in self.get("items") or []:
-			apply_item_uom(row)
+			apply_item_uom(row, item_field="item_code")
 			row.stock_qty = flt(row.qty) * flt(row.conversion_factor)
+			row.warehouse = row.warehouse or self.set_warehouse
 			row.delivery_location = row.delivery_location or self.default_delivery_location
-			row.delivery_date = row.delivery_date or self.expected_delivery_date
+			row.schedule_date = row.schedule_date or self.schedule_date
 			# Preserve the original committed date separately from later submitted
 			# delivery-date changes, preserving the row-level baseline.
 			if self.docstatus == 0:
-				row.expected_delivery_date = row.delivery_date
+				row.expected_delivery_date = row.schedule_date
 			elif not row.expected_delivery_date:
-				row.expected_delivery_date = row.delivery_date
+				row.expected_delivery_date = row.schedule_date
 			self.calculate_row_amount(row)
 
 	def is_price_validation_enabled(self):
@@ -224,15 +291,20 @@ class YRPPurchaseOrder(Document):
 			)
 
 	def validate_items(self):
+		# BuyingController calls ``self.validate_items()`` for every standard
+		# Purchase Order.  Keep ERPNext's own purchase-item validation untouched
+		# unless this document explicitly opted into the YRP workflow.
+		if not self.is_yrp_managed:
+			return _call_super(self, "validate_items")
 		if not self.supplier:
 			frappe.throw(_("Supplier is required."))
-		if not self.delivery_warehouse:
+		if not self.set_warehouse:
 			frappe.throw(_("Delivery Warehouse is required."))
 		if not self.get("items"):
 			frappe.throw(_("At least one item is required."))
 
 		for row in self.items:
-			if not row.item_variant:
+			if not row.item_code:
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if flt(row.qty) <= 0:
 				frappe.throw(_("Row {0}: Qty must be greater than zero.").format(row.idx))
@@ -247,11 +319,11 @@ class YRPPurchaseOrder(Document):
 		for row in self.get("items") or []:
 			if force or row.is_new():
 				row.pending_quantity = flt(row.qty)
-				row.received_quantity = 0
+				row.received_qty = 0
 				row.cancelled_quantity = 0
 			else:
 				row.pending_quantity = flt(row.pending_quantity) or flt(row.qty)
-				row.received_quantity = flt(row.received_quantity)
+				row.received_qty = flt(row.received_qty)
 				row.cancelled_quantity = flt(row.cancelled_quantity)
 
 	def calculate_row_amount(self, row):
@@ -271,27 +343,60 @@ class YRPPurchaseOrder(Document):
 		self.total_discount = sum(flt(row.discount_amount) for row in self.get("items") or [])
 		self.total_tax = sum(flt(row.tax_amount) for row in self.get("items") or [])
 		self.grand_total = sum(flt(row.total_amount) for row in self.get("items") or [])
+		self.net_total = self.total - self.total_discount
+		self.total_taxes_and_charges = self.total_tax
+		conversion_rate = flt(self.conversion_rate) or 1
+		self.base_total = self.total * conversion_rate
+		self.base_net_total = self.net_total * conversion_rate
+		self.base_total_taxes_and_charges = self.total_tax * conversion_rate
+		self.base_grand_total = self.grand_total * conversion_rate
 		self.in_words = money_in_words(self.grand_total) if flt(self.grand_total) else ""
 
-	def set_status(self, cancel=False):
+	def set_status(self, update=False, status=None, update_modified=True, cancel=False):
+		# StatusUpdater calls this method with ``update``, ``status`` and
+		# ``update_modified`` keyword arguments.  Delegating the native path is
+		# essential: the YRP mixin must not replace ERPNext's status engine for
+		# ordinary Purchase Orders.
+		if not self.is_yrp_managed:
+			return _call_super(
+				self,
+				"set_status",
+				update=update,
+				status=status,
+				update_modified=update_modified,
+			)
 		if cancel or self.docstatus == 2:
+			self.yrp_fulfillment_status = "Cancelled"
 			self.status = "Cancelled"
 			self.open_status = "Close"
-			return
-		if self.open_status == "Closed":
+		elif self.open_status == "Closed":
 			self.open_status = "Close"
-		if self.open_status == "Close":
+		if not cancel and self.docstatus != 2 and self.open_status == "Close":
+			self.yrp_fulfillment_status = "Closed"
 			self.status = "Closed"
-			return
-		if self.docstatus == 0:
+		elif not cancel and self.docstatus != 2 and self.docstatus == 0:
+			self.yrp_fulfillment_status = "Draft"
 			self.status = "Draft"
-			return
+		elif not cancel and self.docstatus != 2:
+			self.yrp_fulfillment_status = self.get_fulfillment_status()
+			self.per_received = (
+				100 * sum(flt(row.received_qty) for row in self.get("items") or [])
+				/ max(sum(flt(row.qty) for row in self.get("items") or []), 1)
+			)
+			self.status = "Completed" if self.yrp_fulfillment_status == "Received" else "To Receive"
 
-		self.status = self.get_fulfillment_status()
+		if update and not self.is_new():
+			self.db_set("status", self.status, update_modified=update_modified)
+			self.db_set(
+				"yrp_fulfillment_status",
+				self.yrp_fulfillment_status,
+				update_modified=False,
+			)
+			self.db_set("open_status", self.open_status, update_modified=False)
 
 	def get_fulfillment_status(self):
 		total_qty = sum(flt(row.qty) for row in self.get("items") or [])
-		received_qty = sum(flt(row.received_quantity) for row in self.get("items") or [])
+		received_qty = sum(flt(row.received_qty) for row in self.get("items") or [])
 		cancelled_qty = sum(flt(row.cancelled_quantity) for row in self.get("items") or [])
 		pending_qty = sum(flt(row.pending_quantity) for row in self.get("items") or [])
 
@@ -324,7 +429,7 @@ def _is_party_link(reference_doctype, reference_name, supplier):
 			{
 				"parenttype": reference_doctype,
 				"parent": reference_name,
-				"link_doctype": 'YRP Supplier',
+				"link_doctype": 'Supplier',
 				"link_name": supplier,
 			},
 		)
@@ -357,7 +462,7 @@ def validate_price_details(rows, supplier=None, strict=True):
 	rows_by_item = defaultdict(list)
 	warnings = []
 	for row in rows:
-		parent_item = _get_parent_item(row.item_variant)
+		parent_item = _get_parent_item(row.item_code)
 		if parent_item:
 			rows_by_item[parent_item].append(row)
 
@@ -400,13 +505,13 @@ def _apply_attribute_price(item_price, rows, strict=True):
 	rows_by_value = defaultdict(list)
 	warnings = []
 	for row in rows:
-		attribute_value = _get_variant_attribute_value(row.item_variant, item_price.attribute)
+		attribute_value = _get_variant_attribute_value(row.item_code, item_price.attribute)
 		if attribute_value:
 			rows_by_value[attribute_value].append(row)
 		elif strict:
 			frappe.throw(
 				_("Item Variant {0} does not have attribute {1}.").format(
-					row.item_variant, item_price.attribute
+					row.item_code, item_price.attribute
 				)
 			)
 		else:
@@ -414,7 +519,7 @@ def _apply_attribute_price(item_price, rows, strict=True):
 				_(
 					"Item Variant {0} does not have price attribute {1}. "
 					"This draft can be saved, but it cannot be submitted until the price is configured."
-				).format(row.item_variant, item_price.attribute)
+				).format(row.item_code, item_price.attribute)
 			)
 
 	for attribute_value, value_rows in rows_by_value.items():
@@ -445,11 +550,13 @@ def _apply_attribute_price(item_price, rows, strict=True):
 
 
 def _get_parent_item(item_variant):
-	return frappe.get_cached_value('YRP Item Variant', item_variant, "item")
+	from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+	return get_parent_item(item_variant)
 
 
 def _get_variant_attribute_value(item_variant, attribute):
-	variant = frappe.get_doc('YRP Item Variant', item_variant)
+	variant = frappe.get_doc('Item', item_variant)
 	for row in variant.get("attributes") or []:
 		if row.attribute == attribute:
 			return row.attribute_value
@@ -464,7 +571,9 @@ def set_open_status(purchase_order, open_status):
 	if not open_status:
 		frappe.throw(_("Invalid open status {0}.").format(requested_open_status))
 
-	doc = frappe.get_doc('YRP Purchase Order', purchase_order)
+	doc = frappe.get_doc('Purchase Order', purchase_order)
+	if not doc.is_yrp_managed:
+		frappe.throw(_("Purchase Order {0} is not YRP managed.").format(purchase_order))
 	if doc.docstatus != 1:
 		frappe.throw(_("Only submitted Purchase Orders can be closed or reopened."))
 
@@ -475,10 +584,13 @@ def set_open_status(purchase_order, open_status):
 
 @frappe.whitelist()
 def refresh_status(purchase_order):
-	doc = frappe.get_doc('YRP Purchase Order', purchase_order)
+	doc = frappe.get_doc('Purchase Order', purchase_order)
+	doc.check_permission("write")
+	if not doc.is_yrp_managed:
+		frappe.throw(_("Purchase Order {0} is not YRP managed.").format(purchase_order))
 	doc.set_status()
 	_update_status_fields(doc)
-	return doc.status
+	return doc.yrp_fulfillment_status
 
 
 @frappe.whitelist()
@@ -493,7 +605,7 @@ def reopen_purchase_order(purchase_order):
 
 @frappe.whitelist()
 def close_or_open_purchase_orders(names, close):
-	if not frappe.has_permission('YRP Purchase Order', "write"):
+	if not frappe.has_permission('Purchase Order', "write"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 	if isinstance(names, str):
@@ -510,9 +622,10 @@ def close_or_open_purchase_orders(names, close):
 
 def close_received_po():
 	purchase_orders = frappe.get_all(
-		'YRP Purchase Order',
+		'Purchase Order',
 		filters=[
-			["status", "=", "Received"],
+			["is_yrp_managed", "=", 1],
+			["yrp_fulfillment_status", "=", "Received"],
 			["open_status", "=", "Open"],
 			["docstatus", "=", 1],
 			["modified", "<", add_days(today(), -8)],
@@ -520,7 +633,7 @@ def close_received_po():
 		pluck="name",
 	)
 	for name in purchase_orders:
-		doc = frappe.get_doc('YRP Purchase Order', name)
+		doc = frappe.get_doc('Purchase Order', name)
 		doc.set_open_status(close=True)
 		_update_status_fields(doc)
 
@@ -540,6 +653,8 @@ def _update_status_fields(doc):
 		update_modified = True
 	if doc.status != doc.get_db_value("status"):
 		doc.db_set("status", doc.status, update_modified=not update_modified)
+	if doc.yrp_fulfillment_status != doc.get_db_value("yrp_fulfillment_status"):
+		doc.db_set("yrp_fulfillment_status", doc.yrp_fulfillment_status, update_modified=False)
 
 
 @frappe.whitelist()
@@ -598,4 +713,4 @@ def _get_attribute_price_for_ui(item_price, item_detail):
 	return {"rate": None}
 
 
-PurchaseOrder = YRPPurchaseOrder
+YRPPurchaseOrder = YRPPurchaseOrderMixin

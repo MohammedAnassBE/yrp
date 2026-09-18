@@ -8,7 +8,7 @@ frappe.listview_settings["YRP Bill Tracking"] = {
 						label: "Assign To",
 						fieldname: "assign_to",
 						fieldtype: "Link",
-						options: "YRP Department",
+						options: "Department",
 						reqd: 1,
 					},
 					{

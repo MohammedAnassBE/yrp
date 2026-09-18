@@ -13,8 +13,8 @@ class TestItemBOMMetadata(IntegrationTestCase):
 
 		uom = meta.get_field("uom")
 		self.assertEqual(uom.fieldtype, "Link")
-		self.assertEqual(uom.options, 'YRP UOM')
-		self.assertEqual(uom.fetch_from, "item.default_unit_of_measure")
+		self.assertEqual(uom.options, 'UOM')
+		self.assertEqual(uom.fetch_from, "item.stock_uom")
 		self.assertEqual(uom.reqd, 1)
 
 		self.assertEqual(meta.get_field("qty_of_product").non_negative, 1)
@@ -35,8 +35,8 @@ class TestItemBOMMetadata(IntegrationTestCase):
 
 		bom_uom = meta.get_field("bom_uom")
 		self.assertEqual(bom_uom.fieldtype, "Link")
-		self.assertEqual(bom_uom.options, 'YRP UOM')
-		self.assertEqual(bom_uom.fetch_from, "bom_item.default_unit_of_measure")
+		self.assertEqual(bom_uom.options, 'UOM')
+		self.assertEqual(bom_uom.fetch_from, "bom_item.stock_uom")
 		self.assertEqual(bom_uom.read_only, 1)
 
 	def test_attribute_item_requires_mapping_before_bom_calculation(self):

@@ -42,16 +42,16 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Item",
-   "options": "YRP Item",
+   "options": "Item",
    "reqd": 1
   },
   {
-   "fetch_from": "item.default_unit_of_measure",
+   "fetch_from": "item.stock_uom",
    "fieldname": "uom",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "UOM",
-   "options": "YRP UOM",
+   "options": "UOM",
    "reqd": 1
   },
   {
@@ -87,7 +87,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "reqd": 1
   },
   {
@@ -128,7 +128,7 @@
    "fieldname": "dependent_attribute",
    "fieldtype": "Link",
    "label": "Dependent Attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "depends_on": "eval: doc.depends_on_attribute",
@@ -142,7 +142,7 @@
    "fieldtype": "Link",
    "label": "Attribute",
    "mandatory_depends_on": "eval:doc.depends_on_attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "fieldname": "tax_slab",

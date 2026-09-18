@@ -277,17 +277,16 @@ export default {
             let me = this;
             let parent_class = "." + this.get_input_class(type, attribute, index);
             let df = {
-                fieldtype: 'Link',
+                fieldtype: 'Autocomplete',
                 fieldname: this.get_attribute_name(type, attribute)+"_"+index,
-                options: 'YRP Item Attribute Value',
             };
             if (type == "item") {
                 df["read_only"] = true;
             } else if (type == "bom") {
                 df["get_query"] = function() {
                     return {
-                        query: "yrp.yrp.doctype.yrp_item.yrp_item.get_item_attribute_values",
-                        filters: {
+                        query: "yrp.yrp.doctype.yrp_item.yrp_item.search_item_attribute_values",
+                        params: {
                             "item": me.bom_item,
                             "attribute": attribute,
                         }

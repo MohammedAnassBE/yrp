@@ -7,7 +7,7 @@
  "engine": "InnoDB",
  "field_order": ["attribute", "mapping"],
  "fields": [
-  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "YRP Item Attribute", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "Item Attribute", "reqd": 1, "in_list_view": 1},
   {"fieldname": "mapping", "fieldtype": "Link", "label": "Attribute Mapping", "options": "YRP Item Item Attribute Mapping", "in_list_view": 1, "description": "Link to the Item Item Attribute Mapping that holds the values for this attribute on this item. Auto-fetched from the parent Item when the IPD's item changes."}
  ],
  "index_web_pages_for_search": 1,

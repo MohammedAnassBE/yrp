@@ -8,7 +8,7 @@
  "field_order": ["work_order", "item_variant", "quantity", "total_delivered", "total_received", "billed", "set_combination"],
  "fields": [
   {"fieldname": "work_order", "fieldtype": "Link", "in_list_view": 1, "label": "Work Order", "options": "YRP Work Order"},
-  {"fieldname": "item_variant", "fieldtype": "Link", "in_list_view": 1, "label": "Item Variant", "options": "YRP Item Variant"},
+  {"fieldname": "item_variant", "fieldtype": "Link", "in_list_view": 1, "label": "Item Variant", "options": "Item"},
   {"fieldname": "quantity", "fieldtype": "Float", "in_list_view": 1, "label": "Quantity", "precision": "3"},
   {"fieldname": "total_delivered", "fieldtype": "Float", "in_list_view": 1, "label": "Total Delivered", "precision": "3"},
   {"fieldname": "total_received", "fieldtype": "Float", "in_list_view": 1, "label": "Total Received", "precision": "3"},

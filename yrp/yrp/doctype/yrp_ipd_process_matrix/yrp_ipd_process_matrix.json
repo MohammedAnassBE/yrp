@@ -46,21 +46,21 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Reference Item Variant",
-   "options": "YRP Item Variant"
+   "options": "Item"
   },
   {
    "description": "Source item being consumed (e.g. fabric for Cutting). Leave blank if input item = the IPD's main item.",
    "fieldname": "input_item",
    "fieldtype": "Link",
    "label": "Input Item",
-   "options": "YRP Item"
+   "options": "Item"
   },
   {
    "description": "Item being produced (e.g. panel for Cutting, pack for Packing). Leave blank if output item = the IPD's main item.",
    "fieldname": "output_item",
    "fieldtype": "Link",
    "label": "Output Item",
-   "options": "YRP Item"
+   "options": "Item"
   },
   {
    "fieldname": "column_break_main",

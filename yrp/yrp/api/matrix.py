@@ -51,7 +51,7 @@ def _attribute_values_for_item(item):
 	`mapping` Link field per row pointing to an `Item Item Attribute Mapping` doc;
 	that mapping's `values` child table holds the attribute_value rows.
 	"""
-	item_doc = frappe.get_doc('YRP Item', item)
+	item_doc = frappe.get_doc('Item', item)
 	values = {}
 	for attr_row in item_doc.get("attributes") or []:
 		if not attr_row.mapping:

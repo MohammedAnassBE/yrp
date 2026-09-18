@@ -14,7 +14,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "fieldname": "mapping",

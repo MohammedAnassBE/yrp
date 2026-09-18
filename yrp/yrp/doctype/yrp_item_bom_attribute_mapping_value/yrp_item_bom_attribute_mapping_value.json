@@ -26,30 +26,27 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Attribute",
-   "options": "YRP Item Attribute",
+   "options": "Item Attribute",
    "reqd": 1
   },
   {
    "fieldname": "attribute_value",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Attribute Value",
-   "options": "YRP Item Attribute Value",
    "reqd": 1
   },
   {
    "fieldname": "bom_item_attribute",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "BOM Item Attribute",
-   "options": "YRP Item Attribute Value"
+   "label": "BOM Item Attribute"
   },
   {
    "fieldname": "product_attribute",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Product Attribute",
-   "options": "YRP Item Attribute Value"
+   "label": "Product Attribute"
   },
   {
    "fieldname": "type",

@@ -27,7 +27,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
         # get_whatsapp_context scans ALL APPROVED templates (then filters by
         # applicable_doctypes in Python) -- IntegrationTestCase only rolls
         # back at class teardown, not per test method, so an APPROVED
-        # "YRP Purchase Order"-applicable mirror left behind by an earlier test
+        # "Purchase Order"-applicable mirror left behind by an earlier test
         # method in this class would otherwise leak into a later test's scan.
         # Wipe this class's own fixtures before every test for isolation.
         for name in frappe.get_all('YRP YRP WhatsApp Template',
@@ -141,29 +141,29 @@ class TestWhatsAppNotification(IntegrationTestCase):
         po = self._submitted_po()
         self._configure_enabled_doctypes([])  # Purchase Order not listed at all
         with self.assertRaises(frappe.ValidationError) as ctx:
-            whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
         self.assertIn("not enabled", str(ctx.exception))
 
     def test_context_throws_when_doctype_row_disabled(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 0)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 0)])
         with self.assertRaises(frappe.ValidationError):
-            whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
 
     # ---- get_whatsapp_context: template filtering + variable resolution -----
     def test_context_returns_approved_applicable_templates_with_resolved_vars(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_ctx", status="APPROVED",
             body_text="Order {{1}} for {{2}}",
-            applicable_doctypes=['YRP Purchase Order'],
+            applicable_doctypes=['Purchase Order'],
             # {{1}} -> doc.name (plain field), {{2}} -> literal
             sample_values=[
                 {"variable_number": 1, "variable_type": "body", "sample_value": "name"},
                 {"variable_number": 2, "variable_type": "body", "sample_value": "=Ready for dispatch"},
             ])
 
-        ctx = whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+        ctx = whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
         self.assertEqual(ctx["supplier"], po.supplier)
         self.assertEqual(ctx["mobile"], "98765 43210")
         self.assertEqual(len(ctx["templates"]), 1)
@@ -181,32 +181,32 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def test_context_unresolved_variable_is_blank(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_blank", status="APPROVED",
-            body_text="Hi {{1}}", applicable_doctypes=['YRP Purchase Order'])  # no sample_values
-        ctx = whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            body_text="Hi {{1}}", applicable_doctypes=['Purchase Order'])  # no sample_values
+        ctx = whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
         self.assertEqual(ctx["templates"][0]["variables"][0]["value"], "")
 
     def test_context_resolves_dotted_link_path(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_dot", status="APPROVED", body_text="Hi {{1}}",
-            applicable_doctypes=['YRP Purchase Order'],
+            applicable_doctypes=['Purchase Order'],
             sample_values=[
                 {"variable_number": 1, "variable_type": "body", "sample_value": "supplier.supplier_name"},
             ])
-        ctx = whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
-        expected = frappe.db.get_value('YRP Supplier', po.supplier, "supplier_name")
+        ctx = whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
+        expected = frappe.db.get_value('Supplier', po.supplier, "supplier_name")
         self.assertEqual(ctx["templates"][0]["variables"][0]["value"], expected)
 
     def test_context_collects_header_and_body_variables(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_hdr", status="APPROVED",
             header_type="TEXT", header_content="Update {{1}}",
             body_text="Order {{1}} for {{2}}",
-            applicable_doctypes=['YRP Purchase Order'])
-        ctx = whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            applicable_doctypes=['Purchase Order'])
+        ctx = whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
         t = ctx["templates"][0]
         types_by_name = {(v["name"], v["type"]) for v in t["variables"]}
         self.assertIn(("{{1}}", "body"), types_by_name)
@@ -215,59 +215,59 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def test_context_needs_media_true_for_media_header(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_media", status="APPROVED",
             header_type="IMAGE", body_text="Order {{1}} ready",
-            applicable_doctypes=['YRP Purchase Order'])
-        ctx = whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            applicable_doctypes=['Purchase Order'])
+        ctx = whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
         self.assertTrue(ctx["templates"][0]["needs_media"])
         # an IMAGE header carries no positional header variables
         self.assertFalse(any(v["type"] == "header" for v in ctx["templates"][0]["variables"]))
 
     def test_context_without_supplier_throws(self):
         wh = _warehouse(f"_T WA NoSup {frappe.generate_hash(length=4)}")
-        self._configure_enabled_doctypes([('YRP Warehouse', "supplier", 1)])
+        self._configure_enabled_doctypes([('Warehouse', "supplier", 1)])
         with self.assertRaises(frappe.ValidationError):
-            whatsapp_notification.get_whatsapp_context('YRP Warehouse', wh)
+            whatsapp_notification.get_whatsapp_context('Warehouse', wh)
 
     def test_context_without_mobile_throws(self):
         po = self._submitted_po(mobile=None)
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_nomob", status="APPROVED",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
         with self.assertRaises(frappe.ValidationError):
-            whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
 
     def test_context_filters_non_approved_template(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_draft", status="DRAFT",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
         # a configured-but-not-APPROVED mirror is filtered out -> no sendable template
         with self.assertRaises(frappe.ValidationError):
-            whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
 
     def test_context_filters_template_not_applicable_to_doctype(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         # APPROVED, but its applicable_doctypes doesn't include Purchase Order
         self._ensure_mirror("yrp_wa_notapplic", status="APPROVED",
             applicable_doctypes=['YRP Stock Entry'])
         with self.assertRaises(frappe.ValidationError):
-            whatsapp_notification.get_whatsapp_context('YRP Purchase Order', po.name)
+            whatsapp_notification.get_whatsapp_context('Purchase Order', po.name)
 
     # ---- send_whatsapp_notification -----------------------------------------
     def test_send_writes_failed_log_and_red_msgprint_no_throw(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_send", status="APPROVED",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
 
         with patch(DELIVER, return_value=self._failed()):
             with patch("frappe.msgprint") as mock_msg:
                 # NO exception even though delivery failed
                 result = whatsapp_notification.send_whatsapp_notification(
-                    'YRP Purchase Order', po.name, template_name="yrp_wa_send",
+                    'Purchase Order', po.name, template_name="yrp_wa_send",
                     language_code="en",
                     params={"body:1": po.name, "body:2": po.supplier},
                     mobile_no="919000000009")
@@ -276,7 +276,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
         self.assertEqual(mock_msg.call_args.kwargs.get("indicator"), "red")
 
         log = frappe.get_last_doc('YRP WhatsApp Notification Log',
-            filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+            filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
         self.assertEqual(log.status, "Failed")
         self.assertEqual(log.mobile_no, "919000000009")
         self.assertEqual(log.error, "Meta rejected")
@@ -285,14 +285,14 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def test_send_happy_writes_sent_log_and_returns_result(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_send", status="APPROVED",
             body_text="Order {{1}} for {{2}}",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
 
         with patch(DELIVER, return_value=self._ok("wamid.HAPPY")) as mock_deliver:
             result = whatsapp_notification.send_whatsapp_notification(
-                'YRP Purchase Order', po.name, template_name="yrp_wa_send",
+                'Purchase Order', po.name, template_name="yrp_wa_send",
                 language_code="en",
                 params={"body:1": po.name, "body:2": po.supplier},
                 mobile_no="919000000009")
@@ -309,7 +309,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
         self.assertIsNone(kwargs["header_source"])          # no header_file given
 
         log = frappe.get_last_doc('YRP WhatsApp Notification Log',
-            filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+            filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
         self.assertEqual(log.status, "Sent")
         self.assertEqual(log.meta_message_id, "wamid.HAPPY")
         self.assertEqual(log.template_name, "yrp_wa_send")
@@ -318,16 +318,16 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def test_send_builds_header_source_from_header_file_for_media_template(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_media_send", status="APPROVED",
             header_type="IMAGE", body_text="Order {{1}} photo attached",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
         photo = self._ensure_file("photo.bin",
-            attached_to_doctype='YRP Purchase Order', attached_to_name=po.name)
+            attached_to_doctype='Purchase Order', attached_to_name=po.name)
 
         with patch(DELIVER, return_value=self._ok("wamid.MEDIA")) as mock_deliver:
             result = whatsapp_notification.send_whatsapp_notification(
-                'YRP Purchase Order', po.name, template_name="yrp_wa_media_send",
+                'Purchase Order', po.name, template_name="yrp_wa_media_send",
                 language_code="en", params={"body:1": po.name},
                 mobile_no="919000000009",
                 header_file=photo.file_url)
@@ -339,21 +339,21 @@ class TestWhatsAppNotification(IntegrationTestCase):
         })
 
         log = frappe.get_last_doc('YRP WhatsApp Notification Log',
-            filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+            filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
         self.assertEqual(log.message_type, "Media")
 
     def test_send_ignores_header_file_for_text_header_template(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_text_send", status="APPROVED",
             header_type="TEXT", header_content="Hello", body_text="Order {{1}}",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
         attachment = self._ensure_file("ignored.bin",
-            attached_to_doctype='YRP Purchase Order', attached_to_name=po.name)
+            attached_to_doctype='Purchase Order', attached_to_name=po.name)
 
         with patch(DELIVER, return_value=self._ok("wamid.TXT")) as mock_deliver:
             whatsapp_notification.send_whatsapp_notification(
-                'YRP Purchase Order', po.name, template_name="yrp_wa_text_send",
+                'Purchase Order', po.name, template_name="yrp_wa_text_send",
                 language_code="en", params={"body:1": po.name},
                 mobile_no="919000000009",
                 header_file=attachment.file_url)
@@ -366,23 +366,23 @@ class TestWhatsAppNotification(IntegrationTestCase):
         po = self._submitted_po()
         self._configure_enabled_doctypes([])  # Purchase Order not listed at all
         self._ensure_mirror("yrp_wa_gate1", status="APPROVED",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
 
         with patch(DELIVER) as mock_deliver:
             with self.assertRaises(frappe.ValidationError) as ctx:
                 whatsapp_notification.send_whatsapp_notification(
-                    'YRP Purchase Order', po.name, template_name="yrp_wa_gate1",
+                    'Purchase Order', po.name, template_name="yrp_wa_gate1",
                     language_code="en",
                     params={"body:1": po.name, "body:2": po.supplier},
                     mobile_no="919000000009")
         self.assertIn("not enabled", str(ctx.exception))
         mock_deliver.assert_not_called()
         self.assertFalse(frappe.db.exists('YRP WhatsApp Notification Log',
-            {"reference_doctype": 'YRP Purchase Order', "reference_name": po.name}))
+            {"reference_doctype": 'Purchase Order', "reference_name": po.name}))
 
     def test_send_throws_when_template_not_applicable(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         # APPROVED, but its applicable_doctypes doesn't include Purchase Order --
         # write permission on the PO alone must not be enough to fire this template.
         self._ensure_mirror("yrp_wa_gate2", status="APPROVED",
@@ -391,7 +391,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
         with patch(DELIVER) as mock_deliver:
             with self.assertRaises(frappe.ValidationError) as ctx:
                 whatsapp_notification.send_whatsapp_notification(
-                    'YRP Purchase Order', po.name, template_name="yrp_wa_gate2",
+                    'Purchase Order', po.name, template_name="yrp_wa_gate2",
                     language_code="en",
                     params={"body:1": po.name, "body:2": po.supplier},
                     mobile_no="919000000009")
@@ -400,10 +400,10 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def test_send_throws_permission_error_for_unreadable_header_file(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_gate3", status="APPROVED",
             header_type="IMAGE", body_text="Order {{1}} photo",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
         # private, unattached, unshared, owned by Administrator (the inserting
         # user) -- only Administrator / the owner / an explicit share may
         # read it, so a plain write-permitted Purchase Manager must not.
@@ -415,7 +415,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
             with patch(DELIVER) as mock_deliver:
                 with self.assertRaises(frappe.PermissionError):
                     whatsapp_notification.send_whatsapp_notification(
-                        'YRP Purchase Order', po.name, template_name="yrp_wa_gate3",
+                        'Purchase Order', po.name, template_name="yrp_wa_gate3",
                         language_code="en", params={"body:1": po.name},
                         mobile_no="919000000009",
                         header_file=secret.file_url)
@@ -425,23 +425,23 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def test_send_happy_path_with_full_governance_passes(self):
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         self._ensure_mirror("yrp_wa_gate4", status="APPROVED",
             header_type="IMAGE", body_text="Order {{1}} ready",
-            applicable_doctypes=['YRP Purchase Order'])
+            applicable_doctypes=['Purchase Order'])
         photo = self._ensure_file("ready.bin",
-            attached_to_doctype='YRP Purchase Order', attached_to_name=po.name)
+            attached_to_doctype='Purchase Order', attached_to_name=po.name)
 
         with patch(DELIVER, return_value=self._ok("wamid.GATE4")) as mock_deliver:
             result = whatsapp_notification.send_whatsapp_notification(
-                'YRP Purchase Order', po.name, template_name="yrp_wa_gate4",
+                'Purchase Order', po.name, template_name="yrp_wa_gate4",
                 language_code="en", params={"body:1": po.name},
                 mobile_no="919000000009", header_file=photo.file_url)
 
         self.assertTrue(result["ok"])
         mock_deliver.assert_called_once()
         log = frappe.get_last_doc('YRP WhatsApp Notification Log',
-            filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+            filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
         self.assertEqual(log.status, "Sent")
         self.assertEqual(log.message_type, "Media")
 
@@ -459,12 +459,12 @@ class TestWhatsAppNotification(IntegrationTestCase):
     # ---- get_enabled_whatsapp_doctypes ----------------------------------------
     def test_get_enabled_whatsapp_doctypes_returns_map(self):
         self._configure_enabled_doctypes([
-            ('YRP Purchase Order', "supplier", 1),
+            ('Purchase Order', "supplier", 1),
             ('YRP Stock Entry', "to_supplier", 1),
             ('YRP Delivery Challan', "supplier", 0),
         ])
         result = whatsapp_notification.get_enabled_whatsapp_doctypes()
-        self.assertEqual(result["doctypes"].get('YRP Purchase Order'), "supplier")
+        self.assertEqual(result["doctypes"].get('Purchase Order'), "supplier")
         self.assertEqual(result["doctypes"].get('YRP Stock Entry'), "to_supplier")
         self.assertNotIn('YRP Delivery Challan', result["doctypes"])
 
@@ -475,7 +475,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
         )
         po = self._submitted_po()
         log = create_whatsapp_log(
-            reference_doctype='YRP Purchase Order', reference_name=po.name,
+            reference_doctype='Purchase Order', reference_name=po.name,
             supplier=po.supplier, contact=None, mobile_no="919000000009",
             result=self._ok(), template_name="yrp_wa_send", language_code="en",
             message_variables={"header_vars": [], "body_vars": [po.name, po.supplier]})
@@ -495,7 +495,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
         po = self._submitted_po()
         self._configure_enabled_doctypes([])  # Purchase Order not listed at all
         log = create_whatsapp_log(
-            reference_doctype='YRP Purchase Order', reference_name=po.name,
+            reference_doctype='Purchase Order', reference_name=po.name,
             supplier=po.supplier, contact=None, mobile_no="919000000009",
             result=self._failed(), template_name="yrp_wa_send", language_code="en",
             message_variables={"header_vars": [], "body_vars": [po.name, po.supplier]})
@@ -511,9 +511,9 @@ class TestWhatsAppNotification(IntegrationTestCase):
             create_whatsapp_log,
         )
         po = self._submitted_po()
-        self._configure_enabled_doctypes([('YRP Purchase Order', "supplier", 1)])
+        self._configure_enabled_doctypes([('Purchase Order', "supplier", 1)])
         log = create_whatsapp_log(
-            reference_doctype='YRP Purchase Order', reference_name=po.name,
+            reference_doctype='Purchase Order', reference_name=po.name,
             supplier=po.supplier, contact=None, mobile_no="919000000009",
             result=self._failed(), template_name="yrp_wa_send", language_code="en",
             message_variables={"header_vars": [], "body_vars": [po.name, po.supplier]})

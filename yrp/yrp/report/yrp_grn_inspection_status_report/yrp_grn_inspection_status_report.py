@@ -33,10 +33,10 @@ def _get_columns(dims, target_field_map):
 		{"label": _("GRN Date"), "fieldname": "posting_date", "fieldtype": "Date", "width": 100},
 		{"label": _("Against"), "fieldname": "against", "fieldtype": "Data", "width": 110},
 		{"label": _("Against ID"), "fieldname": "against_id", "fieldtype": "Dynamic Link", "options": "against", "width": 150},
-		{"label": _("Supplier"), "fieldname": "supplier", "fieldtype": "Link", "options": 'YRP Supplier', "width": 140},
+		{"label": _("Supplier"), "fieldname": "supplier", "fieldtype": "Link", "options": 'Supplier', "width": 140},
 		{"label": _("Process"), "fieldname": "process_name", "fieldtype": "Link", "options": 'YRP Process', "width": 140},
-		{"label": _("Item Variant"), "fieldname": "item_variant", "fieldtype": "Link", "options": 'YRP Item Variant', "width": 160},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'YRP Warehouse', "width": 140},
+		{"label": _("Item Variant"), "fieldname": "item_variant", "fieldtype": "Link", "options": 'Item', "width": 160},
+		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 140},
 		{"label": _("Source Received Type"), "fieldname": "source_received_type", "fieldtype": "Link", "options": 'YRP Received Type', "width": 140},
 	]
 	for dim in dims:

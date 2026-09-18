@@ -134,17 +134,17 @@ def get_events(start, end, filters=None):
 		filters = []
 
 	if start:
-		filters.append(['YRP Holiday', "holiday_date", ">", getdate(start)])
+		filters.append(['Holiday', "holiday_date", ">", getdate(start)])
 	if end:
-		filters.append(['YRP Holiday', "holiday_date", "<", getdate(end)])
+		filters.append(['Holiday', "holiday_date", "<", getdate(end)])
 
 	return frappe.get_list(
-		'YRP Holiday List',
+		'Holiday List',
 		fields=[
 			"name",
-			"`tabYRP Holiday`.holiday_date",
-			"`tabYRP Holiday`.description",
-			"`tabYRP Holiday List`.color",
+			"`tabHoliday`.holiday_date",
+			"`tabHoliday`.description",
+			"`tabHoliday List`.color",
 		],
 		filters=filters,
 		update={"allDay": 1},
@@ -156,7 +156,7 @@ def is_holiday(holiday_list, date=None):
 	if date is None:
 		date = today()
 	if holiday_list:
-		return bool(frappe.db.exists('YRP Holiday', {"parent": holiday_list, "holiday_date": date}, cache=True))
+		return bool(frappe.db.exists('Holiday', {"parent": holiday_list, "holiday_date": date}, cache=True))
 	return False
 
 
@@ -180,7 +180,7 @@ def get_next_date(day, lead_time):
 
 
 def get_events_len(date1, date2):
-	return frappe.db.count('YRP Holiday', filters={
+	return frappe.db.count('Holiday', filters={
 		"holiday_date": [">", date1],
 		"holiday_date": ["<=", date2],
 	})

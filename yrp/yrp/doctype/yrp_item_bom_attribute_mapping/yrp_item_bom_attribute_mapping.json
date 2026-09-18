@@ -49,22 +49,22 @@
    "fieldname": "item",
    "fieldtype": "Link",
    "label": "Item",
-   "options": "YRP Item",
+   "options": "Item",
    "read_only": 1
   },
   {
    "fieldname": "bom_item",
    "fieldtype": "Link",
    "label": "BOM Item",
-   "options": "YRP Item",
+   "options": "Item",
    "read_only": 1
   },
   {
-   "fetch_from": "bom_item.default_unit_of_measure",
+   "fetch_from": "bom_item.stock_uom",
    "fieldname": "bom_uom",
    "fieldtype": "Link",
    "label": "UOM",
-   "options": "YRP UOM",
+   "options": "UOM",
    "read_only": 1
   },
   {

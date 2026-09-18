@@ -100,7 +100,7 @@
    "fieldname": "from_warehouse",
    "fieldtype": "Link",
    "label": "Default Source Warehouse",
-   "options": "YRP Warehouse",
+   "options": "Warehouse",
    "depends_on": "eval:[\"Material Issue\",\"Send to Warehouse\",\"Material Consumed\"].includes(doc.purpose)"
   },
   {
@@ -111,7 +111,7 @@
    "fieldname": "to_warehouse",
    "fieldtype": "Link",
    "label": "Default Target Warehouse",
-   "options": "YRP Warehouse",
+   "options": "Warehouse",
    "depends_on": "eval:[\"Material Receipt\",\"Send to Warehouse\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"
   },
   {
@@ -222,7 +222,7 @@
    "fieldname": "from_supplier",
    "fieldtype": "Link",
    "label": "From Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "fetch_from": "from_warehouse.supplier",
    "fetch_if_empty": 0,
    "depends_on": "eval:[\"Material Issue\",\"Send to Warehouse\",\"Material Consumed\"].includes(doc.purpose)"
@@ -231,7 +231,7 @@
    "fieldname": "to_supplier",
    "fieldtype": "Link",
    "label": "To Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "fetch_from": "to_warehouse.supplier",
    "fetch_if_empty": 0,
    "depends_on": "eval:[\"Material Receipt\",\"Send to Warehouse\",\"Receive at Warehouse\",\"DC Completion\",\"GRN Completion\"].includes(doc.purpose)"

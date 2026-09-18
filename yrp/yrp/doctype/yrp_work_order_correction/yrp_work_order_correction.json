@@ -90,7 +90,7 @@
    "fieldname": "item",
    "fieldtype": "Link",
    "label": "Item",
-   "options": "YRP Item",
+   "options": "Item",
    "read_only": 1
   },
   {
@@ -108,7 +108,7 @@
    "fieldname": "supplier",
    "fieldtype": "Link",
    "label": "Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "read_only": 1
   },
   {
@@ -117,7 +117,7 @@
    "fieldname": "delivery_location",
    "fieldtype": "Link",
    "label": "Delivery Location",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "read_only": 1
   },
   {

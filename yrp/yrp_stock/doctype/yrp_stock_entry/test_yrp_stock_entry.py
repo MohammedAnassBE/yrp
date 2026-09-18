@@ -5,6 +5,8 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
 
 ITEM_VARIANT = None
 WH_FROM = None
@@ -16,8 +18,8 @@ STOCK_DIMENSIONS = {}
 def _test_warehouse(label):
 	"""Create a transaction-scoped warehouse with no dependency on site masters."""
 	return frappe.get_doc({
-		"doctype": 'YRP Warehouse',
-		"name1": f"_Test Stock Entry {label} {frappe.generate_hash(length=8)}",
+		"doctype": 'Warehouse',
+		"warehouse_name": f"_Test Stock Entry {label} {frappe.generate_hash(length=8)}",
 	}).insert(ignore_permissions=True).name
 
 
@@ -97,11 +99,11 @@ class TestStockEntry(FrappeTestCase):
 		super().setUpClass()
 		global ITEM_VARIANT, STOCK_DIMENSIONS, UOM, WH_FROM, WH_TO
 
-		ITEM_VARIANT = frappe.db.get_value('YRP Item Variant', {}, "name")
+		ITEM_VARIANT = frappe.db.get_value('Item', {}, "name")
 		if not ITEM_VARIANT:
 			raise frappe.DoesNotExistError("Stock Entry tests require one Item Variant")
-		parent_item = frappe.db.get_value('YRP Item Variant', ITEM_VARIANT, "item")
-		UOM = frappe.db.get_value('YRP Item', parent_item, "default_unit_of_measure")
+		parent_item = get_parent_item(ITEM_VARIANT)
+		UOM = frappe.db.get_value('Item', parent_item, "stock_uom")
 		if not UOM:
 			raise frappe.DoesNotExistError(f"{parent_item} requires a default UOM")
 

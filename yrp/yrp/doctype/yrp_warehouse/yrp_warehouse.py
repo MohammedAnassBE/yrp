@@ -3,17 +3,34 @@
 
 import frappe
 from frappe import _
-from frappe.model.document import Document
-from frappe.contacts.address_and_contact import load_address_and_contact, delete_contact_and_address
 
 
-class YRPWarehouse(Document):
-	def onload(self):
-		"""Load address and contacts in `__onload`."""
-		load_address_and_contact(self)
+def _call_super(instance, method_name, *args, **kwargs):
+	method = getattr(super(YRPWarehouseMixin, instance), method_name, None)
+	if method:
+		return method(*args, **kwargs)
+	return None
+
+
+class YRPWarehouseMixin:
+	"""YRP operation permissions added to ERPNext's standard Warehouse."""
+
+	def validate(self):
+		_call_super(self, "validate")
+		if self.is_new():
+			return
+		before = self.get_doc_before_save()
+		if not before or before.is_group == self.is_group:
+			return
+		if _has_yrp_stock(self.name):
+			frappe.throw(
+				_("Cannot change Is Group for Warehouse {0} because YRP stock exists.").format(self.name)
+			)
 
 	def on_trash(self):
-		delete_contact_and_address('YRP Warehouse', self.name)
+		if _has_yrp_stock(self.name):
+			frappe.throw(_("Cannot delete Warehouse {0} because YRP stock exists.").format(self.name))
+		return _call_super(self, "on_trash")
 
 	def validate_user_permission(self, user=None):
 		"""Check if a user is permitted to operate on this warehouse.
@@ -36,4 +53,12 @@ class YRPWarehouse(Document):
 			)
 
 
-Warehouse = YRPWarehouse
+def _has_yrp_stock(warehouse):
+	return bool(
+		frappe.db.exists("YRP Bin", {"warehouse": warehouse})
+		or frappe.db.exists("YRP Stock Ledger Entry", {"warehouse": warehouse})
+		or frappe.db.exists("YRP Stock Reservation Entry", {"warehouse": warehouse})
+	)
+
+
+YRPWarehouse = YRPWarehouseMixin

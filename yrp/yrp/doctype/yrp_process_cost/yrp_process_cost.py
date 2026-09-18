@@ -161,7 +161,7 @@ def get_item_attributes(doctype, txt, searchfield, start, page_len, filters):
 	if not item_name:
 		return []
 
-	item = frappe.get_doc('YRP Item', item_name)
+	item = frappe.get_doc('Item', item_name)
 	attributes = [attribute.attribute for attribute in item.attributes]
 	return [[a] for a in attributes if not txt or txt.lower() in a.lower()]
 
@@ -172,7 +172,7 @@ def get_pc_attribute_values(item, attribute):
 	if not item or not attribute:
 		return []
 
-	item_doc = frappe.get_doc('YRP Item', item)
+	item_doc = frappe.get_doc('Item', item)
 	for attr in item_doc.attributes:
 		if attr.attribute == attribute and attr.mapping:
 			mapping_doc = frappe.get_doc('YRP Item Item Attribute Mapping', attr.mapping)

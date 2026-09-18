@@ -7,6 +7,7 @@ from frappe.utils import cint, flt
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_conversion_factor
 from yrp.stock.utils import get_stock_balance as _get_stock_balance
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 @frappe.whitelist()
@@ -104,11 +105,11 @@ def get_total_stock(item_code, filters=None):
 @frappe.whitelist()
 def get_item_uom_and_rate(item):
 	"""UOM, conversion factors, and last incoming rate for an item variant."""
-	parent = frappe.db.get_value('YRP Item Variant', item, "item")
-	stock_uom = frappe.db.get_value('YRP Item', parent, "default_unit_of_measure") if parent else None
+	parent = get_parent_item(item)
+	stock_uom = frappe.db.get_value('Item', parent, "stock_uom") if parent else None
 	conversions = frappe.get_all(
-		'YRP UOM Conversion Detail',
-		filters={"parent": parent},
+		'UOM Conversion Detail',
+		filters={"parent": parent, "parenttype": "Item", "parentfield": "uoms"},
 		fields=["uom", "conversion_factor"],
 	) if parent else []
 	last_rate = frappe.db.get_value(
@@ -134,7 +135,7 @@ def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 	# Only allow filtering on known Warehouse fields
 	ALLOWED_FILTER_FIELDS = {"name", "disabled", "is_transit", "default_supplier"}
 
-	wh = frappe.qb.DocType('YRP Warehouse')
+	wh = frappe.qb.DocType('Warehouse')
 	q = frappe.qb.from_(wh).select(wh.name).where(wh.disabled == 0)
 
 	# Apply user-provided filters (only whitelisted fields)

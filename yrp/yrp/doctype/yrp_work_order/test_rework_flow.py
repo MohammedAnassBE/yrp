@@ -6,6 +6,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
 from yrp.stock.utils import get_stock_balance
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_delivery_challan.test_internal_unit_transfer import (
 	_neutral_production_group_dimensions,
 )
@@ -53,7 +54,7 @@ def _without_host_lot_process_validation():
 
 def _make_parent_work_order(qty=10):
 	item_variant = _test_item_variant()
-	parent_item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
+	parent_item = get_parent_item(item_variant)
 	uom = _item_uom(item_variant)
 	supplier = _supplier(f"_T_Rework_Parent_Supplier_{frappe.generate_hash(length=6)}")
 	delivery_location = _supplier(f"_T_Rework_Location_{frappe.generate_hash(length=6)}")

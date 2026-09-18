@@ -15,8 +15,8 @@
   {"fieldname": "group_index", "fieldtype": "Int", "label": "Group Index", "reqd": 1, "in_list_view": 1},
   {"fieldname": "side", "fieldtype": "Select", "label": "Side", "options": "Input\nOutput", "reqd": 1, "in_list_view": 1},
   {"fieldname": "combo_index", "fieldtype": "Int", "label": "Combo Index", "reqd": 1, "in_list_view": 1},
-  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "YRP Item Attribute", "reqd": 1, "in_list_view": 1},
-  {"fieldname": "attribute_value", "fieldtype": "Link", "label": "Attribute Value", "options": "YRP Item Attribute Value", "reqd": 1, "in_list_view": 1}
+  {"fieldname": "attribute", "fieldtype": "Link", "label": "Attribute", "options": "Item Attribute", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "attribute_value", "fieldtype": "Data", "label": "Attribute Value", "reqd": 1, "in_list_view": 1}
  ],
  "istable": 1,
  "links": [],

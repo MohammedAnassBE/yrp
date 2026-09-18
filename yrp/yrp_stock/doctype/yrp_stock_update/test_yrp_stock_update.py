@@ -85,10 +85,10 @@ class TestStockUpdateRateValidation(FrappeTestCase):
 		self.assertNotIn("unknown", kwargs)
 		has_permission.assert_any_call('YRP Stock Update', "create", throw=True)
 		has_permission.assert_any_call(
-			'YRP Item', "read", doc="TEST-ITEM", throw=True
+			'Item', "read", doc="TEST-ITEM", throw=True
 		)
 		has_permission.assert_any_call(
-			'YRP Warehouse', "read", doc="TEST-WAREHOUSE", throw=True
+			'Warehouse', "read", doc="TEST-WAREHOUSE", throw=True
 		)
 
 	def test_editor_rate_lookup_rejects_unbounded_value_lists(self):

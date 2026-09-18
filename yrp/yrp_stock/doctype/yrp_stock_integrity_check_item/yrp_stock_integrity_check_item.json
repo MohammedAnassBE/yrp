@@ -17,8 +17,8 @@
   "fixed_at"
  ],
  "fields": [
-  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "YRP Item Variant"},
-  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "YRP Warehouse"},
+  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item"},
+  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse"},
   {"fieldname": "dimensions_json", "fieldtype": "Small Text", "label": "Dimensions"},
   {"fieldname": "category", "fieldtype": "Select", "in_list_view": 1, "label": "Category", "options": "qty_mismatch\nmissing_bin\nrequires_backfill"},
   {"fieldname": "sle_qty", "fieldtype": "Float", "label": "SLE Qty"},

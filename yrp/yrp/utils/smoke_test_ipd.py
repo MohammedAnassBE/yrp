@@ -34,25 +34,22 @@ def run():
 
 
 def _clean():
-	smoke_items = frappe.get_all('YRP Item', filters={"name1": ITEM_CODE}, pluck="name")
+	smoke_items = frappe.get_all('Item', filters={"item_code": ITEM_CODE}, pluck="name")
 	for item_name in smoke_items:
 		for n in frappe.get_all('YRP IPD Process Matrix', filters={"ipd": ["like", f"IPD-{item_name}-%"]}, pluck="name"):
 			_force_delete('YRP IPD Process Matrix', n)
 		for n in frappe.get_all('YRP Item Production Detail', filters={"item": item_name}, pluck="name"):
 			_force_delete('YRP Item Production Detail', n)
-		item = frappe.get_doc('YRP Item', item_name)
+		item = frappe.get_doc('Item', item_name)
 		for ar in item.get("attributes") or []:
 			if ar.mapping and frappe.db.exists('YRP Item Item Attribute Mapping', ar.mapping):
 				frappe.delete_doc('YRP Item Item Attribute Mapping', ar.mapping, force=1, ignore_permissions=True)
-		_force_delete('YRP Item', item_name)
+		_force_delete('Item', item_name)
 		for n in frappe.get_all('YRP Item Dependent Attribute Mapping', filters={"item": item_name}, pluck="name"):
 			_force_delete('YRP Item Dependent Attribute Mapping', n)
-	for attr_name, values in ATTRS.items():
-		for v in values:
-			if frappe.db.exists('YRP Item Attribute Value', v):
-				_force_delete('YRP Item Attribute Value', v)
-		if frappe.db.exists('YRP Item Attribute', attr_name):
-			_force_delete('YRP Item Attribute', attr_name)
+	for attr_name in ATTRS:
+		if frappe.db.exists('Item Attribute', attr_name):
+			_force_delete('Item Attribute', attr_name)
 	if frappe.db.exists('YRP Process', "_SMOKE_Stitching"):
 		_force_delete('YRP Process', "_SMOKE_Stitching")
 	frappe.db.commit()
@@ -70,26 +67,25 @@ def _force_delete(dt, name):
 
 def _seed_attributes():
 	for attr_name, values in ATTRS.items():
-		if not frappe.db.exists('YRP Item Attribute', attr_name):
-			doc = frappe.new_doc('YRP Item Attribute')
+		if not frappe.db.exists('Item Attribute', attr_name):
+			doc = frappe.new_doc('Item Attribute')
 			doc.attribute_name = attr_name
+			for value in values:
+				doc.append("item_attribute_values", {"attribute_value": value, "abbr": value})
 			doc.insert(ignore_permissions=True)
-		for v in values:
-			value_name = f"{attr_name}-{v}"
-			if not frappe.db.exists('YRP Item Attribute Value', value_name):
-				vdoc = frappe.new_doc('YRP Item Attribute Value')
-				vdoc.attribute_name = attr_name
-				vdoc.attribute_value = v
-				vdoc.insert(ignore_permissions=True)
 
 
 def _seed_item():
-	existing = frappe.get_all('YRP Item', filters={"name1": ITEM_CODE}, pluck="name", limit=1)
+	existing = frappe.get_all('Item', filters={"item_code": ITEM_CODE}, pluck="name", limit=1)
 	if existing:
 		return existing[0]
-	doc = frappe.new_doc('YRP Item')
-	doc.name1 = ITEM_CODE
-	doc.item_group = frappe.db.get_value('YRP Item Group', {"is_group": 0}, "name") or "All Item Groups"
+	doc = frappe.new_doc('Item')
+	doc.item_code = ITEM_CODE
+	doc.item_name = ITEM_CODE
+	doc.stock_uom = frappe.db.get_value("UOM", {}, "name") or "Nos"
+	doc.item_group = frappe.db.get_value('Item Group', {"is_group": 0}, "name") or "All Item Groups"
+	doc.has_variants = 1
+	doc.variant_based_on = "Item Attribute"
 	for attr_name in ATTRS:
 		doc.append("attributes", {"attribute": attr_name})
 	doc.insert(ignore_permissions=True)
@@ -98,7 +94,7 @@ def _seed_item():
 
 def _seed_attribute_mapping(item):
 	"""Create Item Item Attribute Mapping per attribute and link from Item.attributes rows."""
-	item_doc = frappe.get_doc('YRP Item', item)
+	item_doc = frappe.get_doc('Item', item)
 	for attr_row in item_doc.attributes:
 		if attr_row.mapping:
 			# pre-existing — populate values

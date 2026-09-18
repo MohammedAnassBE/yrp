@@ -16,7 +16,7 @@ class TestWhatsAppInbound(IntegrationTestCase):
         meta_message_id (the shape create_whatsapp_log writes after a
         successful send)."""
         return create_whatsapp_log(
-            reference_doctype='YRP Supplier',
+            reference_doctype='Supplier',
             reference_name="_T WA Inbound Ref",
             supplier=None,
             contact=None,

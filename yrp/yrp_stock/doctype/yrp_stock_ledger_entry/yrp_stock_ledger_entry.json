@@ -31,8 +31,8 @@
   "remarks"
  ],
  "fields": [
-  {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "YRP Item Variant", "search_index": 1},
-  {"fieldname": "warehouse", "fieldtype": "Link", "label": "Warehouse", "options": "YRP Warehouse", "search_index": 1},
+  {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "Item", "search_index": 1},
+  {"fieldname": "warehouse", "fieldtype": "Link", "label": "Warehouse", "options": "Warehouse", "search_index": 1},
   {"fieldname": "posting_date", "fieldtype": "Date", "label": "Posting Date", "search_index": 1},
   {"fieldname": "posting_datetime", "fieldtype": "Datetime", "label": "Posting Datetime", "search_index": 1},
   {"fieldname": "column_break_1", "fieldtype": "Column Break"},
@@ -46,7 +46,7 @@
   {"fieldname": "reconciled_qty", "fieldtype": "Float", "label": "Reconciled Qty", "read_only": 1, "description": "Physical counted quantity from Stock Reconciliation. Qty remains the movement/difference."},
   {"fieldname": "rate", "fieldtype": "Currency", "label": "Incoming Rate"},
   {"fieldname": "outgoing_rate", "fieldtype": "Currency", "label": "Outgoing Rate"},
-  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "YRP UOM", "read_only": 1},
+  {"fieldname": "uom", "fieldtype": "Link", "label": "UOM", "options": "UOM", "read_only": 1},
   {"fieldname": "column_break_2", "fieldtype": "Column Break"},
   {"fieldname": "valuation_rate", "fieldtype": "Currency", "label": "Valuation Rate"},
   {"fieldname": "stock_value", "fieldtype": "Currency", "label": "Stock Value"},

@@ -1,7 +1,7 @@
 // Copyright (c) 2021, Essdee and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("YRP Item Attribute", {
+frappe.ui.form.on("Item Attribute", {
 	refresh: function (frm) {
 		if (frm.doc.__islocal) {
 			hide_field(["section_break_8"]);

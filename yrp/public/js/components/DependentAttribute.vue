@@ -65,7 +65,7 @@ export default {
                         dependent_attribute_values.push(value);
                         if(!this.data.attr_list.hasOwnProperty(value)) {
                             this.data.attr_list[value] = {
-                                "uom": this.item.default_unit_of_measure,
+                                "uom": this.item.stock_uom,
                                 "name": "",
                                 "attributes": [],
                             }
@@ -121,7 +121,7 @@ export default {
                     parent: $(this.$el).find('.'+a),
                     df: {
                         fieldtype: 'Link',
-                        options: 'YRP UOM',
+                        options: 'UOM',
                         label: 'UOM',
                         reqd: true,
                         onchange: () => {

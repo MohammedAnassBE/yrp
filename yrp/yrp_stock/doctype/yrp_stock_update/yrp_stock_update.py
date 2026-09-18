@@ -8,6 +8,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 MAX_RATE_LOOKUP_VALUES = 200
@@ -79,13 +80,11 @@ class YRPStockUpdate(Document):
 				)
 				row.available_stock = actual
 
-				parent_item = frappe.get_cached_value(
-					'YRP Item Variant', row.item_variant, "item"
-				)
+				parent_item = get_parent_item(row.item_variant)
 				item_allows_neg = bool(
 					parent_item
 					and frappe.get_cached_value(
-						'YRP Item', parent_item, "allow_negative_stock"
+						'Item', parent_item, "allow_negative_stock"
 					)
 				)
 				reserved = actual - available
@@ -219,8 +218,8 @@ def get_stock_update_rates(
 		frappe.throw(_("Select an Item before fetching its valuation rate."))
 	if not isinstance(warehouse, str) or not warehouse or len(warehouse) > 140:
 		frappe.throw(_("Set Warehouse before fetching an item's valuation rate."))
-	frappe.has_permission('YRP Item', "read", doc=item, throw=True)
-	frappe.has_permission('YRP Warehouse', "read", doc=warehouse, throw=True)
+	frappe.has_permission('Item', "read", doc=item, throw=True)
+	frappe.has_permission('Warehouse', "read", doc=warehouse, throw=True)
 
 	attributes = _parse_json_value(attributes, {})
 	value_keys = _parse_json_value(value_keys, ["default"])

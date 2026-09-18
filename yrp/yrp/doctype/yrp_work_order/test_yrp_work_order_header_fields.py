@@ -25,7 +25,7 @@ class TestWorkOrderHeaderFields(FrappeTestCase):
 			'query: "frappe.contacts.doctype.address.address.address_query"',
 			client_script,
 		)
-		self.assertIn('link_doctype: "YRP Supplier"', client_script)
+		self.assertIn('link_doctype: "Supplier"', client_script)
 
 	def test_generic_work_order_source_flags_are_owned_by_base_yrp(self):
 		work_order_meta = frappe.get_meta('YRP Work Order', cached=False)
@@ -71,14 +71,19 @@ class TestWorkOrderHeaderFields(FrappeTestCase):
 			self.assertIsNone(process_meta.get_field("includes_packing"))
 			self.assertIsNone(work_order_meta.get_field("includes_packing"))
 
-		supplier_meta = frappe.get_meta('YRP Supplier', cached=False)
+		supplier_meta = frappe.get_meta('Supplier', cached=False)
 		self.assertIsNotNone(supplier_meta.get_field("is_company_location"))
 		self.assertIsNotNone(supplier_meta.get_field("terms_and_condition"))
-		self.assertFalse(
-			frappe.db.exists(
+		# Supplier is now ERPNext's canonical master.  The YRP-owned extension is
+		# therefore a fixed fixture Custom Field, not a field on a duplicate
+		# Supplier DocType.
+		self.assertEqual(
+			frappe.db.get_value(
 				"Custom Field",
-				{"dt": 'YRP Supplier', "fieldname": "terms_and_condition"},
-			)
+				{"dt": 'Supplier', "fieldname": "terms_and_condition"},
+				"module",
+			),
+			"YRP",
 		)
 
 	def test_process_and_supplier_flags_are_stored_server_side(self):
@@ -87,7 +92,7 @@ class TestWorkOrderHeaderFields(FrappeTestCase):
 		work_order.process_name = "TEST-PROCESS"
 
 		def get_value(doctype, name, fields, **kwargs):
-			if doctype == 'YRP Supplier':
+			if doctype == 'Supplier':
 				return 1
 			if doctype == 'YRP Process':
 				self.assertEqual(fields, "is_manual_entry_in_grn")

@@ -22,7 +22,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item",
-   "options": "YRP Item",
+   "options": "Item",
    "reqd": 1
   },
   {
@@ -44,12 +44,12 @@
    "reqd": 1
   },
   {
-   "fetch_from": "item.default_unit_of_measure",
+   "fetch_from": "item.stock_uom",
    "fieldname": "uom",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "UOM",
-   "options": "YRP UOM",
+   "options": "UOM",
    "read_only": 1,
    "reqd": 1
   },
@@ -62,10 +62,9 @@
   },
   {
    "fieldname": "dependent_attribute_value",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Dependent Attribute Value",
-   "options": "YRP Item Attribute Value"
+   "label": "Dependent Attribute Value"
   },
   {
    "default": "0",
@@ -79,7 +78,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Attribute mapping based on ",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "depends_on": "based_on_attribute_mapping",

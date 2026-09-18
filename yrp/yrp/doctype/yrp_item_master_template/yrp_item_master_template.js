@@ -60,7 +60,7 @@ frappe.ui.form.on('YRP Item Master Template', {
 							label: 'Item Group',
 							fieldname: 'item_group',
 							fieldtype: 'Link',
-							options: 'YRP Item Group',
+							options: 'Item Group',
 							reqd: 1
 						}
 					],
@@ -75,7 +75,7 @@ frappe.ui.form.on('YRP Item Master Template', {
 							},
 							callback: function(r) {
 								if (r.message) {
-									frappe.set_route('Form', 'YRP Item', r.message);
+									frappe.set_route('Form', 'Item', r.message);
 								}
 							}
 						});

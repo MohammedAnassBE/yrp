@@ -17,14 +17,14 @@
   "stock_value"
  ],
  "fields": [
-  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item Code", "options": "YRP Item Variant", "reqd": 1, "search_index": 1},
+  {"fieldname": "item_code", "fieldtype": "Link", "in_list_view": 1, "label": "Item Code", "options": "Item", "reqd": 1, "search_index": 1},
   {"fieldname": "column_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "YRP Warehouse", "reqd": 1, "search_index": 1},
+  {"fieldname": "warehouse", "fieldtype": "Link", "in_list_view": 1, "label": "Warehouse", "options": "Warehouse", "reqd": 1, "search_index": 1},
   {"fieldname": "section_break_1", "fieldtype": "Section Break"},
   {"fieldname": "actual_qty", "fieldtype": "Float", "label": "Actual Qty"},
   {"fieldname": "reserved_qty", "fieldtype": "Float", "label": "Reserved Qty"},
   {"fieldname": "section_break_2", "fieldtype": "Section Break"},
-  {"fieldname": "stock_uom", "fieldtype": "Link", "label": "UOM", "options": "YRP UOM"},
+  {"fieldname": "stock_uom", "fieldtype": "Link", "label": "UOM", "options": "UOM"},
   {"fieldname": "valuation_rate", "fieldtype": "Currency", "label": "Valuation Rate"},
   {"fieldname": "stock_value", "fieldtype": "Currency", "label": "Stock Value"}
  ],

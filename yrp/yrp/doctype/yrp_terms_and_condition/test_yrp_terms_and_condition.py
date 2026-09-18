@@ -21,7 +21,7 @@ def _supplier(po_tc=None, wo_tc=None, terms_tc=None):
 	supplier_name = f"_Test Supplier {frappe.generate_hash(length=8)}"
 	return frappe.get_doc(
 		{
-			"doctype": 'YRP Supplier',
+			"doctype": 'Supplier',
 			"supplier_name": supplier_name,
 			"po_terms_and_condition": po_tc,
 			"wo_terms_and_condition": wo_tc,
@@ -118,7 +118,7 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 	def test_po_prefills_terms_on_new_when_empty(self):
 		mapped = _tnc()
 		supplier = _supplier(po_tc=mapped.name)
-		po = frappe.new_doc('YRP Purchase Order')
+		po = frappe.new_doc('Purchase Order')
 		po.supplier = supplier.name
 		po.set_default_terms()
 		self.assertEqual(po.terms_and_condition, mapped.name)
@@ -127,7 +127,7 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 		mapped = _tnc()
 		chosen = _tnc()
 		supplier = _supplier(po_tc=mapped.name)
-		po = frappe.new_doc('YRP Purchase Order')
+		po = frappe.new_doc('Purchase Order')
 		po.supplier = supplier.name
 		po.terms_and_condition = chosen.name
 		po.set_default_terms()

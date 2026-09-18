@@ -93,7 +93,7 @@ class TestWhatsAppTemplates(IntegrationTestCase):
             account,
         )
         doc = frappe.get_doc('YRP YRP WhatsApp Template', name)
-        doc.append("applicable_doctypes", {"reference_doctype": 'YRP Purchase Order'})
+        doc.append("applicable_doctypes", {"reference_doctype": 'Purchase Order'})
         doc.append("applicable_doctypes", {"reference_doctype": 'YRP Stock Entry'})
         doc.flags.from_meta_sync = True
         doc.save(ignore_permissions=True)
@@ -111,7 +111,7 @@ class TestWhatsAppTemplates(IntegrationTestCase):
         self.assertEqual(reloaded.status, "PAUSED")
         self.assertEqual(reloaded.body_text, "Hello {{1}}, updated")
         applicable = sorted(r.reference_doctype for r in reloaded.applicable_doctypes)
-        self.assertEqual(applicable, ['YRP Purchase Order', 'YRP Stock Entry'])
+        self.assertEqual(applicable, ['Purchase Order', 'YRP Stock Entry'])
 
     def test_get_template_variables_body_and_header_sorted(self):
         account = self._ensure_account()

@@ -17,31 +17,40 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		cls.uom = cls._ensure_uom()
 		cls.item_group = frappe.get_doc(
 			{
-				"doctype": 'YRP Item Group',
+				"doctype": 'Item Group',
 				"item_group_name": f"_Test Reservation Group {suffix}",
 				"is_group": 0,
 			}
 		).insert(ignore_permissions=True).name
+		item_code = f"_Test Reservation Item {suffix}"
+		item_values = {
+			"doctype": 'Item',
+			"item_code": item_code,
+			"item_name": item_code,
+			"item_group": cls.item_group,
+			"stock_uom": cls.uom,
+			"is_stock_item": 1,
+		}
+		if (
+			frappe.get_meta("Item").has_field("gst_hsn_code")
+			and frappe.db.exists("DocType", "GST HSN Code")
+			and frappe.db.exists("GST HSN Code", "999900")
+		):
+			item_values["gst_hsn_code"] = "999900"
 		item = frappe.get_doc(
-			{
-				"doctype": 'YRP Item',
-				"name1": f"_Test Reservation Item {suffix}",
-				"item_group": cls.item_group,
-				"default_unit_of_measure": cls.uom,
-				"is_stock_item": 1,
-			}
+			item_values
 		).insert(ignore_permissions=True)
-		cls.item_variant = frappe.get_doc(
-			{"doctype": 'YRP Item Variant', "item": item.name}
-		).insert(ignore_permissions=True).name
+		# Attribute-less source parent/variant pairs are one standalone Item in
+		# the common standard-Item structure.
+		cls.item_variant = item.name
 		cls.dimensions = cls._dimension_values()
 
 	@staticmethod
 	def _ensure_uom():
 		name = "_Test Reservation Unit"
-		if not frappe.db.exists("YRP UOM", name):
+		if not frappe.db.exists("UOM", name):
 			frappe.get_doc(
-				{"doctype": "YRP UOM", "uom_name": name, "enabled": 1}
+				{"doctype": "UOM", "uom_name": name, "enabled": 1}
 			).insert(ignore_permissions=True)
 		return name
 
@@ -68,8 +77,8 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 	def _warehouse(self, label):
 		return frappe.get_doc(
 			{
-				"doctype": 'YRP Warehouse',
-				"name1": f"_Test Reservation {label} {frappe.generate_hash(length=8)}",
+				"doctype": 'Warehouse',
+				"warehouse_name": f"_Test Reservation {label} {frappe.generate_hash(length=8)}",
 			}
 		).insert(ignore_permissions=True).name
 

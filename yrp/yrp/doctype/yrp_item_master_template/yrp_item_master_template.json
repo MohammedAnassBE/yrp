@@ -31,19 +31,19 @@
    "fieldname": "default_unit_of_measure",
    "fieldtype": "Link",
    "label": "Default Unit of Measure",
-   "options": "YRP UOM"
+   "options": "UOM"
   },
   {
    "fieldname": "uom_conversion_details",
    "fieldtype": "Table",
    "label": "UOM Conversion Details",
-   "options": "YRP UOM Conversion Detail"
+   "options": "UOM Conversion Detail"
   },
   {
    "fieldname": "secondary_unit_of_measure",
    "fieldtype": "Link",
    "label": "Secondary Unit of Measure",
-   "options": "YRP UOM"
+   "options": "UOM"
   },
   {
    "fieldname": "attributes_section",
@@ -54,13 +54,13 @@
    "fieldname": "primary_attribute",
    "fieldtype": "Link",
    "label": "Primary Attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "fieldname": "dependent_attribute",
    "fieldtype": "Link",
    "label": "Dependent Attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "fieldname": "dependent_attribute_mapping",

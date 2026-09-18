@@ -103,14 +103,14 @@ def get_columns(filters, dims):
 	setup_ageing_columns(filters, range_columns)
 
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'YRP Item Variant', "width": 150},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'Item', "width": 150},
 		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
-		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'YRP Item Group', "width": 100},
+		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'Item Group', "width": 100},
 	]
 
 	if filters.get("show_warehouse_wise_stock"):
 		columns.append(
-			{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'YRP Warehouse', "width": 120},
+			{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 120},
 		)
 		for dim in dims:
 			columns.append({
@@ -129,7 +129,7 @@ def get_columns(filters, dims):
 	columns.extend([
 		{"label": _("Earliest"), "fieldname": "earliest", "fieldtype": "Int", "width": 80},
 		{"label": _("Latest"), "fieldname": "latest", "fieldtype": "Int", "width": 80},
-		{"label": _("UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'YRP UOM', "width": 100},
+		{"label": _("UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'UOM', "width": 100},
 	])
 	return columns
 

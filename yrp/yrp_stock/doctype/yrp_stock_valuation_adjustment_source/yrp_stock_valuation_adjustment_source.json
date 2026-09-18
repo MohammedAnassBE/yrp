@@ -24,7 +24,7 @@
   {"fieldname": "source_grn_item", "fieldtype": "Link", "label": "Source GRN Item", "options": "YRP Goods Received Note Item", "read_only": 1},
   {"fieldname": "source_sle", "fieldtype": "Link", "label": "Source Consumption SLE", "options": "YRP Stock Ledger Entry", "read_only": 1},
   {"fieldname": "target_sle", "fieldtype": "Link", "in_list_view": 1, "label": "Affected Receipt SLE", "options": "YRP Stock Ledger Entry", "read_only": 1, "reqd": 1, "search_index": 1},
-  {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Affected Item", "options": "YRP Item Variant", "read_only": 1, "reqd": 1},
+  {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Affected Item", "options": "Item", "read_only": 1, "reqd": 1},
   {"fieldname": "quantity", "fieldtype": "Float", "in_list_view": 1, "label": "Quantity", "precision": "6", "read_only": 1},
   {"fieldname": "old_rate", "fieldtype": "Currency", "label": "Original Rate", "precision": "6", "read_only": 1},
   {"fieldname": "new_rate", "fieldtype": "Currency", "label": "Final Rate", "precision": "6", "read_only": 1},

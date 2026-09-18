@@ -12,7 +12,9 @@ class YRPIPDProcessMatrix(Document):
 		if not (self.ipd and self.reference_item_variant):
 			return
 		ipd_item = frappe.db.get_value('YRP Item Production Detail', self.ipd, "item")
-		variant_item = frappe.db.get_value('YRP Item Variant', self.reference_item_variant, "item")
+		from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+		variant_item = get_parent_item(self.reference_item_variant)
 		if variant_item != ipd_item:
 			frappe.throw(
 				f"Reference Item Variant {self.reference_item_variant} must belong to IPD item {ipd_item}."
@@ -46,7 +48,7 @@ class YRPIPDProcessMatrix(Document):
 				r.attribute
 				for r in frappe.get_all(
 					'YRP Item Item Attribute',
-					filters={"parent": input_item, "parenttype": 'YRP Item'},
+					filters={"parent": input_item, "parenttype": 'Item'},
 					fields=["attribute"],
 				)
 			}
@@ -105,8 +107,8 @@ def get_reference_variant_query(doctype, txt, searchfield, start, page_len, filt
 	return frappe.db.sql(
 		"""
 		SELECT name
-		FROM `tabYRP Item Variant`
-		WHERE item = %(item)s
+		FROM `tabItem`
+		WHERE (name = %(item)s OR variant_of = %(item)s)
 		  AND name LIKE %(txt)s
 		ORDER BY name
 		LIMIT %(start)s, %(page_len)s

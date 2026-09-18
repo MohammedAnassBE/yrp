@@ -29,7 +29,7 @@ frappe.query_reports["YRP GRN Inspection Status Report"] = {
 			fieldname: "supplier",
 			label: __("Supplier"),
 			fieldtype: "Link",
-			options: "YRP Supplier",
+			options: "Supplier",
 		},
 		{
 			fieldname: "process_name",
@@ -41,13 +41,13 @@ frappe.query_reports["YRP GRN Inspection Status Report"] = {
 			fieldname: "item_variant",
 			label: __("Item Variant"),
 			fieldtype: "Link",
-			options: "YRP Item Variant",
+			options: "Item",
 		},
 		{
 			fieldname: "warehouse",
 			label: __("Warehouse"),
 			fieldtype: "Link",
-			options: "YRP Warehouse",
+			options: "Warehouse",
 		},
 		{
 			fieldname: "source_received_type",

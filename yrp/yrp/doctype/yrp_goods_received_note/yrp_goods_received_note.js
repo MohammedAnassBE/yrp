@@ -141,7 +141,7 @@ function get_source_defaults_method(frm) {
 			args: { work_order: frm.doc.against_id, delivery_challan: frm.doc.delivery_challan || "" },
 		};
 	}
-	if (frm.doc.against === "YRP Purchase Order") {
+	if (frm.doc.against === "Purchase Order") {
 		return {
 			method: "yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note.get_purchase_order_defaults",
 			args: { purchase_order: frm.doc.against_id },

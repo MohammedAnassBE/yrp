@@ -10,8 +10,8 @@ IGNORE_TEST_RECORD_DEPENDENCIES = []
 
 def _ensure_item_attribute(name):
 	"""Return an Item Attribute name, creating it if absent (rolled back per test)."""
-	if not frappe.db.exists('YRP Item Attribute', name):
-		frappe.get_doc({"doctype": 'YRP Item Attribute', "attribute_name": name}).insert()
+	if not frappe.db.exists('Item Attribute', name):
+		frappe.get_doc({"doctype": 'Item Attribute', "attribute_name": name}).insert()
 	return name
 
 

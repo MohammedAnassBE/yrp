@@ -15,15 +15,16 @@ from frappe.model.document import Document
 from frappe.utils import flt
 
 from yrp.stock.dimensions import get_stock_dimensions, get_valuation_dimensions
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 class YRPBin(Document):
 	def before_save(self):
 		# Auto-fill stock_uom from the parent Item if not set
 		if not self.stock_uom and self.item_code:
-			parent = frappe.db.get_value('YRP Item Variant', self.item_code, "item")
+			parent = get_parent_item(self.item_code)
 			if parent:
-				self.stock_uom = frappe.db.get_value('YRP Item', parent, "default_unit_of_measure")
+				self.stock_uom = frappe.db.get_value('Item', parent, "stock_uom")
 
 	def update_reserved_stock(self):
 		"""Refresh the displayed reservation balance from submitted SRE rows."""

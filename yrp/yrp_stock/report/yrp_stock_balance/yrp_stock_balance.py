@@ -96,10 +96,10 @@ def get_inward_date_breakdown(fifo_queue):
 
 def get_columns(filters, dims):
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'YRP Item Variant', "width": 150},
-		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Link", "options": 'YRP Item', "width": 150},
-		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'YRP Item Group', "width": 100},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'YRP Warehouse', "width": 120},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'Item', "width": 150},
+		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Link", "options": 'Item', "width": 150},
+		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'Item Group', "width": 100},
+		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 120},
 	]
 	# Dynamic dimension columns
 	for dim in dims:
@@ -112,7 +112,7 @@ def get_columns(filters, dims):
 		})
 
 	columns.extend([
-		{"label": _("Stock UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'YRP UOM', "width": 90},
+		{"label": _("Stock UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'UOM', "width": 90},
 		{"label": _("Balance Qty"), "fieldname": "bal_qty", "fieldtype": "Float", "width": 100},
 		{"label": _("Balance Value"), "fieldname": "bal_val", "fieldtype": "Currency", "width": 110},
 		{"label": _("Opening Qty"), "fieldname": "opening_qty", "fieldtype": "Float", "width": 100},
@@ -147,7 +147,7 @@ def get_columns(filters, dims):
 		])
 
 	if filters.get("show_variant_attributes"):
-		for att in frappe.get_all('YRP Item Attribute', pluck="name"):
+		for att in frappe.get_all('Item Attribute', pluck="name"):
 			columns.append({"label": att, "fieldname": att, "width": 100})
 
 	return columns
@@ -271,8 +271,8 @@ def get_items(filters):
 		return [item] if isinstance(item, str) else item
 	item_filters = {}
 	if parent_item := filters.get("parent_item"):
-		item_filters["item"] = parent_item
-	return frappe.get_all('YRP Item Variant', filters=item_filters, pluck="name", order_by=None)
+		item_filters["variant_of"] = parent_item
+	return frappe.get_all('Item', filters=item_filters, pluck="name", order_by=None)
 
 
 def get_item_details(items, sle, filters):
@@ -282,19 +282,16 @@ def get_item_details(items, sle, filters):
 	if not items:
 		return item_details
 
-	item_table = frappe.qb.DocType('YRP Item')
-	variant_table = frappe.qb.DocType('YRP Item Variant')
-
+	item_table = frappe.qb.DocType('Item')
 	result = (
 		frappe.qb.from_(item_table)
-		.from_(variant_table)
 		.select(
-			variant_table.name,
-			item_table.name.as_("item_name"),
+			item_table.name,
+			item_table.item_name,
 			item_table.item_group,
-			item_table.default_unit_of_measure.as_("stock_uom"),
+			item_table.stock_uom,
 		)
-		.where((variant_table.name.isin(items)) & (item_table.name == variant_table.item))
+		.where(item_table.name.isin(items))
 	).run(as_dict=True)
 
 	for row in result:
@@ -302,7 +299,7 @@ def get_item_details(items, sle, filters):
 
 	if filters.get("show_variant_attributes"):
 		attrs = frappe.get_all(
-			'YRP Item Variant Attribute',
+			'Item Variant Attribute',
 			filters={"parent": ("in", list(item_details))},
 			fields=["parent", "attribute", "attribute_value"],
 		)

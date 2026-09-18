@@ -5,7 +5,7 @@ def run():
 	ipd_name = "IPD-Item-00015-1"
 	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
 	print(f"IPD: {ipd.name}")
-	print(f"  item: {ipd.item}  ({frappe.db.get_value('YRP Item', ipd.item, 'name1')})")
+	print(f"  item: {ipd.item}  ({frappe.db.get_value('Item', ipd.item, 'item_name')})")
 	print(f"  version: {ipd.version}  status: {ipd.approval_status}")
 	print(f"  primary attr: {ipd.primary_item_attribute}  dependent: {ipd.dependent_attribute}")
 	print(f"  attributes: {[r.attribute for r in ipd.item_attributes]}")
@@ -24,5 +24,5 @@ def run():
 		print(f"    {p.process_name}: in={p.in_stage} out={p.out_stage}{matrix_info}")
 	print(f"  item_bom rows: {len(ipd.item_bom)}")
 	for r in ipd.item_bom:
-		name1 = frappe.db.get_value('YRP Item', r.item, "name1")
-		print(f"    {r.process_name or '-':20s} {r.qty_of_bom_item}/{r.qty_of_product} {r.uom} of {r.item} ({name1})")
+		item_name = frappe.db.get_value('Item', r.item, "item_name")
+		print(f"    {r.process_name or '-':20s} {r.qty_of_bom_item}/{r.qty_of_product} {r.uom} of {r.item} ({item_name})")

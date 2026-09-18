@@ -391,7 +391,7 @@ class YRPDeliveryChallan(Document):
 		flags = {
 			row.name: row.is_company_location
 			for row in frappe.db.get_all(
-				'YRP Supplier',
+				'Supplier',
 				filters={"name": ["in", [self.from_location, self.supplier]]},
 				fields=["name", "is_company_location"],
 			)
@@ -477,9 +477,9 @@ def rebuild_work_order_deliverable_pending(work_order):
 
 
 def _get_warehouse_for_supplier(supplier):
-	if not supplier or not frappe.db.exists("DocType", 'YRP Warehouse'):
+	if not supplier or not frappe.db.exists("DocType", 'Warehouse'):
 		return None
-	warehouses = frappe.get_all('YRP Warehouse', filters={"supplier": supplier, "disabled": 0}, pluck="name")
+	warehouses = frappe.get_all('Warehouse', filters={"supplier": supplier, "disabled": 0}, pluck="name")
 	return warehouses[0] if len(warehouses) == 1 else None
 
 

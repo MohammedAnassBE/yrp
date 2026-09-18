@@ -4,6 +4,7 @@ from frappe.utils import flt, nowdate, nowtime
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_stock_balance
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
 	get_work_order_defaults,
 )
@@ -45,7 +46,7 @@ def _make_rework_cycle(parent_process_rate):
 	wo, supplier_wh, delivery_wh, item_variant, uom = _make_parent_work_order(qty=10)
 	# Override the auto-resolved process cost with a known rate so we can
 	# assert exact valuation downstream.
-	parent_item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
+	parent_item = get_parent_item(item_variant)
 	dimensions = {
 		dimension["fieldname"]: wo.get(dimension["fieldname"])
 		for dimension in get_stock_dimensions()

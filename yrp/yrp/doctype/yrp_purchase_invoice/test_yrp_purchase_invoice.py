@@ -6,6 +6,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
 from yrp.stock.test_uom import _dependent_item_variant, _ensure_uom
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice import PurchaseInvoice
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_address,
@@ -29,8 +30,8 @@ def _work_order_for_invoice(qty=5):
 	item_variant = _item_variant_for_production_dimensions(
 		_test_item_variant(), dimensions
 	)
-	parent_item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
-	uom = frappe.db.get_value('YRP Item', parent_item, "default_unit_of_measure") or "Piece"
+	parent_item = get_parent_item(item_variant)
+	uom = frappe.db.get_value('Item', parent_item, "stock_uom") or "Piece"
 	supplier = _supplier(f"_Test PI WO Supplier {frappe.generate_hash(length=6)}")
 	delivery_location = _supplier(f"_Test PI WO Delivery {frappe.generate_hash(length=6)}")
 	process_name = _process("_Test PI WO Process")
@@ -88,7 +89,7 @@ def _work_order_grn(wo, qty=5):
 		"doctype": 'YRP Goods Received Note',
 		"against": 'YRP Work Order',
 		"against_id": wo.name,
-		"to_warehouse": frappe.db.get_value('YRP Warehouse', {"supplier": wo.delivery_location}, "name"),
+		"to_warehouse": frappe.db.get_value('Warehouse', {"supplier": wo.delivery_location}, "name"),
 		"supplier_address": wo.supplier_address,
 		"delivery_address": wo.delivery_address,
 		"items": [{
@@ -106,9 +107,11 @@ def _work_order_grn(wo, qty=5):
 	return grn
 
 
-def _purchase_invoice(against, supplier, grn, approved=False):
-	data = frappe.get_attr("yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details")(
-		[grn.name], against, supplier
+def _purchase_invoice(
+	against, supplier, grn, approved=False, use_host_projection=True
+):
+	data = _fetch_grn_details(
+		[grn.name], against, supplier, use_host_projection=use_host_projection
 	)
 	doc = frappe.get_doc({
 		"doctype": 'YRP Purchase Invoice',
@@ -121,6 +124,7 @@ def _purchase_invoice(against, supplier, grn, approved=False):
 		"items": data["items"],
 		"pi_work_order_billed_details": data["wo_items"],
 		"total_quantity": data["total_quantity"],
+		**data.get("additional_field_values", {}),
 	})
 	doc.insert(ignore_permissions=True)
 	if approved:
@@ -129,6 +133,23 @@ def _purchase_invoice(against, supplier, grn, approved=False):
 		)
 		doc.reload()
 	return doc
+
+
+def _fetch_grn_details(
+	grns, against, supplier, purchase_invoice=None, use_host_projection=True
+):
+	method = "yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details"
+	if use_host_projection and "essdee_yrp" in frappe.get_installed_apps():
+		method = "essdee_yrp.purchase_invoice.fetch_grn_details"
+	return frappe.get_attr(method)(grns, against, supplier, purchase_invoice)
+
+
+def _commercial_rows(data):
+	return data.get("additional_field_values", {}).get("essdee_items") or data["items"]
+
+
+def _editable_rate_row(invoice):
+	return (invoice.get("essdee_items") or invoice.get("items"))[0]
 
 
 class TestPurchaseInvoice(FrappeTestCase):
@@ -145,17 +166,17 @@ class TestPurchaseInvoice(FrappeTestCase):
 		po = _purchase_order(qty=2, warehouse=_warehouse(f"_Test_PI_Eligible_WH_{frappe.generate_hash(length=6)}"))
 		grn = _purchase_order_grn(po, qty=2)
 		grn.submit()
-		invoice = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
 
 		get_eligible = frappe.get_attr(
 			"yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.get_eligible_grns"
 		)
 		self.assertNotIn(
 			grn.name,
-			[row.name for row in get_eligible(po.supplier, 'YRP Purchase Order')],
+			[row.name for row in get_eligible(po.supplier, 'Purchase Order')],
 		)
 		current_rows = get_eligible(
-			po.supplier, 'YRP Purchase Order', purchase_invoice=invoice.name
+			po.supplier, 'Purchase Order', purchase_invoice=invoice.name
 		)
 		self.assertIn(grn.name, [row.name for row in current_rows])
 		self.assertTrue(next(row.selected for row in current_rows if row.name == grn.name))
@@ -164,18 +185,18 @@ class TestPurchaseInvoice(FrappeTestCase):
 		po = _purchase_order(qty=2, warehouse=_warehouse(f"_Test_PI_Linked_WH_{frappe.generate_hash(length=6)}"))
 		grn = _purchase_order_grn(po, qty=2)
 		grn.submit()
-		_purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		_purchase_invoice('Purchase Order', po.supplier, grn)
 
 		with self.assertRaises(frappe.ValidationError):
 			frappe.get_attr(
 				"yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details"
-			)([grn.name], 'YRP Purchase Order', po.supplier)
+			)([grn.name], 'Purchase Order', po.supplier)
 
 	def test_deleting_draft_invoice_releases_grn(self):
 		po = _purchase_order(qty=2, warehouse=_warehouse(f"_Test_PI_Delete_WH_{frappe.generate_hash(length=6)}"))
 		grn = _purchase_order_grn(po, qty=2)
 		grn.submit()
-		invoice = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
 
 		invoice.delete(ignore_permissions=True)
 		self.assertFalse(
@@ -189,33 +210,34 @@ class TestPurchaseInvoice(FrappeTestCase):
 		second_grn = _purchase_order_grn(po, qty=3)
 		second_grn.submit()
 
-		fetch = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details"
+		data = _fetch_grn_details(
+			[first_grn.name, second_grn.name], 'Purchase Order', po.supplier
 		)
-		data = fetch(
-			[first_grn.name, second_grn.name], 'YRP Purchase Order', po.supplier
-		)
-		self.assertEqual(len(data["items"]), 1)
-		self.assertAlmostEqual(flt(data["items"][0]["qty"]), 5)
+		commercial_rows = _commercial_rows(data)
+		self.assertEqual(len(commercial_rows), 1)
+		self.assertAlmostEqual(flt(commercial_rows[0]["qty"]), 5)
 		self.assertEqual(data["allow_to_change_rate"], 1)
 
 		invoice = frappe.get_doc({
 			"doctype": 'YRP Purchase Invoice',
 			"supplier": po.supplier,
 			"billing_supplier": po.supplier,
-			"against": 'YRP Purchase Order',
+			"against": 'Purchase Order',
 			"bill_no": f"BILL-{frappe.generate_hash(length=6)}",
 			"bill_date": nowdate(),
 			"allow_to_change_rate": data["allow_to_change_rate"],
 			"grn": [{"grn": first_grn.name}, {"grn": second_grn.name}],
 			"items": data["items"],
+			**data.get("additional_field_values", {}),
 		})
 		invoice.insert(ignore_permissions=True)
-		invoice.items[0].rate = flt(invoice.items[0].rate) + 10
+		rate_row = _editable_rate_row(invoice)
+		rate_row.rate = flt(rate_row.rate) + 10
 		invoice.save(ignore_permissions=True)
+		rate_row = _editable_rate_row(invoice)
 		self.assertAlmostEqual(
-			flt(invoice.items[0].amount),
-			flt(invoice.items[0].qty) * flt(invoice.items[0].rate),
+			flt(rate_row.amount),
+			flt(rate_row.qty) * flt(rate_row.rate),
 		)
 
 	def test_fetch_keeps_same_item_with_different_prices_as_separate_rows(self):
@@ -237,23 +259,24 @@ class TestPurchaseInvoice(FrappeTestCase):
 		second_grn = _purchase_order_grn(second_po, qty=3)
 		second_grn.submit()
 
-		data = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details"
-		)([first_grn.name, second_grn.name], 'YRP Purchase Order', po.supplier)
+		data = _fetch_grn_details(
+			[first_grn.name, second_grn.name], 'Purchase Order', po.supplier
+		)
+		commercial_rows = _commercial_rows(data)
 
-		self.assertEqual(len(data["items"]), 2)
+		self.assertEqual(len(commercial_rows), 2)
 		self.assertEqual(
-			sorted(flt(row["qty"]) for row in data["items"]),
+			sorted(flt(row["qty"]) for row in commercial_rows),
 			[2, 3],
 		)
-		self.assertEqual(len({flt(row["rate"]) for row in data["items"]}), 2)
+		self.assertEqual(len({flt(row["rate"]) for row in commercial_rows}), 2)
 
 	def test_purchase_order_invoice_tracks_grn_and_blocks_grn_cancel(self):
 		po = _purchase_order(qty=4, warehouse=_warehouse(f"_Test_PI_PO_WH_{frappe.generate_hash(length=6)}"))
 		grn = _purchase_order_grn(po, qty=4)
 		grn.submit()
 
-		invoice = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
 		invoice.submit()
 
 		grn.reload()
@@ -275,9 +298,10 @@ class TestPurchaseInvoice(FrappeTestCase):
 		)
 		grn = _purchase_order_grn(po, qty=4)
 		grn.submit()
-		invoice = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
 		invoice.allow_to_change_rate = 1
-		invoice.items[0].rate = flt(invoice.items[0].source_rate) + 5
+		rate_row = _editable_rate_row(invoice)
+		rate_row.rate = flt(rate_row.source_rate) + 5
 		invoice.save(ignore_permissions=True)
 		with patch(
 			"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment.enqueue_adjustment"
@@ -350,13 +374,12 @@ class TestPurchaseInvoice(FrappeTestCase):
 		# A corrected bill cannot race ahead of the old bill's signed reversal.
 		# It may be prepared as a draft, but its submission must wait until the
 		# previous valuation revision has reached its terminal Reversed state.
-		pending_replacement = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		pending_replacement = _purchase_invoice('Purchase Order', po.supplier, grn)
 		pending_replacement.allow_to_change_rate = 1
 		# Zero delta is intentional: it must still obey revision ordering even
 		# though it will not create a new adjustment after the reversal finishes.
-		pending_replacement.items[0].rate = flt(
-			pending_replacement.items[0].source_rate
-		)
+		pending_rate_row = _editable_rate_row(pending_replacement)
+		pending_rate_row.rate = flt(pending_rate_row.source_rate)
 		pending_replacement.save(ignore_permissions=True)
 		frappe.db.savepoint("before_pending_replacement_submit")
 		with self.assertRaisesRegex(
@@ -394,9 +417,10 @@ class TestPurchaseInvoice(FrappeTestCase):
 
 		# A corrected PI is a new independent revision. It is allowed only after
 		# the old signed reversal completed, and it applies exactly once.
-		replacement = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		replacement = _purchase_invoice('Purchase Order', po.supplier, grn)
 		replacement.allow_to_change_rate = 1
-		replacement.items[0].rate = flt(replacement.items[0].source_rate) + 7
+		replacement_rate_row = _editable_rate_row(replacement)
+		replacement_rate_row.rate = flt(replacement_rate_row.source_rate) + 7
 		replacement.save(ignore_permissions=True)
 		with patch(
 			"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment.enqueue_adjustment"
@@ -445,9 +469,10 @@ class TestPurchaseInvoice(FrappeTestCase):
 		)
 		grn = _purchase_order_grn(po, qty=4)
 		grn.submit()
-		invoice = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+		invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
 		invoice.allow_to_change_rate = 1
-		invoice.items[0].rate = flt(invoice.items[0].source_rate) + 5
+		rate_row = _editable_rate_row(invoice)
+		rate_row.rate = flt(rate_row.source_rate) + 5
 		invoice.save(ignore_permissions=True)
 		with patch(
 			"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment.enqueue_adjustment"
@@ -500,7 +525,13 @@ class TestPurchaseInvoice(FrappeTestCase):
 		with patch.object(frappe.db, "get_single_value", side_effect=get_single_value):
 			wo = _work_order_for_invoice(qty=3)
 			grn = _work_order_grn(wo, qty=3)
-			invoice = _purchase_invoice('YRP Work Order', wo.supplier, grn, approved=True)
+			invoice = _purchase_invoice(
+				'YRP Work Order',
+				wo.supplier,
+				grn,
+				approved=True,
+				use_host_projection=False,
+			)
 			# This is the base controller's billed-quantity contract. A host app may
 			# require its own commercial projection before Work Order invoices.
 			with (
@@ -536,12 +567,13 @@ class TestPurchaseInvoice(FrappeTestCase):
 			uom = _item_uom(item_variant)
 			warehouse = _warehouse(f"_Test_PI_Freight_CF_{frappe.generate_hash(length=6)}")
 			po = frappe.get_doc({
-				"doctype": 'YRP Purchase Order',
+				"doctype": 'Purchase Order',
+				"is_yrp_managed": 1,
 				"supplier": _supplier(f"_Test PI Freight Supplier {frappe.generate_hash(length=6)}"),
-				"delivery_warehouse": warehouse,
+				"set_warehouse": warehouse,
 				**_production_group_dimensions(),
 				"items": [{
-					"item_variant": item_variant,
+					"item_code": item_variant,
 					"qty": 2,
 					"uom": uom,
 					"stock_uom": uom,
@@ -555,7 +587,7 @@ class TestPurchaseInvoice(FrappeTestCase):
 			po.submit()
 			grn = frappe.get_doc({
 				"doctype": 'YRP Goods Received Note',
-				"against": 'YRP Purchase Order',
+				"against": 'Purchase Order',
 				"against_id": po.name,
 				"to_warehouse": warehouse,
 				"supplier_address": _address(
@@ -572,7 +604,7 @@ class TestPurchaseInvoice(FrappeTestCase):
 					"stock_uom": uom,
 					"conversion_factor": 10,
 					"rate": 100,
-					"ref_doctype": 'YRP Purchase Order Item',
+					"ref_doctype": 'Purchase Order Item',
 					"ref_docname": po.items[0].name,
 				}],
 			})
@@ -583,17 +615,15 @@ class TestPurchaseInvoice(FrappeTestCase):
 			self.assertAlmostEqual(flt(grn.items[0].rate), 11, places=4)
 			self.assertAlmostEqual(flt(grn.items[0].amount), 220, places=2)
 
-			data = frappe.get_attr("yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details")(
-				[grn.name], 'YRP Purchase Order', po.supplier
-			)
+			data = _fetch_grn_details([grn.name], 'Purchase Order', po.supplier)
 			# The PI bills the net material component only. Freight stays in the
 			# submitted GRN/SLE and is not treated as supplier material rate again.
 			self.assertAlmostEqual(flt(data["items"][0]["rate"]), 100, places=4)
 			self.assertAlmostEqual(flt(data["items"][0]["amount"]), 200, places=2)
 
-			invoice = _purchase_invoice('YRP Purchase Order', po.supplier, grn)
+			invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
 			invoice.allow_to_change_rate = 1
-			invoice.items[0].rate = 120
+			_editable_rate_row(invoice).rate = 120
 			invoice.save(ignore_permissions=True)
 			with patch(
 				"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment.enqueue_adjustment"

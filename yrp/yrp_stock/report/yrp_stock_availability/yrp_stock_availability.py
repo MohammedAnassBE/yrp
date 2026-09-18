@@ -102,19 +102,19 @@ def _attach_planning_quantities(rows, filters, dims, group_dims, defaults):
 
 
 def _query_purchase_order_pending(filters, dims, group_dims, defaults):
-	if not frappe.db.exists("DocType", 'YRP Purchase Order'):
+	if not frappe.db.exists("DocType", 'Purchase Order'):
 		return []
 
-	sources = _dimension_sources('YRP Purchase Order', 'YRP Purchase Order Item', dims)
+	sources = _dimension_sources('Purchase Order', 'Purchase Order Item', dims)
 	select_cols = [
-		"poi.item_variant AS item_code",
-		"po.delivery_warehouse AS warehouse",
+		"poi.item_code AS item_code",
+		"COALESCE(poi.warehouse, po.set_warehouse) AS warehouse",
 		(
 			"SUM(COALESCE(poi.pending_quantity, 0) * "
 			"CASE WHEN COALESCE(poi.conversion_factor, 0) = 0 THEN 1 ELSE poi.conversion_factor END) AS on_order"
 		),
 	]
-	group_cols = ["poi.item_variant", "po.delivery_warehouse"]
+	group_cols = ["poi.item_code", "COALESCE(poi.warehouse, po.set_warehouse)"]
 	values = {}
 	for fn in group_dims:
 		expr = _dimension_source_expression(sources.get(fn), "po", "poi", fn)
@@ -128,14 +128,15 @@ def _query_purchase_order_pending(filters, dims, group_dims, defaults):
 
 	conds = [
 		"po.docstatus = 1",
+		"COALESCE(po.is_yrp_managed, 0) = 1",
 		"COALESCE(po.open_status, 'Open') != 'Close'",
 		"COALESCE(poi.pending_quantity, 0) > 0",
 	]
 	if filters.get("item"):
-		conds.append("poi.item_variant = %(item)s")
+		conds.append("poi.item_code = %(item)s")
 		values["item"] = filters["item"]
 	if filters.get("warehouse"):
-		conds.append("po.delivery_warehouse = %(warehouse)s")
+		conds.append("COALESCE(poi.warehouse, po.set_warehouse) = %(warehouse)s")
 		values["warehouse"] = filters["warehouse"]
 	if not _apply_dimension_filters(conds, values, filters, dims, sources, defaults, "po", "poi"):
 		return []
@@ -143,8 +144,8 @@ def _query_purchase_order_pending(filters, dims, group_dims, defaults):
 	return frappe.db.sql(
 		f"""
 		SELECT {', '.join(select_cols)}
-		FROM `tabYRP Purchase Order Item` poi
-		INNER JOIN `tabYRP Purchase Order` po ON po.name = poi.parent
+		FROM `tabPurchase Order Item` poi
+		INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
 		WHERE {' AND '.join(conds)}
 		GROUP BY {', '.join(group_cols)}
 		""",
@@ -325,7 +326,7 @@ def _single_warehouse_by_supplier():
 	rows = frappe.db.sql(
 		"""
 		SELECT supplier, MIN(name) AS warehouse, COUNT(*) AS warehouse_count
-		FROM `tabYRP Warehouse`
+		FROM `tabWarehouse`
 		WHERE disabled = 0 AND COALESCE(supplier, '') != ''
 		GROUP BY supplier
 		HAVING warehouse_count = 1
@@ -337,8 +338,8 @@ def _single_warehouse_by_supplier():
 
 def _columns(group_dims, dims):
 	cols = [
-		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": 'YRP Item Variant', "width": 180},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'YRP Warehouse', "width": 160},
+		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": 'Item', "width": 180},
+		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 160},
 	]
 	dim_lookup = {d["fieldname"]: d for d in dims}
 	for fn in group_dims:

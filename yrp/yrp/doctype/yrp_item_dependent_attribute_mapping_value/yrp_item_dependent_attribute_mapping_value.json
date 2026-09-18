@@ -12,17 +12,16 @@
  "fields": [
   {
    "fieldname": "dependent_attribute_value",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Dependent Attribute Value",
-   "options": "YRP Item Attribute Value"
+   "label": "Dependent Attribute Value"
   },
   {
    "fieldname": "depending_attribute",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Depending Attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   }
  ],
  "index_web_pages_for_search": 1,

@@ -10,6 +10,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
 
 def resolve_item_uom(item_variant):
 	"""Return master-derived UOM details for an Item Variant.
@@ -21,12 +23,12 @@ def resolve_item_uom(item_variant):
 	if not item_variant:
 		return frappe._dict()
 
-	parent_item = frappe.get_cached_value('YRP Item Variant', item_variant, "item")
+	parent_item = get_parent_item(item_variant)
 	if not parent_item:
 		frappe.throw(_("Item Variant {0} does not exist.").format(item_variant))
 
-	item = frappe.get_cached_doc('YRP Item', parent_item)
-	stock_uom = item.default_unit_of_measure
+	item = frappe.get_cached_doc('Item', parent_item)
+	stock_uom = item.stock_uom
 	if not stock_uom:
 		frappe.throw(
 			_("Item {0} has no Default Unit of Measure. Complete the Item master first.").format(
@@ -45,10 +47,10 @@ def resolve_item_uom(item_variant):
 			)
 
 		attribute_value = frappe.db.get_value(
-			'YRP Item Variant Attribute',
+			'Item Variant Attribute',
 			{
 				"parent": item_variant,
-				"parenttype": 'YRP Item Variant',
+				"parenttype": 'Item',
 				"attribute": item.dependent_attribute,
 			},
 			"attribute_value",
@@ -82,7 +84,7 @@ def resolve_item_uom(item_variant):
 		conversion_row = next(
 			(
 				row
-				for row in item.get("uom_conversion_details") or []
+				for row in item.get("uoms") or []
 				if row.uom == transaction_uom
 			),
 			None,

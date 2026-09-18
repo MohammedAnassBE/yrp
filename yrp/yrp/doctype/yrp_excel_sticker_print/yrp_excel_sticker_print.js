@@ -11,11 +11,8 @@ frappe.ui.form.on("YRP Excel Sticker Print", {
 			frappe.call({
 				method: 'yrp.yrp.doctype.yrp_excel_sticker_print.yrp_excel_sticker_print.get_raw_code',
 				args: { doc_name: frm.doc.name },
-				callback: function (r) {
-					let data = encodeURI(r.message.code);
-					const imageUrl = `https://api.labelary.com/v1/printers/12dpmm/labels/${r.message.width}x${r.message.height}/0/"${data}"`;
-					frm.fields_dict['print_preview_html'].df.options = `<img src=${imageUrl} style="border: 2px solid #000;">`
-					frm.fields_dict['print_preview_html'].refresh()
+				callback: async function (r) {
+					await render_print_preview(frm, r.message);
 				}
             });
 
@@ -54,6 +51,35 @@ frappe.ui.form.on("YRP Excel Sticker Print", {
         }
 	}
 });
+
+async function render_print_preview(frm, preview) {
+	const wrapper = frm.fields_dict.print_preview_html?.$wrapper;
+	if (!wrapper || !preview?.code) return;
+	const width = encodeURIComponent(preview.width);
+	const height = encodeURIComponent(preview.height);
+	const response = await fetch(
+		`https://api.labelary.com/v1/printers/12dpmm/labels/${width}x${height}/0/`,
+		{
+			method: "POST",
+			headers: {
+				Accept: "image/png",
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: preview.code,
+		}
+	);
+	if (!response.ok) {
+		throw new Error(__("Label preview failed with HTTP {0}", [response.status]));
+	}
+	if (frm._yrp_excel_preview_url) URL.revokeObjectURL(frm._yrp_excel_preview_url);
+	frm._yrp_excel_preview_url = URL.createObjectURL(await response.blob());
+	wrapper.empty();
+	$("<img>", {
+		src: frm._yrp_excel_preview_url,
+		alt: __("Label Preview"),
+		css: { border: "2px solid #000", maxWidth: "100%" },
+	}).appendTo(wrapper);
+}
 
 function removeDefaultPrintEvent() {
     $(document).on('keydown', function (e) {

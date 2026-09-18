@@ -16,6 +16,7 @@ from yrp.stock.dimensions import (
 	get_stock_dimensions,
 	get_valuation_dimensions,
 )
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 # ----------------------------------------------------------------------
@@ -48,13 +49,17 @@ def get_combine_datetime(posting_date, posting_time):
 # Item / UOM
 # ----------------------------------------------------------------------
 def get_conversion_factor(item_variant, uom):
-	variant_of = frappe.db.get_value('YRP Item Variant', item_variant, "item", cache=True)
+	variant_of = get_parent_item(item_variant)
 	if not variant_of:
 		frappe.throw(_("Item Variant {0} not found").format(item_variant))
-	conv = frappe.db.get_value('YRP UOM Conversion Detail', {"parent": variant_of, "uom": uom}, "conversion_factor")
+	conv = frappe.db.get_value(
+		'UOM Conversion Detail',
+		{"parent": variant_of, "parenttype": "Item", "parentfield": "uoms", "uom": uom},
+		"conversion_factor",
+	)
 	return {
 		"conversion_factor": conv or 1.0,
-		"stock_uom": frappe.db.get_value('YRP Item', variant_of, "default_unit_of_measure", cache=True),
+		"stock_uom": frappe.db.get_value('Item', variant_of, "stock_uom", cache=True),
 	}
 
 

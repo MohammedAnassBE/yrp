@@ -74,10 +74,10 @@ class YRPGoodsReceivedNote(Document):
 			rows = _pending_receivable_rows(wo, existing_rows=rows, delivery_challan=delivery_challan)
 			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(wo))
 			apply_dimension_defaults(rows)
-		elif self.docstatus == 0 and self.against == 'YRP Purchase Order' and self.against_id and rows:
+		elif self.docstatus == 0 and self.against == 'Purchase Order' and self.against_id and rows:
 			from yrp.stock.dimensions import apply_dimension_defaults
 
-			po = frappe.get_doc('YRP Purchase Order', self.against_id)
+			po = frappe.get_doc('Purchase Order', self.against_id)
 			rows = _pending_purchase_order_rows(po, existing_rows=rows)
 			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(po))
 			apply_dimension_defaults(rows)
@@ -197,11 +197,11 @@ class YRPGoodsReceivedNote(Document):
 				self.delivery_location
 			)
 			_copy_production_group_dimensions_from_source(self, wo)
-		elif self.against == 'YRP Purchase Order':
-			po = frappe.get_cached_doc('YRP Purchase Order', self.against_id)
+		elif self.against == 'Purchase Order':
+			po = frappe.get_cached_doc('Purchase Order', self.against_id)
 			self.supplier = self.supplier or po.supplier
 			self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(po.supplier)
-			self.to_warehouse = self.to_warehouse or po.delivery_warehouse
+			self.to_warehouse = self.to_warehouse or po.set_warehouse
 			_copy_production_group_dimensions_from_source(self, po)
 
 	def _set_return_missing_values(self, work_order):
@@ -283,7 +283,7 @@ class YRPGoodsReceivedNote(Document):
 				row.amount = flt(row.quantity) * flt(row.rate)
 
 	def validate_against(self):
-		if self.against not in ('YRP Work Order', 'YRP Purchase Order'):
+		if self.against not in ('YRP Work Order', 'Purchase Order'):
 			frappe.throw(_("GRN against {0} is not available.").format(self.against))
 		if not self.against_id:
 			frappe.throw(_("Against ID is required."))
@@ -292,6 +292,10 @@ class YRPGoodsReceivedNote(Document):
 			frappe.throw(_("{0} {1} must be submitted.").format(self.against, self.against_id))
 		if open_status == "Close":
 			frappe.throw(_("{0} {1} is closed.").format(self.against, self.against_id))
+		if self.against == 'Purchase Order' and not frappe.db.get_value(
+			'Purchase Order', self.against_id, "is_yrp_managed"
+		):
+			frappe.throw(_("Purchase Order {0} is not YRP managed.").format(self.against_id))
 		if self.delivery_challan and self.against != 'YRP Work Order':
 			frappe.throw(_("Delivery Challan can only be used with Work Order GRN."))
 		if self.against == 'YRP Work Order':
@@ -411,13 +415,13 @@ class YRPGoodsReceivedNote(Document):
 
 			base_rate = (
 				self._get_source_base_rate(row)
-				if self.against == 'YRP Purchase Order' or self.amended_from
+				if self.against == 'Purchase Order' or self.amended_from
 				else None
 			)
 			if base_rate is None:
 				base_rate = flt(row.rate)
 
-			if self.against == 'YRP Purchase Order':
+			if self.against == 'Purchase Order':
 				base_amount = flt(row.quantity) * flt(base_rate)
 				row.rate = base_amount / stock_qty if stock_qty else flt(base_rate)
 			else:
@@ -426,17 +430,17 @@ class YRPGoodsReceivedNote(Document):
 			row.amount = base_amount
 
 	def _get_source_base_rate(self, row):
-		if self.against == 'YRP Purchase Order':
+		if self.against == 'Purchase Order':
 			if row.ref_docname:
 				po_item = frappe.db.get_value(
-					'YRP Purchase Order Item',
+					'Purchase Order Item',
 					row.ref_docname,
 					["rate", "discount_percentage"],
 					as_dict=True,
 				)
 				if po_item:
 					return _purchase_order_item_net_rate(po_item)
-			po = frappe.get_doc('YRP Purchase Order', self.against_id)
+			po = frappe.get_doc('Purchase Order', self.against_id)
 			target = _find_matching_purchase_order_item(po.items, row)
 			return _purchase_order_item_net_rate(target) if target else None
 
@@ -509,7 +513,7 @@ class YRPGoodsReceivedNote(Document):
 		if self.get("is_return"):
 			_validate_return_quantities(self)
 			return
-		if self.against == 'YRP Purchase Order':
+		if self.against == 'Purchase Order':
 			self.validate_against_purchase_order_pending()
 			return
 		self.validate_against_work_order_pending()
@@ -528,9 +532,9 @@ class YRPGoodsReceivedNote(Document):
 		# Only PO closure blocks GRN cancel. Work Order closure is handled by WO's
 		# own lifecycle (open_status flip auto-closes reservations and zeroes
 		# pending), so a WO-GRN cancel is the WO controller's concern.
-		if self.against != 'YRP Purchase Order' or not self.against_id:
+		if self.against != 'Purchase Order' or not self.against_id:
 			return
-		open_status = frappe.db.get_value('YRP Purchase Order', self.against_id, "open_status")
+		open_status = frappe.db.get_value('Purchase Order', self.against_id, "open_status")
 		if open_status == "Close":
 			frappe.throw(
 				_("Cannot cancel Goods Received Note {0} — Purchase Order {1} is closed. Reopen the Purchase Order first.").format(
@@ -707,7 +711,7 @@ class YRPGoodsReceivedNote(Document):
 				)
 
 	def validate_against_purchase_order_pending(self):
-		po = frappe.get_doc('YRP Purchase Order', self.against_id)
+		po = frappe.get_doc('Purchase Order', self.against_id)
 		totals_by_item = defaultdict(float)
 		item_by_name = {}
 		for row in self.items:
@@ -720,7 +724,7 @@ class YRPGoodsReceivedNote(Document):
 				)
 			totals_by_item[target.name] += flt(row.quantity)
 			item_by_name[target.name] = target
-			row.ref_doctype = 'YRP Purchase Order Item'
+			row.ref_doctype = 'Purchase Order Item'
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
 
@@ -729,12 +733,12 @@ class YRPGoodsReceivedNote(Document):
 		for item_name, total_qty in totals_by_item.items():
 			target = item_by_name[item_name]
 			ordered = flt(target.qty)
-			excess_pct = _po_excess_percentage(target.item_variant)
+			excess_pct = _po_excess_percentage(target.item_code)
 			allowance = _remaining_receivable_allowance(ordered, target.pending_quantity, excess_pct)
 			if total_qty > allowance + 0.0001:
 				frappe.throw(
 					_("Received qty {0} exceeds allowance {1} for {2} (ordered {3}, excess allowance {4}%).").format(
-						flt(total_qty), flt(allowance), target.item_variant, ordered, flt(excess_pct)
+						flt(total_qty), flt(allowance), target.item_code, ordered, flt(excess_pct)
 					)
 				)
 			for row in self.items:
@@ -745,7 +749,7 @@ class YRPGoodsReceivedNote(Document):
 		if self.get("is_return"):
 			_update_returned_deliverables(self, cancel=cancel)
 			return
-		if self.against == 'YRP Purchase Order':
+		if self.against == 'Purchase Order':
 			self.update_purchase_order_items(cancel=cancel)
 			return
 		self.update_work_order_receivables(cancel=cancel)
@@ -817,7 +821,7 @@ class YRPGoodsReceivedNote(Document):
 		# Note: pending_quantity may go negative when an excess receipt is allowed
 		# (Item.po_excess_allowed_percentage > 0). This is intentional — the
 		# validator already gates total receipts at ordered × (1 + pct/100).
-		po = frappe.get_doc('YRP Purchase Order', self.against_id)
+		po = frappe.get_doc('Purchase Order', self.against_id)
 		changed = False
 		for row in self.items:
 			target = _find_matching_purchase_order_item(po.items, row)
@@ -825,9 +829,9 @@ class YRPGoodsReceivedNote(Document):
 				continue
 			qty = flt(row.quantity)
 			pending = flt(target.pending_quantity) + qty if cancel else flt(target.pending_quantity) - qty
-			received = flt(target.received_quantity) - qty if cancel else flt(target.received_quantity) + qty
+			received = flt(target.received_qty) - qty if cancel else flt(target.received_qty) + qty
 			target.db_set("pending_quantity", flt(pending), update_modified=False)
-			target.db_set("received_quantity", flt(received), update_modified=False)
+			target.db_set("received_qty", flt(received), update_modified=False)
 			changed = True
 
 		if changed:
@@ -871,7 +875,7 @@ class YRPGoodsReceivedNote(Document):
 		flags = {
 			row.name: row.is_company_location
 			for row in frappe.db.get_all(
-				'YRP Supplier',
+				'Supplier',
 				filters={"name": ["in", [self.supplier, self.delivery_location]]},
 				fields=["name", "is_company_location"],
 			)
@@ -1242,10 +1246,12 @@ def _po_excess_percentage(item_variant):
 	Returns 0 (strict pending) when the field is missing or unset."""
 	if not item_variant:
 		return 0
-	parent_item = frappe.get_cached_value('YRP Item Variant', item_variant, "item")
+	from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+	parent_item = get_parent_item(item_variant)
 	if not parent_item:
 		return 0
-	return flt(frappe.get_cached_value('YRP Item', parent_item, "po_excess_allowed_percentage"))
+	return flt(frappe.get_cached_value('Item', parent_item, "po_excess_allowed_percentage"))
 
 
 def _wo_excess_percentage(work_order_name):
@@ -1287,12 +1293,12 @@ def _find_matching_receivable(rows, source_row):
 def _find_matching_purchase_order_item(rows, source_row):
 	from yrp.stock.dimensions import get_dimension_fieldnames
 
-	if source_row.get("ref_doctype") == 'YRP Purchase Order Item' and source_row.get("ref_docname"):
+	if source_row.get("ref_doctype") == 'Purchase Order Item' and source_row.get("ref_docname"):
 		for row in rows:
 			if row.name == source_row.get("ref_docname"):
 				return row
 	for row in rows:
-		if row.item_variant != source_row.get("item_variant"):
+		if row.item_code != source_row.get("item_variant"):
 			continue
 		if _normal_json(row.get("set_combination")) == _normal_json(source_row.get("set_combination")):
 			if all(
@@ -1743,7 +1749,7 @@ def _weighted_delivery_rate(rows):
 def _update_purchase_order_status(purchase_order):
 	from yrp.yrp.doctype.yrp_purchase_order.yrp_purchase_order import _update_status_fields
 
-	po = frappe.get_doc('YRP Purchase Order', purchase_order)
+	po = frappe.get_doc('Purchase Order', purchase_order)
 	po.set_status()
 	_update_status_fields(po)
 
@@ -1792,7 +1798,7 @@ def get_purchase_order_defaults(purchase_order):
 	from yrp.stock.dimensions import apply_dimension_defaults
 	from yrp.stock.save_stock_items import group_items_for_ui
 
-	po = frappe.get_doc('YRP Purchase Order', purchase_order)
+	po = frappe.get_doc('Purchase Order', purchase_order)
 	po.check_permission("read")
 	_validate_defaults_source(po)
 	items = _pending_purchase_order_rows(po)
@@ -1802,7 +1808,7 @@ def get_purchase_order_defaults(purchase_order):
 	defaults = {
 		"supplier": po.supplier,
 		"from_warehouse": _get_warehouse_for_supplier(po.supplier),
-		"to_warehouse": po.delivery_warehouse,
+		"to_warehouse": po.set_warehouse,
 		"items": items,
 		"item_details": group_items_for_ui(items, 'YRP Goods Received Note'),
 	}
@@ -1815,6 +1821,8 @@ def _validate_defaults_source(source):
 		frappe.throw(_("{0} {1} must be submitted.").format(source.doctype, source.name))
 	if source.get("open_status") == "Close":
 		frappe.throw(_("{0} {1} is closed.").format(source.doctype, source.name))
+	if source.doctype == 'Purchase Order' and not source.get("is_yrp_managed"):
+		frappe.throw(_("Purchase Order {0} is not YRP managed.").format(source.name))
 
 
 def _pending_receivable_rows(wo, existing_rows=None, delivery_challan=None):
@@ -2028,7 +2036,7 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 	rows = []
 	for row in po.get("items") or []:
 		pending = flt(row.pending_quantity)
-		excess_pct = _po_excess_percentage(row.item_variant)
+		excess_pct = _po_excess_percentage(row.item_code)
 		max_receivable = max(
 			flt(_remaining_receivable_allowance(row.qty, pending, excess_pct)),
 			0,
@@ -2040,7 +2048,7 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 		if max_receivable <= 0 and flt(quantity) <= 0:
 			continue
 		out = {
-			"item_variant": row.item_variant,
+			"item_variant": row.item_code,
 			"quantity": quantity,
 			"uom": row.uom,
 			"stock_uom": row.stock_uom,
@@ -2048,7 +2056,7 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			"stock_qty": flt(quantity) * flt(row.conversion_factor or 1),
 			"pending_quantity": pending,
 			"max_receivable_quantity": max_receivable,
-			"ref_doctype": 'YRP Purchase Order Item',
+			"ref_doctype": 'Purchase Order Item',
 			"ref_docname": row.name,
 			"table_index": row.table_index,
 			"row_index": row.row_index,

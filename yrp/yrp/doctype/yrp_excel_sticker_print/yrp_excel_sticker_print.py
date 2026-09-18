@@ -67,11 +67,16 @@ def get_raw_code(doc_name):
 		frappe.throw("No rows in data")
 
 	first_row = data[0]
-	context = {
-		'print_quantity': 1,
-		'dpi': 300,
-	}
-	context.update(first_row)
+	context = dict(first_row)
+	# A preview always renders one physical label.  Applying the source row after
+	# this default used to restore its (sometimes several-thousand) print quantity
+	# and made Labelary reject an otherwise tiny ZPL template with HTTP 413.
+	context.update(
+		{
+			'print_quantity': 1,
+			'dpi': 300,
+		}
+	)
 
 	code = frappe.render_template(raw_code, context)
 	return {

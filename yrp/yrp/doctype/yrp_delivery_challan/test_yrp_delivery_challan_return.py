@@ -168,15 +168,16 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 
 		return_grn.submit()
 		work_order.reload()
+		returned_stock_qty = 4 * (flt(return_grn.items[0].conversion_factor) or 1)
 		self.assertAlmostEqual(work_order.deliverables[0].pending_quantity, 4)
 		self.assertAlmostEqual(work_order.deliverables[0].stock_update, 6)
 		self.assertAlmostEqual(
 			_balance(item_variant, to_warehouse, source_dimensions),
-			source_before - 4,
+			source_before - returned_stock_qty,
 		)
 		self.assertAlmostEqual(
 			_balance(item_variant, from_warehouse, target_dimensions),
-			target_before + 4,
+			target_before + returned_stock_qty,
 		)
 
 		sles = frappe.get_all(
@@ -190,8 +191,8 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			order_by="creation asc",
 		)
 		self.assertEqual([(row.warehouse, flt(row.qty)) for row in sles], [
-			(to_warehouse, -4),
-			(from_warehouse, 4),
+			(to_warehouse, -returned_stock_qty),
+			(from_warehouse, returned_stock_qty),
 		])
 		self.assertGreater(flt(sles[0].valuation_rate), 0)
 		self.assertAlmostEqual(flt(sles[1].valuation_rate), flt(sles[0].valuation_rate))

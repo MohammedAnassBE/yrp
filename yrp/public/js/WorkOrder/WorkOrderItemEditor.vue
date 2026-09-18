@@ -159,7 +159,7 @@ const emptyMessage = computed(() => (
         : 'No deliverables on this Work Order.'
 ));
 const useInlineReceiveEditor = computed(() => (
-    props.editorType === 'goods_received_note' && grnSourceType.value === 'YRP Purchase Order'
+    props.editorType === 'goods_received_note' && grnSourceType.value === 'Purchase Order'
 ));
 const inlineQtyEdit = computed(() => (
     props.editorType === 'delivery_challan' || useInlineReceiveEditor.value

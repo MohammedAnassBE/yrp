@@ -425,7 +425,7 @@ function create_dimension_item_inputs() {
         df: {
             fieldtype: 'Link',
             fieldname: 'item',
-            options: 'YRP Item',
+            options: 'Item',
             label: 'Item',
             reqd: true,
             get_query: function () {
@@ -554,15 +554,13 @@ function get_attribute_field(attribute, attribute_name, default_value, classname
     const field = frappe.ui.form.make_control({
         parent: $($el).find(classname),
         df: {
-            fieldtype: 'Link',
+            fieldtype: 'Autocomplete',
             fieldname: attribute_name,
-            options: 'YRP Item Attribute Value',
             label: attribute_name,
-            only_select: true,
             get_query: function () {
                 return {
-                    query: "yrp.yrp.doctype.yrp_item.yrp_item.get_item_attribute_values",
-                    filters: { "item": cur_item.value.item, "attribute": attribute_name }
+                    query: "yrp.yrp.doctype.yrp_item.yrp_item.search_item_attribute_values",
+                    params: { "item": cur_item.value.item, "attribute": attribute_name }
                 };
             },
             reqd: true,

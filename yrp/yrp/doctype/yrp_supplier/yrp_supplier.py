@@ -3,21 +3,11 @@
 
 import frappe
 from frappe import _
-from frappe.model.document import Document
-from frappe.contacts.address_and_contact import load_address_and_contact, delete_contact_and_address
-from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
-from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 from frappe.contacts.doctype.contact.contact import get_default_contact
 from jinja2 import TemplateSyntaxError
 
-class YRPSupplier(Document):
-
-	def onload(self):
-		"""Load address and contacts in `__onload`"""
-		load_address_and_contact(self)
-
-	def on_trash(self):
-		delete_contact_and_address('YRP Supplier', self.name)
+class YRPSupplierMixin:
+	"""Notification helpers added to ERPNext's standard Supplier controller."""
 
 	def get_primary_contact_details(self) -> dict:
 		"""Primary email + mobile from this supplier's default Contact.
@@ -89,20 +79,10 @@ class YRPSupplier(Document):
 				)
 			)
 
-def make_gstin_custom_field():
-	custom_fields = {
-		'Address': [
-			dict(fieldname='gstin', label='GSTIN', fieldtype='Data',
-				insert_after='fax'),
-		]
-	}
-	create_custom_fields(custom_fields)
-	make_property_setter('Address', 'county', 'hidden', 1, 'Check')
-
 @frappe.whitelist()
 def get_primary_address(supplier):
 	filters = [
-		["Dynamic Link", "link_doctype", "=", 'YRP Supplier'],
+		["Dynamic Link", "link_doctype", "=", 'Supplier'],
 		["Dynamic Link", "link_name", "=", supplier],
 		["Dynamic Link", "parenttype", "=", "Address"],
 		["Address", "disabled", "=", "0"],
@@ -117,7 +97,7 @@ def get_primary_address(supplier):
 @frappe.whitelist()
 def get_address(supplier, type):
 	filters = [
-		["Dynamic Link", "link_doctype", "=", 'YRP Supplier'],
+		["Dynamic Link", "link_doctype", "=", 'Supplier'],
 		["Dynamic Link", "link_name", "=", supplier],
 		["Dynamic Link", "parenttype", "=", "Address"],
 		["Address", "disabled", "=", "0"],
@@ -152,11 +132,11 @@ def get_supplier_address_display(supplier):
 def update_supplier_department_on_bill_tracking(supplier, dept):
 	"""Set Supplier.department if currently empty. Called from Bill Tracking
 	assignment so a supplier's bills route to a consistent department over time."""
-	existing = frappe.db.get_value('YRP Supplier', supplier, "department")
-	if existing is None and not frappe.db.exists('YRP Supplier', supplier):
+	existing = frappe.db.get_value('Supplier', supplier, "department")
+	if existing is None and not frappe.db.exists('Supplier', supplier):
 		frappe.throw(f"Can't find supplier -> {supplier}")
 	if not existing:
-		frappe.db.set_value('YRP Supplier', supplier, "department", dept)
+		frappe.db.set_value('Supplier', supplier, "department", dept)
 
 
-Supplier = YRPSupplier
+YRPSupplier = YRPSupplierMixin

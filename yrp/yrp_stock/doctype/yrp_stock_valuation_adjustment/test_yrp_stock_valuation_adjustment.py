@@ -6,6 +6,7 @@ from frappe.utils import add_days, flt, getdate, nowdate
 
 from yrp.stock.dimensions import get_mandatory_dimensions
 from yrp.stock.utils import get_stock_balance
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment import (
 	create_adjustment,
 	create_reversal,
@@ -20,8 +21,8 @@ def _stock_context():
 	item_variant = frappe.db.sql(
 		"""
 		SELECT iv.name
-		FROM `tabYRP Item Variant` iv
-		INNER JOIN `tabYRP Item` i ON i.name = iv.item
+		FROM `tabItem` iv
+		INNER JOIN `tabItem` i ON i.name = COALESCE(NULLIF(iv.variant_of, ''), iv.name)
 		WHERE i.is_stock_item = 1
 		ORDER BY iv.creation, iv.name
 		LIMIT 1
@@ -30,8 +31,8 @@ def _stock_context():
 	item_variant = item_variant[0][0] if item_variant else None
 	if not item_variant:
 		raise frappe.DoesNotExistError("Valuation tests require one Item Variant")
-	item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
-	uom = frappe.db.get_value('YRP Item', item, "default_unit_of_measure")
+	item = get_parent_item(item_variant)
+	uom = frappe.db.get_value('Item', item, "stock_uom")
 	if not uom:
 		raise frappe.DoesNotExistError(f"{item} requires a default UOM")
 	dimensions = {}
@@ -56,8 +57,8 @@ def _stock_context():
 def _warehouse(label):
 	return frappe.get_doc(
 		{
-			"doctype": 'YRP Warehouse',
-			"name1": f"_Test Valuation {label} {frappe.generate_hash(length=8)}",
+			"doctype": 'Warehouse',
+			"warehouse_name": f"_Test Valuation {label} {frappe.generate_hash(length=8)}",
 		}
 	).insert(ignore_permissions=True).name
 
@@ -305,7 +306,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		adjustment, _sle_name = self._adjust(receipt, 10, apply=False)
 		module = (
 			"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment."
-			"stock_valuation_adjustment"
+			"yrp_stock_valuation_adjustment"
 		)
 
 		# First delivery persists the propagation plan but simulates a worker

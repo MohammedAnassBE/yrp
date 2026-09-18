@@ -17,7 +17,7 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 
 def _department(name_prefix):
 	name = f"{name_prefix}_{frappe.generate_hash(length=6)}"
-	doc = frappe.get_doc({"doctype": 'YRP Department', "department_name": name})
+	doc = frappe.get_doc({"doctype": 'Department', "department_name": name})
 	doc.insert(ignore_permissions=True)
 	return doc.name
 
@@ -52,6 +52,10 @@ def _build_pi_against_po(bill, link=True):
 	po = _purchase_order(qty=5, warehouse=warehouse, supplier=bill.supplier)
 	grn = _purchase_order_grn(po, qty=5)
 	grn.submit()
+	fetch_method = "yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details"
+	if "essdee_yrp" in frappe.get_installed_apps():
+		fetch_method = "essdee_yrp.purchase_invoice.fetch_grn_details"
+	payload = frappe.get_attr(fetch_method)([grn.name], 'Purchase Order', po.supplier)
 	pi = frappe.get_doc({
 		"doctype": 'YRP Purchase Invoice',
 		"supplier": po.supplier,
@@ -59,15 +63,13 @@ def _build_pi_against_po(bill, link=True):
 		"bill_no": bill.bill_no,
 		"bill_date": bill.bill_date,
 		"bill_tracking": bill.name if link else None,
-		"against": 'YRP Purchase Order',
+		"against": 'Purchase Order',
 		"against_id": po.name,
 		"grn": [{"grn": grn.name}],
-		"items": [{
-			"item": grn.items[0].item_variant,
-			"qty": grn.items[0].quantity,
-			"uom": grn.items[0].uom,
-			"rate": grn.items[0].rate,
-		}],
+		"items": payload["items"],
+		"pi_work_order_billed_details": payload.get("wo_items") or [],
+		"total_quantity": payload["total_quantity"],
+		**payload.get("additional_field_values", {}),
 	})
 	pi.insert(ignore_permissions=True)
 	return pi
@@ -78,7 +80,7 @@ class TestBillTracking(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		_default_received_type()
-		for value in ("HO", "Post", "Email", 'YRP Warehouse', "Others"):
+		for value in ("HO", "Post", "Email", 'Warehouse', "Others"):
 			_received_via(value)
 
 	# ---------- Lifecycle ----------
@@ -109,7 +111,7 @@ class TestBillTracking(FrappeTestCase):
 
 	def test_03_assign_propagates_to_supplier_when_empty(self):
 		supplier = _supplier(f"_T_BT_PropSup_{frappe.generate_hash(length=6)}")
-		frappe.db.set_value('YRP Supplier', supplier, "department", None)
+		frappe.db.set_value('Supplier', supplier, "department", None)
 		bill = _bill(supplier=supplier)
 		bill.submit()
 		dept = _department("_T_BT_PropDept")
@@ -119,7 +121,7 @@ class TestBillTracking(FrappeTestCase):
 		)
 		assign_fn(bill.name, dept)
 
-		self.assertEqual(frappe.db.get_value('YRP Supplier', supplier, "department"), dept)
+		self.assertEqual(frappe.db.get_value('Supplier', supplier, "department"), dept)
 
 	def test_04_close_sets_pi_link_and_status(self):
 		bill = _bill()
@@ -215,9 +217,6 @@ class TestBillTracking(FrappeTestCase):
 		bill = _bill()
 		bill.submit()
 		pi = _build_pi_against_po(bill, link=True)
-		# Unlink the GRN first so PI delete isn't blocked by LinkExistsError
-		pi.set("grn", [])
-		pi.save(ignore_permissions=True)
 		pi.delete(ignore_permissions=True)
 
 		bill.reload()

@@ -342,7 +342,7 @@ function create_item_input(blockIdx) {
         df: {
             fieldtype: 'Link',
             fieldname: 'item_' + blockIdx,
-            options: 'YRP Item',
+            options: 'Item',
             placeholder: __('Select Item'),
             onchange() {
                 on_item_selected(blockIdx, this.get_value());
@@ -453,14 +453,13 @@ function create_add_row_inputs(blockIdx) {
         let control = frappe.ui.form.make_control({
             parent: parent,
             df: {
-                fieldtype: 'Link',
+                fieldtype: 'Autocomplete',
                 fieldname: 'add_' + ra + '_' + blockIdx,
-                options: 'YRP Item Attribute Value',
                 placeholder: ra,
                 get_query() {
                     return {
-                        query: 'yrp.yrp.doctype.yrp_item.yrp_item.get_item_attribute_values',
-                        filters: { item: item_name, attribute: attr_name },
+                        query: 'yrp.yrp.doctype.yrp_item.yrp_item.search_item_attribute_values',
+                        params: { item: item_name, attribute: attr_name },
                     };
                 },
             },

@@ -9,13 +9,13 @@ def execute(filters=None):
 def get_columns():
 	return [
 		{"fieldname": "name", "label": "Bill Tracking Number", "fieldtype": "Link", "options": 'YRP Bill Tracking', "width": 115},
-		{"fieldname": "supplier", "label": "Supplier", "fieldtype": "Link", "options": 'YRP Supplier', "width": 115},
+		{"fieldname": "supplier", "label": "Supplier", "fieldtype": "Link", "options": 'Supplier', "width": 115},
 		{"fieldname": "supplier_name", "label": "Supplier Name", "fieldtype": "Data", "width": 115},
 		{"fieldname": "gstin", "label": "GST", "fieldtype": "Data", "width": 115},
 		{"fieldname": "pan", "label": "PAN", "fieldtype": "Data", "width": 115},
 		{"fieldname": "bill_no", "label": "Invoice No", "fieldtype": "Data", "width": 115},
 		{"fieldname": "bill_age", "label": "Bill Age", "fieldtype": "Int", "width": 115},
-		{"fieldname": "assigned_to", "label": "Assigned To", "fieldtype": "Link", "options": 'YRP Department', "width": 115},
+		{"fieldname": "assigned_to", "label": "Assigned To", "fieldtype": "Link", "options": 'Department', "width": 115},
 		{"fieldname": "assigned_by", "label": "Assigned User", "fieldtype": "Link", "options": "User", "width": 115},
 		{"fieldname": "assigned_on", "label": "Assigned On", "fieldtype": "Date", "width": 115},
 		{"fieldname": "date_diff", "label": "Assigned Age", "fieldtype": "Int", "width": 115},
@@ -49,7 +49,7 @@ def get_data(filters):
 				GROUP BY parent
 			) latest ON t2.parent = latest.parent AND t2.idx = latest.max_idx
 		) t3 ON t1.name = t3.parent
-		JOIN `tabYRP Supplier` t4 ON t4.name = t1.supplier
+		JOIN `tabSupplier` t4 ON t4.name = t1.supplier
 		WHERE t1.form_status NOT IN ('Closed')
 		AND t1.docstatus = 1 {q_filters}
 	"""

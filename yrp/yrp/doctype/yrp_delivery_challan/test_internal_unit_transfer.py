@@ -17,6 +17,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
 from yrp.stock.dimensions import get_stock_dimensions
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import DeliveryChallan
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_address,
@@ -78,13 +79,13 @@ def _neutral_production_group_dimensions(item=None):
 
 def _company_supplier(prefix):
 	sup = _supplier(f"{prefix}_{frappe.generate_hash(length=6)}")
-	frappe.db.set_value('YRP Supplier', sup, "is_company_location", 1)
+	frappe.db.set_value('Supplier', sup, "is_company_location", 1)
 	return sup
 
 
 def _non_company_supplier(prefix):
 	sup = _supplier(f"{prefix}_{frappe.generate_hash(length=6)}")
-	frappe.db.set_value('YRP Supplier', sup, "is_company_location", 0)
+	frappe.db.set_value('Supplier', sup, "is_company_location", 0)
 	return sup
 
 
@@ -100,10 +101,17 @@ def _test_stock_item_variant():
 	variants = frappe.db.sql(
 		"""
 		SELECT iv.name
-		FROM `tabYRP Item Variant` iv
-		INNER JOIN `tabYRP Item` item ON item.name = iv.item
+		FROM `tabItem` iv
+		INNER JOIN `tabItem` item ON item.name = COALESCE(NULLIF(iv.variant_of, ''), iv.name)
 		WHERE COALESCE(item.is_stock_item, 0) = 1
-		  AND COALESCE(item.default_unit_of_measure, '') != ''
+		  AND COALESCE(item.stock_uom, '') != ''
+		  AND (
+			COALESCE(iv.variant_of, '') != ''
+			OR (
+				COALESCE(iv.has_variants, 0) = 0
+				AND COALESCE(iv.dependent_attribute, '') = ''
+			)
+		  )
 		ORDER BY iv.name
 		LIMIT 1
 		""",
@@ -116,7 +124,7 @@ def _seed_stock(item_variant, warehouse, qty, dimensions=None, posting_date=None
 	# Transit-flow tests are deliberately dimension-neutral.  Borrowing the
 	# first live production dimension (for example an Essdee Lot) couples this
 	# base-YRP test to unrelated host-app validation and mutable site data.
-	parent_item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
+	parent_item = get_parent_item(item_variant)
 	dimensions = (
 		_neutral_production_group_dimensions(parent_item)
 		if dimensions is None
@@ -145,7 +153,7 @@ def _seed_stock(item_variant, warehouse, qty, dimensions=None, posting_date=None
 
 def _make_wo(from_location, to_supplier, qty=10):
 	item_variant = _test_stock_item_variant()
-	parent_item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
+	parent_item = get_parent_item(item_variant)
 	uom = _item_uom(item_variant)
 	from_wh = _supplier_warehouse(from_location, f"_T_DC_From_WH_{frappe.generate_hash(length=6)}")
 	to_wh = _supplier_warehouse(to_supplier, f"_T_DC_To_WH_{frappe.generate_hash(length=6)}")

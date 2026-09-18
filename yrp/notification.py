@@ -28,7 +28,7 @@ def _get_doc_and_supplier(doctype, docname, supplier_key):
 	supplier_name = doc.get(supplier_key)
 	if not supplier_name:
 		frappe.throw(_("{0} {1} has no supplier to notify").format(_(doctype), docname))
-	return doc, frappe.get_doc('YRP Supplier', supplier_name)
+	return doc, frappe.get_doc('Supplier', supplier_name)
 
 
 @frappe.whitelist()

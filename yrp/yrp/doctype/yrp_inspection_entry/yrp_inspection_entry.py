@@ -20,6 +20,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, nowdate, nowtime
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 
@@ -209,9 +210,9 @@ class YRPInspectionEntry(Document):
 			if source_rt == target_rt:
 				continue
 
-			parent_item = frappe.get_cached_value('YRP Item Variant', row.item_variant, "item")
+			parent_item = get_parent_item(row.item_variant)
 			stock_uom = (
-				frappe.get_cached_value('YRP Item', parent_item, "default_unit_of_measure")
+				frappe.get_cached_value('Item', parent_item, "stock_uom")
 				if parent_item
 				else None
 			)
@@ -486,7 +487,7 @@ def _attach_display_meta(sources):
 
 	def _get_variant(name):
 		if name not in variant_cache:
-			variant_cache[name] = frappe.get_cached_doc('YRP Item Variant', name)
+			variant_cache[name] = frappe.get_cached_doc('Item', name)
 		return variant_cache[name]
 
 	def _get_attr(parent):
@@ -502,7 +503,7 @@ def _attach_display_meta(sources):
 			variant_doc = _get_variant(iv)
 		except frappe.DoesNotExistError:
 			continue
-		parent_item = variant_doc.item
+		parent_item = (variant_doc.variant_of or variant_doc.name)
 		if not parent_item:
 			continue
 		attr_details = _get_attr(parent_item)

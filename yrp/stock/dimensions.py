@@ -32,7 +32,7 @@ STOCK_DOCTYPES = [
 	'YRP Stock Entry Detail',
 	'YRP Stock Update Detail',
 	'YRP Stock Reconciliation Item',
-	'YRP Purchase Order Item',
+	'Purchase Order Item',
 	'YRP Stock Reservation Entry',
 	'YRP Repost Item Valuation',
 	'YRP Work Order Deliverables',
@@ -45,7 +45,7 @@ STOCK_DOCTYPES = [
 # DocTypes that receive dimension Link fields ONLY for the production group dimension
 OPERATIONAL_DOCTYPES = [
 	'YRP Work Order',
-	'YRP Purchase Order',
+	'Purchase Order',
 	'YRP Delivery Challan',
 	'YRP Goods Received Note',
 	'YRP Process Cost',
@@ -64,7 +64,7 @@ OPERATIONAL_CHILD_DOCTYPES = {
 # stock themselves. Their dimensions are optional so existing/planned orders
 # are not forced to choose a stock-quality bucket before receipt.
 OPTIONAL_DIMENSION_DOCTYPES = {
-	'YRP Purchase Order Item',
+	'Purchase Order Item',
 }
 
 
@@ -188,7 +188,9 @@ def create_dimension_fields():
 			"options": dim["dimension_doctype"],
 			"label": dim["label"],
 			"reqd": 1,
-			"module": "YRP",
+			# Keep generated, settings-driven fields outside the fixed-schema
+			# Custom Field fixture (which exports module = "YRP").
+			"module": "YRP Stock",
 			"description": MANAGED_DIMENSION_FIELD_MARKER,
 		}
 
@@ -200,6 +202,8 @@ def create_dimension_fields():
 			doc_field_def["insert_after"] = _get_insert_after(dim, dt)
 			if dt in OPTIONAL_DIMENSION_DOCTYPES:
 				doc_field_def["reqd"] = 0
+			if dt == "Purchase Order Item":
+				doc_field_def["depends_on"] = "eval:parent.is_yrp_managed"
 			if dim["is_production_group"] and dt in OPERATIONAL_CHILD_DOCTYPES:
 				doc_field_def["reqd"] = 0
 			custom_fields.setdefault(dt, []).append(doc_field_def)
@@ -211,7 +215,7 @@ def create_dimension_fields():
 					continue
 				doc_field_def = field_def.copy()
 				doc_field_def["insert_after"] = _get_insert_after(dim, dt)
-				if dt == 'YRP Purchase Order':
+				if dt == 'Purchase Order':
 					# A Purchase Order can procure the same Item for multiple
 					# production groups. Its header dimension is retained only as
 					# legacy storage; new planning happens on Purchase Order Item,
@@ -285,9 +289,17 @@ def _ensure_bin_unique_constraint(dimensions):
 
 
 def _get_insert_after(dim, doctype=None):
-	"""Determine where to insert the custom field. Default: after 'item' or at the end."""
-	if doctype == 'YRP Purchase Order':
-		return "expected_delivery_date"
-	if doctype in {'YRP Purchase Order Item', 'YRP Work Order Deliverables', 'YRP Work Order Receivables'}:
-		return "item_variant"
-	return "item"
+	"""Return a real, stable item/header anchor for each generated field."""
+	anchors = {
+		'YRP Bin': "item_code",
+		'YRP Stock Update Detail': "item_variant",
+		'Purchase Order Item': "item_code",
+		'YRP Stock Reservation Entry': "item_code",
+		'YRP Work Order Deliverables': "item_variant",
+		'YRP Work Order Receivables': "item_variant",
+		'YRP Delivery Challan Item': "item_variant",
+		'YRP Goods Received Note Item': "item_variant",
+		'YRP Inspection Entry Item': "item_variant",
+		'Purchase Order': "schedule_date",
+	}
+	return anchors.get(doctype, "item")

@@ -34,7 +34,7 @@ def _resp(status, payload=None, text=None):
 class TestYRPSMSSettings(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
-		self._configure(rows=[{"template_name": "PO Reminder", "reference_doctype": 'YRP Purchase Order',
+		self._configure(rows=[{"template_name": "PO Reminder", "reference_doctype": 'Purchase Order',
 			"template_id": "tmpl-PO", "authkey": "secret-key", "template_body": "Hi {supplier}, order {name} ready"}])
 
 	def _configure(self, rows, gateway_url="https://control.msg91.com/api/v5/flow/",
@@ -53,7 +53,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 
 	def test_config_resolves_template_and_authkey(self):
 		from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import get_sms_config
-		cfg = get_sms_config('YRP Purchase Order')
+		cfg = get_sms_config('Purchase Order')
 		self.assertEqual(cfg["template_id"], "tmpl-PO")
 		self.assertEqual(cfg["template_name"], "PO Reminder")
 		self.assertEqual(cfg["authkey"], "secret-key")
@@ -65,22 +65,22 @@ class TestYRPSMSSettings(FrappeTestCase):
 			get_sms_config('YRP Delivery Challan')
 
 	def test_disabled_raises(self):
-		self._configure(rows=[{"template_name": "PO Reminder", "reference_doctype": 'YRP Purchase Order',
+		self._configure(rows=[{"template_name": "PO Reminder", "reference_doctype": 'Purchase Order',
 			"template_id": "tmpl-PO", "authkey": "secret-key"}], enabled=0)
 		from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import get_sms_config
 		with self.assertRaises(frappe.ValidationError):
-			get_sms_config('YRP Purchase Order')
+			get_sms_config('Purchase Order')
 
 	def test_multiple_templates_disambiguated_by_name(self):
 		self._configure(rows=[
-			{"template_name": "Reminder", "reference_doctype": 'YRP Purchase Order',
+			{"template_name": "Reminder", "reference_doctype": 'Purchase Order',
 				"template_id": "tmpl-A", "authkey": "key-A"},
-			{"template_name": "Cancel Notice", "reference_doctype": 'YRP Purchase Order',
+			{"template_name": "Cancel Notice", "reference_doctype": 'Purchase Order',
 				"template_id": "tmpl-B", "authkey": "key-B"},
 		])
 		from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import get_sms_config
-		self.assertEqual(get_sms_config('YRP Purchase Order', "Cancel Notice")["template_id"], "tmpl-B")
-		self.assertEqual(get_sms_config('YRP Purchase Order', "Reminder")["template_id"], "tmpl-A")
+		self.assertEqual(get_sms_config('Purchase Order', "Cancel Notice")["template_id"], "tmpl-B")
+		self.assertEqual(get_sms_config('Purchase Order', "Reminder")["template_id"], "tmpl-A")
 
 	def test_parse_template_variables(self):
 		from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import parse_template_variables
@@ -108,7 +108,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 	def test_deliver_success(self):
 		from yrp.sms import deliver_flow_sms
 		with patch(POST, return_value=_resp(200, {"type": "success", "message": "req-123"})) as p:
-			result = deliver_flow_sms(reference_doctype='YRP Purchase Order', mobile_no="9944405056",
+			result = deliver_flow_sms(reference_doctype='Purchase Order', mobile_no="9944405056",
 				params={"VAR1": "Acme"})
 		self.assertTrue(result["ok"])
 		self.assertEqual(result["request_id"], "req-123")
@@ -126,7 +126,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 		"""Flow returns the request id in `message`; a bare `request_id` still works as fallback."""
 		from yrp.sms import deliver_flow_sms
 		with patch(POST, return_value=_resp(200, {"type": "success", "request_id": "flow-req-77"})):
-			result = deliver_flow_sms(reference_doctype='YRP Purchase Order', mobile_no="9944405056")
+			result = deliver_flow_sms(reference_doctype='Purchase Order', mobile_no="9944405056")
 		self.assertTrue(result["ok"])
 		self.assertEqual(result["request_id"], "flow-req-77")
 
@@ -134,7 +134,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 		"""The incident: MSG91 returns HTTP 200 but rejects the message."""
 		from yrp.sms import deliver_flow_sms
 		with patch(POST, return_value=_resp(200, {"type": "error", "message": "template not found"})):
-			result = deliver_flow_sms(reference_doctype='YRP Purchase Order', mobile_no="9944405056")
+			result = deliver_flow_sms(reference_doctype='Purchase Order', mobile_no="9944405056")
 		self.assertFalse(result["ok"])
 		self.assertIsNone(result["request_id"])
 		self.assertEqual(result["response_type"], "error")
@@ -151,7 +151,7 @@ class TestYRPSMSSettings(FrappeTestCase):
 	def test_deliver_non_json_response_is_failure(self):
 		from yrp.sms import deliver_flow_sms
 		with patch(POST, return_value=_resp(502, payload=None, text="<html>Bad Gateway</html>")):
-			result = deliver_flow_sms(reference_doctype='YRP Purchase Order', mobile_no="9944405056")
+			result = deliver_flow_sms(reference_doctype='Purchase Order', mobile_no="9944405056")
 		self.assertFalse(result["ok"])
 		self.assertIsNone(result["request_id"])
 		self.assertIn("Bad Gateway", result["error"])
@@ -167,10 +167,10 @@ class TestYRPSMSSettings(FrappeTestCase):
 		po = self._po_with_contact()
 		from yrp.notification import send_flow_sms_notification
 		with patch(POST, return_value=_resp(200, {"type": "success", "message": "req-999"})):
-			send_flow_sms_notification('YRP Purchase Order', po.name, template_name="PO Reminder",
+			send_flow_sms_notification('Purchase Order', po.name, template_name="PO Reminder",
 				mobile_no="9944405056", params={"supplier": "X"})
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		self.assertEqual(log.status, "Sent")
 		self.assertEqual(log.send_path, "Flow")
 		self.assertEqual(log.template_id, "tmpl-PO")
@@ -182,10 +182,10 @@ class TestYRPSMSSettings(FrappeTestCase):
 		po = self._po_with_contact()
 		from yrp.notification import send_flow_sms_notification
 		with patch(POST, return_value=_resp(200, {"type": "error", "message": "DND"})):
-			send_flow_sms_notification('YRP Purchase Order', po.name, template_name="PO Reminder",
+			send_flow_sms_notification('Purchase Order', po.name, template_name="PO Reminder",
 				mobile_no="9944405056")
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		self.assertEqual(log.status, "Failed")
 		self.assertEqual(log.send_path, "Flow")
 		self.assertIn("DND", log.error)
@@ -196,10 +196,10 @@ class TestYRPSMSSettings(FrappeTestCase):
 		po = self._po_with_contact()
 		from yrp.notification import send_flow_sms_notification, resend_sms_notification_log
 		with patch(POST, return_value=_resp(200, {"type": "error", "message": "temporary"})):
-			send_flow_sms_notification('YRP Purchase Order', po.name, template_name="PO Reminder",
+			send_flow_sms_notification('Purchase Order', po.name, template_name="PO Reminder",
 				mobile_no="9944405056", params={"supplier": "Acme"})
 		log = frappe.get_last_doc('YRP SMS Notification Log',
-			filters={"reference_doctype": 'YRP Purchase Order', "reference_name": po.name})
+			filters={"reference_doctype": 'Purchase Order', "reference_name": po.name})
 		self.assertEqual(log.status, "Failed")
 		with patch(POST, return_value=_resp(200, {"type": "success", "message": "req-resend"})) as p:
 			resend_sms_notification_log(log.name)

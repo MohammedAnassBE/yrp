@@ -394,7 +394,9 @@ def _normalize_variant_demands(ipd, variant_demands):
 			frappe.throw("Item Variant is required to calculate BOM.")
 		if qty <= 0:
 			continue
-		variant_item = frappe.db.get_value('YRP Item Variant', variant, "item")
+		from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+		variant_item = get_parent_item(variant)
 		if variant_item != ipd.item:
 			frappe.throw(f"Item Variant {variant} does not belong to IPD item {ipd.item}.")
 		demands.append({
@@ -419,15 +421,15 @@ def _normalize_process_filter(process_names):
 
 def _get_variant_attrs(variant):
 	rows = frappe.get_all(
-		'YRP Item Variant Attribute',
-		filters={"parent": variant, "parenttype": 'YRP Item Variant'},
+		'Item Variant Attribute',
+		filters={"parent": variant, "parenttype": 'Item'},
 		fields=["attribute", "attribute_value"],
 	)
 	return {row.attribute: row.attribute_value for row in rows}
 
 
 def _project_attrs_for_item(item, source_attrs):
-	item_doc = frappe.get_cached_doc('YRP Item', item)
+	item_doc = frappe.get_cached_doc('Item', item)
 	item_attrs = {row.attribute for row in item_doc.get("attributes") or []}
 	return {
 		attr: value

@@ -6,14 +6,23 @@ app_email = "mohammedanasman123@gmail.com"
 app_license = "mit"
 
 fixtures = [
+	{"dt": "Custom Field", "filters": [["module", "=", "YRP"]]},
 	{"dt": "Workflow", "filters": [["name", "in", ["Item Price Workflow", "Process Cost Workflow"]]]},
+	{
+		"dt": "Workflow State",
+		"filters": [["name", "in", ["Draft", "Approval Pending", "Approved", "Rejected", "Expired"]]],
+	},
+	{
+		"dt": "Workflow Action Master",
+		"filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired"]]],
+	},
 	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},
 ]
 
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -48,7 +57,10 @@ app_include_js = ["yrp.bundle.js"]
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Item": "public/js/item.js",
+	"Purchase Order": "public/js/purchase_order.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -168,6 +180,33 @@ doc_events = {
 	'YRP YRP Stock Settings': {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
+	"Item Attribute": {
+		"before_save": "yrp.yrp.doctype.yrp_item.yrp_item.prevent_yrp_variant_code_change",
+	},
+	"Stock Entry": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Purchase Receipt": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Subcontracting Receipt": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Delivery Note": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Stock Reconciliation": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Stock Reservation Entry": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Purchase Invoice": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
+	"Sales Invoice": {
+		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+	},
 	"User": {
 		# Per-user UI storage lifecycle (PER_USER_UI_SPEC.md §3.3): the YRP UI
 		# Preference docname == user; keep it in sync on offboarding/rename.
@@ -180,6 +219,7 @@ doc_events = {
 after_migrate = [
 	"yrp.stock.dimensions.create_dimension_fields",
 	"yrp.patches.add_sle_composite_index.execute",
+	"yrp.yrp.doctype.yrp_item.yrp_item.ensure_variant_tuple_unique_index",
 	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium",
 ]
 
@@ -192,9 +232,12 @@ after_migrate = [
 # ------------------------------
 #
 # Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "yrp.custom.task.CustomTaskMixin"
-# }
+extend_doctype_class = {
+	"Item": "yrp.yrp.doctype.yrp_item.yrp_item.YRPItemMixin",
+	"Purchase Order": "yrp.yrp.doctype.yrp_purchase_order.yrp_purchase_order.YRPPurchaseOrderMixin",
+	"Supplier": "yrp.yrp.doctype.yrp_supplier.yrp_supplier.YRPSupplierMixin",
+	"Warehouse": "yrp.yrp.doctype.yrp_warehouse.yrp_warehouse.YRPWarehouseMixin",
+}
 
 # Overriding Methods
 # ------------------------------

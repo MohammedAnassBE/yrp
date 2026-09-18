@@ -10,7 +10,7 @@ class YRPCustomer(Document):
 		load_address_and_contact(self)
 
 	def on_trash(self):
-		delete_contact_and_address('YRP Customer', self.name)
+		delete_contact_and_address('Customer', self.name)
 
 
 Customer = YRPCustomer

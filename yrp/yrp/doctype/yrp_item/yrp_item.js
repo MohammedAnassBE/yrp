@@ -1,7 +1,7 @@
 // Copyright (c) 2021, Essdee and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on('YRP Item', {
+frappe.ui.form.on('Item', {
 	setup: function(frm) {
 		frm.set_query('additional_parameter_value', 'additional_parameters', (doc, cdt, cdn) => {
 			let child = locals[cdt][cdn]
@@ -20,7 +20,7 @@ frappe.ui.form.on('YRP Item', {
 				key: field.doc.additional_parameter_key,
 			}
 		};
-		frm.set_query('default_unit_of_measure', (doc) => {
+		frm.set_query('stock_uom', (doc) => {
 			return {
 				filters: {
 					secondary_only: 0,
@@ -50,7 +50,7 @@ frappe.ui.form.on('YRP Item', {
 							label: 'Brand',
 							fieldname: "brand",
 							fieldtype: "Link",
-							options: 'YRP Brand',
+							options: 'Brand',
 							default: frm.doc.brand,
 						},
 						{

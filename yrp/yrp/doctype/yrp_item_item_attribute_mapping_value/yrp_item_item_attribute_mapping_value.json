@@ -10,10 +10,9 @@
  "fields": [
   {
    "fieldname": "attribute_value",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Attribute Value",
-   "options": "YRP Item Attribute Value"
+   "label": "Attribute Value"
   }
  ],
  "index_web_pages_for_search": 1,

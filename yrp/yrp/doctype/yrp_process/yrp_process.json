@@ -66,7 +66,7 @@
    "fieldname": "input_uom",
    "fieldtype": "Link",
    "label": "Input UOM",
-   "options": "YRP UOM"
+   "options": "UOM"
   },
   {
    "fieldname": "default_wastage",
@@ -86,7 +86,7 @@
    "fieldname": "output_uom",
    "fieldtype": "Link",
    "label": "Output UOM",
-   "options": "YRP UOM"
+   "options": "UOM"
   },
   {
    "default": "0",

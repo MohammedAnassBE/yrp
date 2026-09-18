@@ -30,7 +30,7 @@ class TestWorkOrderStockDimensions(FrappeTestCase):
 					custom_field,
 					f"{doctype}.{dimension['fieldname']} must be generated from YRP Stock Settings",
 				)
-				self.assertEqual(custom_field.module, "YRP")
+				self.assertEqual(custom_field.module, "YRP Stock")
 
 	def test_work_order_children_receive_values_through_the_dimension_model(self):
 		work_order = frappe.new_doc('YRP Work Order')

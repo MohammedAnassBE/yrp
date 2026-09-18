@@ -65,7 +65,7 @@
    "in_standard_filter": 1,
    "label": "Supplier",
    "mask": 1,
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "reqd": 1
   },
   {
@@ -73,7 +73,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Against",
-   "options": "\nYRP Purchase Order\nYRP Work Order",
+   "options": "\nPurchase Order\nYRP Work Order",
    "reqd": 1
   },
   {
@@ -127,7 +127,7 @@
    "fieldname": "billing_supplier",
    "fieldtype": "Link",
    "label": "Billing Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "reqd": 1
   },
   {

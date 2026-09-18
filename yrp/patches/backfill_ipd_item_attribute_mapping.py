@@ -26,7 +26,7 @@ def execute():
 	for r in rows:
 		mapping = frappe.db.get_value(
 			'YRP Item Item Attribute',
-			{"parent": r.item, "parenttype": 'YRP Item', "attribute": r.attribute},
+			{"parent": r.item, "parenttype": 'Item', "attribute": r.attribute},
 			"mapping",
 		)
 		if mapping:

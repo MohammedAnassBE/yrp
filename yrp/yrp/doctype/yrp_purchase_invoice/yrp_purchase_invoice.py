@@ -240,7 +240,7 @@ class YRPPurchaseInvoice(Document):
 		# Compare PRE-TAX (self.total) against the GRN total, which is itself pre-tax.
 		# Using the tax-inclusive grand_total would falsely trip on any taxed row.
 		if (
-			self.against == 'YRP Purchase Order'
+			self.against == 'Purchase Order'
 			and not self.allow_to_change_rate
 			and flt(self.total) > flt(grn_total) + 0.01
 		):
@@ -285,7 +285,7 @@ def get_eligible_grns(supplier, against, search_text=None, purchase_invoice=None
 	frappe.has_permission('YRP Goods Received Note', "read", throw=True)
 	if not supplier:
 		frappe.throw(_("Supplier is required."))
-	if against not in {'YRP Purchase Order', 'YRP Work Order'}:
+	if against not in {'Purchase Order', 'YRP Work Order'}:
 		frappe.throw(_("Against must be Purchase Order or Work Order."))
 
 	purchase_invoice = purchase_invoice if _is_active_invoice(purchase_invoice) else None
@@ -589,8 +589,10 @@ def _get_work_order_item_totals(work_order, item_variant, set_combination):
 
 
 def _get_item_group(item_variant):
-	item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
-	return frappe.db.get_value('YRP Item', item, "item_group") if item else None
+	from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+	item = get_parent_item(item_variant)
+	return frappe.db.get_value('Item', item, "item_group") if item else None
 
 
 def _get_wo_process_cost(work_order, item_variant, set_combination):

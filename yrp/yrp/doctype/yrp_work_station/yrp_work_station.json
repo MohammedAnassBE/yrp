@@ -29,13 +29,13 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Warehouse",
-   "options": "YRP Warehouse"
+   "options": "Warehouse"
   },
   {
    "fieldname": "holiday_list",
    "fieldtype": "Link",
    "label": "Holiday List",
-   "options": "YRP Holiday List"
+   "options": "Holiday List"
   },
   {
    "fieldname": "column_break_1",

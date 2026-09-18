@@ -30,10 +30,10 @@ def execute(filters=None):
 
 def get_columns(dims):
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'YRP Item Variant', "width": 150},
-		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Link", "options": 'YRP Item', "width": 150},
-		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'YRP Item Group', "width": 100},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'YRP Warehouse', "width": 120},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'Item', "width": 150},
+		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Link", "options": 'Item', "width": 150},
+		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'Item Group', "width": 100},
+		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 120},
 	]
 	for dim in dims:
 		columns.append({
@@ -44,7 +44,7 @@ def get_columns(dims):
 			"width": 100,
 		})
 	columns.extend([
-		{"label": _("Stock UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'YRP UOM', "width": 90},
+		{"label": _("Stock UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'UOM', "width": 90},
 		{"label": _("Qty"), "fieldname": "qty", "fieldtype": "Float", "width": 100},
 		{"label": _("Valuation Rate"), "fieldname": "valuation_rate", "fieldtype": "Currency", "width": 120},
 		{"label": _("Stock Value"), "fieldname": "stock_value", "fieldtype": "Currency", "width": 130},
@@ -80,7 +80,11 @@ def get_data(filters, dim_fields):
 	if filters.get("item"):
 		sub = sub.where(sle.item == filters["item"])
 	elif filters.get("parent_item"):
-		variants = frappe.get_all('YRP Item Variant', filters={"item": filters["parent_item"]}, pluck="name")
+		variants = frappe.get_all(
+			'Item', filters={"variant_of": filters["parent_item"]}, pluck="name"
+		)
+		if frappe.db.exists('Item', filters["parent_item"]):
+			variants.append(filters["parent_item"])
 		if variants:
 			sub = sub.where(sle.item.isin(variants))
 	for fn in dim_fields:
@@ -141,10 +145,12 @@ def get_data(filters, dim_fields):
 
 		# Item details (cached per item variant)
 		if bucket.item not in item_cache:
-			parent = frappe.db.get_value('YRP Item Variant', bucket.item, "item")
+			from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+			parent = get_parent_item(bucket.item)
 			item_cache[bucket.item] = frappe.db.get_value(
-				'YRP Item', parent,
-				["name as item_name", "item_group", "default_unit_of_measure as stock_uom"],
+				'Item', parent,
+				["name as item_name", "item_group", "stock_uom as stock_uom"],
 				as_dict=True,
 			) or {}
 		details = item_cache[bucket.item]

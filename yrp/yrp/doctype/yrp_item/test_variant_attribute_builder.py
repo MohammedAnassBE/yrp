@@ -14,8 +14,7 @@ class TestVariantAttributeBuilder(FrappeTestCase):
 			dependent_attribute_mapping="STAGE-MAPPING",
 		)
 		with patch(
-			"yrp.yrp.doctype.yrp_item_dependent_attribute_mapping."
-			"item_dependent_attribute_mapping.get_dependent_attribute_details",
+			"yrp.yrp.doctype.yrp_item.yrp_item.get_dependent_attribute_details",
 			return_value={
 				"attribute": "Stage",
 				"attr_list": {
@@ -41,8 +40,7 @@ class TestVariantAttributeBuilder(FrappeTestCase):
 		)
 		with (
 			patch(
-				"yrp.yrp.doctype.yrp_item_dependent_attribute_mapping."
-				"item_dependent_attribute_mapping.get_dependent_attribute_details",
+				"yrp.yrp.doctype.yrp_item.yrp_item.get_dependent_attribute_details",
 				return_value={
 					"attribute": "Stage",
 					"attr_list": {"Pack": {"attributes": ["Size"]}},

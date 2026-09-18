@@ -125,7 +125,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Supplier",
-   "options": "YRP Supplier"
+   "options": "Supplier"
   },
   {
    "fieldname": "column_break_wrym",
@@ -292,7 +292,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Item",
-   "options": "YRP Item",
+   "options": "Item",
    "reqd": 1
   },
   {
@@ -374,7 +374,7 @@
    "fieldname": "delivery_location",
    "fieldtype": "Link",
    "label": "Delivery Location",
-   "options": "YRP Supplier"
+   "options": "Supplier"
   },
   {
    "allow_on_submit": 1,

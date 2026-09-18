@@ -19,10 +19,10 @@
   "set_combination"
  ],
  "fields": [
-  {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "YRP Item Variant", "reqd": 1},
+  {"fieldname": "item", "fieldtype": "Link", "in_list_view": 1, "label": "Item", "options": "Item", "reqd": 1},
   {"fieldname": "item_group", "fieldtype": "Data", "in_list_view": 1, "label": "Item Group", "read_only": 1},
   {"fieldname": "qty", "fieldtype": "Float", "in_list_view": 1, "label": "Qty", "precision": "3", "reqd": 1},
-  {"fieldname": "uom", "fieldtype": "Link", "in_list_view": 1, "label": "UOM", "options": "YRP UOM", "read_only": 1, "reqd": 1},
+  {"fieldname": "uom", "fieldtype": "Link", "in_list_view": 1, "label": "UOM", "options": "UOM", "read_only": 1, "reqd": 1},
   {"fieldname": "rate", "fieldtype": "Currency", "in_list_view": 1, "label": "Rate", "reqd": 1},
   {"fieldname": "source_rate", "fieldtype": "Currency", "hidden": 1, "label": "Original GRN Billing Rate", "precision": "6", "read_only": 1},
   {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount", "read_only": 1},

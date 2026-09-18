@@ -1,7 +1,7 @@
 import frappe
 
 
-DEFAULT_RECEIVED_VIA = ("HO", "Post", "Email", 'YRP Warehouse', "Others")
+DEFAULT_RECEIVED_VIA = ("HO", "Post", "Email", 'Warehouse', "Others")
 
 
 def execute():

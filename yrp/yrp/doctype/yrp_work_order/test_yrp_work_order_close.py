@@ -3,6 +3,8 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_test_item_variant,
 	_warehouse,
@@ -86,8 +88,8 @@ class TestWorkOrderCancelReservationCleanup(FrappeTestCase):
 		from yrp.stock.dimensions import get_mandatory_dimensions
 
 		item_variant = _test_item_variant()
-		parent_item = frappe.db.get_value('YRP Item Variant', item_variant, "item")
-		uom = frappe.db.get_value('YRP Item', parent_item, "default_unit_of_measure") or "Piece"
+		parent_item = get_parent_item(item_variant)
+		uom = frappe.db.get_value('Item', parent_item, "stock_uom") or "Piece"
 		wh = _warehouse(f"_Test WO Cancel SRE WH {frappe.generate_hash(length=6)}")
 
 		# Fill mandatory stock dimensions from the site's current config so the

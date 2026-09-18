@@ -110,7 +110,7 @@ class TestNotificationTemplateWhatsApp(_NotificationTestBase):
         # The savepoint rollback undid only the failed Communication.
         self.assertTrue(frappe.db.exists("ToDo", sentinel.name))
         self.assertFalse(frappe.db.exists("Communication", {
-            "reference_doctype": 'YRP Purchase Order',
+            "reference_doctype": 'Purchase Order',
             "reference_name": po.name,
             "communication_medium": "WhatsApp",
         }))
@@ -126,12 +126,12 @@ class TestNotificationTemplateWhatsApp(_NotificationTestBase):
         self.assertIn("WhatsApp", (options or "").split("\n"))
         # _make with the new medium now passes _validate_selects and inserts.
         make_communication(
-            doctype='YRP Purchase Order', name=po.name, content="hi", subject="WhatsApp",
+            doctype='Purchase Order', name=po.name, content="hi", subject="WhatsApp",
             sender="", recipients=["919000000000"], communication_medium="WhatsApp",
             send_email=False, communication_type="Automated Message",
         )
         self.assertTrue(frappe.db.exists("Communication", {
-            "reference_doctype": 'YRP Purchase Order',
+            "reference_doctype": 'Purchase Order',
             "reference_name": po.name,
             "communication_medium": "WhatsApp",
         }))
@@ -144,8 +144,8 @@ class TestNotificationTemplateWhatsApp(_NotificationTestBase):
         po = _purchase_order(qty=1, warehouse=_warehouse("_T WA WH"), supplier=supplier)
         _notification_template(f"_T PO WA {frappe.generate_hash(length=6)}", channel="WhatsApp")
         with patch.object(NotificationTemplate, "send_whatsapp") as mock_wa:
-            frappe.get_doc('YRP Supplier', supplier).send_notification(
-                'YRP Purchase Order', po.name, ["WhatsApp"], "Submit"
+            frappe.get_doc('Supplier', supplier).send_notification(
+                'Purchase Order', po.name, ["WhatsApp"], "Submit"
             )
         mock_wa.assert_called_once()
         self.assertEqual(mock_wa.call_args.args[1], ["98765 43210"])

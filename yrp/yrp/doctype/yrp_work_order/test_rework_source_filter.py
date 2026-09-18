@@ -19,6 +19,7 @@ from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_make_parent_work_order,
 	_received_type,
 	_set_rejected_received_type,
+	_without_host_lot_process_validation,
 )
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 	create_rework_work_order,
@@ -67,6 +68,8 @@ class TestReworkSourceFilter(FrappeTestCase):
 			"posting_time": nowtime(),
 			"supplier": seed_wo.supplier,
 			"delivery_location": seed_wo.delivery_location,
+			"supplier_address": seed_wo.supplier_address,
+			"delivery_address": seed_wo.delivery_address,
 			"from_warehouse": seed_supplier_wh,
 			"to_warehouse": delivery_wh,
 			"process_name": seed_wo.process_name,
@@ -271,10 +274,11 @@ class TestReworkSourceFilter(FrappeTestCase):
 		self.assertEqual(len(first_pass), 1)
 		self.assertEqual(first_pass[0]["available_qty"], 10)
 
-		create_rework_work_order(
-			wo.name,
-			frappe.as_json([{"source_key": first_pass[0]["source_key"], "qty": 4}]),
-		)
+		with _without_host_lot_process_validation():
+			create_rework_work_order(
+				wo.name,
+				frappe.as_json([{"source_key": first_pass[0]["source_key"], "qty": 4}]),
+			)
 
 		rows = get_rework_source_rows(wo.name)
 

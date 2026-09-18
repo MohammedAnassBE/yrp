@@ -54,10 +54,12 @@ class TestNamespaceContract(unittest.TestCase):
 		):
 			records = list(prefix_owned_doctypes_and_reports._metadata_renames())
 
-		self.assertEqual(len(records), 138)
+		# 17 duplicate masters/transactions were intentionally retired in favour
+		# of ERPNext's canonical DocTypes during ERP commonization.
+		self.assertEqual(len(records), 121)
 		self.assertEqual(
 			len({(record_type, new_name) for record_type, _old_name, new_name in records}),
-			138,
+			121,
 		)
 
 	def test_owned_rename_uses_frappe_v16_arguments(self):
@@ -101,7 +103,7 @@ class TestNamespaceContract(unittest.TestCase):
 					self.assertEqual(path.parent.name, slug)
 					self.assertEqual(path.name, f"{slug}.json")
 
-		self.assertEqual(counts, {"DocType": 131, "Report": 7})
+		self.assertEqual(counts, {"DocType": 114, "Report": 7})
 
 	def test_owned_link_and_table_targets_never_use_an_old_name(self):
 		doctypes = list(_owned_metadata("DocType"))

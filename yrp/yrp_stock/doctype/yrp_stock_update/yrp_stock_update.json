@@ -36,7 +36,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Warehouse",
-   "options": "YRP Warehouse",
+   "options": "Warehouse",
    "reqd": 1
   },
   {
@@ -116,7 +116,7 @@
    "fieldname": "supplier",
    "fieldtype": "Link",
    "label": "Supplier",
-   "options": "YRP Supplier",
+   "options": "Supplier",
    "fetch_from": "warehouse.supplier",
    "fetch_if_empty": 0
   }

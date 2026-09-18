@@ -40,7 +40,7 @@ class TestExcelStickerPrint(IntegrationTestCase):
 		)
 		render.assert_called_once_with(
 			"300-template",
-			{"print_quantity": 4, "dpi": 300, "sku": "SKU-1"},
+			{"print_quantity": 1, "dpi": 300, "sku": "SKU-1"},
 		)
 		self.assertEqual(
 			result,
@@ -98,3 +98,6 @@ class TestExcelStickerPrint(IntegrationTestCase):
 			"yrp.yrp.doctype.yrp_excel_sticker_print.yrp_excel_sticker_print.get_print_format",
 			client,
 		)
+		self.assertIn('method: "POST"', client)
+		self.assertIn('body: preview.code', client)
+		self.assertNotIn("encodeURI(r.message.code)", client)

@@ -16,6 +16,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
+	_address,
 	_default_received_type,
 	_item_uom,
 	_production_group_dimensions,
@@ -35,13 +36,14 @@ def _po_with_two_lines(warehouse, qty_a=4, qty_b=6, rate_a=10, rate_b=30):
 	item_variant = _test_item_variant()
 	uom = _item_uom(item_variant)
 	po = frappe.get_doc({
-		"doctype": 'YRP Purchase Order',
+		"doctype": 'Purchase Order',
+		"is_yrp_managed": 1,
 		"supplier": _supplier(f"_T_Freight_Supplier_{frappe.generate_hash(length=6)}"),
-		"delivery_warehouse": warehouse,
+		"set_warehouse": warehouse,
 		**_production_group_dimensions(),
 		"items": [
 			{
-				"item_variant": item_variant,
+				"item_code": item_variant,
 				"qty": qty_a,
 				"uom": uom,
 				"stock_uom": uom,
@@ -51,7 +53,7 @@ def _po_with_two_lines(warehouse, qty_a=4, qty_b=6, rate_a=10, rate_b=30):
 				"row_index": 0,
 			},
 			{
-				"item_variant": item_variant,
+				"item_code": item_variant,
 				"qty": qty_b,
 				"uom": uom,
 				"stock_uom": uom,
@@ -73,24 +75,28 @@ def _grn_from_po(po, freight=0, full=True):
 	rows = []
 	for i, item in enumerate(po.items):
 		rows.append({
-			"item_variant": item.item_variant,
+			"item_variant": item.item_code,
 			"quantity": item.qty if full else flt(item.qty) / 2,
 			"uom": item.uom,
 			"stock_uom": item.stock_uom,
 			"conversion_factor": item.conversion_factor,
 			"rate": item.rate,
-			"ref_doctype": 'YRP Purchase Order Item',
+			"ref_doctype": 'Purchase Order Item',
 			"ref_docname": item.name,
 			"table_index": 0,
 			"row_index": str(i),
 		})
 	grn = frappe.get_doc({
 		"doctype": 'YRP Goods Received Note',
-		"against": 'YRP Purchase Order',
+		"against": 'Purchase Order',
 		"against_id": po.name,
 		"posting_date": nowdate(),
 		"posting_time": nowtime(),
-		"to_warehouse": po.delivery_warehouse,
+		"to_warehouse": po.set_warehouse,
+		"supplier_address": po.supplier_address
+		or _address(f"_T Freight Supplier Address {frappe.generate_hash(length=6)}"),
+		"delivery_address": po.shipping_address
+		or _address(f"_T Freight Delivery Address {frappe.generate_hash(length=6)}"),
 		"freight_charges": freight,
 		"items": rows,
 	})
@@ -177,7 +183,7 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		warehouse = _warehouse(f"_T_Freight_FB_{frappe.generate_hash(length=6)}")
 		po = _purchase_order(qty=10, warehouse=warehouse)
 		# Force the PO rate to 0 to simulate free samples
-		frappe.db.set_value('YRP Purchase Order Item', po.items[0].name, "rate", 0)
+		frappe.db.set_value('Purchase Order Item', po.items[0].name, "rate", 0)
 		po.reload()
 		grn = _grn_from_po(po, freight=50)
 		# GRN inherits rate=0 from PO via _grn_from_po
@@ -269,14 +275,15 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		item_variant = _test_item_variant()
 		uom = _item_uom(item_variant)
 		po = frappe.get_doc({
-			"doctype": 'YRP Purchase Order',
+			"doctype": 'Purchase Order',
+			"is_yrp_managed": 1,
 			"supplier": _supplier(f"_T_Freight_3R_{frappe.generate_hash(length=6)}"),
-			"delivery_warehouse": warehouse,
+			"set_warehouse": warehouse,
 			**_production_group_dimensions(),
 			"items": [
-				{"item_variant": item_variant, "qty": 100, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 0},
-				{"item_variant": item_variant, "qty": 200, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 1},
-				{"item_variant": item_variant, "qty": 700, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 2},
+				{"item_code": item_variant, "qty": 100, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 0},
+				{"item_code": item_variant, "qty": 200, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 1},
+				{"item_code": item_variant, "qty": 700, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 2},
 			],
 		})
 		po.insert(ignore_permissions=True)

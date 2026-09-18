@@ -25,7 +25,7 @@ class YRPItemMasterTemplate(Document):
 		"""Load each attribute's mapping values into __onload.attr_list."""
 		attribute_list = []
 		for attribute in self.attributes:
-			attribute_doc = frappe.get_doc('YRP Item Attribute', attribute.attribute)
+			attribute_doc = frappe.get_doc('Item Attribute', attribute.attribute)
 			if attribute_doc.numeric_values:
 				continue
 
@@ -60,7 +60,7 @@ class YRPItemMasterTemplate(Document):
 
 	def _validate_default_uom(self):
 		"""Ensure default UOM is not a secondary-only UOM."""
-		secondary_only = frappe.get_value('YRP UOM', self.default_unit_of_measure, "secondary_only")
+		secondary_only = frappe.get_value('UOM', self.default_unit_of_measure, "secondary_only")
 		if secondary_only:
 			frappe.throw(f"{self.default_unit_of_measure} can only be used as Secondary UOM")
 
@@ -144,17 +144,19 @@ def create_item_from_template(template_name, item_name, item_group):
 	"""Create a new Item from a template, copying all attributes and mappings."""
 	template = frappe.get_doc('YRP Item Master Template', template_name)
 
-	item = frappe.new_doc('YRP Item')
-	item.name1 = item_name
+	item = frappe.new_doc('Item')
+	item.item_code = item_name
+	item.item_name = item_name
 	item.item_group = item_group
-	item.default_unit_of_measure = template.default_unit_of_measure
+	item.stock_uom = template.default_unit_of_measure
 	item.secondary_unit_of_measure = template.secondary_unit_of_measure
 	item.primary_attribute = template.primary_attribute
 	item.dependent_attribute = template.dependent_attribute
 	item.dependent_attribute_mapping = template.dependent_attribute_mapping
+	item.has_variants = bool(template.attributes)
 
 	for row in template.uom_conversion_details:
-		item.append("uom_conversion_details", {
+		item.append("uoms", {
 			"uom": row.uom,
 			"conversion_factor": row.conversion_factor,
 		})

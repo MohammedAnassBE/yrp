@@ -38,6 +38,7 @@ from frappe.utils import nowdate, nowtime
 
 from yrp.stock.api import get_total_stock
 from yrp.stock.dimensions import get_stock_dimensions
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.stock.utils import (
 	close_voucher_reservations,
 	get_last_sle_rate,
@@ -54,14 +55,15 @@ ITEM_VARIANT_CANDIDATES = (
 
 def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
-		if frappe.db.exists('YRP Item Variant', item_variant):
+		if frappe.db.exists('Item', item_variant):
 			return item_variant
 	fallback = frappe.db.sql(
 		"""
 		SELECT iv.name
-		FROM `tabYRP Item Variant` iv
-		INNER JOIN `tabYRP Item` i ON i.name = iv.item
+		FROM `tabItem` iv
+		INNER JOIN `tabItem` i ON i.name = COALESCE(NULLIF(iv.variant_of, ''), iv.name)
 		WHERE i.is_stock_item = 1
+			AND (COALESCE(iv.variant_of, '') != '' OR COALESCE(iv.has_variants, 0) = 0)
 		ORDER BY iv.creation
 		LIMIT 1
 		"""
@@ -74,9 +76,9 @@ def _test_item_variant():
 ITEM_VARIANT = _test_item_variant()
 ITEM_UOM = (
 	frappe.db.get_value(
-		'YRP Item',
-		frappe.db.get_value('YRP Item Variant', ITEM_VARIANT, "item"),
-		"default_unit_of_measure",
+		'Item',
+		get_parent_item(ITEM_VARIANT),
+		"stock_uom",
 	)
 	or "Piece"
 )
@@ -100,11 +102,12 @@ ACCEPTED_DIMS = _test_dimensions()
 
 def _wh(suffix):
 	"""Per-test isolated warehouse name."""
-	name = f"_Test_Verify_{suffix}"
-	if not frappe.db.exists('YRP Warehouse', name):
-		frappe.get_doc({"doctype": 'YRP Warehouse', "name1": name}).insert(
-			ignore_permissions=True
-		)
+	warehouse_name = f"_Test_Verify_{suffix}"
+	name = frappe.db.get_value('Warehouse', {"warehouse_name": warehouse_name}, "name")
+	if not name:
+		name = frappe.get_doc(
+			{"doctype": 'Warehouse', "warehouse_name": warehouse_name}
+		).insert(ignore_permissions=True).name
 	return name
 
 
@@ -332,8 +335,8 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_I2_uncheck_blocked_while_negative(self):
 		wh = _wh("I2")
-		parent_item = frappe.get_cached_value('YRP Item Variant', ITEM_VARIANT, "item")
-		item = frappe.get_doc('YRP Item', parent_item)
+		parent_item = get_parent_item(ITEM_VARIANT)
+		item = frappe.get_doc('Item', parent_item)
 		original = item.allow_negative_stock
 		item.allow_negative_stock = 1
 		item.flags.ignore_permissions = True
@@ -454,8 +457,8 @@ class TestEngineVerification(FrappeTestCase):
 	def test_H2_negative_does_not_bypass_reservation(self):
 		wh = _wh("H2")
 		# Item must allow negative stock.
-		parent_item = frappe.get_cached_value('YRP Item Variant', ITEM_VARIANT, "item")
-		item = frappe.get_doc('YRP Item', parent_item)
+		parent_item = get_parent_item(ITEM_VARIANT)
+		item = frappe.get_doc('Item', parent_item)
 		original = item.allow_negative_stock
 		item.allow_negative_stock = 1
 		item.flags.ignore_permissions = True
@@ -525,8 +528,8 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_I7_recon_wipes_negative(self):
 		wh = _wh("I7")
-		parent_item = frappe.get_cached_value('YRP Item Variant', ITEM_VARIANT, "item")
-		item = frappe.get_doc('YRP Item', parent_item)
+		parent_item = get_parent_item(ITEM_VARIANT)
+		item = frappe.get_doc('Item', parent_item)
 		original = item.allow_negative_stock
 		item.allow_negative_stock = 1
 		item.flags.ignore_permissions = True
@@ -558,7 +561,7 @@ class TestEngineVerification(FrappeTestCase):
 			recon = frappe.get_doc(
 				{
 					"doctype": 'YRP Stock Reconciliation',
-					"purpose": 'YRP Stock Reconciliation',
+					"purpose": 'Stock Reconciliation',
 					"posting_date": nowdate(),
 					"posting_time": nowtime(),
 					"default_warehouse": wh,
@@ -1068,7 +1071,7 @@ class TestEngineVerification(FrappeTestCase):
 		recon = frappe.get_doc(
 			{
 				"doctype": 'YRP Stock Reconciliation',
-				"purpose": 'YRP Stock Reconciliation',
+				"purpose": 'Stock Reconciliation',
 				"posting_date": nowdate(),
 				"posting_time": nowtime(),
 				"default_warehouse": wh,

@@ -36,10 +36,9 @@
   },
   {
    "fieldname": "attribute_value",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Attribute Value",
-   "options": "YRP Item Attribute Value",
    "read_only_depends_on": "eval:!parent.depends_on_attribute"
   }
  ],

@@ -57,7 +57,7 @@ class TestYRPWhatsAppHubSettingsEnabledDoctypes(IntegrationTestCase):
 		self.settings = frappe.get_single('YRP YRP WhatsApp Hub Settings')
 		self.settings.set("enabled_doctypes", [])
 		self.settings.append("enabled_doctypes", {
-			"reference_doctype": 'YRP Purchase Order', "enabled": 1, "supplier_key": "supplier",
+			"reference_doctype": 'Purchase Order', "enabled": 1, "supplier_key": "supplier",
 		})
 		self.settings.append("enabled_doctypes", {
 			"reference_doctype": 'YRP Stock Entry', "enabled": 1, "supplier_key": "to_supplier",
@@ -69,20 +69,20 @@ class TestYRPWhatsAppHubSettingsEnabledDoctypes(IntegrationTestCase):
 
 	def test_get_enabled_doctypes_lists_only_enabled_rows(self):
 		enabled = self.settings.get_enabled_doctypes()
-		self.assertIn('YRP Purchase Order', enabled)
+		self.assertIn('Purchase Order', enabled)
 		self.assertIn('YRP Stock Entry', enabled)
 		self.assertNotIn('YRP Delivery Challan', enabled)  # enabled=0
 
 	def test_is_doctype_enabled(self):
-		self.assertTrue(self.settings.is_doctype_enabled('YRP Purchase Order'))
+		self.assertTrue(self.settings.is_doctype_enabled('Purchase Order'))
 		self.assertFalse(self.settings.is_doctype_enabled('YRP Delivery Challan'))
-		self.assertFalse(self.settings.is_doctype_enabled('YRP Warehouse'))  # not listed at all
+		self.assertFalse(self.settings.is_doctype_enabled('Warehouse'))  # not listed at all
 
 	def test_get_supplier_key_returns_row_value_or_default(self):
 		self.assertEqual(self.settings.get_supplier_key('YRP Stock Entry'), "to_supplier")
-		self.assertEqual(self.settings.get_supplier_key('YRP Purchase Order'), "supplier")
+		self.assertEqual(self.settings.get_supplier_key('Purchase Order'), "supplier")
 		# a doctype with no row at all still gets the "supplier" default
-		self.assertEqual(self.settings.get_supplier_key('YRP Warehouse'), "supplier")
+		self.assertEqual(self.settings.get_supplier_key('Warehouse'), "supplier")
 
 
 class TestYRPHubSettingsAccountAutosync(IntegrationTestCase):

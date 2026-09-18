@@ -1625,7 +1625,7 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		# M13: same soft rule as nav items — the client catalog drops a typo'd
 		# entry silently, so the save must surface it.
 		warnings = ui_config.validate_config(
-			{"schema_version": 1, "quickCreate": ['YRP Item', "No Such DocType"]}, layer="overrides"
+			{"schema_version": 1, "quickCreate": ['Item', "No Such DocType"]}, layer="overrides"
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("No Such DocType", warnings[0])
@@ -1820,11 +1820,11 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": 'YRP Item', "variant": good},
+				"props": {"doctype": 'Item', "variant": good},
 			}
 			self.assertEqual(self._block_warnings(block), [], good)
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Item', "variant": "list"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "variant": "list"}}
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("variant", warnings[0])
@@ -1834,12 +1834,12 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		# → one per-entry warning. Both messages now name the {field,label}
 		# object form the client ALSO accepts (item 17 mismatch fix).
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Item', "columns": "name,status"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "columns": "name,status"}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("columns must be a list of fieldname strings or {field, label} objects", warnings[0])
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Item', "columns": ["disabled", 7]}}
+			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "columns": ["disabled", 7]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("neither a fieldname string nor a {field, label} object", warnings[0])
@@ -1929,7 +1929,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 	def test_record_list_page_size_bounds(self):
 		for bad in (0, 51, True, "10"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Item', "pageSize": bad}}
+				{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "pageSize": bad}}
 			)
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn("pageSize", warnings[0])
@@ -1937,14 +1937,14 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": 'YRP Item', "pageSize": good},
+				"props": {"doctype": 'Item', "pageSize": good},
 			}
 			self.assertEqual(self._block_warnings(block), [], good)
 
 	def test_record_list_string_props(self):
 		for key in ("groupBy", "titleField", "title"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Item', key: 1}}
+				{"id": "r", "type": "record-list", "props": {"doctype": 'Item', key: 1}}
 			)
 			self.assertEqual(len(warnings), 1, key)
 			self.assertIn(f"{key} must be a string", warnings[0])
@@ -3270,11 +3270,11 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 
 	def test_off_catalog_doctype_key_warns(self):
 		# Catalog keeps the base config's nav doctypes so ONLY the listViews
-		# key under test ("YRP Item" — real, off-catalog) warns.
+		# key under test ("Item" — real, off-catalog) warns.
 		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
-			warnings = self._warnings({'YRP Item': {"variant": "cards"}})
+			warnings = self._warnings({'Item': {"variant": "cards"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("'YRP Item' is not in the /web doctype catalog", warnings[0])
+		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
 
 	def test_no_catalog_hook_skips_the_catalog_check_only(self):
 		with patch.object(ui_config, "_web_doctype_catalog", return_value=None):
@@ -3283,57 +3283,57 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		self.assertEqual(len(warnings), 1, warnings)  # existence check still runs
 
 	def test_non_object_value_warns_and_null_stays_silent(self):
-		warnings = self._warnings({'YRP Item': "cards"})
+		warnings = self._warnings({'Item': "cards"})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['YRP Item'] must be an object", warnings[0])
-		self.assertEqual(self._warnings({'YRP Item': None}), [])  # null = no opinion
+		self.assertIn("listViews['Item'] must be an object", warnings[0])
+		self.assertEqual(self._warnings({'Item': None}), [])  # null = no opinion
 
 	def test_unknown_key_inside_a_list_view_warns(self):
-		warnings = self._warnings({'YRP Item': {"pageSize": 5}})
+		warnings = self._warnings({'Item': {"pageSize": 5}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("unknown key 'pageSize' inside listViews['YRP Item']", warnings[0])
+		self.assertIn("unknown key 'pageSize' inside listViews['Item']", warnings[0])
 
 	def test_variant_vocabulary(self):
 		for good in ui_config.LIST_VIEW_VARIANTS:
-			self.assertEqual(self._warnings({'YRP Item': {"variant": good}}), [], good)
-		warnings = self._warnings({'YRP Item': {"variant": "grid"}})
+			self.assertEqual(self._warnings({'Item': {"variant": good}}), [], good)
+		warnings = self._warnings({'Item': {"variant": "grid"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['YRP Item'].variant 'grid' is not one of", warnings[0])
+		self.assertIn("listViews['Item'].variant 'grid' is not one of", warnings[0])
 
 	def test_column_fieldname_typo_warns(self):
 		warnings = self._warnings(
-			{'YRP Item': {"columns": [{"field": "name1"}, {"field": "no_such_field"}]}}
+			{'Item': {"columns": [{"field": "item_name"}, {"field": "no_such_field"}]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("column 'no_such_field' is not a field on 'YRP Item'", warnings[0])
+		self.assertIn("column 'no_such_field' is not a field on 'Item'", warnings[0])
 
 	def test_column_object_families(self):
 		# Dead annotation key ("type" — the client reads only field/label).
 		warnings = self._warnings(
-			{'YRP Item': {"columns": [{"field": "name1", "label": "Item", "type": "Date"}]}}
+			{'Item': {"columns": [{"field": "item_name", "label": "Item", "type": "Date"}]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("key 'type' is ignored", warnings[0])
 		# Object without a usable field.
-		warnings = self._warnings({'YRP Item': {"columns": [{"label": "X"}]}})
+		warnings = self._warnings({'Item': {"columns": [{"label": "X"}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("needs a non-empty string 'field'", warnings[0])
 		# Non-string label.
-		warnings = self._warnings({'YRP Item': {"columns": [{"field": "name1", "label": 7}]}})
+		warnings = self._warnings({'Item': {"columns": [{"field": "item_name", "label": 7}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("label must be a string", warnings[0])
 
 	def test_group_by_and_title_field_checked_against_meta(self):
 		for key in ("groupBy", "titleField"):
-			warnings = self._warnings({'YRP Item': {key: "no_such_field"}})
+			warnings = self._warnings({'Item': {key: "no_such_field"}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
 			self.assertIn(
-				f"listViews['YRP Item'].{key} 'no_such_field' is not a field on 'YRP Item'",
+				f"listViews['Item'].{key} 'no_such_field' is not a field on 'Item'",
 				warnings[0],
 			)
-			warnings = self._warnings({'YRP Item': {key: 7}})
+			warnings = self._warnings({'Item': {key: 7}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
-			self.assertIn(f"listViews['YRP Item'].{key} must be a fieldname string", warnings[0])
+			self.assertIn(f"listViews['Item'].{key} must be a fieldname string", warnings[0])
 
 	# ── listViews cardTemplate (Track 1 item 2) ───────────────────────────
 
@@ -3377,9 +3377,9 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 			self.assertIn("cardTemplate does nothing without variant 'cards' or 'kanban'", warnings[0])
 
 	def test_overrides_layer_gets_the_same_deep_checks(self):
-		warnings = self._warnings({'YRP Item': {"variant": "grid"}}, layer="overrides")
+		warnings = self._warnings({'Item': {"variant": "grid"}}, layer="overrides")
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("overrides: listViews['YRP Item'].variant 'grid'", warnings[0])
+		self.assertIn("overrides: listViews['Item'].variant 'grid'", warnings[0])
 
 
 class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
@@ -3401,8 +3401,8 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		}
 
 	def test_web_doctype_catalog_helper_reads_the_hook_fail_safe(self):
-		with patch.object(frappe, "get_hooks", return_value=['YRP Item', 'YRP Item']):
-			self.assertEqual(ui_config._web_doctype_catalog(), {'YRP Item', 'YRP Item'})
+		with patch.object(frappe, "get_hooks", return_value=['Item', 'Item']):
+			self.assertEqual(ui_config._web_doctype_catalog(), {'Item', 'Item'})
 		with patch.object(frappe, "get_hooks", return_value=[]):
 			self.assertIsNone(ui_config._web_doctype_catalog())
 		with patch.object(frappe, "get_hooks", side_effect=RuntimeError):
@@ -3414,22 +3414,22 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		catalog = ui_config._web_doctype_catalog()
 		if catalog is None:
 			self.skipTest("no yrp_web_doctype_catalog hook on this site")
-		self.assertIn('YRP Item', catalog)
+		self.assertIn('Item', catalog)
 		self.assertIn('YRP Terms and Condition', catalog)
 
 	def test_existing_but_off_catalog_nav_doctype_warns(self):
 		with patch.object(
-			ui_config, "_web_doctype_catalog", return_value={'YRP Item', 'YRP Delivery Challan'}
+			ui_config, "_web_doctype_catalog", return_value={'Item', 'YRP Delivery Challan'}
 		):
 			warnings = self._nav_warnings(
-				self._items_nav([{"doctype": 'YRP Item'}, {"doctype": 'YRP Work Order'}])
+				self._items_nav([{"doctype": 'Item'}, {"doctype": 'YRP Work Order'}])
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("nav doctype 'YRP Work Order' is not in the /web doctype catalog", warnings[0])
 
 	def test_view_home_item_is_soft_not_a_hard_error(self):
 		warnings = self._nav_warnings(
-			self._items_nav([{"view": "home"}, {"doctype": 'YRP Item'}])
+			self._items_nav([{"view": "home"}, {"doctype": 'Item'}])
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("{'view': 'home'} is redundant", warnings[0])
@@ -3440,14 +3440,14 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 	def test_duplicate_nav_doctypes_and_group_ids_warn(self):
 		nav = {
 			"groups": [
-				{"id": "A", "label": "A", "items": [{"doctype": 'YRP Item'}, {"doctype": 'YRP Item'}]},
-				{"id": "A", "label": "Again", "items": [{"doctype": 'YRP Item'}]},
+				{"id": "A", "label": "A", "items": [{"doctype": 'Item'}, {"doctype": 'Item'}]},
+				{"id": "A", "label": "Again", "items": [{"doctype": 'Item'}]},
 			],
 			"hidden": {},
 		}
 		warnings = self._nav_warnings(nav)
 		self.assertEqual(len(warnings), 2, warnings)
-		self.assertTrue(any("nav doctype 'YRP Item' appears 3 times" in w for w in warnings))
+		self.assertTrue(any("nav doctype 'Item' appears 3 times" in w for w in warnings))
 		self.assertTrue(any("nav group id 'A' appears 2 times" in w for w in warnings))
 
 	def test_unknown_keys_warn_at_every_nav_level(self):
@@ -3459,7 +3459,7 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 					"id": "G",
 					"label": "G",
 					"colour": "red",
-					"items": [{"doctype": 'YRP Item', "label": "My Lots"}],
+					"items": [{"doctype": 'Item', "label": "My Lots"}],
 				}
 			],
 			"hidden": {},
@@ -3470,13 +3470,13 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		self.assertTrue(any("unknown key 'colour' inside nav group" in w for w in warnings))
 		self.assertTrue(
 			any(
-				"unknown key 'label' inside nav item 'YRP Item' — the client reads only doctype/icon" in w
+				"unknown key 'label' inside nav item 'Item' — the client reads only doctype/icon" in w
 				for w in warnings
 			)
 		)
 
 	def test_dead_nav_hidden_target_warns_on_layout_layer_only(self):
-		nav = self._items_nav([{"doctype": 'YRP Item'}], hidden={'YRP Delivery Challan': True})
+		nav = self._items_nav([{"doctype": 'Item'}], hidden={'YRP Delivery Challan': True})
 		warnings = self._nav_warnings(nav)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn(
@@ -3492,10 +3492,10 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		# only the off-catalog quickCreate entry warns.
 		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
 			warnings = ui_config.validate_config(
-				dict(LAYOUT_CONFIG, quickCreate=['YRP Delivery Challan', 'YRP Item']), layer="layout"
+				dict(LAYOUT_CONFIG, quickCreate=['YRP Delivery Challan', 'Item']), layer="layout"
 			)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("quickCreate doctype 'YRP Item' is not in the /web doctype catalog", warnings[0])
+		self.assertIn("quickCreate doctype 'Item' is not in the /web doctype catalog", warnings[0])
 
 
 class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
@@ -3576,7 +3576,7 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 
 	def test_unknown_prop_on_a_known_block_type_warns(self):
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Item', "pagesize": 8}}
+			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "pagesize": 8}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn(
@@ -3603,10 +3603,10 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 		# Catalog keeps the base config's nav doctypes so only the block warns.
 		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
 			warnings = self._block_warnings(
-				{"id": "recent", "type": "home-recent", "props": {"doctypes": ['YRP Item']}}
+				{"id": "recent", "type": "home-recent", "props": {"doctypes": ['Item']}}
 			)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("'YRP Item' is not in the /web doctype catalog", warnings[0])
+		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
 
 	def test_new_cta_deep_checks(self):
 		# Valid shape (the live Demo 7 / Warm Tiles form) stays warning-free.
@@ -3638,11 +3638,11 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 				{
 					"id": "g",
 					"type": "home-greeting",
-					"props": {"newCta": {"primary": 'YRP Delivery Challan', "menu": ['YRP Item']}},
+					"props": {"newCta": {"primary": 'YRP Delivery Challan', "menu": ['Item']}},
 				}
 			)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("newCta doctype 'YRP Item' is not in the /web doctype catalog", warnings[0])
+		self.assertIn("newCta doctype 'Item' is not in the /web doctype catalog", warnings[0])
 
 
 class TestUIConfigTrack1NavFamily(IntegrationTestCase):
@@ -3674,7 +3674,7 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 		self.assertEqual(self._nav_warnings({"shell": "mobile-shell"}), [])
 		self.assertEqual(
 			self._nav_warnings(
-				{"footer": [{"doctype": 'YRP Item', "icon": "pi pi-cog"}, {"doctype": 'YRP Work Order'}]}
+				{"footer": [{"doctype": 'Item', "icon": "pi pi-cog"}, {"doctype": 'YRP Work Order'}]}
 			),
 			[],
 		)
@@ -3721,23 +3721,23 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 	def test_footer_off_catalog_unknown_key_and_duplicate_soft_warn(self):
 		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
 			warnings = self._nav_warnings(
-				{"footer": [{"doctype": 'YRP Item', "label": "x"}, {"doctype": 'YRP Item'}, {"doctype": 'YRP Item'}]}
+				{"footer": [{"doctype": 'Item', "label": "x"}, {"doctype": 'Item'}, {"doctype": 'Item'}]}
 			)
 		self.assertEqual(len(warnings), 3, warnings)
 		self.assertTrue(
-			any("nav.footer doctype 'YRP Item' is not in the /web doctype catalog" in w for w in warnings)
+			any("nav.footer doctype 'Item' is not in the /web doctype catalog" in w for w in warnings)
 		)
-		self.assertTrue(any("unknown key 'label' inside nav.footer item 'YRP Item'" in w for w in warnings))
-		self.assertTrue(any("nav.footer doctype 'YRP Item' appears 3 times" in w for w in warnings))
+		self.assertTrue(any("unknown key 'label' inside nav.footer item 'Item'" in w for w in warnings))
+		self.assertTrue(any("nav.footer doctype 'Item' appears 3 times" in w for w in warnings))
 
 	# ── structurally-bad hard ────────────────────────────────────────────────
 	def test_footer_structural_shapes_hard_error(self):
-		for bad in ({"footer": 'YRP Item'}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
+		for bad in ({"footer": 'Item'}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
 			with self.assertRaises(frappe.ValidationError):
 				self._nav_warnings(bad)
 		# A malformed footer icon is a hard error (same rule as group items).
 		with self.assertRaises(frappe.ValidationError):
-			self._nav_warnings({"footer": [{"doctype": 'YRP Item', "icon": "cog"}]})
+			self._nav_warnings({"footer": [{"doctype": 'Item', "icon": "cog"}]})
 
 	def test_new_nav_family_checks_run_on_overrides_layer_too(self):
 		warnings = self._nav_warnings({"sidebar": "docked"}, layer="overrides")
@@ -3781,7 +3781,7 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 		# colourBy may also name a real renderable field.
 		self.assertEqual(self._warnings({'YRP Work Order': {"colourBy": "process_name"}}), [])
 		# Flags with variant absent (defaults to table) are clean too.
-		self.assertEqual(self._warnings({'YRP Item': {"rowSize": "comfortable", "monoId": True}}), [])
+		self.assertEqual(self._warnings({'Item': {"rowSize": "comfortable", "monoId": True}}), [])
 
 	def test_flag_keys_are_not_unknown_keys(self):
 		# LIST_VIEW_KEYS grew the six flags — none draws the unknown-key warning.
@@ -3793,16 +3793,16 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 			("headerBand", True),
 			("edgeStatus", True),
 		):
-			self.assertEqual(self._warnings({'YRP Item': {flag: value}}), [], flag)
+			self.assertEqual(self._warnings({'Item': {flag: value}}), [], flag)
 
 	# ── unknown value soft-warns ─────────────────────────────────────────────
 	def test_rowsize_and_chipstyle_off_vocabulary_soft_warn(self):
-		warnings = self._warnings({'YRP Item': {"rowSize": "huge"}})
+		warnings = self._warnings({'Item': {"rowSize": "huge"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['YRP Item'].rowSize 'huge' is not one of", warnings[0])
-		warnings = self._warnings({'YRP Item': {"chipStyle": "pills"}})
+		self.assertIn("listViews['Item'].rowSize 'huge' is not one of", warnings[0])
+		warnings = self._warnings({'Item': {"chipStyle": "pills"}})
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("listViews['YRP Item'].chipStyle 'pills' is not one of", warnings[0])
+		self.assertIn("listViews['Item'].chipStyle 'pills' is not one of", warnings[0])
 
 	def test_colour_by_fieldname_typo_warns_and_status_keyword_is_clean(self):
 		warnings = self._warnings({'YRP Work Order': {"colourBy": "no_such_field"}})
@@ -3816,9 +3816,9 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 
 	def test_boolean_flags_reject_non_booleans_softly(self):
 		for flag in ("monoId", "headerBand", "edgeStatus"):
-			warnings = self._warnings({'YRP Item': {flag: "yes"}})
+			warnings = self._warnings({'Item': {flag: "yes"}})
 			self.assertEqual(len(warnings), 1, f"{flag}: {warnings}")
-			self.assertIn(f"listViews['YRP Item'].{flag} should be a boolean", warnings[0])
+			self.assertIn(f"listViews['Item'].{flag} should be a boolean", warnings[0])
 
 	def test_table_flags_are_dead_on_card_variants(self):
 		for variant in ("cards", "kanban"):
@@ -3832,9 +3832,9 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 			self.assertIn(f"the '{variant}' variant", warnings[0])
 
 	def test_overrides_layer_gets_the_same_flag_checks(self):
-		warnings = self._warnings({'YRP Item': {"rowSize": "huge"}}, layer="overrides")
+		warnings = self._warnings({'Item': {"rowSize": "huge"}}, layer="overrides")
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn("overrides: listViews['YRP Item'].rowSize 'huge'", warnings[0])
+		self.assertIn("overrides: listViews['Item'].rowSize 'huge'", warnings[0])
 
 	# ── structurally-bad hard ────────────────────────────────────────────────
 	def test_listviews_non_object_still_hard_errors(self):
@@ -3855,7 +3855,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		"related": {
 			'YRP Work Order': [
 				{
-					"doctype": 'YRP Supplier',
+					"doctype": 'Supplier',
 					"fromField": "supplier",
 					"filterField": "name",
 					"title": "Supplier",
@@ -3893,14 +3893,14 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		self.assertTrue(any("No Such DocType" in x for x in w), w)
 
 	def test_missing_required_entry_keys_warn(self):
-		w = self._layout_warnings({"related": {'YRP Item': [{"title": "x"}]}})
+		w = self._layout_warnings({"related": {'Item': [{"title": "x"}]}})
 		self.assertTrue(any("doctype is required" in x for x in w), w)
 		self.assertTrue(any("fromField is required" in x for x in w), w)
 		self.assertTrue(any("filterField is required" in x for x in w), w)
 
 	def test_nonexistent_target_doctype_warns(self):
 		w = self._layout_warnings(
-			{"related": {'YRP Item': [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
+			{"related": {'Item': [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
 		)
 		self.assertTrue(any("Nope DT" in x and "does not exist" in x for x in w), w)
 
@@ -3908,7 +3908,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		w = self._layout_warnings(
 			{
 				"related": {
-					'YRP Item': [
+					'Item': [
 						{
 							"doctype": 'YRP Item Production Detail',
 							"fromField": "not_a_lot_field",
@@ -3923,13 +3923,13 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 
 	def test_out_of_range_limit_warns(self):
 		w = self._layout_warnings(
-			{"related": {'YRP Item': [{"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name", "limit": 999}]}}
+			{"related": {'Item': [{"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name", "limit": 999}]}}
 		)
 		self.assertTrue(any("limit must be an integer" in x for x in w), w)
 
 	def test_too_many_sets_warns(self):
 		one = {"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name"}
-		w = self._layout_warnings({"related": {'YRP Item': [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}})
+		w = self._layout_warnings({"related": {'Item': [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}})
 		self.assertTrue(any("sets" in x and "keep it under" in x for x in w), w)
 
 	# ── hard fails (shape + injection) ────────────────────────────────────
@@ -3940,7 +3940,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 	def test_markup_title_hard_fails(self):
 		with self.assertRaises(frappe.ValidationError):
 			self._layout_warnings(
-				{"related": {'YRP Item': [{"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name", "title": "<script>x</script>"}]}}
+				{"related": {'Item': [{"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name", "title": "<script>x</script>"}]}}
 			)
 
 	def test_cardtemplate_injection_hard_fails(self):
@@ -3948,7 +3948,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 			self._layout_warnings(
 				{
 					"related": {
-						'YRP Item': [
+						'Item': [
 							{
 								"doctype": 'YRP Item Production Detail',
 								"fromField": "production_detail",

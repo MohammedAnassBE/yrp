@@ -105,18 +105,18 @@ PARENT_CHILD_MAP = {
 			"comments",
 		],
 	},
-	'YRP Purchase Order': {
+	'Purchase Order': {
 		"child_table_field": "items",
-		"child_doctype": 'YRP Purchase Order Item',
-		"item_field": "item_variant",
+		"child_doctype": 'Purchase Order Item',
+		"item_field": "item_code",
 		"qty_field": "qty",
 		"value_fields": [
-			"rate", "pending_quantity", "received_quantity", "cancelled_quantity",
+			"rate", "pending_quantity", "received_qty", "cancelled_quantity",
 			"stock_qty", "amount", "discount_amount", "tax_amount", "total_amount",
 			"secondary_qty", "secondary_uom",
 		],
 		"entry_fields": [
-			"stock_uom", "conversion_factor", "delivery_location", "delivery_date",
+			"stock_uom", "conversion_factor", "delivery_location", "schedule_date",
 			"expected_delivery_date", "additional_parameters", "tax",
 			"discount_percentage", "table_index", "row_index", "set_combination",
 			"comments",
@@ -336,11 +336,13 @@ def group_items_for_ui(child_rows, parent_doctype):
 		first = variants[0]
 
 		# Resolve variant → parent item
-		parent_item = frappe.db.get_value('YRP Item Variant', first[item_field], "item")
+		from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+		parent_item = get_parent_item(first[item_field])
 		if not parent_item:
 			continue
 		attr_details = _get_attr_details(parent_item)
-		first_variant_doc = frappe.get_doc('YRP Item Variant', first[item_field])
+		first_variant_doc = frappe.get_doc('Item', first[item_field])
 
 		# Non-primary attributes for this item entry
 		all_attrs = list(attr_details.get("attributes") or [])
@@ -378,7 +380,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 				item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
 			# Fill actual values from variants (multiple rows share same row_index)
 			for variant_row in variants:
-				variant_doc = frappe.get_doc('YRP Item Variant', variant_row[item_field])
+				variant_doc = frappe.get_doc('Item', variant_row[item_field])
 				v_attrs = _variant_attrs(variant_doc, [primary])
 				pv = v_attrs.get(primary, "")
 				if pv and pv in item_entry["values"]:

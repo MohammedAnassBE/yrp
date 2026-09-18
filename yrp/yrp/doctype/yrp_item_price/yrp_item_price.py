@@ -206,8 +206,11 @@ def get_item_supplier_price(item_detail, supplier=None):
 
 def get_item_variant_price(variant, variant_uom=None):
 	"""Get price for an Item Variant with optional UOM conversion."""
-	variant_doc = frappe.get_doc('YRP Item Variant', variant)
-	price_list = get_all_active_price(item=variant_doc.item)
+	from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
+
+	variant_doc = frappe.get_doc('Item', variant)
+	parent_item = get_parent_item(variant)
+	price_list = get_all_active_price(item=parent_item)
 	rate = None
 	uom = None
 
@@ -215,10 +218,18 @@ def get_item_variant_price(variant, variant_uom=None):
 		item_price = frappe.get_doc('YRP Item Price', price.name)
 		uom = item_price.uom
 		if item_price.depends_on_attribute:
+			attribute_value = next(
+				(
+					row.attribute_value
+					for row in variant_doc.get("attributes") or []
+					if row.attribute == item_price.attribute
+				),
+				None,
+			)
 			rate = item_price.validate_attribute_values(
 				qty=0,
 				attribute=item_price.attribute,
-				attribute_value=variant_doc.get_attribute_value(item_price.attribute),
+				attribute_value=attribute_value,
 				get_lowest_moq_price=True,
 			)
 		else:
@@ -233,8 +244,8 @@ def get_item_variant_price(variant, variant_uom=None):
 		return rate
 
 	# UOM conversion using Item's conversion details
-	item = frappe.get_doc('YRP Item', variant_doc.item)
-	for row in item.uom_conversion_details:
+	item = frappe.get_doc('Item', parent_item)
+	for row in item.uoms:
 		if row.uom == variant_uom:
 			return rate * row.conversion_factor
 	return rate

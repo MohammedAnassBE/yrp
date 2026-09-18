@@ -212,7 +212,7 @@
    "fieldname": "po_dependent_attribute",
    "fieldtype": "Link",
    "label": "Dependent Attribute",
-   "options": "YRP Item Attribute"
+   "options": "Item Attribute"
   },
   {
    "fieldname": "column_break_po_dep",
@@ -221,9 +221,8 @@
   {
    "depends_on": "po_dependent_attribute",
    "fieldname": "po_dependent_attribute_value",
-   "fieldtype": "Link",
-   "label": "Dependent Attribute Value",
-   "options": "YRP Item Attribute Value"
+   "fieldtype": "Data",
+   "label": "Dependent Attribute Value"
   },
   {
    "fieldname": "vendor_bill_section",

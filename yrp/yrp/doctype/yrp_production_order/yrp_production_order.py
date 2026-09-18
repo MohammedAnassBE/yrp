@@ -63,6 +63,9 @@ class YRPProductionOrder(frappe.model.document.Document):
 
 	def on_update_after_submit(self):
 		self.set_lead_time_given()
+		# on_update_after_submit runs after the submitted document's regular DB
+		# update, so an in-memory assignment alone is not persisted.
+		self.db_set("lead_time_given", self.lead_time_given, update_modified=False)
 
 	def set_lead_time_given(self):
 		if self.delivery_date and not self.posting_date:
@@ -164,7 +167,7 @@ def save_production_order_items(item_details_json):
 		if not item_name:
 			continue
 
-		item_doc = frappe.get_cached_doc('YRP Item', item_name)
+		item_doc = frappe.get_cached_doc('Item', item_name)
 
 		for entry in group.get("entries", []):
 			attr_args = dict(entry.get("attributes", {}))
@@ -216,7 +219,7 @@ def fetch_production_order_items(doc):
 				attr_map = json.loads(row.attributes_json)
 			elif row.item_variant:
 				# Fallback: read from variant attributes
-				variant = frappe.get_cached_doc('YRP Item Variant', row.item_variant)
+				variant = frappe.get_cached_doc('Item', row.item_variant)
 				attr_map = {
 					a.attribute: a.attribute_value
 					for a in variant.attributes
@@ -246,7 +249,7 @@ def get_order_summary(production_order):
 
 	for row in doc.production_order_details:
 		summary.setdefault(row.item, {})
-		item_doc = frappe.get_cached_doc('YRP Item', row.item)
+		item_doc = frappe.get_cached_doc('Item', row.item)
 		primary_attr = item_doc.primary_attribute
 		attr_map = json.loads(row.attributes_json) if row.attributes_json else {}
 
@@ -255,7 +258,7 @@ def get_order_summary(production_order):
 			summary[row.item].setdefault(val, 0)
 			summary[row.item][val] += row.quantity
 		elif row.item_variant:
-			variant = frappe.get_cached_doc('YRP Item Variant', row.item_variant)
+			variant = frappe.get_cached_doc('Item', row.item_variant)
 			if primary_attr:
 				for attr in variant.attributes:
 					if attr.attribute == primary_attr:

@@ -12,10 +12,11 @@ from yrp.stock.dimensions import get_stock_dimensions
 def _stock_item_variant():
 	rows = frappe.db.sql(
 		"""
-		SELECT iv.name, COALESCE(i.default_unit_of_measure, 'Piece')
-		FROM `tabYRP Item Variant` iv
-		INNER JOIN `tabYRP Item` i ON i.name = iv.item
+		SELECT iv.name, COALESCE(i.stock_uom, 'Piece')
+		FROM `tabItem` iv
+		INNER JOIN `tabItem` i ON i.name = COALESCE(NULLIF(iv.variant_of, ''), iv.name)
 		WHERE i.is_stock_item = 1
+			AND (COALESCE(iv.variant_of, '') != '' OR COALESCE(iv.has_variants, 0) = 0)
 		ORDER BY iv.creation
 		LIMIT 1
 		"""
@@ -53,11 +54,12 @@ DIMENSIONS = _dimension_values()
 
 
 def _warehouse(suffix):
-	name = f"_Test_MA_{suffix}"
-	if not frappe.db.exists('YRP Warehouse', name):
-		frappe.get_doc({"doctype": 'YRP Warehouse', "name1": name}).insert(
-			ignore_permissions=True
-		)
+	warehouse_name = f"_Test_MA_{suffix}"
+	name = frappe.db.get_value('Warehouse', {"warehouse_name": warehouse_name}, "name")
+	if not name:
+		name = frappe.get_doc(
+			{"doctype": 'Warehouse', "warehouse_name": warehouse_name}
+		).insert(ignore_permissions=True).name
 	return name
 
 

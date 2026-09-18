@@ -252,7 +252,7 @@ function show_return_dialog(frm, data) {
 			{
 				fieldname: "item_variant",
 				fieldtype: "Link",
-				options: "YRP Item Variant",
+				options: "Item",
 				label: __("Item Variant"),
 				in_list_view: 1,
 				read_only: 1,
@@ -261,7 +261,7 @@ function show_return_dialog(frm, data) {
 			{
 				fieldname: "uom",
 				fieldtype: "Link",
-				options: "YRP UOM",
+				options: "UOM",
 				label: __("UOM"),
 				in_list_view: 1,
 				read_only: 1,
