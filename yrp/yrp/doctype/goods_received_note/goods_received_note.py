@@ -329,8 +329,6 @@ class GoodsReceivedNote(Document):
 			frappe.throw(_("From Warehouse is required."))
 		if not self.to_warehouse:
 			frappe.throw(_("To Warehouse is required."))
-		if self.from_warehouse and self.from_warehouse == self.to_warehouse:
-			frappe.throw(_("From Warehouse and To Warehouse must be different."))
 		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			if not row.item_variant:
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
