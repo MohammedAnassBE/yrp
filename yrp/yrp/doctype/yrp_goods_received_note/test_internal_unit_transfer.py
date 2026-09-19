@@ -207,18 +207,18 @@ class TestGRNInternalUnitTransfer(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		cls._original_transit = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "transit_warehouse"
+			'YRP Stock Settings', "transit_warehouse"
 		)
 		cls.transit_wh = _warehouse(f"_T_GRN_Transit_{frappe.generate_hash(length=6)}")
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "transit_warehouse", cls.transit_wh
+			'YRP Stock Settings', "transit_warehouse", cls.transit_wh
 		)
 		_default_received_type()
 
 	@classmethod
 	def tearDownClass(cls):
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "transit_warehouse", cls._original_transit
+			'YRP Stock Settings', "transit_warehouse", cls._original_transit
 		)
 		super().tearDownClass()
 
@@ -462,7 +462,7 @@ class TestGRNInternalUnitTransfer(FrappeTestCase):
 	# ---------- Test 12: missing transit warehouse blocks GRN submit ----------
 
 	def test_12_missing_transit_warehouse_blocks_submit(self):
-		frappe.db.set_single_value('YRP YRP Stock Settings', "transit_warehouse", None)
+		frappe.db.set_single_value('YRP Stock Settings', "transit_warehouse", None)
 		try:
 			sender = _company_supplier("_T_GRN12_Sender")
 			receiver = _company_supplier("_T_GRN12_Receiver")
@@ -472,5 +472,5 @@ class TestGRNInternalUnitTransfer(FrappeTestCase):
 				grn.submit()
 		finally:
 			frappe.db.set_single_value(
-				'YRP YRP Stock Settings', "transit_warehouse", self.transit_wh
+				'YRP Stock Settings', "transit_warehouse", self.transit_wh
 			)

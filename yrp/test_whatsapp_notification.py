@@ -30,15 +30,15 @@ class TestWhatsAppNotification(IntegrationTestCase):
         # "Purchase Order"-applicable mirror left behind by an earlier test
         # method in this class would otherwise leak into a later test's scan.
         # Wipe this class's own fixtures before every test for isolation.
-        for name in frappe.get_all('YRP YRP WhatsApp Template',
+        for name in frappe.get_all('YRP WhatsApp Template',
                 filters={"template_name": ["like", "yrp_wa_%"]}, pluck="name"):
-            frappe.delete_doc('YRP YRP WhatsApp Template', name,
+            frappe.delete_doc('YRP WhatsApp Template', name,
                 ignore_permissions=True, force=True)
 
     def _ensure_account(self):
-        if not frappe.db.exists('YRP YRP WhatsApp Account', ACCOUNT):
+        if not frappe.db.exists('YRP WhatsApp Account', ACCOUNT):
             frappe.get_doc({
-                "doctype": 'YRP YRP WhatsApp Account',
+                "doctype": 'YRP WhatsApp Account',
                 "account_name": ACCOUNT,
                 "is_default": 1,
                 "enabled": 1,
@@ -50,11 +50,11 @@ class TestWhatsAppNotification(IntegrationTestCase):
             body_text="Order {{1}} for {{2}}",
             applicable_doctypes=None, sample_values=None):
         fq = f"{template_name}-en"
-        if frappe.db.exists('YRP YRP WhatsApp Template', fq):
-            frappe.delete_doc('YRP YRP WhatsApp Template', fq,
+        if frappe.db.exists('YRP WhatsApp Template', fq):
+            frappe.delete_doc('YRP WhatsApp Template', fq,
                 ignore_permissions=True, force=True)
         doc = frappe.get_doc({
-            "doctype": 'YRP YRP WhatsApp Template',
+            "doctype": 'YRP WhatsApp Template',
             "template_name": template_name,
             "language_code": "en",
             "category": "UTILITY",
@@ -74,7 +74,7 @@ class TestWhatsAppNotification(IntegrationTestCase):
 
     def _configure_enabled_doctypes(self, rows):
         """rows: list of (reference_doctype, supplier_key, enabled) tuples."""
-        settings = frappe.get_doc('YRP YRP WhatsApp Hub Settings')
+        settings = frappe.get_doc('YRP WhatsApp Hub Settings')
         settings.enabled = 1
         settings.hub_url = "http://127.0.0.1:8899"
         settings.api_key = "test-key"

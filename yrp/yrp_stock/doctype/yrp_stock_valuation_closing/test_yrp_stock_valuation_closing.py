@@ -30,7 +30,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		closing_meta = frappe.get_meta('YRP Stock Valuation Closing')
 		self.assertTrue(closing_meta.is_submittable)
 		self.assertTrue(closing_meta.get_field("closing_through_date").reqd)
-		settings_field = frappe.get_meta('YRP YRP Stock Settings').get_field(
+		settings_field = frappe.get_meta('YRP Stock Settings').get_field(
 			"last_stock_valuation_closing_date"
 		)
 		self.assertTrue(settings_field.read_only)
@@ -60,7 +60,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		self.assertEqual(
 			getdate(
 				frappe.db.get_single_value(
-					'YRP YRP Stock Settings',
+					'YRP Stock Settings',
 					"last_stock_valuation_closing_date",
 					cache=False,
 				)
@@ -74,7 +74,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		self.assertEqual(
 			getdate(
 				frappe.db.get_single_value(
-					'YRP YRP Stock Settings',
+					'YRP Stock Settings',
 					"last_stock_valuation_closing_date",
 					cache=False,
 				)
@@ -87,7 +87,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 			frappe.db.exists(
 				"Singles",
 				{
-					"doctype": 'YRP YRP Stock Settings',
+					"doctype": 'YRP Stock Settings',
 					"field": "last_stock_valuation_closing_date",
 				},
 			)

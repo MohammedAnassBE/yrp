@@ -25,11 +25,11 @@ def execute():
 		)
 		if rows:
 			current = frappe.db.get_single_value(
-				'YRP YRP Stock Settings', "default_rejected_received_type"
+				'YRP Stock Settings', "default_rejected_received_type"
 			)
 			if not current:
 				frappe.db.set_single_value(
-					'YRP YRP Stock Settings',
+					'YRP Stock Settings',
 					"default_rejected_received_type",
 					rows[0]["name"],
 				)

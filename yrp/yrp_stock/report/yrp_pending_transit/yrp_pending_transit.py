@@ -13,7 +13,7 @@ def execute(filters=None):
 	filters = frappe._dict(filters or {})
 	threshold = cint(
 		filters.get("transit_aging_threshold_days")
-		or frappe.db.get_single_value('YRP YRP Stock Settings', "transit_aging_threshold_days")
+		or frappe.db.get_single_value('YRP Stock Settings', "transit_aging_threshold_days")
 		or 7
 	)
 	cutoff = filters.get("as_of_date") or today()

@@ -714,7 +714,7 @@ def _stock_dimension_values(doc, row):
 		doc_value = doc.get(fieldname) if doc.meta.get_field(fieldname) else None
 		values[fieldname] = row_value or doc_value
 	if "received_type" in values and not values.get("received_type"):
-		values["received_type"] = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
+		values["received_type"] = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
 	return values
 
 
@@ -885,7 +885,7 @@ def create_rework_work_order(parent_wo, rows, supplier_type="Same Supplier", sup
 
 @frappe.whitelist()
 def get_close_permission():
-	approver_role = frappe.db.get_single_value('YRP YRP Settings', "work_order_closing_approver_role")
+	approver_role = frappe.db.get_single_value('YRP Settings', "work_order_closing_approver_role")
 	return {
 		"approver_role": approver_role,
 		"is_close_manager": bool(approver_role and approver_role in frappe.get_roles(frappe.session.user)),
@@ -893,7 +893,7 @@ def get_close_permission():
 
 
 def _get_wo_close_approver_role():
-	approver_role = frappe.db.get_single_value('YRP YRP Settings', "work_order_closing_approver_role")
+	approver_role = frappe.db.get_single_value('YRP Settings', "work_order_closing_approver_role")
 	if not approver_role:
 		frappe.throw(_("Please configure Work Order Closing Approver Role in YRP Settings."))
 	return approver_role
@@ -1103,7 +1103,7 @@ def _inspection_rework_sources(grn_by_name):
 
 
 def _eligible_rt_context():
-	settings = frappe.get_cached_doc('YRP YRP Stock Settings')
+	settings = frappe.get_cached_doc('YRP Stock Settings')
 	return settings.get("default_received_type"), settings.get("default_rejected_received_type")
 
 
@@ -1205,7 +1205,7 @@ def _row_dimension_values(row, child_doctype, override_received_type=None):
 		if fn == "received_type" and override_received_type is not None:
 			value = override_received_type
 		if fn == "received_type" and not value:
-			value = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
+			value = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
 		if value is not None:
 			values[fn] = value
 	return values
@@ -1399,7 +1399,7 @@ def _is_wo_close_manager(throw_if_missing=False):
 	if throw_if_missing:
 		approver_role = _get_wo_close_approver_role()
 	else:
-		approver_role = frappe.db.get_single_value('YRP YRP Settings', "work_order_closing_approver_role")
+		approver_role = frappe.db.get_single_value('YRP Settings', "work_order_closing_approver_role")
 		if not approver_role:
 			return False
 	return approver_role in frappe.get_roles(frappe.session.user)

@@ -35,7 +35,7 @@ def _dimension_values():
 		fieldname = dimension["fieldname"]
 		if fieldname == "received_type":
 			value = frappe.db.get_single_value(
-				'YRP YRP Stock Settings', "default_received_type"
+				'YRP Stock Settings', "default_received_type"
 			)
 		else:
 			value = frappe.db.get_value(
@@ -104,15 +104,15 @@ class TestMovingAverageSafety(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
 		self.original_method = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "default_valuation_method"
+			'YRP Stock Settings', "default_valuation_method"
 		)
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "default_valuation_method", "Moving Average"
+			'YRP Stock Settings', "default_valuation_method", "Moving Average"
 		)
 
 	def tearDown(self):
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings',
+			'YRP Stock Settings',
 			"default_valuation_method",
 			self.original_method or "FIFO",
 		)

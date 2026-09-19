@@ -167,14 +167,14 @@ def _address(title):
 
 
 def _default_received_type():
-	received_type = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
+	received_type = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
 	if received_type:
 		return received_type
 	if not frappe.db.exists('YRP Received Type', "Accepted"):
 		frappe.get_doc(
 			{"doctype": 'YRP Received Type', "received_type_name": "Accepted", "is_default": 1}
 		).insert(ignore_permissions=True)
-	frappe.db.set_single_value('YRP YRP Stock Settings', "default_received_type", "Accepted")
+	frappe.db.set_single_value('YRP Stock Settings', "default_received_type", "Accepted")
 	return "Accepted"
 
 

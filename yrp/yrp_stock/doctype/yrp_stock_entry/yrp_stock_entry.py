@@ -130,7 +130,7 @@ class YRPStockEntry(Document):
 		if self.purpose != "Material Consumed":
 			return
 		default_rt = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "default_received_type"
+			'YRP Stock Settings', "default_received_type"
 		)
 		if not default_rt:
 			return
@@ -192,7 +192,7 @@ class YRPStockEntry(Document):
 			frappe.throw(_("To Warehouse is required for purpose {0}").format(self.purpose))
 		if self.purpose in ("Send to Warehouse", "Receive at Warehouse", "DC Completion", "GRN Completion"):
 			if self.purpose in ("DC Completion", "GRN Completion") or not self.skip_transit:
-				transit = frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+				transit = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 				if not transit:
 					frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings for purpose {0}").format(self.purpose))
 
@@ -233,7 +233,7 @@ class YRPStockEntry(Document):
 
 		entries = []
 		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
-		transit_warehouse = frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+		transit_warehouse = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 
 		for row in self.items:
 			transfer_key = f"Stock Entry:{self.name}:{row.name}"

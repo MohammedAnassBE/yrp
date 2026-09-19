@@ -27,7 +27,7 @@ class TestWorkOrderClose(FrappeTestCase):
 		}
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP YRP Settings' and fieldname in role_fields:
+			if doctype == 'YRP Settings' and fieldname in role_fields:
 				return "System Manager"
 			return cls._get_single_value(doctype, fieldname, *args, **kwargs)
 

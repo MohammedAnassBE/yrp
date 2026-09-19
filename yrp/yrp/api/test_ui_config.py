@@ -84,7 +84,7 @@ def _plant_layout_config(value, layout=TEST_LAYOUT):
 
 
 def _plant_overrides(value, user=TEST_USER):
-	frappe.db.set_value('YRP YRP UI Preference', user, "overrides", value, update_modified=False)
+	frappe.db.set_value('YRP UI Preference', user, "overrides", value, update_modified=False)
 
 
 def _ui_error_log_count():
@@ -346,10 +346,10 @@ class TestUIConfigResolver(IntegrationTestCase):
 					"config": json.dumps(LAYOUT_CONFIG),
 				}
 			).insert(ignore_permissions=True)
-		if not frappe.db.exists('YRP YRP UI Preference', TEST_USER):
+		if not frappe.db.exists('YRP UI Preference', TEST_USER):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP YRP UI Preference',
+					"doctype": 'YRP UI Preference',
 					"user": TEST_USER,
 					"layout": TEST_LAYOUT,
 					"overrides": json.dumps(BASE_OVERRIDES),
@@ -371,7 +371,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 			update_modified=False,
 		)
 		frappe.db.set_value(
-			'YRP YRP UI Preference',
+			'YRP UI Preference',
 			TEST_USER,
 			{"layout": TEST_LAYOUT, "overrides": json.dumps(BASE_OVERRIDES)},
 			update_modified=False,
@@ -403,7 +403,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertEqual(config["nav"]["hidden"], {'YRP Work Order': True, 'YRP Stock Entry': True})
 
 	def test_selected_layout_terminology_is_returned_in_meta(self):
-		terminology = frappe.get_doc('YRP YRP UI Terminology', TEST_LAYOUT)
+		terminology = frappe.get_doc('YRP UI Terminology', TEST_LAYOUT)
 		terminology.set("terms", [])
 		terminology.append(
 			"terms",
@@ -472,7 +472,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertTrue(any("not registered" in warning for warning in meta["warnings"]))
 
 	def test_layout_link_empty_falls_to_default_with_overrides_on_top(self):
-		frappe.db.set_value('YRP YRP UI Preference', TEST_USER, "layout", "", update_modified=False)
+		frappe.db.set_value('YRP UI Preference', TEST_USER, "layout", "", update_modified=False)
 		config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)
 		self.assertTrue(meta["has_preference"])
@@ -515,7 +515,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 
 	def test_missing_layout_record_falls_back_to_default(self):
 		frappe.db.set_value(
-			'YRP YRP UI Preference', TEST_USER, "layout", "No Such Layout", update_modified=False
+			'YRP UI Preference', TEST_USER, "layout", "No Such Layout", update_modified=False
 		)
 		config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)
@@ -708,21 +708,21 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		# Canonical state: SELF_USER starts with NO preference (each test builds
 		# the record it needs); OTHER_USER always holds the untouchable record.
-		if frappe.db.exists('YRP YRP UI Preference', self.SELF_USER):
+		if frappe.db.exists('YRP UI Preference', self.SELF_USER):
 			frappe.delete_doc(
-				'YRP YRP UI Preference', self.SELF_USER, ignore_permissions=True, force=True
+				'YRP UI Preference', self.SELF_USER, ignore_permissions=True, force=True
 			)
-		if not frappe.db.exists('YRP YRP UI Preference', self.OTHER_USER):
+		if not frappe.db.exists('YRP UI Preference', self.OTHER_USER):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP YRP UI Preference',
+					"doctype": 'YRP UI Preference',
 					"user": self.OTHER_USER,
 					"overrides": json.dumps(self.OTHER_OVERRIDES),
 				}
 			).insert(ignore_permissions=True)
 		else:
 			frappe.db.set_value(
-				'YRP YRP UI Preference',
+				'YRP UI Preference',
 				self.OTHER_USER,
 				{"layout": "", "overrides": json.dumps(self.OTHER_OVERRIDES), "notes": ""},
 				update_modified=False,
@@ -735,7 +735,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		"""Plant SELF_USER's record as an SM would (Desk path), for update tests."""
 		frappe.get_doc(
 			{
-				"doctype": 'YRP YRP UI Preference',
+				"doctype": 'YRP UI Preference',
 				"user": self.SELF_USER,
 				"layout": layout,
 				"overrides": json.dumps(overrides) if overrides else None,
@@ -744,7 +744,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		).insert(ignore_permissions=True)
 
 	def _stored(self, field, user=None):
-		return frappe.db.get_value('YRP YRP UI Preference', user or self.SELF_USER, field)
+		return frappe.db.get_value('YRP UI Preference', user or self.SELF_USER, field)
 
 	# ── identity: Guest rejected, other users unreachable ────────────────
 
@@ -764,7 +764,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		)
 		# Reset likewise touches only the caller's record.
 		reset_my_ui_overrides()
-		self.assertTrue(frappe.db.exists('YRP YRP UI Preference', self.OTHER_USER))
+		self.assertTrue(frappe.db.exists('YRP UI Preference', self.OTHER_USER))
 		self.assertEqual(
 			json.loads(self._stored("overrides", self.OTHER_USER)), self.OTHER_OVERRIDES
 		)
@@ -778,7 +778,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 			json.dumps({"schema_version": 1, "theme": {"accent": "#123456"}})
 		)
 		row = frappe.db.get_value(
-			'YRP YRP UI Preference', self.SELF_USER, ["user", "layout", "overrides"], as_dict=True
+			'YRP UI Preference', self.SELF_USER, ["user", "layout", "overrides"], as_dict=True
 		)
 		self.assertIsNotNone(row)
 		self.assertEqual(row.user, self.SELF_USER)
@@ -796,7 +796,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#111111"}})
 		payload = save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#222222"}})
-		self.assertEqual(frappe.db.count('YRP YRP UI Preference', {"user": self.SELF_USER}), 1)
+		self.assertEqual(frappe.db.count('YRP UI Preference', {"user": self.SELF_USER}), 1)
 		self.assertEqual(
 			json.loads(self._stored("overrides"))["theme"]["accent"], "#222222"
 		)
@@ -810,13 +810,13 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		real_exists = frappe.db.exists
 
 		def exists_missing_own_pref(doctype, name=None, *args, **kwargs):
-			if doctype == 'YRP YRP UI Preference' and name == self.SELF_USER:
+			if doctype == 'YRP UI Preference' and name == self.SELF_USER:
 				return None
 			return real_exists(doctype, name, *args, **kwargs)
 
 		with patch.object(frappe.db, "exists", side_effect=exists_missing_own_pref):
 			save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#444444"}})
-		self.assertEqual(frappe.db.count('YRP YRP UI Preference', {"user": self.SELF_USER}), 1)
+		self.assertEqual(frappe.db.count('YRP UI Preference', {"user": self.SELF_USER}), 1)
 		self.assertEqual(
 			json.loads(self._stored("overrides"))["theme"]["accent"], "#444444"
 		)
@@ -848,7 +848,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		payload = save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#2563EB"}})
 		row = frappe.db.get_value(
-			'YRP YRP UI Preference',
+			'YRP UI Preference',
 			self.SELF_USER,
 			["layout", "notes", "overrides"],
 			as_dict=True,
@@ -870,7 +870,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		):
 			with self.assertRaises(frappe.ValidationError):
 				save_my_ui_overrides(bad)
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
 
 	def test_save_rejects_oversize_overrides_and_stores_nothing(self):
 		# M6: any authenticated user reaches this endpoint — a >256 KB payload
@@ -884,10 +884,10 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		for shape in (json.dumps(big), big):  # over-the-wire string AND direct dict
 			with self.assertRaises(frappe.ValidationError):
 				save_my_ui_overrides(shape)
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
 		# An in-budget save on the same session still lands.
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#123456"}})
-		self.assertTrue(frappe.db.exists('YRP YRP UI Preference', self.SELF_USER))
+		self.assertTrue(frappe.db.exists('YRP UI Preference', self.SELF_USER))
 
 	def test_write_endpoints_are_post_only_reads_stay_gettable(self):
 		# M5: a GET save/reset would return "saved" config and then be rolled
@@ -905,7 +905,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#123456"}})
 		payload = reset_my_ui_overrides()
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
 		self.assertFalse(payload["meta"]["has_preference"])
 		self.assertEqual(payload["meta"]["layout"], DEFAULT_LAYOUT_NAME)
 		self.assertIsNone(payload["config"]["theme"]["accent"])
@@ -917,7 +917,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		payload = reset_my_ui_overrides()
 		row = frappe.db.get_value(
-			'YRP YRP UI Preference', self.SELF_USER, ["layout", "overrides"], as_dict=True
+			'YRP UI Preference', self.SELF_USER, ["layout", "overrides"], as_dict=True
 		)
 		self.assertIsNotNone(row)  # record survives — it still carries the layout link
 		self.assertEqual(row.layout, TEST_LAYOUT)
@@ -934,7 +934,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		reset_my_ui_overrides()
 		row = frappe.db.get_value(
-			'YRP YRP UI Preference', self.SELF_USER, ["notes", "overrides"], as_dict=True
+			'YRP UI Preference', self.SELF_USER, ["notes", "overrides"], as_dict=True
 		)
 		self.assertIsNotNone(row)
 		self.assertEqual(row.notes, "SM breadcrumb — keep")
@@ -943,7 +943,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 	def test_reset_without_a_record_is_a_clean_no_op(self):
 		frappe.set_user(self.SELF_USER)
 		payload = reset_my_ui_overrides()
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
 		self.assertEqual(set(payload), {"config", "meta"})
 		self.assertFalse(payload["meta"]["has_preference"])
 		self.assertEqual(payload["meta"]["layout"], DEFAULT_LAYOUT_NAME)
@@ -1459,7 +1459,7 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 		"""Distinct accent per record so the merge test can prove WHOSE record survived."""
 		frappe.get_doc(
 			{
-				"doctype": 'YRP YRP UI Preference',
+				"doctype": 'YRP UI Preference',
 				"user": user,
 				"overrides": json.dumps({"schema_version": 1, "theme": {"accent": accent}}),
 			}
@@ -1467,7 +1467,7 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 
 	@staticmethod
 	def _accent_of(pref_name):
-		overrides = frappe.db.get_value('YRP YRP UI Preference', pref_name, "overrides")
+		overrides = frappe.db.get_value('YRP UI Preference', pref_name, "overrides")
 		return json.loads(overrides)["theme"]["accent"]
 
 	def test_deleting_user_with_preference_is_not_blocked_and_removes_it(self):
@@ -1477,15 +1477,15 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 		# LinkExistsError here — offboarding blocked by a cosmetic record.
 		frappe.delete_doc("User", user, ignore_permissions=True)
 		self.assertFalse(frappe.db.exists("User", user))
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', user))
+		self.assertFalse(frappe.db.exists('YRP UI Preference', user))
 
 	def test_renaming_user_makes_preference_docname_follow(self):
 		old = self._make_user("yrp-ui-lifecycle-rename-old@essdee.local")
 		new = "yrp-ui-lifecycle-rename-new@essdee.local"
 		self._make_preference(old, "#222222")
 		frappe.rename_doc("User", old, new)
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', old))
-		pref = frappe.db.get_value('YRP YRP UI Preference', new, ["name", "user"], as_dict=True)
+		self.assertFalse(frappe.db.exists('YRP UI Preference', old))
+		pref = frappe.db.get_value('YRP UI Preference', new, ["name", "user"], as_dict=True)
 		self.assertIsNotNone(pref)
 		self.assertEqual(pref.user, new)  # docname AND user Link both follow
 		self.assertEqual(self._accent_of(new), "#222222")
@@ -1499,9 +1499,9 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 		# IntegrityError on the UNIQUE ``user`` column when rename_doc
 		# bulk-updates Link values before after_rename can dedup.
 		frappe.rename_doc("User", merged_away, survivor, merge=True)
-		self.assertFalse(frappe.db.exists('YRP YRP UI Preference', merged_away))
+		self.assertFalse(frappe.db.exists('YRP UI Preference', merged_away))
 		self.assertEqual(
-			frappe.db.count('YRP YRP UI Preference', {"user": survivor}), 1
+			frappe.db.count('YRP UI Preference', {"user": survivor}), 1
 		)  # exactly one record left
 		# …and it is the SURVIVOR's own preference, not the merged-away user's.
 		self.assertEqual(self._accent_of(survivor), "#444444")

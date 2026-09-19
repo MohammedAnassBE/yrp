@@ -24,12 +24,12 @@ class YRPBillTracking(Document):
 		Toggled via YRP Settings.unique_vendor_bill_per_year (0 disables).
 		"""
 		flag = frappe.db.get_single_value(
-			'YRP YRP Settings', "unique_vendor_bill_per_year"
+			'YRP Settings', "unique_vendor_bill_per_year"
 		)
 		if not flag:
 			return
-		start_date = frappe.db.get_single_value('YRP YRP Settings', "fiscal_year_start_date")
-		end_date = frappe.db.get_single_value('YRP YRP Settings', "fiscal_year_end_date")
+		start_date = frappe.db.get_single_value('YRP Settings', "fiscal_year_start_date")
+		end_date = frappe.db.get_single_value('YRP Settings', "fiscal_year_end_date")
 		if not start_date or not end_date:
 			return
 		exist_bills = frappe.get_all(

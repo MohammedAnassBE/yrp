@@ -86,7 +86,7 @@ class YRPProductionOrder(frappe.model.document.Document):
 @frappe.whitelist()
 def get_production_order_settings():
 	"""Return active attributes, grid attribute, and dependent attribute config from YRP Settings."""
-	settings = frappe.get_cached_doc('YRP YRP Settings')
+	settings = frappe.get_cached_doc('YRP Settings')
 	attrs = []
 	grid_attribute = None
 	for row in settings.production_order_attributes or []:

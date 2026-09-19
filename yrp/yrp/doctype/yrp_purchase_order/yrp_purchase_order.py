@@ -274,7 +274,7 @@ class YRPPurchaseOrderMixin:
 			self.calculate_row_amount(row)
 
 	def is_price_validation_enabled(self):
-		return bool(frappe.db.get_single_value('YRP YRP Settings', "enable_price_validation"))
+		return bool(frappe.db.get_single_value('YRP Settings', "enable_price_validation"))
 
 	def apply_item_prices(self, strict=False, warn_on_missing=False):
 		if not self.supplier or not self.get("items"):

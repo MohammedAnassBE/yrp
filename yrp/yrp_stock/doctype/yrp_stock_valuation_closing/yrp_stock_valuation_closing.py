@@ -141,17 +141,17 @@ def _set_settings_cutoff(closing_date):
 		frappe.db.delete(
 			"Singles",
 			filters={
-				"doctype": 'YRP YRP Stock Settings',
+				"doctype": 'YRP Stock Settings',
 				"field": "last_stock_valuation_closing_date",
 			},
 		)
-		frappe.clear_document_cache('YRP YRP Stock Settings', 'YRP YRP Stock Settings')
-		frappe.db.value_cache.get('YRP YRP Stock Settings', {}).pop(
+		frappe.clear_document_cache('YRP Stock Settings', 'YRP Stock Settings')
+		frappe.db.value_cache.get('YRP Stock Settings', {}).pop(
 			"last_stock_valuation_closing_date", None
 		)
 		return
 	frappe.db.set_single_value(
-		'YRP YRP Stock Settings',
+		'YRP Stock Settings',
 		"last_stock_valuation_closing_date",
 		getdate(closing_date),
 	)

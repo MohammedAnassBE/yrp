@@ -111,12 +111,12 @@ class YRPNotificationTemplate(Document):
 	def _resolve_whatsapp_template(self):
 		"""(account_name, template_name, language_code) for this doctype from the
 		Hub Settings routing table, or None when nothing is configured."""
-		settings = frappe.get_cached_doc('YRP YRP WhatsApp Hub Settings')
+		settings = frappe.get_cached_doc('YRP WhatsApp Hub Settings')
 		config = settings.get_template_config(self.document_type)
 		if not config:
 			return None
 		template_name = frappe.db.get_value(
-			'YRP YRP WhatsApp Template', config.whatsapp_template, "template_name"
+			'YRP WhatsApp Template', config.whatsapp_template, "template_name"
 		)
 		language_code = config.language_code or "en"
 		return settings.get_default_account_name(), template_name, language_code

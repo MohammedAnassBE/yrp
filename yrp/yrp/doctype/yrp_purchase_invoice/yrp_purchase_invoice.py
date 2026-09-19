@@ -516,9 +516,9 @@ def approve_invoice(name, comments=None):
 @frappe.whitelist()
 def get_merch_roles():
 	roles = set(frappe.get_roles(frappe.session.user))
-	approver_role = frappe.db.get_single_value('YRP YRP Settings', "purchase_invoice_approver_role")
-	pending_role = frappe.db.get_single_value('YRP YRP Settings', "purchase_invoice_approval_pending_role")
-	initiate_role = frappe.db.get_single_value('YRP YRP Settings', "purchase_invoice_approval_initiate_role")
+	approver_role = frappe.db.get_single_value('YRP Settings', "purchase_invoice_approver_role")
+	pending_role = frappe.db.get_single_value('YRP Settings', "purchase_invoice_approval_pending_role")
+	initiate_role = frappe.db.get_single_value('YRP Settings', "purchase_invoice_approval_initiate_role")
 	if approver_role and approver_role in roles:
 		return "merch_manager"
 	if pending_role and pending_role in roles:
@@ -716,7 +716,7 @@ def _is_active_invoice(name):
 
 
 def _override_pi_approve():
-	return bool(frappe.db.get_single_value('YRP YRP Settings', "override_pi_approve"))
+	return bool(frappe.db.get_single_value('YRP Settings', "override_pi_approve"))
 
 
 PurchaseInvoice = YRPPurchaseInvoice

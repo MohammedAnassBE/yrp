@@ -13,13 +13,13 @@ class TestNamespaceMigration(unittest.TestCase):
 	def test_legacy_single_children_are_deduplicated_or_moved_without_loss(self):
 		records = [
 			(
-				"YRP YRP Stock Settings",
+				"YRP Stock Settings",
 				"YRP ",
 				[
 					{
 						"fieldname": "stock_dimensions",
 						"fieldtype": "Table",
-						"options": "YRP YRP Stock Dimension",
+						"options": "YRP Stock Dimension",
 					}
 				],
 			)
@@ -38,7 +38,7 @@ class TestNamespaceMigration(unittest.TestCase):
 			)
 		]
 		db = SimpleNamespace()
-		db.exists = lambda record_type, name: name == "YRP YRP Stock Settings"
+		db.exists = lambda record_type, name: name == "YRP Stock Settings"
 		db.get_value = lambda *args, **kwargs: 1
 		db.table_exists = lambda *args, **kwargs: True
 		db.get_table_columns = lambda *args, **kwargs: [
@@ -65,14 +65,14 @@ class TestNamespaceMigration(unittest.TestCase):
 
 		self.assertEqual(result, {"moved": 1, "deduplicated": 1})
 		db.delete.assert_called_once_with(
-			"YRP YRP Stock Dimension", {"name": ["in", ["old-lot"]]}
+			"YRP Stock Dimension", {"name": ["in", ["old-lot"]]}
 		)
 		db.set_value.assert_called_once_with(
-			"YRP YRP Stock Dimension",
+			"YRP Stock Dimension",
 			"old-received",
 			{
-				"parent": "YRP YRP Stock Settings",
-				"parenttype": "YRP YRP Stock Settings",
+				"parent": "YRP Stock Settings",
+				"parenttype": "YRP Stock Settings",
 				"parentfield": "stock_dimensions",
 				"idx": 2,
 			},

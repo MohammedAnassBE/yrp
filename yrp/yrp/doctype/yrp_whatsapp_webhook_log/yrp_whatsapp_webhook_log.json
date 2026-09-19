@@ -1,0 +1,31 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["event_type","processed","statuses_applied","inbound_messages","column_break_1","payload","raw","error"],
+ "fields": [
+  {"fieldname":"event_type","fieldtype":"Data","label":"Event Type","read_only":1,"in_list_view":1,"in_standard_filter":1,"description":"status_update / inbound_message / template_status_update / other"},
+  {"default":"0","fieldname":"processed","fieldtype":"Check","label":"Processed","in_list_view":1,"in_standard_filter":1},
+  {"fieldname":"statuses_applied","fieldtype":"Int","label":"Statuses Applied","read_only":1},
+  {"fieldname":"inbound_messages","fieldtype":"Int","label":"Inbound Messages","read_only":1},
+  {"fieldname":"column_break_1","fieldtype":"Column Break"},
+  {"fieldname":"payload","fieldtype":"Code","label":"Payload","options":"JSON","description":"Parsed JSON payload when the body was valid JSON. NOT required — a malformed/garbage body is still captured via `raw`."},
+  {"fieldname":"raw","fieldtype":"Long Text","label":"Raw Body","description":"Verbatim request body as received, so a malformed/garbage POST is still logged."},
+  {"fieldname":"error","fieldtype":"Text","label":"Error"}
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00",
+ "module": "YRP",
+ "name": "YRP WhatsApp Webhook Log",
+ "naming_rule": "Random",
+ "autoname": "hash",
+ "owner": "Administrator",
+ "permissions": [
+  {"role":"System Manager","read":1,"write":1,"create":1,"delete":1,"report":1,"export":1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

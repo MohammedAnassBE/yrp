@@ -63,7 +63,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 			value = None
 			if fieldname == "received_type":
 				value = frappe.db.get_single_value(
-					"YRP YRP Stock Settings", "default_received_type"
+					"YRP Stock Settings", "default_received_type"
 				)
 			value = value or frappe.db.get_value(doctype, {}, "name")
 			if dimension.get("mandatory") and not value:

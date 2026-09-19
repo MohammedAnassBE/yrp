@@ -246,18 +246,18 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		cls._original_transit = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "transit_warehouse"
+			'YRP Stock Settings', "transit_warehouse"
 		)
 		cls.transit_wh = _warehouse(f"_T_DC_Transit_{frappe.generate_hash(length=6)}")
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "transit_warehouse", cls.transit_wh
+			'YRP Stock Settings', "transit_warehouse", cls.transit_wh
 		)
 		_default_received_type()
 
 	@classmethod
 	def tearDownClass(cls):
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "transit_warehouse", cls._original_transit
+			'YRP Stock Settings', "transit_warehouse", cls._original_transit
 		)
 		super().tearDownClass()
 
@@ -522,7 +522,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 
 	def test_12_missing_transit_warehouse_blocks_submit(self):
 		# Temporarily clear transit warehouse
-		frappe.db.set_single_value('YRP YRP Stock Settings', "transit_warehouse", None)
+		frappe.db.set_single_value('YRP Stock Settings', "transit_warehouse", None)
 		try:
 			from_loc = _company_supplier("_T_DC12_From")
 			to_sup = _company_supplier("_T_DC12_To")
@@ -533,7 +533,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 				dc.submit()
 		finally:
 			frappe.db.set_single_value(
-				'YRP YRP Stock Settings', "transit_warehouse", self.transit_wh
+				'YRP Stock Settings', "transit_warehouse", self.transit_wh
 			)
 
 	# ---------- Tests 13-14: explicit RIV enqueue gating ----------

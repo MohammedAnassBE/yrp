@@ -24,8 +24,8 @@ from yrp.yrp.doctype.yrp_purchase_order.yrp_purchase_order import (
 
 def _set_cancel_window(days):
 	"""Update the singleton and invalidate the value cached by get_single_value."""
-	frappe.db.set_single_value('YRP YRP Stock Settings', "grn_cancel_window_days", days)
-	frappe.clear_cache(doctype='YRP YRP Stock Settings')
+	frappe.db.set_single_value('YRP Stock Settings', "grn_cancel_window_days", days)
+	frappe.clear_cache(doctype='YRP Stock Settings')
 
 
 class TestGRNCancelGuards(FrappeTestCase):
@@ -34,7 +34,7 @@ class TestGRNCancelGuards(FrappeTestCase):
 		super().setUpClass()
 		_default_received_type()
 		cls._original_window = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "grn_cancel_window_days"
+			'YRP Stock Settings', "grn_cancel_window_days"
 		)
 		_set_cancel_window(0)
 
@@ -114,7 +114,7 @@ class TestGRNCancelGuards(FrappeTestCase):
 			grn.submit()
 			grn.reload()
 			self.assertEqual(
-				int(frappe.db.get_single_value('YRP YRP Stock Settings', "grn_cancel_window_days")),
+				int(frappe.db.get_single_value('YRP Stock Settings', "grn_cancel_window_days")),
 				7,
 			)
 			self.assertGreater((getdate(nowdate()) - getdate(grn.posting_date)).days, 7)

@@ -42,7 +42,7 @@ def _set_rejected_received_type(name):
 	"""Mark `name` as the rejected RT in YRP Stock Settings for the duration of
 	the test transaction.
 	"""
-	frappe.db.set_single_value('YRP YRP Stock Settings', "default_rejected_received_type", name)
+	frappe.db.set_single_value('YRP Stock Settings', "default_rejected_received_type", name)
 
 
 def _without_host_lot_process_validation():

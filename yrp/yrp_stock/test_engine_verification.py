@@ -90,7 +90,7 @@ def _test_dimensions():
 		fieldname = dimension["fieldname"]
 		value = None
 		if fieldname == "received_type":
-			value = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
+			value = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
 		value = value or frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
 		if value:
 			values[fieldname] = value
@@ -322,7 +322,7 @@ class TestEngineVerification(FrappeTestCase):
 	# ------------------------------------------------------------------
 	def test_C1_dim_removal_blocked(self):
 		# received_type is registered + has data in tabYRP Bin / tabSLE.
-		settings = frappe.get_single('YRP YRP Stock Settings')
+		settings = frappe.get_single('YRP Stock Settings')
 		original_rows = list(settings.stock_dimensions)
 		settings.stock_dimensions = [
 			d for d in original_rows if d.fieldname != "received_type"
@@ -408,7 +408,7 @@ class TestEngineVerification(FrappeTestCase):
 	# C.2 — fieldname rename blocked when data exists
 	# ------------------------------------------------------------------
 	def test_C2_fieldname_rename_blocked(self):
-		settings = frappe.get_single('YRP YRP Stock Settings')
+		settings = frappe.get_single('YRP Stock Settings')
 		original_rows = list(settings.stock_dimensions)
 		# Find received_type row and rename it.
 		for row in settings.stock_dimensions:
@@ -853,8 +853,8 @@ class TestEngineVerification(FrappeTestCase):
 		"""
 		import inspect
 
-		from yrp.yrp_stock.doctype.yrp_yrp_stock_settings import (
-			yrp_yrp_stock_settings as yrp_stock_settings,
+		from yrp.yrp_stock.doctype.yrp_stock_settings import (
+			yrp_stock_settings as yrp_stock_settings,
 		)
 
 		src = inspect.getsource(yrp_stock_settings.YRPStockSettings.on_update)

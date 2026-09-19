@@ -35,7 +35,7 @@ class YRPUILayout(Document):
 			)
 
 	def on_trash(self):
-		linked = frappe.db.count('YRP YRP UI Preference', {"layout": self.name})
+		linked = frappe.db.count('YRP UI Preference', {"layout": self.name})
 		if linked:
 			frappe.throw(
 				_(
@@ -57,19 +57,19 @@ class YRPUILayout(Document):
 		# App code can be newer than an individual site's schema during a rolling
 		# deploy. Keep the existing UI Layout lifecycle usable until that site is
 		# migrated and the terminology tables exist.
-		if frappe.db.table_exists('YRP YRP UI Terminology'):
-			terminology = frappe.db.get_value('YRP YRP UI Terminology', {"ui_layout": self.name}, "name")
+		if frappe.db.table_exists('YRP UI Terminology'):
+			terminology = frappe.db.get_value('YRP UI Terminology', {"ui_layout": self.name}, "name")
 			if terminology:
-				frappe.delete_doc('YRP YRP UI Terminology', terminology, ignore_permissions=True, force=True)
+				frappe.delete_doc('YRP UI Terminology', terminology, ignore_permissions=True, force=True)
 
 	def _ensure_terminology(self):
-		if not frappe.db.exists("DocType", 'YRP YRP UI Terminology'):
+		if not frappe.db.exists("DocType", 'YRP UI Terminology'):
 			return
-		if frappe.db.exists('YRP YRP UI Terminology', {"ui_layout": self.name}):
+		if frappe.db.exists('YRP UI Terminology', {"ui_layout": self.name}):
 			return
 		frappe.get_doc(
 			{
-				"doctype": 'YRP YRP UI Terminology',
+				"doctype": 'YRP UI Terminology',
 				"ui_layout": self.name,
 			}
 		).insert(ignore_permissions=True)

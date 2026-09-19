@@ -110,20 +110,20 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		super().setUpClass()
 		_default_received_type()
 		cls._original_method = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "freight_allocation_method"
+			'YRP Stock Settings', "freight_allocation_method"
 		)
 
 	@classmethod
 	def tearDownClass(cls):
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "freight_allocation_method",
+			'YRP Stock Settings', "freight_allocation_method",
 			cls._original_method or "By Quantity",
 		)
 		super().tearDownClass()
 
 	def _set_method(self, method):
 		frappe.db.set_single_value(
-			'YRP YRP Stock Settings', "freight_allocation_method", method
+			'YRP Stock Settings', "freight_allocation_method", method
 		)
 
 	# ---------- By Quantity allocation ----------

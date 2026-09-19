@@ -187,7 +187,7 @@ class TestBillTracking(FrappeTestCase):
 		}
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP YRP Settings' and fieldname in settings:
+			if doctype == 'YRP Settings' and fieldname in settings:
 				return settings[fieldname]
 			return original_get_single_value(doctype, fieldname, *args, **kwargs)
 

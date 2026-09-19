@@ -177,7 +177,7 @@ scheduler_events = {
 }
 
 doc_events = {
-	'YRP YRP Stock Settings': {
+	'YRP Stock Settings': {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
 	"Item Attribute": {

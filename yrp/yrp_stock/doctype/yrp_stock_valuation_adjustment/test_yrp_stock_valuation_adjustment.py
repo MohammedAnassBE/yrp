@@ -40,7 +40,7 @@ def _stock_context():
 		fieldname = dimension["fieldname"]
 		if fieldname == "received_type":
 			value = frappe.db.get_single_value(
-				'YRP YRP Stock Settings', "default_received_type"
+				'YRP Stock Settings', "default_received_type"
 			)
 		else:
 			value = frappe.db.get_value(

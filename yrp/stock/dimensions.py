@@ -73,10 +73,10 @@ def get_stock_dimensions():
 	dims = frappe.cache().get_value(CACHE_KEY)
 	if dims is None:
 		dims = frappe.get_all(
-			'YRP YRP Stock Dimension',
+			'YRP Stock Dimension',
 			filters={
-				"parent": 'YRP YRP Stock Settings',
-				"parenttype": 'YRP YRP Stock Settings',
+				"parent": 'YRP Stock Settings',
+				"parenttype": 'YRP Stock Settings',
 				"parentfield": "stock_dimensions",
 			},
 			fields=["dimension_doctype", "fieldname", "label", "mandatory", "in_valuation", "is_production_group"],
@@ -153,7 +153,7 @@ def apply_dimension_defaults(rows):
 	defaults = {}
 	for fn in dim_fieldnames:
 		settings_field = DIMENSION_DEFAULT_SETTINGS_FIELD[fn]
-		val = frappe.db.get_single_value('YRP YRP Stock Settings', settings_field)
+		val = frappe.db.get_single_value('YRP Stock Settings', settings_field)
 		if val:
 			defaults[fn] = val
 	if not defaults:

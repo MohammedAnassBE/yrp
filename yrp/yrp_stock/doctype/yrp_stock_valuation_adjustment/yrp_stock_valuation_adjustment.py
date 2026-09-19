@@ -80,12 +80,12 @@ def _hash_key(*parts):
 
 def is_stock_adjustment_enabled():
 	"""Return the YRP Settings gate for creating new valuation adjustments."""
-	field = frappe.get_meta('YRP YRP Settings').get_field("apply_stock_adjustment")
+	field = frappe.get_meta('YRP Settings').get_field("apply_stock_adjustment")
 	if not field:
 		# Preserve existing behavior during a rolling deploy until the DocType is
 		# synchronized and the new checkbox is available on the site.
 		return True
-	value = frappe.db.get_single_value('YRP YRP Settings', "apply_stock_adjustment")
+	value = frappe.db.get_single_value('YRP Settings', "apply_stock_adjustment")
 	return bool(cint(value))
 
 

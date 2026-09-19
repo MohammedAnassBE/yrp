@@ -115,7 +115,7 @@ class TestStockEntry(FrappeTestCase):
 			target_doctype = dimension.get("dimension_doctype")
 			if fieldname == "received_type":
 				value = frappe.db.get_single_value(
-					'YRP YRP Stock Settings',
+					'YRP Stock Settings',
 					"default_received_type",
 				)
 			else:
@@ -133,7 +133,7 @@ class TestStockEntry(FrappeTestCase):
 		cls._get_single_value = frappe.db.get_single_value
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP YRP Stock Settings' and fieldname == "transit_warehouse":
+			if doctype == 'YRP Stock Settings' and fieldname == "transit_warehouse":
 				return cls.transit_warehouse_override
 			return cls._get_single_value(doctype, fieldname, *args, **kwargs)
 

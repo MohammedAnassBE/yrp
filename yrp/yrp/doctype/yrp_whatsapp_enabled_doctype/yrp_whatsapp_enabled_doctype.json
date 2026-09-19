@@ -1,0 +1,23 @@
+{
+ "actions": [],
+ "creation": "2026-07-05 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["reference_doctype", "enabled", "supplier_key"],
+ "fields": [
+  {"fieldname": "reference_doctype", "fieldtype": "Link", "label": "DocType", "options": "DocType", "in_list_view": 1, "reqd": 1, "columns": 3},
+  {"fieldname": "enabled", "fieldtype": "Check", "label": "Enabled", "default": "1", "in_list_view": 1, "columns": 1},
+  {"fieldname": "supplier_key", "fieldtype": "Data", "label": "Supplier Key", "default": "supplier", "in_list_view": 1, "columns": 3, "description": "Field on the doc that links the Supplier; Stock Entry uses to_supplier/from_supplier logic in JS"}
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-05 00:00:00",
+ "module": "YRP",
+ "name": "YRP WhatsApp Enabled DocType",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

@@ -53,11 +53,11 @@ MAX_REPOST_RETRY_COUNT = 3
 
 def get_last_stock_valuation_closing_date():
 	"""Return the system-maintained stock cutoff, or None before first close."""
-	settings_meta = frappe.get_meta('YRP YRP Stock Settings')
+	settings_meta = frappe.get_meta('YRP Stock Settings')
 	if not settings_meta.get_field("last_stock_valuation_closing_date"):
 		return None
 	value = frappe.db.get_single_value(
-		'YRP YRP Stock Settings',
+		'YRP Stock Settings',
 		"last_stock_valuation_closing_date",
 		cache=False,
 	)
@@ -361,7 +361,7 @@ def _should_queue_repost(args):
 	from yrp.stock.utils import future_sle_count
 
 	threshold = (
-		frappe.db.get_single_value('YRP YRP Stock Settings', "backdated_repost_threshold") or 0
+		frappe.db.get_single_value('YRP Stock Settings', "backdated_repost_threshold") or 0
 	)
 	if threshold <= 0:
 		return False
@@ -925,7 +925,7 @@ class UpdateEntriesAfter:
 		self.valuation_dim_fields = get_valuation_dimensions()
 
 		self.valuation_method = (
-			frappe.db.get_single_value('YRP YRP Stock Settings', "default_valuation_method") or "FIFO"
+			frappe.db.get_single_value('YRP Stock Settings', "default_valuation_method") or "FIFO"
 		)
 		# D-009: negative stock is per-Item now. The legacy
 		# YRP Stock Settings.allow_negative_stock flag is ignored.

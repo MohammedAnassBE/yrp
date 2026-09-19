@@ -36,22 +36,22 @@ class TestWhatsAppInbound(IntegrationTestCase):
         """Seed a DRAFT YRP WhatsApp Template (from_meta_sync so validate()
         keeps the given status instead of forcing DRAFT for a manual doc)."""
         fq = f"{template_name}-en"
-        if frappe.db.exists('YRP YRP WhatsApp Template', fq):
+        if frappe.db.exists('YRP WhatsApp Template', fq):
             frappe.delete_doc(
-                'YRP YRP WhatsApp Template', fq, ignore_permissions=True, force=True
+                'YRP WhatsApp Template', fq, ignore_permissions=True, force=True
             )
         acct = "yrp-wa-inbound-acct"
-        if not frappe.db.exists('YRP YRP WhatsApp Account', acct):
+        if not frappe.db.exists('YRP WhatsApp Account', acct):
             frappe.get_doc(
                 {
-                    "doctype": 'YRP YRP WhatsApp Account',
+                    "doctype": 'YRP WhatsApp Account',
                     "account_name": acct,
                     "enabled": 1,
                 }
             ).insert(ignore_permissions=True)
         doc = frappe.get_doc(
             {
-                "doctype": 'YRP YRP WhatsApp Template',
+                "doctype": 'YRP WhatsApp Template',
                 "template_name": template_name,
                 "language_code": "en",
                 "category": "UTILITY",
@@ -136,7 +136,7 @@ class TestWhatsAppInbound(IntegrationTestCase):
     def test_process_payload_routes_statuses_and_counts_messages(self):
         log = self._make_sent_log("wamid.PP1")
         webhook_log = frappe.get_doc(
-            {"doctype": 'YRP YRP WhatsApp Webhook Log', "raw": "{}"}
+            {"doctype": 'YRP WhatsApp Webhook Log', "raw": "{}"}
         )
         webhook_log.insert(ignore_permissions=True)
         payload = {

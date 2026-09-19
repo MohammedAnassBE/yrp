@@ -48,7 +48,7 @@ def _dimension_values():
 		value = None
 		if dimension["fieldname"] == "received_type":
 			value = frappe.db.get_single_value(
-				'YRP YRP Stock Settings', "default_received_type"
+				'YRP Stock Settings', "default_received_type"
 			)
 		value = value or frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
 		if dimension.get("mandatory") and not value:
@@ -66,12 +66,12 @@ DIMENSIONS = _dimension_values()
 
 
 def _ensure_transit_warehouse():
-	tw = frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+	tw = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 	if not tw or not frappe.db.exists('Warehouse', tw):
 		tw = _warehouse("_Test Transit Warehouse")
-		frappe.db.set_single_value('YRP YRP Stock Settings', "transit_warehouse", tw)
+		frappe.db.set_single_value('YRP Stock Settings', "transit_warehouse", tw)
 	
-	return frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+	return frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 
 
 def _seed_stock(warehouse, qty=100, rate=10):

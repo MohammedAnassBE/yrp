@@ -51,7 +51,7 @@ def setup_test_attributes():
 def make_test_yrp_settings(colour_as_grid=True):
 	"""Build the Production Order settings fixture without touching the singleton."""
 	return frappe.get_doc({
-		"doctype": 'YRP YRP Settings',
+		"doctype": 'YRP Settings',
 		"production_order_attributes": [
 			{
 				"attribute": "Colour",
@@ -190,7 +190,7 @@ class TestProductionOrder(IntegrationTestCase):
 		cls._get_cached_doc = frappe.get_cached_doc
 
 		def get_cached_doc(doctype, *args, **kwargs):
-			if doctype == 'YRP YRP Settings':
+			if doctype == 'YRP Settings':
 				return cls.yrp_settings
 			return cls._get_cached_doc(doctype, *args, **kwargs)
 

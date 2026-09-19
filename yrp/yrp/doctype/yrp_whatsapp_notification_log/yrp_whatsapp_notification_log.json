@@ -14,7 +14,7 @@
   {"fieldname":"mobile_no","fieldtype":"Data","label":"Mobile No","in_list_view":1},
   {"fieldname":"account","fieldtype":"Data","label":"Account","read_only":1},
   {"fieldname":"message_type","fieldtype":"Select","label":"Message Type","options":"Template\nMedia","default":"Template"},
-  {"fieldname":"template","fieldtype":"Link","label":"Template","options":"YRP YRP WhatsApp Template"},
+  {"fieldname":"template","fieldtype":"Link","label":"Template","options":"YRP WhatsApp Template"},
   {"fieldname":"template_name","fieldtype":"Data","label":"Template Name","read_only":1},
   {"fieldname":"language_code","fieldtype":"Data","label":"Language Code","read_only":1},
   {"fieldname":"meta_message_id","fieldtype":"Data","label":"Meta Message ID","read_only":1,"search_index":1,"in_standard_filter":1},

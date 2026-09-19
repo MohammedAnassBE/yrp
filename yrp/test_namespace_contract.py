@@ -105,6 +105,12 @@ class TestNamespaceContract(unittest.TestCase):
 
 		self.assertEqual(counts, {"DocType": 114, "Report": 7})
 
+	def test_redundant_yrp_prefix_is_removed_from_every_owned_doctype(self):
+		doctypes = {name for _path, _data, name in _owned_metadata("DocType")}
+		redundant = sorted(name for name in doctypes if name.startswith("YRP YRP "))
+		self.assertEqual(redundant, [])
+
+
 	def test_owned_link_and_table_targets_never_use_an_old_name(self):
 		doctypes = list(_owned_metadata("DocType"))
 		old_names = {name.removeprefix(PREFIX) for _path, _data, name in doctypes}

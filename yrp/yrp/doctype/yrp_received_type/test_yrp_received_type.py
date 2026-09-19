@@ -20,14 +20,14 @@ class TestReceivedType(FrappeTestCase):
 		rt = frappe.get_doc(
 			{"doctype": 'YRP Received Type', "received_type_name": "_Test RT Lock", "is_default": 0}
 		).insert()
-		settings = frappe.get_single('YRP YRP Stock Settings')
+		settings = frappe.get_single('YRP Stock Settings')
 		original = settings.get("default_received_type")
-		frappe.db.set_single_value('YRP YRP Stock Settings', "default_received_type", rt.name)
+		frappe.db.set_single_value('YRP Stock Settings', "default_received_type", rt.name)
 		try:
 			with self.assertRaises(frappe.ValidationError):
 				rt.delete()
 		finally:
-			frappe.db.set_single_value('YRP YRP Stock Settings', "default_received_type", original)
+			frappe.db.set_single_value('YRP Stock Settings', "default_received_type", original)
 			rt.reload()
 			rt.delete()
 
@@ -35,12 +35,12 @@ class TestReceivedType(FrappeTestCase):
 		rt = frappe.get_doc(
 			{"doctype": 'YRP Received Type', "received_type_name": "_Test RT Reject Lock"}
 		).insert()
-		original = frappe.db.get_single_value('YRP YRP Stock Settings', "default_rejected_received_type")
-		frappe.db.set_single_value('YRP YRP Stock Settings', "default_rejected_received_type", rt.name)
+		original = frappe.db.get_single_value('YRP Stock Settings', "default_rejected_received_type")
+		frappe.db.set_single_value('YRP Stock Settings', "default_rejected_received_type", rt.name)
 		try:
 			with self.assertRaises(frappe.ValidationError):
 				rt.delete()
 		finally:
-			frappe.db.set_single_value('YRP YRP Stock Settings', "default_rejected_received_type", original)
+			frappe.db.set_single_value('YRP Stock Settings', "default_rejected_received_type", original)
 			rt.reload()
 			rt.delete()

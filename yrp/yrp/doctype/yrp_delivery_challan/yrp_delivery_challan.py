@@ -346,7 +346,7 @@ class YRPDeliveryChallan(Document):
 
 		destination = self.to_warehouse
 		if self.is_internal_unit:
-			destination = frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+			destination = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 			if not destination:
 				frappe.throw(
 					_("Transit Warehouse must be set in YRP Stock Settings for internal-unit Delivery Challan.")
@@ -541,7 +541,7 @@ def _sle_base(doc, row):
 		base[fn] = row_value or doc_value
 	if "received_type" in base and not base.get("received_type"):
 		base["received_type"] = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "default_received_type"
+			'YRP Stock Settings', "default_received_type"
 		)
 	return base
 
@@ -896,7 +896,7 @@ def get_return_delivery_items(doc_name):
 	default_received_type = None
 	if has_received_type:
 		default_received_type = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "default_received_type"
+			'YRP Stock Settings', "default_received_type"
 		)
 	return {
 		"items": rows,

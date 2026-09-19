@@ -12,7 +12,7 @@ def get_user_departments(department = None):
 
 	user = frappe.session.user
 	query = f"""
-		SELECT DISTINCT  t1.parent as department from `tabDepartment User` t1
+		SELECT DISTINCT  t1.parent as department from `tabYRP Department User` t1
 		JOIN `tabDepartment` t2 ON t1.parent = t2.name WHERE 1=1 {
 			f" AND t1.parent = {frappe.db.escape(department)} " if department else " "
 		} AND t2.disabled = 0 AND user = {frappe.db.escape(user)}

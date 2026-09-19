@@ -518,7 +518,7 @@ class TestPurchaseInvoice(FrappeTestCase):
 		original_get_single_value = frappe.db.get_single_value
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP YRP Settings' and fieldname == "override_pi_approve":
+			if doctype == 'YRP Settings' and fieldname == "override_pi_approve":
 				return 1
 			return original_get_single_value(doctype, fieldname, *args, **kwargs)
 
@@ -555,7 +555,7 @@ class TestPurchaseInvoice(FrappeTestCase):
 		original_get_single_value = frappe.db.get_single_value
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP YRP Stock Settings' and fieldname == "freight_allocation_method":
+			if doctype == 'YRP Stock Settings' and fieldname == "freight_allocation_method":
 				return "By Quantity"
 			return original_get_single_value(doctype, fieldname, *args, **kwargs)
 

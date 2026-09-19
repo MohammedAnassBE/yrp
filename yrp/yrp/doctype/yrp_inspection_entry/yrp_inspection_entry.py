@@ -149,7 +149,7 @@ class YRPInspectionEntry(Document):
 		from yrp.stock.utils import get_stock_balance
 
 		dim_fields = get_dimension_fieldnames()
-		default_rt = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
+		default_rt = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
 		groups = defaultdict(list)
 		for row in self.items:
 			groups[self._bin_key(row)].append(row)
@@ -570,7 +570,7 @@ def get_received_types():
 # Convert Stock — approver-gated SLE generation, separated from submit.
 # ----------------------------------------------------------------------
 def _approver_role():
-	role = frappe.db.get_single_value('YRP YRP Settings', "inspection_entry_approver_role")
+	role = frappe.db.get_single_value('YRP Settings', "inspection_entry_approver_role")
 	return (role or "").strip()
 
 

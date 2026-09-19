@@ -386,7 +386,7 @@ class YRPGoodsReceivedNote(Document):
 			return
 
 		method = frappe.db.get_single_value(
-			'YRP YRP Stock Settings', "freight_allocation_method"
+			'YRP Stock Settings', "freight_allocation_method"
 		) or "By Quantity"
 		if method not in ("By Quantity", "By Value", "Manual"):
 			method = "By Quantity"
@@ -566,7 +566,7 @@ class YRPGoodsReceivedNote(Document):
 	def validate_age_limit(self):
 		from frappe.utils import getdate, today
 
-		window = frappe.db.get_single_value('YRP YRP Stock Settings', "grn_cancel_window_days")
+		window = frappe.db.get_single_value('YRP Stock Settings', "grn_cancel_window_days")
 		if not window or int(window) <= 0:
 			return
 		age_days = (getdate(today()) - getdate(self.posting_date)).days
@@ -846,7 +846,7 @@ class YRPGoodsReceivedNote(Document):
 
 		destination = self.to_warehouse
 		if self.is_internal_unit:
-			destination = frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+			destination = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 			if not destination:
 				frappe.throw(
 					_("Transit Warehouse must be set in YRP Stock Settings for internal-unit Goods Received Note.")
@@ -2098,7 +2098,7 @@ def _get_received_type_options(existing_rows=None):
 		return [None], None
 
 	default_received_type = frappe.db.get_single_value(
-		'YRP YRP Stock Settings', "default_received_type"
+		'YRP Stock Settings', "default_received_type"
 	)
 	received_type_rows = frappe.get_all(
 		'YRP Received Type',
@@ -2144,7 +2144,7 @@ def _get_rework_output_received_type_options(existing_rows=None):
 	if "received_type" not in get_dimension_fieldnames():
 		return [None], None
 
-	settings = frappe.get_cached_doc('YRP YRP Stock Settings')
+	settings = frappe.get_cached_doc('YRP Stock Settings')
 	default_received_type = settings.get("default_received_type")
 	rejected_received_type = settings.get("default_rejected_received_type")
 	received_type_rows = frappe.get_all(
@@ -2229,7 +2229,7 @@ def _delivery_challan_item_dimension_values(row):
 	for fn in get_dimension_fieldnames():
 		value = row.get(fn) if row.meta.get_field(fn) else None
 		if fn == "received_type" and not value:
-			value = frappe.db.get_single_value('YRP YRP Stock Settings', "default_received_type")
+			value = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
 		if value is not None:
 			values[fn] = value
 	return values
@@ -2263,7 +2263,7 @@ def make_grn_completion(doc_name):
 	from yrp.stock.dimensions import get_dimension_fieldnames
 
 	dim_fields = get_dimension_fieldnames()
-	transit_warehouse = frappe.db.get_single_value('YRP YRP Stock Settings', "transit_warehouse")
+	transit_warehouse = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
 	if not transit_warehouse:
 		frappe.throw(_("Transit Warehouse must be set in YRP Stock Settings."))
 

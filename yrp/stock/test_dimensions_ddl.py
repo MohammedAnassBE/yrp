@@ -17,10 +17,10 @@ class TestStockDimensionDDL(TestCase):
 			dimensions.get_stock_dimensions()
 
 		get_all.assert_called_once_with(
-			'YRP YRP Stock Dimension',
+			'YRP Stock Dimension',
 			filters={
-				"parent": 'YRP YRP Stock Settings',
-				"parenttype": 'YRP YRP Stock Settings',
+				"parent": 'YRP Stock Settings',
+				"parenttype": 'YRP Stock Settings',
 				"parentfield": "stock_dimensions",
 			},
 			fields=[

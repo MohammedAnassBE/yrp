@@ -266,7 +266,7 @@ def _dimension_defaults(dims):
 		settings_field = DIMENSION_DEFAULT_SETTINGS_FIELD.get(fn)
 		if not settings_field:
 			continue
-		defaults[fn] = frappe.db.get_single_value('YRP YRP Stock Settings', settings_field)
+		defaults[fn] = frappe.db.get_single_value('YRP Stock Settings', settings_field)
 	return defaults
 
 

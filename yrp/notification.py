@@ -178,8 +178,8 @@ def get_flow_sms_context(doctype: str, docname: str, supplier_key: str = "suppli
 	details = _get_recipient_details(supplier)
 	numbers = _extract_numbers(details["contact"], details["mobile"])
 
-	from yrp.yrp.doctype.yrp_yrp_sms_settings.yrp_yrp_sms_settings import parse_template_variables
-	settings = frappe.get_cached_doc('YRP YRP SMS Settings')
+	from yrp.yrp.doctype.yrp_sms_settings.yrp_sms_settings import parse_template_variables
+	settings = frappe.get_cached_doc('YRP SMS Settings')
 	if not settings.enabled:
 		frappe.throw(_("YRP SMS Settings is disabled"))
 	rows = settings.get_templates_for_doctype(doctype)
