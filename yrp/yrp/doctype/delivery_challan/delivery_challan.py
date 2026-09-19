@@ -173,8 +173,6 @@ class DeliveryChallan(Document):
 		# Work Order Correction quantities (user, 2026-07-09).
 		if not (self.get("items") or self.get("correction_items")):
 			frappe.throw(_("At least one deliverable or correction item is required."))
-		if self.from_warehouse == self.to_warehouse:
-			frappe.throw(_("From Warehouse and To Warehouse must be different."))
 		# qty=0 rows are kept across draft saves so the user can re-edit later;
 		# before_validate(docstatus==1) strips them on the submit pass, so by
 		# the time validate_items runs on submit the items list is already
