@@ -1,0 +1,53 @@
+{
+ "doctype": "Workspace Sidebar",
+ "name": "YRP Stock",
+ "title": "YRP Stock",
+ "app": "yrp",
+ "module": "YRP Stock",
+ "header_icon": "stock",
+ "standard": 1,
+ "items": [
+  {
+   "type": "Link",
+   "label": "Home",
+   "link_type": "Workspace",
+   "link_to": "YRP Stock",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Entry",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Entry",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Reconciliation",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Reconciliation",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Bin",
+   "link_type": "DocType",
+   "link_to": "YRP Bin",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Ledger Entry",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Ledger Entry",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Settings",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Settings",
+   "child": 0
+  }
+ ]
+}

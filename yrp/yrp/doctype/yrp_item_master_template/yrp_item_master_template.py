@@ -16,6 +16,11 @@ from yrp.yrp.doctype.yrp_item_dependent_attribute_mapping.yrp_item_dependent_att
 
 class YRPItemMasterTemplate(Document):
 
+	def _save(self, *args, **kwargs):
+		from yrp.yrp_retail.pricing import lock_pricing_policy
+		lock_pricing_policy()
+		return super()._save(*args, **kwargs)
+
 	def onload(self):
 		"""Load attribute list and dependent attribute details into __onload."""
 		self._load_attribute_list()
@@ -52,11 +57,25 @@ class YRPItemMasterTemplate(Document):
 		self.set_onload("dependent_attribute", dependent_attribute)
 
 	def validate(self):
+		from yrp.yrp_retail.item_template import validate_template
+		validate_template(self)
 		self._validate_default_uom()
 		self._validate_primary_attribute()
 		self._duplicate_mappings_on_create()
 		self._ensure_attribute_mappings_exist()
 		self._validate_dependent_attribute()
+
+	def on_update(self):
+		from yrp.yrp_retail.item_template import sync_items
+		from yrp.yrp.doctype.yrp_item_item_attribute_mapping.ownership import cleanup_owner_mappings
+
+		sync_items(self)
+		cleanup_owner_mappings(self)
+
+	def after_delete(self):
+		from yrp.yrp.doctype.yrp_item_item_attribute_mapping.ownership import cleanup_owner_mappings
+
+		cleanup_owner_mappings(self, deleted=True)
 
 	def _validate_default_uom(self):
 		"""Ensure default UOM is not a secondary-only UOM."""
@@ -73,16 +92,9 @@ class YRPItemMasterTemplate(Document):
 			frappe.throw("Default Attribute must be in Attribute List")
 
 	def _duplicate_mappings_on_create(self):
-		"""On new template creation, duplicate shared mappings so each template has its own copy."""
+		"""Retain the independent lifecycle of the dependent-attribute mapping."""
 		if not self.get("__islocal"):
 			return
-
-		for attribute in self.get("attributes"):
-			if attribute.mapping:
-				original = frappe.get_doc('YRP Item Item Attribute Mapping', attribute.mapping)
-				copy = frappe.copy_doc(original)
-				copy.save()
-				attribute.mapping = copy.name
 
 		if self.dependent_attribute and self.dependent_attribute_mapping:
 			original = frappe.get_doc('YRP Item Dependent Attribute Mapping', self.dependent_attribute_mapping)
@@ -93,18 +105,10 @@ class YRPItemMasterTemplate(Document):
 			self.dependent_attribute_mapping = None
 
 	def _ensure_attribute_mappings_exist(self):
-		"""Create empty mapping docs for attributes that don't have one yet."""
-		for attribute in self.get("attributes"):
-			# Guard with falsiness, not `is None`: the /web SPA's addChildRow()
-			# initialises new attribute rows with mapping="" (empty string, not
-			# None), which `is None` lets through — the empty mapping then reaches
-		# validate()/get_doc("YRP Item Item Attribute Mapping", "") and raises
-			# DoesNotExistError. `not attribute.mapping` auto-creates for "" too.
-			if not attribute.mapping:
-				mapping = frappe.new_doc('YRP Item Item Attribute Mapping')
-				mapping.attribute_name = attribute.attribute
-				mapping.save()
-				attribute.mapping = mapping.name
+		"""Allocate missing maps and separate snapshots from every other owner."""
+		from yrp.yrp.doctype.yrp_item_item_attribute_mapping.ownership import ensure_owned_mappings
+
+		ensure_owned_mappings(self)
 
 	def _validate_dependent_attribute(self):
 		"""Validate dependent attribute setup."""
@@ -139,15 +143,19 @@ class YRPItemMasterTemplate(Document):
 			)
 
 
-@frappe.whitelist()
-def create_item_from_template(template_name, item_name, item_group):
-	"""Create a new Item from a template, copying all attributes and mappings."""
+@frappe.whitelist(methods=["POST"])
+def create_item_from_template(template_name, item_name, item_group, gst_hsn_code=None):
+	"""Copy template structure; HSN belongs to the new Item and its compliance rules."""
 	template = frappe.get_doc('YRP Item Master Template', template_name)
+	template.check_permission('read')
 
 	item = frappe.new_doc('Item')
+	item.yrp_item_master_template = template.name
 	item.item_code = item_name
 	item.item_name = item_name
 	item.item_group = item_group
+	if item.meta.has_field('gst_hsn_code'):
+		item.gst_hsn_code = gst_hsn_code
 	item.stock_uom = template.default_unit_of_measure
 	item.secondary_unit_of_measure = template.secondary_unit_of_measure
 	item.primary_attribute = template.primary_attribute

@@ -1,0 +1,55 @@
+{
+ "doctype": "Workspace",
+ "name": "YRP Retail",
+ "title": "YRP Retail",
+ "label": "YRP Retail",
+ "app": "yrp",
+ "module": "YRP Retail",
+ "public": 1,
+ "is_hidden": 0,
+ "icon": "users",
+ "type": "Workspace",
+ "content": "[{\"id\":\"yrp_retail_card\",\"type\":\"card\",\"data\":{\"card_name\":\"YRP Retail\",\"col\":12}}]",
+ "links": [
+  {
+   "type": "Card Break",
+   "label": "YRP Retail"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Retailer",
+   "link_type": "DocType",
+   "link_to": "YRP Retailer"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Visit",
+   "link_type": "DocType",
+   "link_to": "YRP Visit"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Retail Order",
+   "link_type": "DocType",
+   "link_to": "YRP Retail Order"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Retail Order Summary",
+   "link_type": "DocType",
+   "link_to": "YRP Retail Order Summary"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Customer Stock",
+   "link_type": "DocType",
+   "link_to": "YRP Customer Stock"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Retail Settings",
+   "link_type": "DocType",
+   "link_to": "YRP Retail Settings"
+  }
+ ]
+}

@@ -58,6 +58,20 @@ app_include_js = ["yrp.bundle.js"]
 
 # include js in doctype views
 doctype_js = {
+	"YRP Visit": "public/js/retail_sales_flow.js",
+	"YRP Retail Order": "public/js/retail_sales_flow.js",
+	"YRP Retail Order Summary": "public/js/retail_sales_flow.js",
+	"Delivery Note": "public/js/retail_sales_flow.js",
+	"Packing Slip": "public/js/retail_sales_flow.js",
+
+	"Customer": "public/js/partner_contacts.js",
+	"Sales Partner": "public/js/partner_contacts.js",
+	"Contact": "public/js/partner_contacts.js",
+	"Address": "public/js/partner_contacts.js",
+	"YRP Partner": "public/js/partner_contacts.js",
+	"Sales Person": ["public/js/partner_contacts.js", "public/js/sales_person.js"],
+	"Employee": "public/js/partner_contacts.js",
+	"YRP Retailer": "public/js/partner_contacts.js",
 	"Item": "public/js/item.js",
 	"Purchase Order": "public/js/purchase_order.js",
 }
@@ -103,7 +117,17 @@ doctype_js = {
 # ------------
 
 # before_install = "yrp.install.before_install"
-after_install = "yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium"
+after_install = [
+	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium",
+	"yrp.yrp_partner.setup.setup_partner_users",
+	"yrp.yrp_partner.setup.setup_contact_support",
+	"yrp.yrp_retail.setup.setup_retail",
+	"yrp.yrp_retail.setup.setup_sales_flow",
+	"yrp.yrp_retail.item_template.setup_item_sales",
+	"yrp.yrp_partner.workspace.setup_partner_workspace",
+]
+
+boot_session = ["yrp.yrp_partner.workspace.add_partner_navigation"]
 
 # Uninstallation
 # ------------
@@ -145,6 +169,9 @@ after_install = "yrp.yrp.doctype.yrp_notification_template.yrp_notification_temp
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
+permission_query_conditions = {"*": "yrp.yrp_partner.permissions.query_conditions"}
+has_permission = {"*": "yrp.yrp_partner.permissions.has_permission"}
+
 # Document Events
 # ---------------
 # Hook on document methods and events
@@ -177,6 +204,67 @@ scheduler_events = {
 }
 
 doc_events = {
+	"Customer": {"on_update": "yrp.yrp_retail.retailer.sync_customer_partner"},
+	"Item": {
+		"before_rename": "yrp.yrp_retail.item_template.guard_policy_merge",
+		"before_validate": ["yrp.yrp_retail.pricing.lock_pricing_policy", "yrp.yrp_retail.item_template.apply_template"],
+		"validate": ["yrp.yrp_retail.category.validate_item_classification", "yrp.yrp_retail.pricing.validate_item_free_flag"],
+	},
+	"YRP Item Master Template": {"before_rename": "yrp.yrp_retail.item_template.guard_policy_merge", "before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": ["yrp.yrp_retail.category.validate_template_classification", "yrp.yrp_retail.pricing.validate_template_free_flag"]},
+	"Item Price": {"before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": "yrp.yrp_retail.pricing.validate_item_price"},
+	"Price List": {"before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": "yrp.yrp_retail.pricing.validate_price_list"},
+	"Sales Order": {
+		"validate": ["yrp.yrp_retail.pricing.validate_sales_document", "yrp.yrp_retail.sales_sources.validate_sales_order"],
+		"on_update": "yrp.yrp_retail.sales_sources.refresh_progress",
+		"before_update_after_submit": "yrp.yrp_retail.sales_sources.validate_sales_order",
+		"on_update_after_submit": "yrp.yrp_retail.sales_sources.refresh_progress",
+		"on_submit": "yrp.yrp_retail.sales_sources.refresh_progress",
+		"on_cancel": "yrp.yrp_retail.sales_sources.refresh_progress",
+		"on_trash": "yrp.yrp_retail.sales_sources.refresh_progress",
+	},
+	"Packing Slip": {
+		"before_validate": "yrp.yrp_retail.packing.prepare_packing_slip",
+		"validate": "yrp.yrp_retail.packing.validate_packing_slip",
+		"before_update_after_submit": "yrp.yrp_retail.packing.guard_packing_status",
+		"before_cancel": "yrp.yrp_retail.packing.prevent_delivered_cancellation",
+		"on_trash": "yrp.yrp_retail.packing.prevent_delivered_cancellation",
+		"on_submit": "yrp.yrp_retail.packing.refresh_progress",
+		"on_cancel": "yrp.yrp_retail.packing.refresh_progress",
+		"on_update_after_submit": "yrp.yrp_retail.packing.refresh_progress",
+	},
+	"YRP Retail Order": {
+		"validate": "yrp.yrp_retail.sales_sources.protect_retail_source",
+		"before_cancel": "yrp.yrp_retail.sales_sources.protect_retail_source",
+		"before_update_after_submit": "yrp.yrp_retail.sales_sources.protect_retail_source",
+		"on_trash": "yrp.yrp_retail.sales_sources.protect_retail_source",
+	},
+	"YRP Retail Order Summary": {
+		"validate": "yrp.yrp_retail.sales_sources.protect_retail_source",
+		"before_cancel": "yrp.yrp_retail.sales_sources.protect_retail_source",
+		"before_update_after_submit": "yrp.yrp_retail.sales_sources.protect_retail_source",
+		"on_trash": "yrp.yrp_retail.sales_sources.protect_retail_source",
+	},
+	"Sales Person": {"onload": "yrp.yrp_partner.contacts.load_contacts", "validate": "yrp.yrp_retail.setup.validate_sales_person"},
+	"Employee": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
+	"YRP Retailer": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
+	"Contact": {
+		"before_validate": "yrp.yrp_partner.users.prepare_contact_user",
+		"on_trash": "yrp.yrp_partner.sync.sync_contact",
+	},
+	"YRP Partner Type": {
+		"on_update": "yrp.yrp_partner.workspace.clear_partner_navigation_cache",
+		"on_trash": "yrp.yrp_partner.workspace.clear_partner_navigation_cache",
+	},
+	"*": {
+		"before_rename": "yrp.yrp_partner.permissions.prevent_partner_write",
+		"before_validate": "yrp.yrp_partner.permissions.prevent_partner_write",
+		"before_submit": "yrp.yrp_partner.permissions.prevent_partner_write",
+		"before_cancel": "yrp.yrp_partner.permissions.prevent_partner_write",
+		"before_update_after_submit": "yrp.yrp_partner.permissions.prevent_partner_write",
+		"on_trash": "yrp.yrp_partner.permissions.prevent_partner_write",
+		"on_update": "yrp.yrp_partner.sync.sync_document",
+		"on_update_after_submit": "yrp.yrp_partner.sync.sync_document",
+	},
 	'YRP Stock Settings': {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
@@ -193,6 +281,11 @@ doc_events = {
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
 	},
 	"Delivery Note": {
+		"before_validate": "yrp.yrp_retail.packing.lock_packing",
+		"validate": ["yrp.yrp_retail.pricing.validate_sales_document", "yrp.yrp_retail.packing.validate_delivery_note"],
+		"before_update_after_submit": "yrp.yrp_retail.packing.validate_delivery_note",
+		"before_cancel": "yrp.yrp_retail.packing.prevent_delivered_cancellation",
+		"on_trash": "yrp.yrp_retail.packing.prevent_delivered_cancellation",
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
 	},
 	"Stock Reconciliation": {
@@ -205,6 +298,7 @@ doc_events = {
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
 	},
 	"Sales Invoice": {
+		"validate": "yrp.yrp_retail.pricing.validate_sales_document",
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
 	},
 	"User": {
@@ -217,6 +311,12 @@ doc_events = {
 }
 
 after_migrate = [
+	"yrp.yrp_partner.workspace.setup_partner_workspace",
+	"yrp.yrp_partner.setup.setup_partner_users",
+	"yrp.yrp_partner.setup.setup_contact_support",
+	"yrp.yrp_retail.setup.setup_retail",
+	"yrp.yrp_retail.setup.setup_sales_flow",
+	"yrp.yrp_retail.item_template.setup_item_sales",
 	"yrp.stock.dimensions.create_dimension_fields",
 	"yrp.patches.add_sle_composite_index.execute",
 	"yrp.yrp.doctype.yrp_item.yrp_item.ensure_variant_tuple_unique_index",
@@ -233,7 +333,17 @@ after_migrate = [
 #
 # Specify custom mixins to extend the standard doctype controller.
 extend_doctype_class = {
-	"Item": "yrp.yrp.doctype.yrp_item.yrp_item.YRPItemMixin",
+	"Workspace": "yrp.yrp_partner.workspace.PartnerWorkspaceMixin",
+	"User": "yrp.yrp_partner.users.PartnerUserMixin",
+	"YRP Retail Order": "yrp.yrp_retail.pricing.PricingLockMixin",
+	"YRP Retail Order Summary": "yrp.yrp_retail.pricing.PricingLockMixin",
+	"Sales Order": ["yrp.yrp_retail.pricing.RetailSalesPricingMixin", "yrp.yrp_retail.pricing.PricingLockMixin"],
+	"Delivery Note": ["yrp.yrp_retail.pricing.RetailSalesPricingMixin", "yrp.yrp_retail.packing.PackingTrackingMixin"],
+	"Packing Slip": "yrp.yrp_retail.packing.PackingTrackingMixin",
+	"Sales Invoice": "yrp.yrp_retail.pricing.RetailSalesPricingMixin",
+	"Item": ["yrp.yrp.doctype.yrp_item.yrp_item.YRPItemMixin", "yrp.yrp_retail.item_template.ItemSalesTemplateMixin", "yrp.yrp_retail.pricing.PricingLockMixin"],
+	"Item Price": "yrp.yrp_retail.pricing.PricingLockMixin",
+	"Price List": "yrp.yrp_retail.pricing.PricingLockMixin",
 	"Purchase Order": "yrp.yrp.doctype.yrp_purchase_order.yrp_purchase_order.YRPPurchaseOrderMixin",
 	"Supplier": "yrp.yrp.doctype.yrp_supplier.yrp_supplier.YRPSupplierMixin",
 	"Warehouse": "yrp.yrp.doctype.yrp_warehouse.yrp_warehouse.YRPWarehouseMixin",
@@ -242,9 +352,7 @@ extend_doctype_class = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "yrp.event.get_events"
-# }
+# override_whitelisted_methods = {}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

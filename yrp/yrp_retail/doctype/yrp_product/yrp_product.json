@@ -1,0 +1,175 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "field:product_name",
+ "creation": "2026-09-22 12:37:16.356703",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "product_name",
+  "item_template",
+  "disabled",
+  "gst_hsn_code",
+  "default_unit_of_measure",
+  "secondary_unit_of_measure",
+  "uom_conversion_details",
+  "primary_attribute",
+  "attributes",
+  "dependent_attribute",
+  "dependent_attribute_mapping",
+  "additional_parameters",
+  "item_type",
+  "category_controls",
+  "categories",
+  "is_free_item",
+  "taxes",
+  "item_defaults"
+ ],
+ "fields": [
+  {
+   "fieldname": "product_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Product Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "item_template",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Master Template",
+   "options": "YRP Item Master Template",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "gst_hsn_code",
+   "fieldtype": "Link",
+   "label": "HSN/SAC",
+   "options": "GST HSN Code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "default_unit_of_measure",
+   "fieldtype": "Link",
+   "label": "Default Unit of Measure",
+   "options": "UOM",
+   "reqd": 1
+  },
+  {
+   "fieldname": "secondary_unit_of_measure",
+   "fieldtype": "Link",
+   "label": "Secondary Unit of Measure",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "uom_conversion_details",
+   "fieldtype": "Table",
+   "label": "UOM Conversion Details",
+   "options": "UOM Conversion Detail"
+  },
+  {
+   "fieldname": "primary_attribute",
+   "fieldtype": "Link",
+   "label": "Primary Attribute",
+   "options": "Item Attribute"
+  },
+  {
+   "fieldname": "attributes",
+   "fieldtype": "Table",
+   "label": "Attributes",
+   "options": "YRP Item Item Attribute"
+  },
+  {
+   "fieldname": "dependent_attribute",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute",
+   "options": "Item Attribute"
+  },
+  {
+   "fieldname": "dependent_attribute_mapping",
+   "fieldtype": "Link",
+   "label": "Dependent Attribute Mapping",
+   "options": "YRP Item Dependent Attribute Mapping"
+  },
+  {
+   "fieldname": "additional_parameters",
+   "fieldtype": "Table",
+   "label": "Additional Parameters",
+   "options": "YRP Additional Parameter"
+  },
+  {
+   "fieldname": "item_type",
+   "fieldtype": "Link",
+   "label": "Item Type",
+   "options": "YRP Item Category"
+  },
+  {
+   "fieldname": "category_controls",
+   "fieldtype": "HTML",
+   "label": "Categories"
+  },
+  {
+   "fieldname": "categories",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Category Values",
+   "options": "YRP Product Category"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_free_item",
+   "fieldtype": "Check",
+   "label": "Is Free Item"
+  },
+  {
+   "fieldname": "taxes",
+   "fieldtype": "Table",
+   "label": "Taxes",
+   "options": "Item Tax"
+  },
+  {
+   "fieldname": "item_defaults",
+   "fieldtype": "Table",
+   "label": "Item Defaults",
+   "options": "Item Default"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-22 12:37:16.356703",
+ "modified_by": "Administrator",
+ "module": "YRP Retail",
+ "name": "YRP Product",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "product_name",
+ "track_changes": 1
+}

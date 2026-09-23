@@ -1,0 +1,31 @@
+{
+ "doctype": "Workspace",
+ "name": "YRP Partner Management",
+ "title": "YRP Partner Management",
+ "label": "YRP Partner Management",
+ "app": "yrp",
+ "module": "YRP Partner",
+ "public": 1,
+ "is_hidden": 0,
+ "icon": "users",
+ "type": "Workspace",
+ "content": "[{\"id\":\"yrp_partner_card\",\"type\":\"card\",\"data\":{\"card_name\":\"YRP Partner\",\"col\":12}}]",
+ "links": [
+  {
+   "type": "Card Break",
+   "label": "YRP Partner"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Partner Type",
+   "link_type": "DocType",
+   "link_to": "YRP Partner Type"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Partner",
+   "link_type": "DocType",
+   "link_to": "YRP Partner"
+  }
+ ]
+}

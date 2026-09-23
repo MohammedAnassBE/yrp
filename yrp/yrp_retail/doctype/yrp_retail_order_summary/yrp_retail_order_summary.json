@@ -1,0 +1,184 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "format:ROS-{#####}",
+ "creation": "2026-09-21 20:09:32.274868",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "customer",
+  "sales_person",
+  "order_type",
+  "from_date",
+  "to_date",
+  "source_orders",
+  "items",
+  "total_requested_qty",
+  "total_customer_stock_qty",
+  "total_company_qty",
+  "amended_from",
+  "ordered_qty",
+  "per_ordered"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sales_person",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sales Person",
+   "options": "Sales Person",
+   "reqd": 1
+  },
+  {
+   "fieldname": "order_type",
+   "fieldtype": "Select",
+   "label": "Order Type",
+   "options": "Secondary",
+   "reqd": 1,
+   "default": "Secondary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_orders",
+   "fieldtype": "Table",
+   "label": "Source Orders",
+   "options": "YRP Retail Order Summary Source",
+   "reqd": 1
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "YRP Retail Order Summary Item"
+  },
+  {
+   "fieldname": "total_requested_qty",
+   "fieldtype": "Float",
+   "label": "Total Requested Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_customer_stock_qty",
+   "fieldtype": "Float",
+   "label": "Total Customer Stock Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_company_qty",
+   "fieldtype": "Float",
+   "label": "Total Company Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "YRP Retail Order Summary",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "ordered_qty",
+   "fieldtype": "Float",
+   "label": "Ordered Quantity",
+   "precision": "6",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "per_ordered",
+   "fieldtype": "Percent",
+   "label": "Ordered %",
+   "precision": "2",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-09-21 22:26:43.013628",
+ "modified_by": "Administrator",
+ "module": "YRP Retail",
+ "name": "YRP Retail Order Summary",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Partner Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Retail User",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Partner"
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

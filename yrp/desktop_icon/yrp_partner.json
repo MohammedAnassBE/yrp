@@ -1,0 +1,13 @@
+{
+ "doctype": "Desktop Icon",
+ "name": "YRP Partner",
+ "label": "YRP Partner",
+ "app": "yrp",
+ "standard": 1,
+ "hidden": 0,
+ "icon": "users",
+ "icon_type": "Link",
+ "link_type": "Workspace Sidebar",
+ "link_to": "YRP Partner",
+ "parent_icon": "YRP"
+}

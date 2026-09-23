@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-09-21 20:09:34.244407",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "uom",
+  "requested_qty",
+  "customer_stock_qty",
+  "company_qty",
+  "ordered_qty"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Code",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Uom",
+   "options": "UOM",
+   "reqd": 1
+  },
+  {
+   "fieldname": "requested_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Requested Qty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_stock_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Customer Stock Qty"
+  },
+  {
+   "fieldname": "company_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Company Qty",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "ordered_qty",
+   "fieldtype": "Float",
+   "label": "Ordered Quantity",
+   "precision": "6",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-21 22:26:45.095515",
+ "modified_by": "Administrator",
+ "module": "YRP Retail",
+ "name": "YRP Retail Order Summary Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

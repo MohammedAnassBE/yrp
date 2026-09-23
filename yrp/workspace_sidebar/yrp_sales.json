@@ -1,0 +1,19 @@
+{
+ "app": "yrp",
+ "doctype": "Workspace Sidebar",
+ "name": "YRP Sales",
+ "title": "YRP Sales",
+ "module": "YRP Sales",
+ "header_icon": "sell",
+ "standard": 1,
+ "items": [
+  {"type":"Link","label":"Home","link_type":"Workspace","link_to":"YRP Sales","child":0,"indent":0},
+  {"type":"Link","label":"YRP Product","link_type":"DocType","link_to":"YRP Product","child":0,"indent":0},
+  {"type":"Link","label":"YRP Item Master Template","link_type":"DocType","link_to":"YRP Item Master Template","child":0,"indent":0},
+  {"type":"Link","label":"YRP Retail Order","link_type":"DocType","link_to":"YRP Retail Order","child":0,"indent":0},
+  {"type":"Link","label":"YRP Retail Order Summary","link_type":"DocType","link_to":"YRP Retail Order Summary","child":0,"indent":0},
+  {"type":"Link","label":"YRP Retailer","link_type":"DocType","link_to":"YRP Retailer","child":0,"indent":0},
+  {"type":"Link","label":"YRP Retail Demand","link_type":"Report","link_to":"YRP Retail Demand","child":0,"indent":0},
+  {"type":"Link","label":"YRP Sales Order Fulfilment","link_type":"Report","link_to":"YRP Sales Order Fulfilment","child":0,"indent":0}
+ ]
+}

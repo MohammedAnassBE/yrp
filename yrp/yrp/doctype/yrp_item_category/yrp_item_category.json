@@ -1,13 +1,20 @@
 {
  "actions": [],
- "autoname": "field:category_name",
+ "allow_rename": 1,
  "creation": "2021-07-07 12:19:54.218367",
+ "default_view": "Tree",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "category_name",
-  "disabled"
+  "disabled",
+  "node_type",
+  "parent_yrp_item_category",
+  "is_group",
+  "lft",
+  "rgt",
+  "old_parent"
  ],
  "fields": [
   {
@@ -15,47 +22,86 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Category Name",
-   "reqd": 1,
-   "unique": 1
+   "reqd": 1
   },
   {
    "default": "0",
    "fieldname": "disabled",
    "fieldtype": "Check",
    "label": "Disabled"
+  },
+  {
+   "fieldname": "node_type",
+   "fieldtype": "Select",
+   "label": "Node Type",
+   "options": "Item Type\nCategory\nValue",
+   "reqd": 1
+  },
+  {
+   "fieldname": "parent_yrp_item_category",
+   "fieldtype": "Link",
+   "label": "Parent Category",
+   "description": "Choose an Item Type for a Category, or a Category for a Value.",
+   "depends_on": "eval:doc.node_type && doc.node_type !== 'Item Type'",
+   "mandatory_depends_on": "eval:doc.node_type && doc.node_type !== 'Item Type'",
+   "options": "YRP Item Category"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_group",
+   "fieldtype": "Check",
+   "label": "Is Group",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lft",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Lft"
+  },
+  {
+   "fieldname": "rgt",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Rgt"
+  },
+  {
+   "fieldname": "old_parent",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Old Parent",
+   "options": "YRP Item Category"
   }
  ],
  "index_web_pages_for_search": 1,
+ "is_tree": 1,
  "links": [],
- "modified": "2023-04-06 16:31:01.281173",
+ "modified": "2026-09-21 20:56:40.309184",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Item Category",
- "naming_rule": "By fieldname",
+ "naming_rule": "By script",
+ "nsm_parent_field": "parent_yrp_item_category",
  "owner": "Administrator",
  "permissions": [
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
    "role": "System Manager",
-   "share": 1,
    "write": 1
   },
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Item Master Manager",
-   "share": 1,
+   "role": "YRP Partner Manager",
    "write": 1
   },
   {
@@ -64,14 +110,24 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "All",
-   "select": 1,
-   "share": 1
+   "role": "YRP Retail User"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Partner"
   }
  ],
- "quick_entry": 1,
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "category_name,node_type",
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
+ "title_field": "category_name",
  "track_changes": 1
 }

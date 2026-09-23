@@ -1,0 +1,13 @@
+{
+ "doctype": "Desktop Icon",
+ "name": "YRP Stock",
+ "label": "YRP Stock",
+ "app": "yrp",
+ "standard": 1,
+ "hidden": 0,
+ "icon": "stock",
+ "icon_type": "Link",
+ "link_type": "Workspace Sidebar",
+ "link_to": "YRP Stock",
+ "parent_icon": "YRP"
+}

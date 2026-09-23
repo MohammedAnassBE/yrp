@@ -1,0 +1,1 @@
+"""YRP Sales module namespace."""

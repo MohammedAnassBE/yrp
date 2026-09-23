@@ -10,9 +10,11 @@
  "fields": [
   {
    "fieldname": "attribute_value",
-   "fieldtype": "Data",
+   "fieldtype": "Autocomplete",
    "in_list_view": 1,
-   "label": "Attribute Value"
+   "label": "Attribute Value",
+   "description": "Select a value belonging to the mapping's Item Attribute.",
+   "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
