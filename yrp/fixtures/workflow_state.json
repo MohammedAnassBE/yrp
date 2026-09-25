@@ -3,6 +3,7 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
+  "modified": "2026-09-22 17:28:39.320770",
   "name": "Draft",
   "style": "",
   "workflow_state_name": "Draft"
@@ -11,6 +12,7 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
+  "modified": "2026-09-22 17:28:39.327790",
   "name": "Approval Pending",
   "style": "",
   "workflow_state_name": "Approval Pending"
@@ -19,6 +21,7 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "ok-sign",
+  "modified": "2026-09-22 17:28:39.333131",
   "name": "Approved",
   "style": "Success",
   "workflow_state_name": "Approved"
@@ -27,6 +30,7 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "remove",
+  "modified": "2026-09-22 17:28:39.338311",
   "name": "Rejected",
   "style": "Danger",
   "workflow_state_name": "Rejected"
@@ -35,6 +39,7 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
+  "modified": "2026-09-22 17:28:39.343109",
   "name": "Expired",
   "style": "",
   "workflow_state_name": "Expired"

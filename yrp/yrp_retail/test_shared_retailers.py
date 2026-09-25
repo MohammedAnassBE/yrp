@@ -55,8 +55,10 @@ class TestSharedRetailers(TestRetailFlow):
 		frappe.set_user("Administrator")
 		second = sales_person(self.customer)
 		user = frappe.get_doc(dict(doctype="User", email=frappe.generate_hash(length=12)+"@example.invalid",
-			first_name="Fictional Visiting Person", send_welcome_email=0, roles=[dict(role="YRP Partner")])).insert()
+			first_name="Fictional Visiting Person", send_welcome_email=0,
+			roles=[dict(role="YRP Partner"), dict(role="YRP Sales Person")])).insert()
 		frappe.get_doc(dict(doctype="Contact", first_name=self.label("Visitor Contact"), user=user.name,
+			email_ids=[dict(email_id=user.email, is_primary=1)],
 			links=[dict(link_doctype="Sales Person", link_name=second.name)])).insert()
 		frappe.set_user(user.name)
 		self.assertIn(retailer, [r.name for r in api.list_records("YRP Retailer")])
@@ -77,5 +79,5 @@ class TestSharedRetailers(TestRetailFlow):
 			self.assertNotIn(retailer, frappe.get_list("YRP Retailer", pluck="name"))
 			self.assertFalse(frappe.has_permission("YRP Retailer", "read", frappe.get_doc("YRP Retailer", retailer)))
 			self.assertFalse(api.list_records("YRP Retailer"))
-			with self.assertRaises(frappe.ValidationError):
+			with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
 				api.create_visit("Secondary", str(now_datetime()), 12.5, 77.5, retailer=retailer)

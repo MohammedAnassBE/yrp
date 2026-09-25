@@ -1,31 +1,6 @@
-"""Repeatable Retail integration fields and assignment validation."""
+"""Sales Person assignments; static integration fields are installed as fixtures."""
 import frappe
 from frappe import _
-from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
-
-
-def setup_retail():
-	"""Install the single partner link before the existing Customer assignment grid.
-
-	Groups remain native Sales Person tree containers. A leaf's partner is explicit;
-	upgrades must not guess it or rewrite existing Customer assignments.
-	"""
-	if frappe.db.exists("DocType", "YRP Sales Person Customers"):
-		create_custom_fields({"Sales Person": [
-			{
-				"fieldname": "yrp_sales_partner", "label": "Sales Partner", "fieldtype": "Link",
-				"options": "Sales Partner", "module": "YRP Retail", "insert_after": "enabled",
-				"mandatory_depends_on": "eval:!doc.is_group", "depends_on": "eval:!doc.is_group",
-				"description": "Select the Sales Partner before assigning Customers.",
-			},
-			{
-				"fieldname": "yrp_customers", "label": "Assigned Customers", "fieldtype": "Table",
-				"options": "YRP Sales Person Customers", "module": "YRP Retail",
-				"insert_after": "yrp_sales_partner", "depends_on": "eval:!doc.is_group",
-				"read_only_depends_on": "eval:!doc.yrp_sales_partner",
-				"description": "Only Customers belonging to the selected Sales Partner can be assigned.",
-			},
-		]})
 
 
 def validate_sales_person(doc, method=None):
@@ -72,16 +47,3 @@ def assigned_customers(sales_person):
 		AND COALESCE(sp.yrp_sales_partner, '') != ''
 		AND c.default_sales_partner=sp.yrp_sales_partner
 	""", sales_person, pluck=True))
-
-
-def setup_sales_flow():
-	"""Repeatable trace links and delivery counters on native ERPNext documents."""
-	def field(name, kind, **kwargs):
-		return dict(fieldname=name, fieldtype=kind, label=name.replace('_', ' ').title(), module='YRP Retail', **kwargs)
-	create_custom_fields({
-		'Sales Order': [field('yrp_retail_order','Link',options='YRP Retail Order'),field('yrp_retail_order_summary','Link',options='YRP Retail Order Summary')],
-		'Sales Order Item': [field('yrp_retail_order_item','Link',options='YRP Retail Order Item',read_only=1),field('yrp_retail_summary_item','Link',options='YRP Retail Order Summary Item',read_only=1)],
-		'Packing Slip': [field('yrp_delivered','Check',read_only=1,allow_on_submit=1),field('yrp_delivered_at','Datetime',read_only=1,allow_on_submit=1)],
-		'Delivery Note': [field('yrp_delivered_qty','Float',read_only=1,allow_on_submit=1),field('yrp_per_delivered','Percent',read_only=1,allow_on_submit=1)],
-		'Delivery Note Item': [field('yrp_delivered_qty','Float',read_only=1,allow_on_submit=1)],
-	})

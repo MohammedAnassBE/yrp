@@ -7,7 +7,6 @@ import frappe
 from frappe.utils import now_datetime
 
 from yrp.yrp_retail import api
-from yrp.yrp_retail.access import allow_write, salesperson
 from yrp.yrp_retail.tests.fixtures import sales_partner
 
 
@@ -35,9 +34,11 @@ class TestRetailFlow(unittest.TestCase):
 			"yrp_sales_partner": self.sales_partner.name,
 			"yrp_customers": [{"customer": self.customer.name}]}).insert()
 		self.user = frappe.get_doc({"doctype": "User", "email": "retail-"+frappe.generate_hash(length=12)+"@example.invalid",
-			"first_name": "Fictional Salesperson", "send_welcome_email": 0, "roles": [{"role": "YRP Partner"}]}).insert()
+			"first_name": "Fictional Salesperson", "send_welcome_email": 0,
+			"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}]}).insert()
 		self.partner_type = frappe.get_doc({"doctype": "YRP Partner Type", "partner_type_name": self.label("Partner Type"), "reference_doctype": "Sales Person"}).insert()
-		frappe.get_doc({"doctype": "Contact", "first_name": self.label("Contact"), "user": self.user.name,
+		self.contact = frappe.get_doc({"doctype": "Contact", "first_name": self.label("Contact"), "user": self.user.name,
+			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
 			"links": [{"link_doctype": "Sales Person", "link_name": self.person.name}]}).insert()
 		frappe.set_user(self.user.name)
 
@@ -68,7 +69,7 @@ class TestRetailFlow(unittest.TestCase):
 		for kwargs in ({"visit_type": "Primary", "customer": None, "latitude": 1, "longitude": 2},
 			{"visit_type": "Secondary", "customer": self.customer.name, "latitude": 1, "longitude": 2},
 			{"visit_type": "Primary", "customer": self.customer.name, "latitude": 100, "longitude": 2}):
-			with self.assertRaises(frappe.ValidationError):
+			with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
 				api.create_visit(visit_datetime=str(now_datetime()), **kwargs)
 
 	def test_create_order_updates_visit_and_rejects_duplicate(self):
@@ -123,17 +124,18 @@ class TestRetailFlow(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			api.create_retailer("Revoked", self.customer.name)
 
-	def test_raw_save_and_nested_scope_cannot_bypass_permissions(self):
+	def test_partner_without_action_role_cannot_bypass_via_raw_save_or_api(self):
 		name = self.retailer()
+		frappe.set_user("Administrator")
+		self.user.set("roles", [{"role": "YRP Partner"}])
+		self.user.save()
+		frappe.set_user(self.user.name)
 		doc = frappe.get_doc("YRP Retailer", name)
 		doc.retailer_name = "Forbidden"
 		with self.assertRaises(frappe.PermissionError):
 			doc.save(ignore_permissions=True)
-		actor = salesperson()
-		with allow_write(doc, actor):
-			other = frappe.get_doc("YRP Retailer", name)
-			with self.assertRaises(frappe.PermissionError):
-				other.save(ignore_permissions=True)
+		with self.assertRaises(frappe.PermissionError):
+			api.create_retailer("Forbidden", self.customer.name)
 
 	def test_customer_assignment_is_visible_and_guest_is_denied(self):
 		self.assertIn(self.customer.name, frappe.get_list("Customer", pluck="name"))
@@ -164,6 +166,38 @@ class TestRetailFlow(unittest.TestCase):
 		with self.assertRaises(frappe.ValidationError):
 			api.create_summary([order], [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 0.5}])
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
+
+	def test_fractional_retail_quantity_converts_to_whole_stock_quantity(self):
+		"""Both upward and downward float noise must preserve whole pieces."""
+		frappe.set_user("Administrator")
+		stock_uom = frappe.get_doc({"doctype": "UOM", "uom_name": self.label("Pieces"),
+			"must_be_whole_number": 1}).insert()
+		self.item.stock_uom = stock_uom.name
+		self.item.save()  # ERPNext resets conversions when the Stock UOM changes.
+		self.item.set("uoms", [
+			{"uom": stock_uom.name, "conversion_factor": 1},
+			{"uom": self.uom.name, "conversion_factor": 100},
+		])
+		self.item.save()
+		frappe.set_user(self.user.name)
+		for qty, expected in ((0.07, 7), (0.58, 58)):
+			with self.subTest(qty=qty):
+				row = frappe.get_doc("YRP Retail Order", self.order(qty)).items[0]
+				self.assertEqual(row.qty, qty)
+				self.assertEqual(row.uom, self.uom.name)
+				self.assertEqual(row.stock_qty, expected)
+		with self.assertRaises(frappe.ValidationError):
+			self.order(0.0715)  # 7.15 pieces is a real fraction, not float noise.
+
+	def test_whole_uom_rounding_never_creates_or_loses_a_unit(self):
+		from yrp.yrp_retail.logic import validate_uom_quantity
+
+		frappe.db.set_value("UOM", self.uom.name, "must_be_whole_number", 1)
+		for qty, precision in ((1.5, 0), (0.000001, 3)):
+			with self.subTest(qty=qty, precision=precision), self.assertRaises(frappe.ValidationError):
+				validate_uom_quantity(qty, self.uom.name, "Quantity", precision)
+		for precision in (0, 3):
+			self.assertEqual(validate_uom_quantity(0.07 * 100, self.uom.name, "Quantity", precision), 7)
 
 	def test_cancelled_summary_releases_orders(self):
 		order = self.order()

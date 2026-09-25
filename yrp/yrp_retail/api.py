@@ -10,7 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import getdate
 
-from yrp.yrp_retail.access import allow_write, require_customer, require_owned, salesperson
+from yrp.yrp_retail.access import require_customer, require_owned, salesperson
 
 
 @contextmanager
@@ -35,11 +35,11 @@ def _items(value):
 
 
 def _save(doc, actor):
-	with atomic(), allow_write(doc, actor):
+	with atomic():
 		if doc.is_new():
-			doc.insert(ignore_permissions=True)
+			doc.insert()
 		else:
-			doc.save(ignore_permissions=True)
+			doc.save()
 	return {"doctype": doc.doctype, "name": doc.name}
 
 
@@ -159,16 +159,43 @@ def submit_summary(name, sales_person=None):
 	require_owned(actor, doc)
 	if doc.docstatus != 0:
 		frappe.throw(_("Only a draft summary can be submitted."))
-	with atomic(), allow_write(doc, actor, operation="submit"):
-		doc.flags.ignore_permissions = True
+	with atomic():
 		doc.submit()
 	return {"doctype": doc.doctype, "name": doc.name, "docstatus": doc.docstatus}
+
+
+def _transition(doctype, name, action, selected):
+	"""Use native lifecycle checks after resolving the current actor and owner."""
+	actor = salesperson(selected)
+	doc = frappe.get_doc(doctype, name)
+	require_owned(actor, doc)
+	with atomic():
+		getattr(doc, action)()
+	return {"doctype": doc.doctype, "name": doc.name, "docstatus": doc.docstatus}
+
+
+@frappe.whitelist(methods=["POST"])
+def submit_retail_order(name, sales_person=None):
+	return _transition("YRP Retail Order", name, "submit", sales_person)
+
+
+@frappe.whitelist(methods=["POST"])
+def cancel_retail_order(name, sales_person=None):
+	return _transition("YRP Retail Order", name, "cancel", sales_person)
+
+
+@frappe.whitelist(methods=["POST"])
+def cancel_summary(name, sales_person=None):
+	return _transition("YRP Retail Order Summary", name, "cancel", sales_person)
 
 
 @frappe.whitelist(methods=["POST"])
 def update_customer_stock(customer, item_code, qty, sales_person=None):
 	"""Replace an assigned Customer's item count in the configured retail UOM."""
 	from yrp.yrp_retail.customer_stock import report
+	# Count entry is a separate capability; the basic sales action roles do not
+	# grant it. Custom apps may grant the native DocPerm explicitly.
+	frappe.has_permission("YRP Customer Stock", "write", throw=True)
 	actor = salesperson(sales_person)
 	require_customer(actor, customer)
 	with atomic():

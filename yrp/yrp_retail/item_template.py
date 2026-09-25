@@ -57,17 +57,6 @@ def sync_items(template):
 		item.save(ignore_permissions=True)
 
 
-def setup_item_sales():
-	"""Install idempotent standard Item links for fresh sites and migrations."""
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
-	create_custom_fields({'Item':[
-		{'fieldname':'yrp_item_master_template','fieldtype':'Link','label':'YRP Item Master Template','options':'YRP Item Master Template','module':'YRP Retail'},
-		{'fieldname':'yrp_is_free_item','fieldtype':'Check','label':'Free Item','read_only':1,'module':'YRP Retail'},
-		{'fieldname':'yrp_item_type','fieldtype':'Link','label':'YRP Item Type','options':'YRP Item Category','module':'YRP Retail'},
-		{'fieldname':'yrp_categories','fieldtype':'Table','label':'YRP Categories','options':'YRP Item Classification','module':'YRP Retail'},
-	]})
-
-
 def guard_policy_merge(doc, method=None, old=None, new=None, merge=False, **kwargs):
 	"""Native merge rewrites links without Item validation; preserve policy identity."""
 	if not merge:

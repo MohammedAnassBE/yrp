@@ -9,9 +9,7 @@
  "engine": "InnoDB",
  "field_order": [
   "partner_type_name",
-  "reference_doctype",
-  "generate_email_when_missing",
-  "generated_email_format"
+  "reference_doctype"
  ],
  "fields": [
   {
@@ -29,22 +27,6 @@
    "label": "Reference DocType",
    "options": "DocType",
    "reqd": 1
-  },
-  {
-   "default": "{hash}+{mobile_no}@yrp.com",
-   "depends_on": "eval:doc.generate_email_when_missing",
-   "description": "Use {hash} for a random prefix and {mobile_no} for the mobile number. Example: {hash}+{mobile_no}@yrp.com",
-   "fieldname": "generated_email_format",
-   "fieldtype": "Data",
-   "label": "Generated Email Format",
-   "mandatory_depends_on": "eval:doc.generate_email_when_missing"
-  },
-  {
-   "default": "0",
-   "description": "Generate and save an email on linked Contacts that have a mobile number but no email.",
-   "fieldname": "generate_email_when_missing",
-   "fieldtype": "Check",
-   "label": "Generate Email When Missing"
   }
  ],
  "grid_page_length": 50,

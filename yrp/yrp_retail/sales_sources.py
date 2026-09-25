@@ -13,6 +13,7 @@ from frappe.utils import getdate, today
 
 from yrp.yrp_retail.logic import finite_number, require
 from yrp.yrp_retail.pricing import lock_pricing_policy
+from yrp.yrp_retail.source_quantities import summary_conversion_factors, validate_current_conversion
 
 SOURCES = {
 	"YRP Retail Order": {
@@ -50,6 +51,8 @@ def _source(doctype, name, check_permission=False):
 
 def _validate_eligible(source):
 	if source.doctype == "YRP Retail Order":
+		# Existing demand remains usable in draft after enabling native submit/cancel.
+		require(source.docstatus != 2, "Cancelled Retail Orders cannot create Sales Orders.")
 		require(source.order_type == "Primary", "Only Primary Retail Orders can create Sales Orders directly.")
 		require(not source.get("summary"), "A summarized Retail Order cannot create a Sales Order directly.")
 	else:
@@ -73,19 +76,16 @@ def _allocations(source, exclude=None):
 	return allocated
 
 
-def _factor(source, row):
+def _factor(source, row, summary_factors=None):
 	item = frappe.get_doc("Item", row.item_code, for_update=True)
-	if row.uom == item.stock_uom:
-		factor = 1
-	else:
-		matches = [entry for entry in item.uoms if entry.uom == row.uom]
-		require(len(matches) == 1, "Source UOM must have one conversion on the Item.")
-		factor = finite_number(matches[0].conversion_factor, "Source conversion factor")
-	require(factor > 0, "Source conversion factor must be positive.")
 	if source.doctype == "YRP Retail Order":
-		stored = finite_number(row.conversion_factor, "Source conversion factor")
-		require(math.isclose(stored, factor, rel_tol=1e-12, abs_tol=1e-9), "Retail source conversion factor differs from the current Item conversion.")
-	return factor
+		stored = row.conversion_factor
+	else:
+		if summary_factors is None:
+			summary_factors = summary_conversion_factors(source)
+		stored = summary_factors.get((row.item_code, row.uom))
+		require(stored is not None, "Summary Item and UOM must have a retail source conversion.")
+	return validate_current_conversion(item, row.uom, stored)
 
 
 def _check_quantity(qty, capacity, allocated):
@@ -112,6 +112,7 @@ def validate_sales_order(doc, method=None):
 		return
 	source = _source(*keys[0], check_permission=True)
 	_validate_eligible(source)
+	summary_factors = summary_conversion_factors(source) if source.doctype == "YRP Retail Order Summary" else None
 	require(doc.customer == source.customer, "Sales Order Customer must match its retail source.")
 	spec = SOURCES[source.doctype]
 	other_field = next(value["row"] for key, value in SOURCES.items() if key != source.doctype)
@@ -126,7 +127,7 @@ def validate_sales_order(doc, method=None):
 		original = by_name[reference]
 		require(row.item_code == original.item_code and row.uom == original.uom, "Sales Order Item and UOM must match the source row.")
 		factor = finite_number(row.conversion_factor, "Sales Order conversion factor")
-		require(math.isclose(factor, _factor(source, original), rel_tol=1e-12, abs_tol=1e-9), "Sales Order conversion factor must match its source.")
+		require(math.isclose(factor, _factor(source, original, summary_factors), rel_tol=1e-12, abs_tol=1e-9), "Sales Order conversion factor must match its source.")
 		qty = finite_number(row.qty, "Sales Order quantity")
 		require(qty > 0, "Retail-linked Sales Order quantities must be positive.")
 		requested[reference] += qty
@@ -176,7 +177,7 @@ def protect_retail_source(doc, method=None):
 	used = frappe.db.sql(f"select name from `tabSales Order` where `{spec['header']}`=%s and docstatus<2 limit 1 for update", doc.name)
 	if not used:
 		return
-	if method in ("before_cancel", "on_cancel", "on_trash"):
+	if method in ("before_cancel", "on_cancel", "before_discard", "on_trash"):
 		frappe.throw(_("Cancel or delete the linked Sales Orders before cancelling or deleting this retail source."))
 	old = doc.get_doc_before_save()
 	if not old:
@@ -212,6 +213,7 @@ def _make_sales_order(source_doctype, source_name, company, delivery_date, items
 	require(getdate(delivery_date) >= getdate(today()), "Delivery Date cannot be in the past.")
 	source = _source(source_doctype, source_name, check_permission=True)
 	_validate_eligible(source)
+	summary_factors = summary_conversion_factors(source) if source.doctype == "YRP Retail Order Summary" else None
 	spec = SOURCES[source_doctype]
 	allocated = _allocations(source)
 	by_name = {row.name: row for row in source.items}
@@ -238,7 +240,7 @@ def _make_sales_order(source_doctype, source_name, company, delivery_date, items
 		seen.add(reference)
 		row = by_name[reference]
 		qty = _check_quantity(selection["qty"], row.get(spec["capacity"]), allocated[reference])
-		doc.append("items", {"item_code": row.item_code, "uom": row.uom, "qty": qty, "delivery_date": delivery_date, "conversion_factor": _factor(source, row), spec["row"]: reference})
+		doc.append("items", {"item_code": row.item_code, "uom": row.uom, "qty": qty, "delivery_date": delivery_date, "conversion_factor": _factor(source, row, summary_factors), spec["row"]: reference})
 	doc.set_missing_values()
 	doc.insert()
 	return doc.as_dict()

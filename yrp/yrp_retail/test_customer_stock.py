@@ -5,6 +5,15 @@ from yrp.yrp_retail.test_retail_flow import TestRetailFlow
 
 
 class TestCustomerStock(TestRetailFlow):
+	def setUp(self):
+		super().setUp()
+		# Count entry is explicitly enabled by this test's custom-app policy.
+		frappe.set_user("Administrator")
+		from frappe.permissions import add_permission, update_permission_property
+		add_permission("YRP Customer Stock", "YRP Sales Person")
+		update_permission_property("YRP Customer Stock", "YRP Sales Person", 0, "write", 1)
+		frappe.set_user(self.user.name)
+
 	def stock(self):
 		return api.get_customer_stock(self.customer.name, self.item.name)
 

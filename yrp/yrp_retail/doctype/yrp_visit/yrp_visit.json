@@ -72,7 +72,8 @@
    "fieldname": "has_order",
    "fieldtype": "Check",
    "label": "Has Order",
-   "read_only": 1
+   "read_only": 1,
+   "description": "Updated automatically from the linked Retail Order, including cancelled orders."
   }
  ],
  "grid_page_length": 50,

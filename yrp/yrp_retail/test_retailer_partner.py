@@ -17,7 +17,7 @@ class TestRetailerPartner(TestRetailFlow):
         for index in range(2):
             partner=frappe.get_doc(dict(doctype='Sales Partner',partner_name=self.label('Partner'),territory=self.customer.territory,commission_rate=1)).insert()
             user=frappe.get_doc(dict(doctype='User',email=frappe.generate_hash(length=12)+'@example.invalid',first_name='Fictional Partner',send_welcome_email=0,roles=[dict(role='YRP Partner')])).insert()
-            frappe.get_doc(dict(doctype='Contact',first_name=self.label('Partner Contact'),user=user.name,links=[dict(link_doctype='Sales Partner',link_name=partner.name)])).insert()
+            frappe.get_doc(dict(doctype='Contact',first_name=self.label('Partner Contact'),user=user.name,email_ids=[dict(email_id=user.email,is_primary=1)],links=[dict(link_doctype='Sales Partner',link_name=partner.name)])).insert()
             self.partners.append(partner);self.users.append(user)
         self.customer.default_sales_partner=self.partners[0].name
         self.customer.save()

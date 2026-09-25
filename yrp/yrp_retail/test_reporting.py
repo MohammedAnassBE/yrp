@@ -76,7 +76,7 @@ class TestReportIntegration(TestSalesSources):
         frappe.set_user(self.user.name)
         self.assertIn(self.primary,[r['document'] for r in reporting.run('demand',filters)[1]])
         frappe.set_user('Administrator')
-        contact=frappe.get_doc('Contact',frappe.db.get_value('Contact',{'user':self.user.name},'name'))
+        contact=self.contact.reload()
         contact.set('links',[])
         contact.save()
         frappe.set_user(self.user.name)

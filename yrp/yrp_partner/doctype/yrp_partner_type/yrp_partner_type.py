@@ -1,4 +1,4 @@
-"""Configuration selecting the source DocType and generated-email policy."""
+"""Configuration selecting the source DocType for Contact-derived access."""
 
 import frappe
 from frappe import _
@@ -7,10 +7,6 @@ from frappe.model.document import Document
 
 class YRPPartnerType(Document):
 	def validate(self):
-		if self.generate_email_when_missing:
-			from yrp.yrp_partner.users import validate_email_format
-
-			validate_email_format(self.generated_email_format)
 		meta = frappe.get_meta(self.reference_doctype)
 		if meta.issingle or meta.istable or meta.is_virtual or meta.module == "YRP Partner":
 			frappe.throw(_("Select a regular document type outside YRP Partner."))

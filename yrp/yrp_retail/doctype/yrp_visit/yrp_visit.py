@@ -28,4 +28,6 @@ class YRPVisit(Document):
 			for field in ("sales_person", "customer", "retailer", "visit_type", "visit_datetime"):
 				same = get_datetime(self.get(field)) == get_datetime(old.get(field)) if field == "visit_datetime" else (self.get(field) or "") == (old.get(field) or "")
 				require(same, "A visit with an order cannot change its assignment, type or time.")
+		# This indicator is derived, including cancelled order history. Ignore
+		# incoming values so Desk, imports and APIs cannot set it manually.
 		self.has_order = int(bool(active_order))

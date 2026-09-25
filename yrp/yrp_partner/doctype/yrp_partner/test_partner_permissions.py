@@ -27,10 +27,14 @@ class TestPartnerPermissions(unittest.TestCase):
 		self.denied = frappe.get_doc({"doctype": "YRP Retailer", "retailer_name": "Test Unrelated", "shop_name": "Other Shop", "sales_person": person.name, "customer": self.customer.name}).insert()
 		self.contact = frappe.get_doc({
 			"doctype": "Contact", "first_name": "Test Scoped Contact", "user": self.user.name,
+			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
 			"links": [{"link_doctype": "YRP Retailer", "link_name": self.allowed.name}],
 		}).insert()
 
 	def test_list_and_direct_read_match(self):
+		# Desk entry must not expand the records this Partner can read.
+		self.assertTrue(self.user.has_desk_access())
+		self.assertEqual(self.user.user_type, "System User")
 		frappe.set_user(self.user.name)
 		self.assertEqual(frappe.get_list("YRP Retailer", pluck="name"), [self.allowed.name])
 		self.assertTrue(frappe.has_permission("YRP Retailer", "read", self.allowed))
@@ -49,11 +53,50 @@ class TestPartnerPermissions(unittest.TestCase):
 			frappe.get_doc({"doctype": "Contact", "first_name": "Not allowed"}).insert()
 
 	def test_removing_membership_denies_all_rows(self):
-		self.contact.user = None
+		self.contact.set("email_ids", [])
 		self.contact.save()
+		# The native Contact.user field cannot preserve an email-derived grant.
+		self.assertEqual(self.contact.user, self.user.name)
 		frappe.set_user(self.user.name)
 		self.assertEqual(frappe.get_list("YRP Retailer", pluck="name"), [])
 		self.assertFalse(frappe.has_permission("YRP Retailer", "read", self.allowed))
+
+	def test_contact_writer_cannot_grant_membership_without_source_write_permission(self):
+		source = frappe.get_doc({
+			"doctype": "UOM", "uom_name": "Test Protected Unit " + frappe.generate_hash(length=10),
+		}).insert()
+		with patch("yrp.yrp_partner.backfill.sync_partner_type"):
+			frappe.get_doc({
+				"doctype": "YRP Partner Type", "partner_type_name": "Test Protected Type " + frappe.generate_hash(length=10),
+				"reference_doctype": "UOM",
+			}).insert()
+		writer = frappe.get_doc({
+			"doctype": "User", "email": "contact-writer-" + frappe.generate_hash(length=12) + "@example.invalid",
+			"first_name": "Test Contact Writer", "send_welcome_email": 0,
+			"roles": [{"role": "YRP Retail User"}],
+		}).insert()
+		linked = frappe.get_doc({
+			"doctype": "Contact", "first_name": "Test Protected Contact",
+			"links": [{"link_doctype": "UOM", "link_name": source.name}],
+		}).insert()
+		unlinked = frappe.get_doc({
+			"doctype": "Contact", "first_name": "Test Unlinked Contact",
+			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
+		}).insert()
+		frappe.set_user(writer.name)
+		self.assertTrue(frappe.has_permission("Contact", "create"))
+		self.assertTrue(frappe.has_permission("Contact", "write", linked))
+		self.assertFalse(frappe.has_permission("UOM", "write", source))
+		new = frappe.get_doc({
+			"doctype": "Contact", "first_name": "Test Forbidden Contact",
+			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
+			"links": [{"link_doctype": "UOM", "link_name": source.name}],
+		})
+		linked.append("email_ids", {"email_id": self.user.email, "is_primary": 1})
+		unlinked.append("links", {"link_doctype": "UOM", "link_name": source.name})
+		for contact in (new, linked, unlinked):
+			with self.subTest(contact=contact.first_name), self.assertRaises(frappe.PermissionError):
+				contact.save(ignore_permissions=True)
 
 	def test_additional_edit_role_cannot_bypass_partner_read_only(self):
 		self.user.append("roles", {"role": "YRP Retail User"})
@@ -79,19 +122,18 @@ class TestPartnerPermissions(unittest.TestCase):
 			self.user.append("roles", {"role": role})
 		self.user.save()
 		frappe.set_user(self.user.name)
-		# A salesperson-only installation has no direct source Link on these
-		# documents. Extra operational roles must still never enable writes.
+		# Processing documents remain scoped even without direct source Links;
+		# extra native roles cannot reopen global read or write access.
 		with patch.object(permissions, "source_types", return_value={"Sales Person"}):
 			for doctype in sorted(permissions.PROCESSING_DOCTYPES):
 				with self.subTest(doctype=doctype):
 					doc = frappe.new_doc(doctype)
-					self.assertFalse(permissions.protected(doctype))
+					self.assertTrue(permissions.protected(doctype))
 					for action in ("create", "write", "submit", "cancel", "delete"):
 						self.assertFalse(permissions.has_permission(doc, action))
 					self.assertFalse(frappe.has_permission(doctype, "create", doc))
-					# Read/list scope remains the existing native permission policy.
-					self.assertTrue(permissions.has_permission(doc, "read"))
-					self.assertEqual(permissions.query_conditions(doctype=doctype), "")
+					self.assertFalse(permissions.has_permission(doc, "read"))
+					self.assertTrue(permissions.query_conditions(doctype=doctype))
 					doc.flags.ignore_permissions = True
 					for event in ("before_validate", "before_submit", "before_cancel", "before_update_after_submit", "on_trash"):
 						with self.assertRaises(frappe.PermissionError):

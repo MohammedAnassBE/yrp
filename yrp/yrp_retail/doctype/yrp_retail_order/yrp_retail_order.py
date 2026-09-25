@@ -43,12 +43,22 @@ class YRPRetailOrder(Document):
 		require(not self.summary, "An order included in a summary cannot be deleted.")
 		self._refresh_visit(self.visit, exclude=self.name)
 
+	def before_cancel(self):
+		# Frappe does not run validate() when cancelling. Draft summaries also
+		# claim demand, so native submitted-document backlink checks are not enough.
+		self._ensure_unclaimed()
+
+	def before_discard(self):
+		self._ensure_unclaimed()
+
 	def _ensure_unclaimed(self):
 		if not self.is_new():
 			rows = frappe.db.sql("select summary from `tabYRP Retail Order` where name=%s for update", self.name)
-			require(not rows or not rows[0][0], "An order included in a summary cannot be edited or deleted.")
+			require(not rows or not rows[0][0], "An order included in a summary cannot be edited, cancelled or deleted.")
 
 	def _refresh_visit(self, visit, exclude=None):
+		# A cancelled order remains the visit's historical order. Retain the
+		# one-order-per-visit invariant and avoid offering a duplicate creation.
 		filters = {"visit": visit}
 		if exclude:
 			filters["name"] = ["!=", exclude]

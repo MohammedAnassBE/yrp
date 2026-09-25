@@ -1,5 +1,6 @@
 """Native non-stock Delivery Notes and Packing Slips, with rollback-only fixtures."""
 import unittest
+from unittest.mock import patch
 
 import frappe
 from frappe.utils import getdate, today
@@ -58,6 +59,94 @@ class TestPacking(unittest.TestCase):
 		self.dn.reload()
 		self.dn.submit()
 		return first, second
+
+	def mixed_uom_delivery(self, unit_qty=12):
+		"""Create one boxed row and a configurable individual-unit row."""
+		box = frappe.get_doc({"doctype": "UOM",
+			"uom_name": "Test Carton Box " + frappe.generate_hash(length=8)}).insert()
+		self.item.append("uoms", {"uom": box.name, "conversion_factor": 12})
+		self.item.save()
+		self.dn.items[0].update({"uom": box.name, "conversion_factor": 12,
+			"qty": 1, "rate": 120, "price_list_rate": 120})
+		self.dn.items[1].qty = unit_qty
+		self.dn.save()
+		first = self.carton(1, submit=True)
+		second = self.carton(2, [{"dn_detail": self.dn.items[1].name, "qty": unit_qty}], submit=True)
+		self.dn.reload()
+		self.dn.submit()
+		return first, second, box
+
+	def test_mixed_uom_delivery_progress_uses_default_units(self):
+		first, second, _ = self.mixed_uom_delivery()
+		result = packing.mark_packing_slip_delivered(first.name)
+		self.assertEqual((result["delivered_qty"], result["per_delivered"]), (12, 50))
+		self.dn.reload()
+		self.assertEqual([row.yrp_delivered_qty for row in self.dn.items], [1, 0])
+		result = packing.mark_packing_slip_delivered(second.name)
+		self.assertEqual((result["delivered_qty"], result["per_delivered"]), (24, 100))
+		result = packing.mark_packing_slip_delivered(first.name, False)
+		self.assertEqual((result["delivered_qty"], result["per_delivered"]), (12, 50))
+		self.dn.reload()
+		self.assertEqual([row.yrp_delivered_qty for row in self.dn.items], [0, 12])
+		result = packing.mark_packing_slip_delivered(second.name, False)
+		self.assertEqual((result["delivered_qty"], result["per_delivered"]), (0, 0))
+
+	def test_delivery_progress_preserves_recorded_conversion(self):
+		first, _, box = self.mixed_uom_delivery()
+		self.item.reload()
+		for row in self.item.uoms:
+			if row.uom == box.name:
+				row.conversion_factor = 24
+		self.item.save()
+		result = packing.mark_packing_slip_delivered(first.name)
+		self.assertEqual((result["delivered_qty"], result["per_delivered"]), (12, 50))
+		self.dn.reload()
+		self.assertEqual(self.dn.items[0].conversion_factor, 12)
+		self.assertEqual(self.dn.items[0].stock_qty, 12)
+		self.assertEqual(self.dn.items[0].yrp_delivered_qty, 1)
+
+	def test_whole_carton_quantity_accepts_field_precision_noise(self):
+		self.uom.must_be_whole_number = 1
+		self.uom.save()
+		carton = self.carton(1, [{"dn_detail": self.dn.items[0].name,
+			"qty": 1.0000000000000002}], submit=True)
+		self.carton(2, [{"dn_detail": self.dn.items[0].name, "qty": 3},
+			{"dn_detail": self.dn.items[1].name, "qty": 6}], submit=True)
+		self.dn.reload()
+		self.dn.submit()
+		result = packing.mark_packing_slip_delivered(carton.name)
+		self.assertEqual((result["delivered_qty"], result["per_delivered"]), (1, 10))
+
+	def test_default_unit_backfill_is_idempotent_without_modified_changes(self):
+		from yrp.patches import refresh_delivery_progress_default_uom as backfill
+
+		first, _, _ = self.mixed_uom_delivery(unit_qty=24)
+		packing.mark_packing_slip_delivered(first.name)
+		# Simulate the old mixed-transaction-UOM header and a stale child counter.
+		frappe.db.set_value("Delivery Note", self.dn.name,
+			{"yrp_delivered_qty": 1, "yrp_per_delivered": 4}, update_modified=False)
+		frappe.db.set_value("Delivery Note Item", self.dn.items[0].name,
+			"yrp_delivered_qty", 99, update_modified=False)
+		self.dn.reload()
+		modified = self.dn.modified
+		row_modified = [row.modified for row in self.dn.items]
+		# Scope patch execution to this test's synthetic document only.
+		with patch.object(backfill, "_candidate_names", return_value=[self.dn.name]):
+			backfill.execute()
+			self.dn.reload()
+			self.assertEqual(self.dn.yrp_delivered_qty, 12)
+			self.assertAlmostEqual(self.dn.yrp_per_delivered, 100 / 3, places=8)
+			self.assertEqual([row.yrp_delivered_qty for row in self.dn.items], [1, 0])
+			self.assertEqual(self.dn.modified, modified)
+			self.assertEqual([row.modified for row in self.dn.items], row_modified)
+			frappe.db.set_value("Delivery Note", self.dn.name,
+				"yrp_delivered_qty", 12.0001, update_modified=False)
+			backfill.execute()
+			self.dn.reload()
+			self.assertEqual(self.dn.yrp_delivered_qty, 12)
+			with patch.object(frappe.db, "set_value", wraps=frappe.db.set_value) as update:
+				backfill.execute()
+				update.assert_not_called()
 
 	def test_carton_delivery_uses_exact_duplicate_item_rows(self):
 		first, second = self.packed_delivery()

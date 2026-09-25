@@ -11,9 +11,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 import frappe
-from frappe.utils import now_datetime
+from frappe.utils import flt, now_datetime
 
-from yrp.yrp_retail.logic import finite_number, require
+from yrp.yrp_retail.logic import finite_number, require, validate_uom_quantity
 
 _delivery_write = ContextVar("yrp_carton_delivery_write", default=None)
 
@@ -75,7 +75,7 @@ def mapped_quantities(slip, dn, *, allow_bundles=False):
 			packed = next((value for value in dn.packed_items if value.name == row.pi_detail), None)
 			require(packed and row.item_code == packed.item_code and row.stock_uom == packed.uom,
 				"Packed Item must belong to this Delivery Note and match its Item and UOM.")
-			qty = finite_number(row.qty, "Carton quantity")
+			qty = validate_uom_quantity(row.qty, row.stock_uom, "Carton quantity", row.precision("qty"))
 			require(qty > 0, "Carton quantities must be greater than zero.")
 			quantities["pi:" + row.pi_detail] += qty
 			continue
@@ -83,17 +83,14 @@ def mapped_quantities(slip, dn, *, allow_bundles=False):
 		require(source, "Every carton item must reference a row of this Delivery Note.")
 		require(row.item_code == source.item_code, "Carton Item does not match its Delivery Note row.")
 		require(row.stock_uom == source.uom, "Carton UOM must equal the Delivery Note row UOM; quantities are not converted.")
-		qty = finite_number(row.qty, "Carton quantity")
+		qty = validate_uom_quantity(row.qty, row.stock_uom, "Carton quantity", row.precision("qty"))
 		require(qty > 0, "Carton quantities must be greater than zero.")
 		require(finite_number(source.qty, "Delivery Note quantity") > 0,
 			"Cartons cannot reference zero or negative Delivery Note quantities.")
 		factor = finite_number(source.conversion_factor, "Delivery Note conversion factor")
 		require(factor > 0, "Delivery Note conversion factor must be greater than zero.")
-		stock_qty = finite_number(qty * factor, "Carton stock quantity")
-		if frappe.db.get_value("UOM", source.uom, "must_be_whole_number"):
-			require(qty.is_integer(), "Carton quantity must be whole for this UOM.")
-		if frappe.db.get_value("UOM", source.stock_uom, "must_be_whole_number"):
-			require(abs(stock_qty - round(stock_qty)) < 1e-8, "Carton stock quantity must be whole for the stock UOM.")
+		validate_uom_quantity(qty * factor, source.stock_uom,
+			"Carton stock quantity", source.precision("stock_qty"))
 		quantities[row.dn_detail] += qty
 	return quantities
 
@@ -166,16 +163,30 @@ def validate_delivery_note(doc, method=None):
 
 
 def set_progress(dn, slips):
+	"""Keep row quantities in sales UOM and weight progress by recorded stock qty.
+
+	Like ERPNext picking progress, the document percentage aggregates each row's
+	stock quantities. Different Items may have different stock UOMs: this is a
+	document progress measure, not a common physical-unit measurement. Use the
+	Delivery Note's conversion snapshot, never today's Item conversion settings.
+	"""
 	quantities = defaultdict(float)
 	for slip in slips:
 		if slip.docstatus == 1 and slip.get("yrp_delivered"):
 			for name, qty in mapped_quantities(slip, dn).items():
 				quantities[name] += qty
+	delivered_stock_qty = total_stock_qty = 0.0
 	for row in dn.items:
 		row.yrp_delivered_qty = quantities[row.name]
-	dn.yrp_delivered_qty = sum(quantities.values())
-	total = sum(max(0, finite_number(row.qty, "Delivery Note quantity")) for row in dn.items)
-	dn.yrp_per_delivered = 100 * dn.yrp_delivered_qty / total if total else 0
+		factor = finite_number(row.conversion_factor, "Delivery Note conversion factor")
+		require(factor > 0, "Delivery Note conversion factor must be greater than zero.")
+		delivered_stock_qty += flt(
+			finite_number(row.yrp_delivered_qty * factor, "Delivered stock quantity"),
+			row.precision("stock_qty"),
+		)
+		total_stock_qty += max(0, finite_number(row.stock_qty, "Delivery Note stock quantity"))
+	dn.yrp_delivered_qty = delivered_stock_qty
+	dn.yrp_per_delivered = 100 * delivered_stock_qty / total_stock_qty if total_stock_qty else 0
 	return {"delivery_note": dn.name, "delivered_qty": dn.yrp_delivered_qty,
 		"per_delivered": dn.yrp_per_delivered,
 		"total_cartons": sum(case_range(slip)[1] - case_range(slip)[0] + 1 for slip in slips),

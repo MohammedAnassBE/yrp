@@ -24,11 +24,29 @@ def get_partner_links():
 	sources = frappe.get_all(
 		"YRP Partner Type", pluck="reference_doctype", order_by="reference_doctype asc"
 	)
-	return [
+	links = [
 		frappe._dict(type="Link", label=doctype, link_type="DocType", link_to=doctype, child=0)
 		for doctype in dict.fromkeys((*MANAGEMENT_DOCTYPES, *sources))
 		if doctype and frappe.has_permission(doctype, "read")
 	]
+
+	from yrp.yrp_partner.customer_access import is_customer_report_user
+	if is_customer_report_user():
+		from yrp.yrp_partner.customer_reports import CUSTOMER_REPORTS
+		for doctype in ("Sales Order", "Delivery Note", "Packing Slip", "Sales Invoice", "GL Entry", "Account", "Company"):
+			if frappe.has_permission(doctype, "read") and not any(link.link_to == doctype for link in links):
+				link = frappe._dict(type="Link", label=doctype, link_type="DocType", link_to=doctype, child=0)
+				if doctype == "Account":
+					# Native sidebar route options select the readable account list;
+					# the full chart hierarchy contains unrelated internal accounts.
+					link.route_options = "{}"
+				links.append(link)
+		for name, doctype in CUSTOMER_REPORTS.items():
+			if frappe.get_doc("Report", name).is_permitted():
+				links.append(frappe._dict(type="Link", label=name, link_type="Report", link_to=name,
+					report_ref_doctype=doctype, is_query_report=1, child=0))
+	return links
+
 
 
 class PartnerWorkspaceMixin:
@@ -43,6 +61,7 @@ class PartnerWorkspaceMixin:
 def add_partner_navigation(bootinfo):
 	"""Populate the existing, allowed sidebar using native visibility checks."""
 
+	scope_company_bootinfo(bootinfo)
 	sidebar = (bootinfo.get("workspace_sidebar_item") or {}).get(SIDEBAR.lower())
 	if not sidebar:
 		return
@@ -56,10 +75,44 @@ def add_partner_navigation(bootinfo):
 		item for item in sidebar["items"]
 		if item.get("link_type") == "Workspace" and item.get("link_to") == WORKSPACE
 	]
-	sidebar["items"] = home + [
-		link for link in get_partner_links()
-		if views.is_item_allowed(link.link_to, link.link_type)
-	]
+	links = []
+	for link in get_partner_links():
+		if not views.is_item_allowed(link.link_to, link.link_type):
+			continue
+		if link.link_type == "Report":
+			# Native sidebar routing requires this object, not the legacy
+			# Workspace Link's report_ref_doctype/is_query_report fields.
+			link.report = views.allowed_reports[link.link_to]
+		links.append(link)
+	sidebar["items"] = home + links
+
+
+def scope_company_bootinfo(bootinfo):
+	"""Filter ERPNext's preloaded Companies and choose a permitted UI default.
+
+	ERPNext boot preloads all Companies with raw SQL for tree selectors. Narrow
+	that payload as well as link queries. Change this response only, never User
+	or site defaults; all server document/report checks remain authoritative.
+	"""
+	from yrp.yrp_partner.customer_access import is_customer_report_user
+	if not is_customer_report_user():
+		return
+	allowed = sorted(frappe.get_list("Company", pluck="name", limit_page_length=0)) if frappe.has_permission("Company", "read") else []
+	if "docs" in bootinfo:
+		bootinfo.docs = [doc for doc in bootinfo.docs
+			if doc.get("doctype") not in {"Company", ":Company"} or doc.get("name") in allowed]
+	if bootinfo.get("user") is not None:
+		defaults = dict(bootinfo.user.get("defaults") or {})
+		current = defaults.get("Company") or defaults.get("company")
+		current = current if isinstance(current, (list, tuple)) else [current]
+		selected = next((name for name in current if name in allowed), allowed[0] if allowed else None)
+		defaults.update(Company=selected, company=selected)
+		bootinfo.user["defaults"] = defaults
+		if "sysdefaults" in bootinfo:
+			bootinfo.sysdefaults = frappe._dict(bootinfo.sysdefaults.copy())
+			bootinfo.sysdefaults.update(Company=selected, company=selected)
+			if bootinfo.sysdefaults.get("demo_company") not in allowed:
+				bootinfo.sysdefaults.demo_company = None
 
 
 def clear_partner_navigation_cache(doc=None, method=None):

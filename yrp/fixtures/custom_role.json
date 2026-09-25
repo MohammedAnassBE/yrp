@@ -1,0 +1,217 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.211787",
+  "name": "a07c31b3ba",
+  "page": null,
+  "ref_doctype": "Sales Invoice",
+  "report": "Accounts Receivable",
+  "roles": [
+   {
+    "role": "Accounts Manager"
+   },
+   {
+    "role": "Accounts User"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.249102",
+  "name": "e3d4c742f2",
+  "page": null,
+  "ref_doctype": "Sales Invoice",
+  "report": "Accounts Receivable Summary",
+  "roles": [
+   {
+    "role": "Accounts Manager"
+   },
+   {
+    "role": "Accounts User"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.200828",
+  "name": "7efd7215a2",
+  "page": null,
+  "ref_doctype": "GL Entry",
+  "report": "General Ledger",
+  "roles": [
+   {
+    "role": "Accounts Manager"
+   },
+   {
+    "role": "Accounts User"
+   },
+   {
+    "role": "Auditor"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.264821",
+  "name": "YRP-Customer-Report-YRP Packing and Delivery",
+  "page": null,
+  "ref_doctype": "Packing Slip",
+  "report": "YRP Packing and Delivery",
+  "roles": [
+   {
+    "role": "Sales Manager"
+   },
+   {
+    "role": "Sales User"
+   },
+   {
+    "role": "Stock Manager"
+   },
+   {
+    "role": "Stock User"
+   },
+   {
+    "role": "System Manager"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.272361",
+  "name": "YRP-Customer-Report-YRP Retail Demand",
+  "page": null,
+  "ref_doctype": "YRP Retail Order",
+  "report": "YRP Retail Demand",
+  "roles": [
+   {
+    "role": "System Manager"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Partner"
+   },
+   {
+    "role": "YRP Partner Manager"
+   },
+   {
+    "role": "YRP Retail User"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.278075",
+  "name": "YRP-Customer-Report-YRP Retail Summary Allocation",
+  "page": null,
+  "ref_doctype": "YRP Retail Order Summary",
+  "report": "YRP Retail Summary Allocation",
+  "roles": [
+   {
+    "role": "System Manager"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Partner"
+   },
+   {
+    "role": "YRP Partner Manager"
+   },
+   {
+    "role": "YRP Retail User"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom Role",
+  "modified": "2026-09-24 13:24:43.256943",
+  "name": "YRP-Customer-Report-YRP Sales Order Fulfilment",
+  "page": null,
+  "ref_doctype": "Sales Order",
+  "report": "YRP Sales Order Fulfilment",
+  "roles": [
+   {
+    "role": "Sales Manager"
+   },
+   {
+    "role": "Sales User"
+   },
+   {
+    "role": "Stock Manager"
+   },
+   {
+    "role": "Stock User"
+   },
+   {
+    "role": "System Manager"
+   },
+   {
+    "role": "YRP Customer"
+   },
+   {
+    "role": "YRP Sales Partner"
+   },
+   {
+    "role": "YRP Sales Person"
+   }
+  ]
+ }
+]

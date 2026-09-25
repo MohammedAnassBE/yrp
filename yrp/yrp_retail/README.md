@@ -6,8 +6,8 @@ Retail demand collection uses standard Frappe documents. It does not submit ERPN
 
 - **Sales Person → YRP Sales Person Customers** lists the customers the salesperson may serve. Duplicate customers and assignments on group Sales Persons are rejected.
 - **YRP Retailer** belongs to a Customer and can be assigned to a Sales Person. The mobile creation API always assigns the authenticated salesperson.
-- **YRP Visit** records the salesperson, timestamp and GeoJSON point. Primary visits require a Customer; Secondary visits require an active Retailer and derive its Customer. The Customer must be assigned to the salesperson. An ordered visit cannot change its assignment, type or timestamp.
-- **YRP Retail Order** records demand against one Visit. Its date and business parties come from that Visit. Each Visit has at most one order; `has_order` is maintained by the server. Items must be enabled, saleable concrete ERPNext Items with valid UOM conversions and positive quantities.
+- **YRP Visit** records the salesperson, timestamp and GeoJSON point. Primary visits require a Customer; Secondary visits require an active Retailer and derive its Customer. The Customer must be assigned to the salesperson. Has Order is read-only and derived from its linked Retail Order, including cancelled order history. The Create action checks the real link. An ordered visit cannot change its assignment, type or timestamp.
+- **YRP Retail Order** records demand against one Visit, using native Draft, Submitted and Cancelled states. Its date and business parties come from that Visit. Each Visit has at most one order; `has_order` preserves that history, including cancellation. Items must be enabled, saleable concrete ERPNext Items with valid UOM conversions and positive quantities.
 - **YRP Retail Order Summary** groups orders with the same Customer, Sales Person and Primary/Secondary type. Lines aggregate by Item and UOM. `company_qty = requested_qty - customer_stock_qty`; the customer allocation must be between zero and requested quantity. Whole-number UOM rules apply. This allocation represents demand supplied by the Customer, not a stock ledger movement.
 
 Draft summaries immediately claim their source orders to prevent duplicate planning. Claimed orders cannot be edited or deleted. Summary headers and source membership are fixed after creation; customer allocations remain editable until submission. Cancellation or draft deletion releases claims. Use a new summary for a different set of orders. Source rows are locked during validation; conflicting concurrent database operations may require retrying the request.
@@ -16,9 +16,9 @@ Draft summaries immediately claim their source orders to prevent duplicate plann
 
 System Manager and YRP Partner Manager administer retail records. YRP Retail User can create and edit retail operational records and submit summaries. System Manager/Partner Manager can cancel summaries; only System Manager can delete them.
 
-YRP Partner remains read-only through generic document APIs and Desk, including when combined with editing roles (System Manager is the explicit exception). The narrow retail APIs below authorize a salesperson from generated Partner membership and check the current Customer assignment. Their document-specific write capability cannot be supplied through request data or reused for another document. Automatic Partner generation remains permitted internally.
+YRP Partner supplies Contact-derived record scope. Add **YRP Sales Person** for creating/editing its own Visits, creating/editing assigned Customers' Retailers and creating/editing draft Retail Orders/Summaries. It can submit and cancel its own Orders/Summaries. A saved Visit retains its Sales Person and Customer; once an order is linked, its Retailer, visit type and timestamp are also protected. Has Order remains read-only. Add **YRP Sales Partner** for reading its Sales Orders/Packing Slips and creating/editing draft Sales Orders, without submission or processing. System Manager bypasses Partner scope. Other editing roles do not bypass these limits. Retail APIs use native saves and the same checks as Desk; there is no retail API write-permission bypass.
 
-Partner read filtering protects Visits, Orders and Summaries even if Partner Type configuration is removed. Assigned Customers are visible; another salesperson's Retailers are not exposed merely because the Customer is shared. Native explicit document sharing remains a Frappe read exception. Custom code using raw SQL/get_all must enforce its own permissions.
+Partner read filtering protects Visits, Orders and Summaries even if Partner Type configuration is removed. Assigned Customers' Retailers are shared across their assigned Sales Persons. Transaction edits require the acting Sales Person's membership and current assignment. Native explicit document sharing remains a Frappe read exception. Custom code using raw SQL/get_all must enforce its own permissions. Attendance is left to custom apps.
 
 ## Mobile endpoints
 
@@ -33,9 +33,19 @@ Prefix: `/api/method/yrp.yrp_retail.api.`. Use authenticated POST requests for m
 | `create_summary` | orders, optional customer_stock |
 | `update_summary` | name, customer_stock |
 | `submit_summary` | name |
+| `submit_retail_order` | name |
+| `cancel_retail_order` | name |
+| `cancel_summary` | name |
 | `list_records` | doctype, optional start/page_length |
 
 All endpoints accept an optional `sales_person` to select among the current user's memberships; it never authorizes an unrelated salesperson. Without it, exactly one active leaf Sales Person is required.
+
+Visit `location` is a native Geolocation field containing GeoJSON. The API stores
+a Point with coordinates in `[longitude, latitude]` order; Desk's map stores a
+FeatureCollection containing one Point. Validation accepts both representations
+and rejects multiple points, nonnumeric coordinates and coordinates outside valid
+latitude/longitude ranges. The client supplies the location; this field does not
+continuously track the salesperson.
 
 Order items contain exactly `item_code`, `qty`, `uom`. Summary allocations contain exactly `item_code`, `uom`, `customer_stock_qty`. `orders` is a nonempty list of unique Retail Order names. Arrays may be passed as JSON strings. Mutation responses identify the saved document; submission also returns docstatus. Failed API mutations roll back to their savepoint.
 
@@ -43,7 +53,18 @@ Order items contain exactly `item_code`, `qty`, `uom`. Summary allocations conta
 
 `test_retail_flow.py` creates fictional Customers, Sales Persons, Users, Contacts, Items and UOMs and rolls them back. It covers target validation, ownership, revoked assignments, location, quantity/UOM rules, duplicate visits, summary allocation/claims/cancellation, automatic Partner generation and rejection of forged write scopes. Existing Partner/User/Permission/Retailer tests cover the shared integration.
 
-Validation on local yrp.site: 61 Customer stock, retail and partner tests passed; the 11 Customer stock tests also passed after final permission tightening. Browser form verification remains incomplete because the temporary login failed; this is not a completed mobile-app integration. Independent high-model review was completed and its fixes applied; GLM 4.3 returned Unknown Model and the authorized 5.3 fallback produced no review before timeout. No production site or company fixtures are required.
+Validation on local yrp.site (2026-09-24): 56 regression checks cover roles,
+fixture imports, membership boundaries, Customer stock and cancellation. All
+checks passed across the full run and a focused rerun after refreshing a stale
+test document. Tests prohibit commits and roll back fictional records.
+Playwright verified Save actions on the five new sales forms and created,
+reopened, edited and saved a Visit as YRP Sales Person. Has Order remained
+disabled; Sales Partner still had no Sales Order submission action. All 26
+records from this browser run were removed, along with its sessions and queued
+callbacks. This is targeted Desk validation, not a completed mobile-app
+integration. The permission audit covered 130 owned DocTypes and 53 YRP fixture
+grants; Visit was the only missing operational Edit grant. No production site
+was changed.
 
 ## Customer stock balances
 
@@ -51,7 +72,7 @@ Set **Retail UOM** in **YRP Retail Settings** before using Customer stock. Each 
 
 Authenticated salesperson endpoints:
 
-- POST `update_customer_stock(customer, item_code, qty, sales_person=None)` replaces the count.
+- POST `update_customer_stock(customer, item_code, qty, sales_person=None)` replaces the count. It requires a separate native write permission on YRP Customer Stock; the basic action roles do not grant count entry.
 - GET `get_customer_stock(customer, item_code, sales_person=None)` returns `qty`, `uom`, `recorded`, `last_counted_at` and `last_counted_by`.
 
 Both require the Customer to be currently assigned to the salesperson. Only enabled concrete sales Items are accepted. Negative, nonfinite and invalid whole-number quantities fail. An unreported balance returns zero with `recorded=false`; a reported zero has `recorded=true`. The timestamp remains the last physical count even after consumption, enabling a future UI to show stale counts.
@@ -143,7 +164,7 @@ Four standard Script Reports in YRP Retail provide source-row detail:
 - **YRP Sales Order Fulfilment**: native ordered, ERP delivered and remaining delivery quantities. Native delivery is not proof of physical receipt; closed orders retain any numerical shortfall.
 - **YRP Packing and Delivery**: carton range, packed, physically delivered and outstanding quantities. Date filter means Packing Slip creation date; physical delivery timestamp is a separate column. Draft packing is planned, not completed. Cancelled Delivery Notes are excluded.
 
-All reports require a date range, exclude cancellations, support Item/UOM and Customer filters, and omit mixed-UOM grand totals. Submitted documents are the default except Retail Orders, which are non-submittable. Include Drafts is explicit. Native permission-filtered parent queries and document checks apply; packing additionally requires Delivery Note access. These are current-state reports, not historical as-of snapshots. No accounting amounts or stock ledger balances are inferred.
+All reports require a date range, exclude cancellations, support Item/UOM and Customer filters, and omit mixed-UOM grand totals. Submitted documents are the default except Retail Demand, which includes both draft and submitted Retail Orders to preserve demand visibility. Other reports use the explicit Include Drafts option. Native permission-filtered parent queries and document checks apply; packing additionally requires Delivery Note access. These are current-state reports, not historical as-of snapshots. No accounting amounts or stock ledger balances are inferred.
 
 Research reference: [ERPNext Sales Reports](https://docs.frappe.io/erpnext/sales-analytics). Reuse native Sales Analytics, Accounts Receivable and target reports for their existing business questions; these YRP reports cover the additional retail-source and carton-delivery workflow. Native reports require their own permission and UOM review before being offered to partners.
 

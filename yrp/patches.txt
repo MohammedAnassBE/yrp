@@ -24,3 +24,6 @@ yrp.patches.reconcile_legacy_single_child_parents
 
 yrp.patches.backfill_retailer_sales_partner
 yrp.patches.separate_template_product_attribute_mappings
+yrp.patches.refresh_delivery_progress_default_uom
+yrp.patches.remove_partner_provisioning
+yrp.patches.rename_partner_workspace

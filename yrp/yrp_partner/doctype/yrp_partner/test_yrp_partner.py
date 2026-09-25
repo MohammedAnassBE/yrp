@@ -4,7 +4,7 @@ from unittest.mock import patch
 import frappe
 
 
-class TestYRPPartner(unittest.TestCase):
+class PartnerTestCase(unittest.TestCase):
 	def setUp(self):
 		self.savepoint = 'partner_' + frappe.generate_hash(length=10)
 		frappe.db.savepoint(self.savepoint)
@@ -28,17 +28,69 @@ class TestYRPPartner(unittest.TestCase):
 			'reference_name': (source or self.source).name,
 		})
 
+	def make_user(self, *, email=None, partner_role=True, enabled=True, mobile_no=None):
+		return frappe.get_doc({
+			'doctype': 'User',
+			'email': email or 'partner-' + frappe.generate_hash(length=10) + '@example.invalid',
+			'first_name': 'Test Partner User', 'send_welcome_email': 0,
+			'enabled': int(enabled), 'mobile_no': mobile_no,
+			'roles': [{'role': 'YRP Partner'}] if partner_role else [],
+		}).insert()
+
+	def make_contact(self, user=None, source=None, *, emails=None):
+		if emails is None:
+			emails = [user.email] if user else []
+		return frappe.get_doc({
+			'doctype': 'Contact', 'first_name': 'Test Contact ' + frappe.generate_hash(length=10),
+			'user': user.name if user else None,
+			'email_ids': [{'email_id': email, 'is_primary': int(index == 0)}
+				for index, email in enumerate(emails)],
+			'links': [{'link_doctype': 'UOM', 'link_name': (source or self.source).name}],
+		}).insert()
+
+
+class TestYRPPartner(PartnerTestCase):
+
 	def test_type_save_generates_existing_records(self):
 		partner = self.partner()
 		self.assertEqual(partner.reference_doctype, 'UOM')
 		self.assertEqual(partner.users, [])
 
+	def test_new_partners_use_native_pr_series(self):
+		self.assertEqual(frappe.get_meta('YRP Partner').autoname, 'PR.#####')
+		first = self.partner(self.make_source())
+		second = self.partner(self.make_source())
+		for partner in (first, second):
+			# In Frappe series syntax, the dot separates the prefix and counter.
+			self.assertRegex(partner.name, r'^PR\d{5,}$')
+			self.assertEqual(frappe.db.count('YRP Partner', {'name': partner.name}), 1)
+		self.assertNotEqual(first.name, second.name)
+		self.assertGreater(int(second.name[2:]), int(first.name[2:]))
+
+	def test_resync_preserves_legacy_partner_name(self):
+		# Seed an owned legacy record using the former naming metadata only
+		# inside this transaction; resync must not rename it to the new series.
+		with patch.object(frappe.get_meta('YRP Partner'), 'autoname', 'hash'):
+			source = self.make_source()
+		legacy_name = self.partner(source).name
+		self.assertNotRegex(legacy_name, r'^PR\d{5,}$')
+		source.save()
+		self.partner_type.save()
+		self.assertEqual(self.partner(source).name, legacy_name)
+		self.assertEqual(frappe.db.count('YRP Partner', {
+			'partner_type': self.partner_type.name, 'reference_name': source.name,
+		}), 1)
+
 	def test_source_insert_and_repeated_updates_are_idempotent(self):
 		source = self.make_source()
 		name = self.partner(source).name
+		series = frappe.qb.DocType('Series')
+		counter = frappe.qb.from_(series).select(series.current).where(series.name == 'PR')
+		series_before = counter.run()[0][0]
 		source.save()
 		self.partner_type.save()
 		self.assertEqual(self.partner(source).name, name)
+		self.assertEqual(counter.run()[0][0], series_before)
 		self.assertEqual(frappe.db.count('YRP Partner', {
 			'partner_type': self.partner_type.name, 'reference_name': source.name,
 		}), 1)
@@ -49,21 +101,7 @@ class TestYRPPartner(unittest.TestCase):
 		self.source.save()
 		self.assertTrue(self.partner().name)
 
-	def make_user(self):
-		return frappe.get_doc({
-			'doctype': 'User',
-			'email': 'partner-' + frappe.generate_hash(length=10) + '@example.invalid',
-			'first_name': 'Test Partner User', 'send_welcome_email': 0,
-		}).insert()
-
-	def make_contact(self, user=None, source=None):
-		return frappe.get_doc({
-			'doctype': 'Contact', 'first_name': 'Test Contact ' + frappe.generate_hash(length=10),
-			'user': user.name if user else None,
-			'links': [{'link_doctype': 'UOM', 'link_name': (source or self.source).name}],
-		}).insert()
-
-	def test_linked_contacts_generate_unique_users(self):
+	def test_linked_contact_emails_derive_unique_members(self):
 		user = self.make_user()
 		self.make_contact(user)
 		self.make_contact(user)
@@ -116,12 +154,13 @@ class TestYRPPartner(unittest.TestCase):
 			}).insert(ignore_permissions=True)
 
 
-	def test_contact_user_change_replaces_membership(self):
-		contact = self.make_contact(self.make_user())
+	def test_contact_user_change_does_not_replace_email_membership(self):
+		user = self.make_user()
+		contact = self.make_contact(user)
 		replacement = self.make_user()
 		contact.user = replacement.name
 		contact.save()
-		self.assertEqual([r.user for r in self.partner().users], [replacement.name])
+		self.assertEqual([r.user for r in self.partner().users], [user.name])
 
 	def test_type_backfill_uses_existing_contacts(self):
 		user = self.make_user()

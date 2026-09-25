@@ -73,6 +73,7 @@ class TestSalesPersonAssignment(unittest.TestCase):
 			"email": frappe.generate_hash(length=12) + "@example.invalid",
 			"send_welcome_email": 0, "roles": [{"role": "YRP Partner"}]}).insert()
 		frappe.get_doc({"doctype": "Contact", "first_name": "Fictional Assignment",
+			"email_ids": [{"email_id": user.email, "is_primary": 1}],
 			"user": user.name, "links": [{"link_doctype": "Sales Person", "link_name": self.person.name}]}).insert()
 		retailer = frappe.get_doc({"doctype": "YRP Retailer", "retailer_name": "Fictional Owner",
 			"shop_name": "Fictional Shop", "sales_person": self.person.name,

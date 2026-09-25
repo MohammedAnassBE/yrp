@@ -15,9 +15,11 @@ class YRPRetailer(Document):
 
 	def validate(self):
 		require(self.get("sales_person"), "Sales Person is required for a Retailer.")
-		if self.sales_person:
-			validate_assignment(self.sales_person, self.customer)
 		old = self.get_doc_before_save()
+		# Registration provenance may outlive its assignment. An assigned colleague
+		# can still edit shop details without rewriting the original Sales Person.
+		if not old or any(self.get(field) != old.get(field) for field in ("customer", "sales_person")):
+			validate_assignment(self.sales_person, self.customer)
 		if old and any(self.get(field) != old.get(field) for field in ("customer", "sales_person")):
 			if frappe.db.table_exists("YRP Visit"):
 				require(not frappe.db.exists("YRP Visit", {"retailer": self.name}), "A retailer with visits cannot change its Customer or Sales Person.")

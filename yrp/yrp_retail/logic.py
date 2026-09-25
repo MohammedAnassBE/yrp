@@ -6,7 +6,8 @@ from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.utils import getdate
+from frappe.model.meta import get_field_precision
+from frappe.utils import flt, getdate
 
 
 def require(condition, message):
@@ -22,6 +23,29 @@ def finite_number(value, label):
 		frappe.throw(_("{0} must be a finite number.").format(label))
 	require(math.isfinite(number), "{0} must be a finite number.".format(label))
 	return number
+
+
+def validate_uom_quantity(value, uom, label, precision=None):
+	"""Validate at Frappe field precision, without rounding fractional UOMs early.
+
+	Conversions such as 0.07 * 100 produce binary float noise. Whole-number
+	UOMs must compare the represented quantity at its field precision, then
+	store the normalized integer. Fractional UOMs retain their input precision
+	so that multiplying by an Item conversion does not lose stock quantity.
+	"""
+	quantity = finite_number(value, label)
+	if frappe.db.get_value("UOM", uom, "must_be_whole_number"):
+		if precision is None:
+			precision = get_field_precision(frappe._dict(fieldtype="Float"))
+		if precision == 0:
+			# A zero-decimal display must not turn 1.5 whole units into 2.
+			require(math.isclose(quantity, round(quantity), rel_tol=0, abs_tol=1e-9),
+				"{0} must be a whole number for UOM {1}.".format(label, uom))
+		rounded = float(flt(quantity, precision))
+		require(quantity == 0 or rounded != 0, "{0} is smaller than one whole unit of UOM {1}.".format(label, uom))
+		quantity = rounded
+		require(quantity.is_integer(), "{0} must be a whole number for UOM {1}.".format(label, uom))
+	return quantity
 
 
 def validate_location(value):
@@ -73,7 +97,7 @@ def validate_order_items(rows):
 		require(row.item_code and row.uom, "Item and UOM are required.")
 		item = frappe.get_doc("Item", row.item_code)
 		require(not item.disabled and not item.has_variants and item.is_sales_item, "Order items must be enabled, concrete sales Items.")
-		row.qty = finite_number(row.qty, "Quantity")
+		row.qty = validate_uom_quantity(row.qty, row.uom, "Quantity", row.precision("qty"))
 		require(row.qty > 0, "Quantity must be greater than zero.")
 		if row.uom == item.stock_uom:
 			factor = 1.0
@@ -82,12 +106,11 @@ def validate_order_items(rows):
 			require(len(matches) == 1, "UOM must have one conversion on the Item.")
 			factor = finite_number(matches[0].conversion_factor, "Conversion factor")
 			require(factor > 0, "Conversion factor must be greater than zero.")
-		if frappe.db.get_value("UOM", row.uom, "must_be_whole_number"):
-			require(row.qty.is_integer(), "Quantity must be a whole number for this UOM.")
 		row.conversion_factor = factor
-		row.stock_qty = finite_number(row.qty * factor, "Stock quantity")
-		if frappe.db.get_value("UOM", item.stock_uom, "must_be_whole_number"):
-			require(row.stock_qty.is_integer(), "Stock quantity must be a whole number for the stock UOM.")
+		row.stock_qty = validate_uom_quantity(
+			row.qty * factor, item.stock_uom, "Stock quantity", row.precision("stock_qty")
+		)
+		require(row.stock_qty > 0, "Stock quantity must be greater than zero.")
 
 
 def aggregate_orders(orders):

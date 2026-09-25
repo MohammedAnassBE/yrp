@@ -4,8 +4,14 @@
  frappe.provide('yrp');
  if(yrp.retail_sales_flow_loaded) return;
  yrp.retail_sales_flow_loaded=true;
- const allowed = (doctype) => frappe.model.can_create(doctype) &&
-  (!frappe.user.has_role('YRP Partner') || frappe.user.has_role('System Manager') || frappe.session.user === 'Administrator');
+ const allowed = (doctype) => {
+  if (!frappe.model.can_create(doctype)) return false;
+  if (frappe.user.has_role('System Manager') || frappe.session.user === 'Administrator') return true;
+  if (doctype === 'Sales Order' && frappe.user.has_role('YRP Sales Partner')) return true;
+  if (['YRP Retail Order', 'YRP Retail Order Summary'].includes(doctype) &&
+      frappe.user.has_role('YRP Sales Person')) return true;
+  return !frappe.user.has_role('YRP Partner');
+ };
  const saved = (frm) => !frm.is_new() && !frm.is_dirty();
  // Native Desk caches documents between routes. Keep related progress fresh
  // without discarding a user's unsaved edits.
@@ -33,11 +39,19 @@
   }});
   dialog.show();
  }
- frappe.ui.form.on('YRP Visit', {refresh(frm) {
-  if(saved(frm) && !frm.doc.has_order && allowed('YRP Retail Order'))
-   frm.add_custom_button(__('Retail Order'),()=>frappe.new_doc('YRP Retail Order',{visit:frm.doc.name}),__('Create'));
+ frappe.ui.form.on('YRP Visit', {async refresh(frm) {
+  if(saved(frm) && allowed('YRP Retail Order')) {
+   const visit = frm.doc.name;
+   // Use the real relationship rather than a potentially stale form flag.
+   // The server also enforces one Retail Order per Visit.
+   const order = await frappe.db.exists('YRP Retail Order', {visit});
+   if(frm.doc.name === visit && saved(frm) && !order)
+    frm.add_custom_button(__('Retail Order'),()=>frappe.new_doc('YRP Retail Order',{visit}),__('Create'));
+  }
  }});
  frappe.ui.form.on('YRP Retail Order', {
+  // Saving an order updates its Visit's derived flag and modified timestamp.
+  after_save(frm) {if(frm.doc.visit) invalidate('YRP Visit',frm.doc.visit);},
   async visit(frm) {
    const name=frm.doc.visit;
    const result=name ? await frappe.db.get_doc('YRP Visit',name) : null;
@@ -47,7 +61,7 @@
     order_date:result ? result.visit_datetime.split(' ')[0] : frappe.datetime.get_today()});
   },
   refresh(frm) {
-   if(!saved(frm)) return;
+   if(!saved(frm) || frm.doc.docstatus===2) return;
    if(frm.doc.order_type==='Primary' && allowed('Sales Order') && frm.doc.per_ordered<100)
     frm.add_custom_button(__('Sales Order'),()=>sales_order(frm),__('Create'));
    if(frm.doc.order_type==='Secondary' && !frm.doc.summary && allowed('YRP Retail Order Summary'))
@@ -60,7 +74,7 @@
   }
  });
  frappe.ui.form.on('YRP Retail Order Summary', {
-  setup(frm) {frm.set_query('order','source_orders',()=>({filters:{customer:frm.doc.customer,sales_person:frm.doc.sales_person,order_type:'Secondary'}}));},
+  setup(frm) {frm.set_query('order','source_orders',()=>({filters:{customer:frm.doc.customer,sales_person:frm.doc.sales_person,order_type:'Secondary',docstatus:['<',2]}}));},
   refresh(frm) {
    if(saved(frm) && frm.doc.docstatus===1 && frm.doc.per_ordered<100 && allowed('Sales Order'))
     frm.add_custom_button(__('Sales Order'),()=>sales_order(frm),__('Create'));
