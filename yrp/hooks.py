@@ -182,6 +182,8 @@ doc_events = {
 	},
 	"Item Attribute": {
 		"before_save": "yrp.yrp.doctype.yrp_item.yrp_item.prevent_yrp_variant_code_change",
+		"on_update": "yrp.attribute_values.sync_attribute_value_masters",
+		"after_rename": "yrp.attribute_values.rename_attribute_value_masters",
 	},
 	"Stock Entry": {
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
@@ -314,3 +316,13 @@ extend_doctype_class = {
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
+
+# Scoped attribute-value Link normalization for internal document writes.
+extend_doctype_class = globals().get("extend_doctype_class", {})
+for _attribute_link_doctype in ['YRP IPD Matrix Combination Attribute', 'YRP IPD Process', 'YRP IPD Process Matrix', 'YRP Item BOM', 'YRP Item BOM Attribute Mapping', 'YRP Item BOM Attribute Mapping Value', 'YRP Item Dependent Attribute Mapping', 'YRP Item Dependent Attribute Mapping Detail', 'YRP Item Dependent Attribute Mapping Value', 'YRP Item Price', 'YRP Item Price Value', 'YRP Item Production Detail', 'YRP Process Cost', 'YRP Process Cost Value', 'YRP Production Order', 'YRP Settings']:
+	_existing_mixins = extend_doctype_class.get(_attribute_link_doctype, [])
+	if isinstance(_existing_mixins, str):
+		_existing_mixins = [_existing_mixins]
+	extend_doctype_class[_attribute_link_doctype] = [*_existing_mixins, "yrp.attribute_links.AttributeLinkStorageMixin"]
+
+boot_session = "yrp.attribute_links.boot_session"

@@ -242,6 +242,10 @@ const dim_col_md = computed(() => {
 
 onMounted(async () => {
     await load_dimensions();
+    // Dimension wrappers are rendered from the async response. A form refresh
+    // can also unmount this editor while that response is still in flight.
+    await nextTick();
+    if (!root.value?.isConnected) return;
     create_dimension_item_inputs();
 });
 

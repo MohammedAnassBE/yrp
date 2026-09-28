@@ -48,6 +48,7 @@ frappe.ui.form.on("YRP Process Cost", {
 				args: {
 					item: frm.doc.item,
 					attribute: frm.doc.attribute,
+					for_link: 1,
 				},
 				callback: function (r) {
 					if (r.message) {

@@ -5,6 +5,7 @@ UOM and, when configured, the selected variant's dependent-attribute value
 supplies the transaction UOM.  Every server controller should overwrite the
 submitted UOM fields with the values returned here.
 """
+from yrp.attribute_links import value as _attribute_value
 
 import frappe
 from frappe import _
@@ -67,7 +68,7 @@ def resolve_item_uom(item_variant):
 			'YRP Item Dependent Attribute Mapping', item.dependent_attribute_mapping
 		)
 		mapping_row = next(
-			(row for row in mapping.get("details") or [] if row.attribute_value == attribute_value),
+			(row for row in mapping.get("details") or [] if _attribute_value(row.attribute_value) == attribute_value),
 			None,
 		)
 		if not mapping_row or not mapping_row.uom:

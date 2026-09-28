@@ -31,10 +31,11 @@
   },
   {
    "fieldname": "attribute_value",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Attribute Value",
-   "reqd": 1
+   "reqd": 1,
+   "options": "YRP Item Attribute Value"
   },
   {
    "fieldname": "bom_item_attribute",
@@ -67,7 +68,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-06-24 14:52:34.596224",
+ "modified": "2026-09-25 15:12:33.705488",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Item BOM Attribute Mapping Value",

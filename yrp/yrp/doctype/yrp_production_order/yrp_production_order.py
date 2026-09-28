@@ -1,3 +1,4 @@
+from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
 
@@ -97,7 +98,7 @@ def get_production_order_settings():
 		"attributes": attrs,
 		"grid_attribute": grid_attribute,
 		"dependent_attribute": settings.po_dependent_attribute or None,
-		"dependent_attribute_value": settings.po_dependent_attribute_value or None,
+		"dependent_attribute_value": _attribute_value(settings.po_dependent_attribute_value) or None,
 	}
 
 
@@ -159,7 +160,7 @@ def save_production_order_items(item_details_json):
 
 	settings = get_production_order_settings()
 	dep_attr = settings.get("dependent_attribute")
-	dep_attr_value = settings.get("dependent_attribute_value")
+	dep_attr_value = _attribute_value(settings.get("dependent_attribute_value"))
 
 	rows = []
 	for group in item_details:
@@ -221,7 +222,7 @@ def fetch_production_order_items(doc):
 				# Fallback: read from variant attributes
 				variant = frappe.get_cached_doc('Item', row.item_variant)
 				attr_map = {
-					a.attribute: a.attribute_value
+					a.attribute: _attribute_value(a.attribute_value)
 					for a in variant.attributes
 					if a.attribute in active_attrs
 				}
@@ -262,8 +263,8 @@ def get_order_summary(production_order):
 			if primary_attr:
 				for attr in variant.attributes:
 					if attr.attribute == primary_attr:
-						summary[row.item].setdefault(attr.attribute_value, 0)
-						summary[row.item][attr.attribute_value] += row.quantity
+						summary[row.item].setdefault(_attribute_value(attr.attribute_value), 0)
+						summary[row.item][_attribute_value(attr.attribute_value)] += row.quantity
 						break
 			else:
 				summary[row.item].setdefault("_total", 0)

@@ -127,7 +127,7 @@ export default {
             for (const a of attrs) {
                 const k = a.group_index + '|' + a.side + '|' + a.combo_index;
                 if (!attrLookup[k]) attrLookup[k] = {};
-                attrLookup[k][a.attribute] = a.attribute_value;
+                attrLookup[k][a.attribute] = frappe.yrp.attribute_value(a.attribute_value);
             }
 
             const grouped = {};

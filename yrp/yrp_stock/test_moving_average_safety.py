@@ -58,7 +58,11 @@ def _warehouse(suffix):
 	name = frappe.db.get_value('Warehouse', {"warehouse_name": warehouse_name}, "name")
 	if not name:
 		name = frappe.get_doc(
-			{"doctype": 'Warehouse', "warehouse_name": warehouse_name}
+			{
+				"doctype": 'Warehouse',
+				"warehouse_name": warehouse_name,
+				"company": frappe.db.get_value('Company', {}, "name"),
+			}
 		).insert(ignore_permissions=True).name
 	return name
 

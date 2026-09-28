@@ -121,7 +121,7 @@ function generate_combinations(frm) {
 					ca.side = "Input";
 					ca.combo_index = ci;
 					ca.attribute = a.attribute;
-					ca.attribute_value = a.attribute_value;
+					ca.attribute_value = frappe.yrp.attribute_value(a.attribute_value);
 				});
 			});
 			(r.message.output || []).forEach((row) => {
@@ -137,7 +137,7 @@ function generate_combinations(frm) {
 					ca.side = "Output";
 					ca.combo_index = ci;
 					ca.attribute = a.attribute;
-					ca.attribute_value = a.attribute_value;
+					ca.attribute_value = frappe.yrp.attribute_value(a.attribute_value);
 				});
 			});
 			frm.refresh_field("combinations");

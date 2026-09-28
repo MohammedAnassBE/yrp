@@ -61,7 +61,7 @@ export default {
             for (let i = 0; i < this.attr_list.length; i++)  {
                 if (this.attr_list[i]["attr_name"] == dependent_attribute) {
                     for (let j = 0; j < this.attr_list[i]["attr_values"].length; j++) {
-                        let value = this.attr_list[i]["attr_values"][j]["attribute_value"];
+                        let value = frappe.yrp.attribute_value(this.attr_list[i]["attr_values"][j]["attribute_value"]);
                         dependent_attribute_values.push(value);
                         if(!this.data.attr_list.hasOwnProperty(value)) {
                             this.data.attr_list[value] = {

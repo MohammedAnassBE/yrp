@@ -20,6 +20,7 @@ def _test_warehouse(label):
 	return frappe.get_doc({
 		"doctype": 'Warehouse',
 		"warehouse_name": f"_Test Stock Entry {label} {frappe.generate_hash(length=8)}",
+		"company": frappe.db.get_value('Company', {}, "name"),
 	}).insert(ignore_permissions=True).name
 
 

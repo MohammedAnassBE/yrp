@@ -1,3 +1,4 @@
+import './attribute_links';
 import './vue_plugins';
 import {
     StockEntryWrapper,
@@ -81,3 +82,5 @@ frappe.yrp.work_order.open_close_dialog = function (frm, workOrder) {
     }
     return factory(frm, workOrder || frm.doc.name);
 };
+
+import "./party_addresses";

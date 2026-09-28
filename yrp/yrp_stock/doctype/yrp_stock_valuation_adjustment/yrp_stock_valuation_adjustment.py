@@ -8,6 +8,7 @@ are never rewritten by this module.
 """
 
 from __future__ import annotations
+from yrp import attribute_links as attribute_db
 
 import hashlib
 import json
@@ -85,7 +86,7 @@ def is_stock_adjustment_enabled():
 		# Preserve existing behavior during a rolling deploy until the DocType is
 		# synchronized and the new checkbox is available on the site.
 		return True
-	value = frappe.db.get_single_value('YRP Settings', "apply_stock_adjustment")
+	value = attribute_db.get_single_value('YRP Settings', "apply_stock_adjustment")
 	return bool(cint(value))
 
 

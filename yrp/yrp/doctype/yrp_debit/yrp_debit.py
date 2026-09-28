@@ -1,3 +1,4 @@
+from yrp import attribute_links as attribute_db
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -69,7 +70,7 @@ def create_debit(work_order, debit_no=None, debit_value=None, reason=None, on_cl
 
 
 def _user_has_settings_role(field):
-	role = frappe.db.get_single_value('YRP Settings', field)
+	role = attribute_db.get_single_value('YRP Settings', field)
 	if not role:
 		return False
 	return role in frappe.get_roles(frappe.session.user)

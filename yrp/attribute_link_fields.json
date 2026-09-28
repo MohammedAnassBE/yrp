@@ -1,0 +1,40 @@
+{
+  "YRP Item Dependent Attribute Mapping Detail": [
+    "attribute_value"
+  ],
+  "YRP Item BOM Attribute Mapping Value": [
+    "attribute_value"
+  ],
+  "YRP Item Dependent Attribute Mapping Value": [
+    "dependent_attribute_value"
+  ],
+  "YRP Item Price Value": [
+    "attribute_value"
+  ],
+  "YRP Production Order": [
+    "dia"
+  ],
+  "YRP Item BOM": [
+    "dependent_attribute_value"
+  ],
+  "YRP Process Cost Value": [
+    "attribute_value"
+  ],
+  "YRP Item Production Detail": [
+    "major_attribute_value",
+    "pack_in_stage",
+    "pack_out_stage",
+    "stiching_in_stage",
+    "stiching_out_stage"
+  ],
+  "YRP Settings": [
+    "po_dependent_attribute_value"
+  ],
+  "YRP IPD Process": [
+    "in_stage",
+    "out_stage"
+  ],
+  "YRP IPD Matrix Combination Attribute": [
+    "attribute_value"
+  ]
+}

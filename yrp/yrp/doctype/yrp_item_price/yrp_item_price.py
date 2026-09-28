@@ -1,3 +1,4 @@
+from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
 
@@ -62,7 +63,7 @@ class YRPItemPrice(Document):
 		if self.depends_on_attribute and (attribute is None or self.attribute != attribute or attribute_value is None):
 			return None
 		price_values = [
-			[price.moq, price.price, price.lead_time, price.attribute_value]
+			[price.moq, price.price, price.lead_time, _attribute_value(price.attribute_value)]
 			for price in self.item_price_values
 		]
 		return self.get_price_value(price_values, qty, attribute_value, get_lowest_moq_price, get_lead_time=get_lead_time)
@@ -100,7 +101,7 @@ def validate_price_values(item_price_values):
 	"""Validate no duplicate (moq, attribute_value) combinations."""
 	values = []
 	for price in item_price_values:
-		unique_value = f"{price.moq}, {price.attribute_value}"
+		unique_value = f"{price.moq}, {_attribute_value(price.attribute_value)}"
 		if unique_value in values:
 			frappe.throw(_("Duplicate entries found in price values."))
 		values.append(unique_value)
@@ -220,7 +221,7 @@ def get_item_variant_price(variant, variant_uom=None):
 		if item_price.depends_on_attribute:
 			attribute_value = next(
 				(
-					row.attribute_value
+					_attribute_value(row.attribute_value)
 					for row in variant_doc.get("attributes") or []
 					if row.attribute == item_price.attribute
 				),

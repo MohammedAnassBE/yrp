@@ -17,7 +17,7 @@
                         </div>
                     </div>
                 </th>
-                <th v-if="bom_attributes.length > 0">
+                <th>
                     Quantity
                     <div style="display:flex;width:100%;">
                         <div :class="get_quantity_input_class('quantity', 1000)"></div>
@@ -43,7 +43,7 @@
                 <td v-for="attr in bom_attributes">
                     <div :class="get_input_class('bom', attr, index)"></div>
                 </td>
-                <td v-if="bom_attributes.length > 0">
+                <td>
                     <div :class="get_quantity_input_class('quantity', index)"></div>
                 </td>
             </tr>
@@ -158,7 +158,7 @@ export default {
                         g_data[d.index] = {};
                         indexes.push(d.index);
                     }
-                    g_data[d.index][this.get_attribute_name(d.type, d.attribute)] = d.attribute_value;
+                    g_data[d.index][this.get_attribute_name(d.type, d.attribute)] = frappe.yrp.attribute_value(d.attribute_value);
                     g_data[d.index][this.get_attribute_name("quantity", d.index)] = d.quantity;
                 }
                 for (let i = 0; i < indexes.length; i++) {
@@ -175,7 +175,7 @@ export default {
                             this.data[index][attr_name] = g_data[indexes[i]][attr_name]
                             this.attribute_inputs[index][attr_name].set_value(this.data[index][attr_name]);
                         }
-                        if(this.bom_attributes.length > 0){
+                        {
                             let attr_name = this.get_attribute_name('quantity', index)
                             this.data[index][attr_name] = g_data[indexes[i]][attr_name]
                             this.attribute_inputs[index][attr_name].set_value(this.data[index][attr_name])
@@ -281,6 +281,9 @@ export default {
                 fieldname: this.get_attribute_name(type, attribute)+"_"+index,
             };
             if (type == "item") {
+                // Source values are fixed by the combination, not selectable.
+                // A read-only Autocomplete has no Awesomplete instance in F16.
+                df["fieldtype"] = 'Data';
                 df["read_only"] = true;
             } else if (type == "bom") {
                 df["get_query"] = function() {
@@ -297,7 +300,7 @@ export default {
                 }
             }
             return frappe.ui.form.make_control({
-                parent: $(this.$el).find(parent_class),
+                parent: $(this.$el).find(parent_class).empty(),
                 df: df,
                 render_input: true,
             });
@@ -310,7 +313,7 @@ export default {
                 fieldname: this.get_attribute_name(attribute, index),
             };
             return frappe.ui.form.make_control({
-                parent: $(this.$el).find(parent_class),
+                parent: $(this.$el).find(parent_class).empty(),
                 df: df,
                 render_input: true,
             });
@@ -329,9 +332,11 @@ export default {
                         return false;
                     }
                     this.data[i][attr_name] = value;
-                    attr_name = this.get_attribute_name("quantity", i)
-                    let quantity = this.attribute_inputs[i][attr_name]
-                    this.data[i][attr_name] = quantity.get_value()
+                }
+                const attr_name = this.get_attribute_name("quantity", i);
+                this.data[i][attr_name] = this.attribute_inputs[i][attr_name].get_value();
+                if (this.data[i].included && !this.data[i][attr_name]) {
+                    frappe.throw(__("Quantity cannot be Zero"));
                 }
             }
             return true;
@@ -358,7 +363,7 @@ export default {
                         }
                     }
                 }
-                if(this.bom_attributes.length > 0){
+                {
                     let attr_name = this.get_attribute_name("quantity", i)
                     inputs[attr_name] = this.create_quantity_input("quantity", i)
                     inputs[attr_name].set_value(this.data[i][attr_name])

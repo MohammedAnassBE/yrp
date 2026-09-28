@@ -139,11 +139,11 @@ function get_printer() {
     
     let selectedRes = $(`.printers-radio:checked`).data('response');
 
-    if (printers_list.size == 0) {
+    if (frappe.yrp.attribute_value(printers_list.size) == 0) {
         frappe.throw("Select a printer");
         return null;
     }
-    else if (printers_list.size > 1) {
+    else if (frappe.yrp.attribute_value(printers_list.size) > 1) {
         console.log(printers_list)
         frappe.throw("Select only one printer");
         return null;

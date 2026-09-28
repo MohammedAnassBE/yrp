@@ -132,6 +132,8 @@ function load_source_defaults(frm) {
 }
 
 function get_source_defaults_method(frm) {
+	const custom = frm.get_grn_source_defaults?.();
+	if (custom) return custom;
 	if (frm.doc.is_return) {
 		return null;
 	}

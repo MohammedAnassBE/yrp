@@ -165,7 +165,8 @@ const inlineQtyEdit = computed(() => (
     props.editorType === 'delivery_challan' || useInlineReceiveEditor.value
 ));
 const inlineQtyMaxField = computed(() => {
-    if (props.editorType === 'delivery_challan') return 'pending_quantity';
+    // Deliveries may exceed the planned quantity, including on a later DC
+    // after pending reaches zero. Stock availability is checked on the server.
     if (useInlineReceiveEditor.value) return 'max_receivable_quantity';
     return '';
 });

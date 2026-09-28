@@ -730,5 +730,18 @@
   "name": "Purchase Order Item-secondary_uom",
   "options": "UOM",
   "read_only": 1
+ },
+ {
+  "doctype": "Custom Field",
+  "dt": "Item",
+  "fieldname": "dependent_attribute_value",
+  "fieldtype": "Data",
+  "insert_after": "variant_of",
+  "label": "Dependent Attribute Value",
+  "module": "YRP",
+  "name": "Item-dependent_attribute_value",
+  "read_only": 1,
+  "depends_on": "eval:!!doc.variant_of",
+  "description": "Value of the template’s dependent attribute for this variant."
  }
 ]

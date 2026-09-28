@@ -12,6 +12,8 @@ Data flow:
   before_validate flattens back into self.items child rows → existing
   validation / SLE construction operates on self.items unchanged.
 """
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 
 import json
 from collections import defaultdict
@@ -513,7 +515,7 @@ def _attach_display_meta(sources):
 		non_primary_names = list(attr_details.get("attributes") or [])
 
 		variant_attrs = {
-			row.attribute: row.attribute_value
+			row.attribute: _attribute_value(row.attribute_value)
 			for row in (variant_doc.attributes or [])
 		}
 		primary_value = variant_attrs.get(primary, "") if primary else ""
@@ -570,7 +572,7 @@ def get_received_types():
 # Convert Stock — approver-gated SLE generation, separated from submit.
 # ----------------------------------------------------------------------
 def _approver_role():
-	role = frappe.db.get_single_value('YRP Settings', "inspection_entry_approver_role")
+	role = attribute_db.get_single_value('YRP Settings', "inspection_entry_approver_role")
 	return (role or "").strip()
 
 

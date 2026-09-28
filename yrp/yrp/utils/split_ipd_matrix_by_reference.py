@@ -1,4 +1,5 @@
 """Utilities to split or merge IPD Process Matrices by reference variant."""
+from yrp.attribute_links import value as _attribute_value
 
 import frappe
 
@@ -176,7 +177,7 @@ def _append_group(new_doc, matrix, old_group_index, new_group_index):
 			"side": row.side,
 			"combo_index": row.combo_index,
 			"attribute": row.attribute,
-			"attribute_value": row.attribute_value,
+			"attribute_value": _attribute_value(row.attribute_value),
 		})
 
 
@@ -208,7 +209,7 @@ def _infer_reference_variant(matrix, ipd_doc, reference_stage, allowed_attrs, gr
 		})
 		for combo_index in combo_indexes:
 			raw_attrs = {
-				row.attribute: row.attribute_value
+				row.attribute: _attribute_value(row.attribute_value)
 				for row in matrix.combination_attributes
 				if row.group_index == group_index
 				and row.side == side
@@ -265,7 +266,7 @@ def _copy_matrix_for_groups(matrix, reference_variant, group_indexes):
 			"side": row.side,
 			"combo_index": row.combo_index,
 			"attribute": row.attribute,
-			"attribute_value": row.attribute_value,
+			"attribute_value": _attribute_value(row.attribute_value),
 		})
 
 	return new_doc

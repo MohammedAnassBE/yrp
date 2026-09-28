@@ -11,6 +11,7 @@ No caching in v1 — deliberately (§4.4): resolution is two indexed point-reads
 plus pure dict merging, once per full /web page load. Propagation rule:
 SM saves → user's next page load shows it.
 """
+from yrp.attribute_links import value as _attribute_value
 
 import json
 import re
@@ -1196,7 +1197,7 @@ def _validate_screens(screens, layer, warnings, catalog=None):
 				warnings.append(
 					_("{0}: unknown key '{1}' inside block '{2}'").format(layer, key, block_id)
 				)
-		size = block.get("size")
+		size = _attribute_value(block.get("size"))
 		if size is not None and size not in BLOCK_SIZES:
 			warnings.append(
 				_("{0}: block '{1}' size {2!r} is not one of {3} — the client renders it full-width").format(

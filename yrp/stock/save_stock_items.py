@@ -8,6 +8,7 @@ The grouping contract is:
 `group_items_for_ui`  : flat child rows  → nested grouped JSON (for onload)
 `ungroup_items_from_ui`: nested grouped JSON → flat child rows (for before_validate)
 """
+from yrp.attribute_links import value as _attribute_value
 
 import json
 from itertools import groupby
@@ -209,7 +210,7 @@ def _copy_supported_fields(source, fieldnames, child_doctype=None):
 # Group: child rows → grouped JSON for the Vue editor
 # ====================================================================
 
-def group_items_for_ui(child_rows, parent_doctype):
+def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	"""Convert flat child rows into the nested grouped structure the Vue editor expects.
 
 	Example transformation:
@@ -247,7 +248,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 	if not child_rows:
 		return []
 
-	config = _get_map_config(parent_doctype)
+	config = config or _get_map_config(parent_doctype)
 	item_field = config["item_field"]
 	qty_field = config["qty_field"]
 	child_doctype = config.get("child_doctype")
@@ -322,7 +323,7 @@ def group_items_for_ui(child_rows, parent_doctype):
 		out = {}
 		for row in (variant_doc.attributes or []):
 			if row.attribute in attr_names:
-				out[row.attribute] = row.attribute_value
+				out[row.attribute] = _attribute_value(row.attribute_value)
 		return out
 
 	# Group consecutive rows by row_index.
@@ -456,7 +457,7 @@ def group_correction_items_for_ui(child_rows, parent_doctype):
 # Ungroup: grouped JSON → flat rows for self.set("items", ...)
 # ====================================================================
 
-def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
+def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, config=None):
 	"""Flatten the editor's grouped JSON into rows for the parent's child table.
 
 	CRITICAL: row_index increments once per LOGICAL ITEM (not per variant row).
@@ -480,7 +481,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False):
 	if not item_details:
 		return []
 
-	config = _get_map_config(parent_doctype)
+	config = config or _get_map_config(parent_doctype)
 	item_field = config["item_field"]
 	qty_field = config["qty_field"]
 	child_doctype = config.get("child_doctype")

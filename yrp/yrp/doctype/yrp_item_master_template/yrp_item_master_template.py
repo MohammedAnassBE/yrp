@@ -4,8 +4,10 @@ Shares the same attribute/mapping/dependent-attribute structure as Item,
 so users can create multiple Items from the same template without
 re-configuring attributes each time.
 """
+from yrp.attribute_links import value as _attribute_value
 
 import frappe
+from yrp.attribute_values import get_mapping_document
 from frappe.model.document import Document
 
 from yrp.yrp.doctype.yrp_item.yrp_item import _create_dependent_attribute_mapping
@@ -31,7 +33,7 @@ class YRPItemMasterTemplate(Document):
 
 			mapped_values = []
 			if attribute.mapping:
-				mapping_doc = frappe.get_doc('YRP Item Item Attribute Mapping', attribute.mapping)
+				mapping_doc = get_mapping_document(attribute.mapping)
 				mapped_values = mapping_doc.values
 
 			attribute_list.append({
@@ -79,7 +81,7 @@ class YRPItemMasterTemplate(Document):
 
 		for attribute in self.get("attributes"):
 			if attribute.mapping:
-				original = frappe.get_doc('YRP Item Item Attribute Mapping', attribute.mapping)
+				original = get_mapping_document(attribute.mapping)
 				copy = frappe.copy_doc(original)
 				copy.save()
 				attribute.mapping = copy.name
@@ -120,12 +122,12 @@ class YRPItemMasterTemplate(Document):
 		for attribute in self.get("attributes"):
 			if attribute.attribute == self.dependent_attribute:
 				found = True
-				mapping = frappe.get_doc('YRP Item Item Attribute Mapping', attribute.mapping)
+				mapping = get_mapping_document(attribute.mapping)
 				if not mapping.values:
 					frappe.throw(
 						f"Please set {self.dependent_attribute} values before setting it as Dependent Attribute"
 					)
-				dependent_attr_values = [v.attribute_value for v in mapping.values]
+				dependent_attr_values = [_attribute_value(v.attribute_value) for v in mapping.values]
 				break
 
 		if not found:

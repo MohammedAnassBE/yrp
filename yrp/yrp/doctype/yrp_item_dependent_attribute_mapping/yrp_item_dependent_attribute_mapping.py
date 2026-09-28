@@ -1,3 +1,4 @@
+from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2023, Essdee and contributors
 # For license information, please see license.txt
 
@@ -36,16 +37,16 @@ def get_dependent_attribute_details(name):
 	dependent_attribute["attribute"] = dependent_attribute_mapping.dependent_attribute
 	attr_list = {}
 	for d in dependent_attribute_mapping.details:
-		attr_list.setdefault(d.attribute_value, {}).setdefault("attributes", [])
-		attr_list[d.attribute_value]["uom"] = d.uom
-		attr_list[d.attribute_value]["name"] = d.display_name
+		attr_list.setdefault(_attribute_value(d.attribute_value), {}).setdefault("attributes", [])
+		attr_list[_attribute_value(d.attribute_value)]["uom"] = d.uom
+		attr_list[_attribute_value(d.attribute_value)]["name"] = d.display_name
 		# attr_list[d.attribute_value]["is_final"] = d.is_final
 
 	for d in dependent_attribute_mapping.mapping:
-		attr_list.setdefault(d.dependent_attribute_value, {}).setdefault("attributes", [])
-		attr_list[d.dependent_attribute_value]["attributes"].append(d.depending_attribute)
-		attr_list[d.dependent_attribute_value].setdefault("uom", None)
-		attr_list[d.dependent_attribute_value].setdefault("name", None)
+		attr_list.setdefault(_attribute_value(d.dependent_attribute_value), {}).setdefault("attributes", [])
+		attr_list[_attribute_value(d.dependent_attribute_value)]["attributes"].append(d.depending_attribute)
+		attr_list[_attribute_value(d.dependent_attribute_value)].setdefault("uom", None)
+		attr_list[_attribute_value(d.dependent_attribute_value)].setdefault("name", None)
 		# attr_list[d.dependent_attribute_value].setdefault("is_final", 0)
 
 	dependent_attribute["attr_list"] = attr_list

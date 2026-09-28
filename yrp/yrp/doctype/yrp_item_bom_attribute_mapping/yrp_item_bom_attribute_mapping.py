@@ -1,3 +1,4 @@
+from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2021, Essdee and contributors
 # For license information, please see license.txt
 
@@ -47,7 +48,7 @@ class YRPItemBOMAttributeMapping(Document):
 		for v in values:
 			if not len(attribute_mapping_list) > v.index:
 				attribute_mapping_list.append({'item': {}, 'bom': {}})
-			attribute_mapping_list[v.index][v.type][v.attribute] = v.attribute_value
+			attribute_mapping_list[v.index][v.type][v.attribute] = _attribute_value(v.attribute_value)
 		same_item_attributes = [i.attribute for i in self.item_attributes if i.same_attribute]
 		same_attributes = [i.attribute for i in self.bom_item_attributes if i.same_attribute and i.attribute in same_item_attributes]
 		if same_attributes and len(same_attributes) > 0:

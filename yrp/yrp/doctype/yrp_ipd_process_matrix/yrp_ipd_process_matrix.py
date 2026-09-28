@@ -1,3 +1,5 @@
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 import frappe
 from frappe.model.document import Document
 
@@ -11,7 +13,7 @@ class YRPIPDProcessMatrix(Document):
 	def validate_reference_item_variant(self):
 		if not (self.ipd and self.reference_item_variant):
 			return
-		ipd_item = frappe.db.get_value('YRP Item Production Detail', self.ipd, "item")
+		ipd_item = attribute_db.get_value('YRP Item Production Detail', self.ipd, "item")
 		from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 		variant_item = get_parent_item(self.reference_item_variant)
@@ -23,7 +25,7 @@ class YRPIPDProcessMatrix(Document):
 	def validate_attributes_belong_to_ipd(self):
 		if not self.ipd:
 			return
-		ipd_item, dep_attr = frappe.db.get_value('YRP Item Production Detail', self.ipd, ["item", "dependent_attribute"])
+		ipd_item, dep_attr = attribute_db.get_value('YRP Item Production Detail', self.ipd, ["item", "dependent_attribute"])
 		# Dependent attribute (e.g. Stage) is not enumerated in matrix combos — it comes from IPD Process in/out_stage.
 		for row in list(self.input_attributes) + list(self.output_attributes):
 			if dep_attr and row.attribute == dep_attr:
@@ -47,8 +49,8 @@ class YRPIPDProcessMatrix(Document):
 			input_attrs = {
 				r.attribute
 				for r in frappe.get_all(
-					'YRP Item Item Attribute',
-					filters={"parent": input_item, "parenttype": 'Item'},
+					'Item Variant Attribute',
+					filters={"parent": input_item, "parenttype": 'Item', "parentfield": "attributes"},
 					fields=["attribute"],
 				)
 			}
@@ -80,7 +82,7 @@ class YRPIPDProcessMatrix(Document):
 		groups = {}
 		attrs_by_key = {}
 		for a in self.combination_attributes:
-			attrs_by_key.setdefault((a.group_index, a.side, a.combo_index), {})[a.attribute] = a.attribute_value
+			attrs_by_key.setdefault((a.group_index, a.side, a.combo_index), {})[a.attribute] = _attribute_value(a.attribute_value)
 		for c in self.combinations:
 			g = groups.setdefault(c.group_index, {"input": [], "output": []})
 			side_key = c.side.lower()
@@ -101,7 +103,7 @@ def get_reference_variant_query(doctype, txt, searchfield, start, page_len, filt
 	ipd = (filters or {}).get("ipd")
 	if not ipd:
 		return []
-	item = frappe.db.get_value('YRP Item Production Detail', ipd, "item")
+	item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
 	if not item:
 		return []
 	return frappe.db.sql(

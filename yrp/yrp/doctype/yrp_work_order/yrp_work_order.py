@@ -1,3 +1,5 @@
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -119,7 +121,7 @@ class YRPWorkOrder(Document):
 			issues.append(_("There are no receivables on the Work Order."))
 
 		if self.get("production_detail"):
-			status = frappe.db.get_value(
+			status = attribute_db.get_value(
 				'YRP Item Production Detail',
 				self.production_detail,
 				"approval_status",
@@ -411,7 +413,7 @@ class YRPWorkOrder(Document):
 		for attribute_value, rows in receivable_groups.items():
 			calculated_group = calculated_groups[attribute_value]
 			calculated_qty = flt(calculated_group["quantity"])
-			receivable_qty = sum(flt(row.qty) for row in rows)
+			receivable_qty = sum(get_receivable_stock_quantity(row) for row in rows)
 			if calculated_qty <= 0 or receivable_qty <= 0:
 				return False
 			finished_item_rate = get_process_cost_rate(
@@ -555,7 +557,7 @@ def get_process_cost_rate(item_variant, quantity, process_cost):
 	low_price = 0
 	found = False
 	for cost_row in cost_rows:
-		if process_cost.depends_on_attribute and cost_row.attribute_value != attribute_value:
+		if process_cost.depends_on_attribute and _attribute_value(cost_row.attribute_value) != attribute_value:
 			continue
 		min_order_qty = flt(cost_row.min_order_qty)
 		if min_order_qty > flt(quantity):
@@ -574,7 +576,18 @@ def set_receivable_process_cost(row, process_cost_name, rate):
 	rate = round(flt(rate), 9)
 	row.process_cost = process_cost_name
 	row.cost = rate
-	row.total_cost = round(rate * flt(row.qty), 9)
+	row.total_cost = round(rate * get_receivable_stock_quantity(row), 9)
+
+
+def get_receivable_stock_quantity(row):
+	"""Cost outputs in physical units, including receipts entered in boxes."""
+	from yrp.stock.utils import get_conversion_factor
+
+	factor = 1
+	if row.get("uom"):
+		conversion = get_conversion_factor(row.item_variant, row.uom)
+		factor = flt(conversion.get("conversion_factor")) or 1
+	return flt(row.qty) * factor
 
 
 def get_variant_attributes(item_variant):
@@ -583,7 +596,7 @@ def get_variant_attributes(item_variant):
 		filters={"parent": item_variant, "parenttype": 'Item'},
 		fields=["attribute", "attribute_value"],
 	)
-	return {row.attribute: row.attribute_value for row in rows}
+	return {row.attribute: _attribute_value(row.attribute_value) for row in rows}
 
 
 @frappe.whitelist()
@@ -792,7 +805,7 @@ def _enrich_variant_attributes(rows):
 	) if variants else []
 	attrs_by_variant = {}
 	for r in attr_rows:
-		attrs_by_variant.setdefault(r.parent, {})[r.attribute] = r.attribute_value
+		attrs_by_variant.setdefault(r.parent, {})[r.attribute] = _attribute_value(r.attribute_value)
 
 	for row in rows:
 		variant = row.get("item_variant")
@@ -885,7 +898,7 @@ def create_rework_work_order(parent_wo, rows, supplier_type="Same Supplier", sup
 
 @frappe.whitelist()
 def get_close_permission():
-	approver_role = frappe.db.get_single_value('YRP Settings', "work_order_closing_approver_role")
+	approver_role = attribute_db.get_single_value('YRP Settings', "work_order_closing_approver_role")
 	return {
 		"approver_role": approver_role,
 		"is_close_manager": bool(approver_role and approver_role in frappe.get_roles(frappe.session.user)),
@@ -893,7 +906,7 @@ def get_close_permission():
 
 
 def _get_wo_close_approver_role():
-	approver_role = frappe.db.get_single_value('YRP Settings', "work_order_closing_approver_role")
+	approver_role = attribute_db.get_single_value('YRP Settings', "work_order_closing_approver_role")
 	if not approver_role:
 		frappe.throw(_("Please configure Work Order Closing Approver Role in YRP Settings."))
 	return approver_role
@@ -1399,7 +1412,7 @@ def _is_wo_close_manager(throw_if_missing=False):
 	if throw_if_missing:
 		approver_role = _get_wo_close_approver_role()
 	else:
-		approver_role = frappe.db.get_single_value('YRP Settings', "work_order_closing_approver_role")
+		approver_role = attribute_db.get_single_value('YRP Settings', "work_order_closing_approver_role")
 		if not approver_role:
 			return False
 	return approver_role in frappe.get_roles(frappe.session.user)

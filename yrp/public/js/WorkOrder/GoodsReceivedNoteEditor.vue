@@ -49,7 +49,7 @@
                                    type="number"
                                    min="0"
                                    step="0.001"
-                                   :max="maxQty(row, split, col.key)"
+                                   :max="Number.isFinite(maxQty(row, split, col.key)) ? maxQty(row, split, col.key) : undefined"
                                    :value="qty(split.entry, col.key)"
                                    @input="onQtyInput(row, split, col.key, $event)">
                             <span v-else>{{ formatQty(qty(split.entry, col.key)) }}</span>
@@ -300,6 +300,8 @@ function pendingQty(row, key) {
 function allowedQty(row, key) {
     for (const split of row.splits) {
         const allowed = valueDetail(split.entry, key).max_receivable_quantity;
+        // A server-provided -1 denotes an uncapped receipt mode.
+        if (Number(allowed) === -1) return Infinity;
         if (allowed !== undefined && allowed !== null && allowed !== '') {
 			const normalized = Math.max(toNumber(allowed), 0);
 			if (!props.returnMode || normalized > 0) {
@@ -415,6 +417,7 @@ function removeSplit(row, split) {
 }
 
 function formatQty(value) {
+    if (value === Infinity) return '—';
     const numberValue = toNumber(value);
     if (Number.isInteger(numberValue)) {
         return String(numberValue);

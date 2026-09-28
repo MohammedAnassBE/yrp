@@ -1,8 +1,11 @@
 """IPD Process Matrix API helpers."""
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 
 from itertools import product
 
 import frappe
+from yrp.attribute_values import get_mapping_document
 
 
 @frappe.whitelist()
@@ -22,7 +25,7 @@ def generate_cross_product(ipd, input_attributes=None, output_attributes=None, i
 	"""
 	input_attributes = frappe.parse_json(input_attributes) or []
 	output_attributes = frappe.parse_json(output_attributes) or []
-	ipd_item = frappe.db.get_value('YRP Item Production Detail', ipd, "item")
+	ipd_item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
 	if not ipd_item:
 		frappe.throw(f"IPD {ipd} has no item set.")
 
@@ -56,15 +59,15 @@ def _attribute_values_for_item(item):
 	for attr_row in item_doc.get("attributes") or []:
 		if not attr_row.mapping:
 			continue
-		mapping = frappe.get_doc('YRP Item Item Attribute Mapping', attr_row.mapping)
-		values[attr_row.attribute] = [v.attribute_value for v in mapping.values]
+		mapping = get_mapping_document(attr_row.mapping)
+		values[attr_row.attribute] = [_attribute_value(v.attribute_value) for v in mapping.values]
 	return values
 
 
 @frappe.whitelist()
 def get_attribute_values(ipd, attribute):
 	"""Return list of legal values for one attribute on the IPD's item."""
-	item = frappe.db.get_value('YRP Item Production Detail', ipd, "item")
+	item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
 	if not item:
 		return []
 	return _attribute_values_for_item(item).get(attribute, [])
@@ -74,7 +77,7 @@ def get_attribute_values(ipd, attribute):
 def get_attribute_values_bulk(ipd, attributes):
 	"""Return {attribute: [values]} for the requested attributes on the IPD's item."""
 	attributes = frappe.parse_json(attributes) or []
-	item = frappe.db.get_value('YRP Item Production Detail', ipd, "item")
+	item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
 	if not item:
 		return {}
 	all_values = _attribute_values_for_item(item)
@@ -92,7 +95,7 @@ def get_matrix_attribute_values(ipd, input_attributes=None, output_attributes=No
 	"""
 	input_attributes = frappe.parse_json(input_attributes) or []
 	output_attributes = frappe.parse_json(output_attributes) or []
-	ipd_item = frappe.db.get_value('YRP Item Production Detail', ipd, "item")
+	ipd_item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
 	if not ipd_item:
 		return {"input": {}, "output": {}}
 

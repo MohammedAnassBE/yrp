@@ -3,6 +3,7 @@
 Reads `IPD Process Matrix` (main I/O groups) and `Item Production Detail.item_bom`
 (auxiliary consumables). No knowledge of garments, pharma, or any specific industry.
 """
+from yrp.attribute_links import value as _attribute_value
 
 import frappe
 
@@ -40,8 +41,8 @@ def get_process_io(ipd_name, process_name, output_demand):
 	in_stage = out_stage = None
 	for r in ipd_doc.ipd_processes:
 		if r.process_name == process_name:
-			in_stage = r.in_stage
-			out_stage = r.out_stage
+			in_stage = _attribute_value(r.in_stage)
+			out_stage = _attribute_value(r.out_stage)
 			break
 
 	matrices = []
@@ -209,7 +210,7 @@ def _calculate_reference_matrix(aggregated, ipd, stage_by_process, matrix, deman
 			group,
 			scale,
 			side="Input",
-			stage=stages.get("in_stage"),
+			stage=_attribute_value(stages.get("in_stage")),
 		)
 		if include_outputs:
 			_add_matrix_group_rows(
@@ -221,7 +222,7 @@ def _calculate_reference_matrix(aggregated, ipd, stage_by_process, matrix, deman
 				group,
 				scale,
 				side="Output",
-				stage=stages.get("out_stage"),
+				stage=_attribute_value(stages.get("out_stage")),
 			)
 
 
@@ -242,7 +243,7 @@ def _calculate_generic_matrices(aggregated, ipd, stage_by_process, matrices, dem
 				group=group,
 				scale=scale,
 				side="Input",
-				stage=stages.get("in_stage"),
+				stage=_attribute_value(stages.get("in_stage")),
 				reference_variants=consumed_refs,
 			)
 			if include_outputs:
@@ -255,7 +256,7 @@ def _calculate_generic_matrices(aggregated, ipd, stage_by_process, matrices, dem
 					group=group,
 					scale=scale,
 					side="Output",
-					stage=stages.get("out_stage"),
+					stage=_attribute_value(stages.get("out_stage")),
 					reference_variants=consumed_refs,
 				)
 			_consume_pool_group(ipd, matrix, group, stages, available, scale)
@@ -281,7 +282,7 @@ def _get_pool_group_scale(ipd, matrix, group, stages, available):
 	scales = []
 	consumed_refs = []
 	for combo in input_rows:
-		variant = _matrix_combo_variant(ipd, matrix, combo, side="Input", stage=stages.get("in_stage"))
+		variant = _matrix_combo_variant(ipd, matrix, combo, side="Input", stage=_attribute_value(stages.get("in_stage")))
 		available_qty = float((available.get(variant) or {}).get("qty") or 0)
 		required_qty = _scaled_combo_qty(combo, scale=1, side="Input")
 		if required_qty <= 0 or available_qty <= 0:
@@ -296,7 +297,7 @@ def _get_pool_group_scale(ipd, matrix, group, stages, available):
 
 def _consume_pool_group(ipd, matrix, group, stages, available, scale):
 	for combo in group.get("input") or []:
-		variant = _matrix_combo_variant(ipd, matrix, combo, side="Input", stage=stages.get("in_stage"))
+		variant = _matrix_combo_variant(ipd, matrix, combo, side="Input", stage=_attribute_value(stages.get("in_stage")))
 		if variant not in available:
 			continue
 		available[variant]["qty"] -= _scaled_combo_qty(combo, scale=scale, side="Input")
@@ -425,7 +426,7 @@ def _get_variant_attrs(variant):
 		filters={"parent": variant, "parenttype": 'Item'},
 		fields=["attribute", "attribute_value"],
 	)
-	return {row.attribute: row.attribute_value for row in rows}
+	return {row.attribute: _attribute_value(row.attribute_value) for row in rows}
 
 
 def _project_attrs_for_item(item, source_attrs):
@@ -457,8 +458,8 @@ def _add_accessory_row(aggregated, item, process_name, uom, qty, attrs):
 def _get_process_stage_map(ipd):
 	return {
 		row.process_name: {
-			"in_stage": row.in_stage,
-			"out_stage": row.out_stage,
+			"in_stage": _attribute_value(row.in_stage),
+			"out_stage": _attribute_value(row.out_stage),
 		}
 		for row in ipd.get("ipd_processes") or []
 	}
@@ -487,7 +488,7 @@ def _get_process_matrices(ipd_name, process_filter=None):
 
 def _get_scale_side(ipd, stages):
 	pack_out_stage = getattr(ipd, "pack_out_stage", None)
-	if ipd.dependent_attribute and pack_out_stage and stages.get("out_stage") == pack_out_stage:
+	if ipd.dependent_attribute and pack_out_stage and _attribute_value(stages.get("out_stage")) == pack_out_stage:
 		return "input"
 	return "output"
 
@@ -656,13 +657,13 @@ def _lookup_mode_b(mapping, variant_attrs):
 
 	for idx, rows in by_index.items():
 		item_side = {
-			r.attribute: r.attribute_value
+			r.attribute: _attribute_value(r.attribute_value)
 			for r in rows
 			if r.type == "item" and r.attribute not in same_attrs
 		}
 		bom_side_rows = [r for r in rows if r.type == "bom"]
 		if item_side == variant_key:
-			bom_attrs = {r.attribute: r.attribute_value for r in bom_side_rows}
+			bom_attrs = {r.attribute: _attribute_value(r.attribute_value) for r in bom_side_rows}
 			for attr in same_attrs:
 				if variant_attrs.get(attr):
 					bom_attrs[attr] = variant_attrs[attr]

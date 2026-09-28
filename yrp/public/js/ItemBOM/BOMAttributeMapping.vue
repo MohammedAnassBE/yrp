@@ -37,9 +37,9 @@ export default {
                     data[d.index] = {"item": [], "bom": []};
                 }
                 if (d.type == "item") {
-                    data[d.index]["item"].push(d.attribute_value);
+                    data[d.index]["item"].push(frappe.yrp.attribute_value(d.attribute_value));
                 } else if (d.type == "bom") {
-                    data[d.index]["bom"].push(d.attribute_value);
+                    data[d.index]["bom"].push(frappe.yrp.attribute_value(d.attribute_value));
                 }
             }
             var i = 0;

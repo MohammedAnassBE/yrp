@@ -59,6 +59,7 @@ def _warehouse(label):
 		{
 			"doctype": 'Warehouse',
 			"warehouse_name": f"_Test Valuation {label} {frappe.generate_hash(length=8)}",
+			"company": frappe.db.get_value('Company', {}, "name"),
 		}
 	).insert(ignore_permissions=True).name
 

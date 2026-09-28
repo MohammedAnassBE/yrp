@@ -6,8 +6,10 @@ of 100 pieces, and asserts the input quantities scale correctly.
 
 Run: bench --site yrp2.site execute yrp.yrp.utils.smoke_test_ipd.run
 """
+from yrp import attribute_links as attribute_db
 
 import frappe
+from yrp.attribute_values import get_mapping_document
 
 from yrp.yrp.utils.ipd_engine import get_process_io
 
@@ -38,7 +40,7 @@ def _clean():
 	for item_name in smoke_items:
 		for n in frappe.get_all('YRP IPD Process Matrix', filters={"ipd": ["like", f"IPD-{item_name}-%"]}, pluck="name"):
 			_force_delete('YRP IPD Process Matrix', n)
-		for n in frappe.get_all('YRP Item Production Detail', filters={"item": item_name}, pluck="name"):
+		for n in attribute_db.get_all('YRP Item Production Detail', filters={"item": item_name}, pluck="name"):
 			_force_delete('YRP Item Production Detail', n)
 		item = frappe.get_doc('Item', item_name)
 		for ar in item.get("attributes") or []:
@@ -98,7 +100,7 @@ def _seed_attribute_mapping(item):
 	for attr_row in item_doc.attributes:
 		if attr_row.mapping:
 			# pre-existing — populate values
-			mapping = frappe.get_doc('YRP Item Item Attribute Mapping', attr_row.mapping)
+			mapping = get_mapping_document(attr_row.mapping)
 			mapping.values = []
 			for v in ATTRS[attr_row.attribute]:
 				mapping.append("values", {"attribute_value": v})

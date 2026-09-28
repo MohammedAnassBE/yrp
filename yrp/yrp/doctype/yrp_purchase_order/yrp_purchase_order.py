@@ -1,3 +1,5 @@
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 import json
 from collections import defaultdict
 
@@ -274,7 +276,7 @@ class YRPPurchaseOrderMixin:
 			self.calculate_row_amount(row)
 
 	def is_price_validation_enabled(self):
-		return bool(frappe.db.get_single_value('YRP Settings', "enable_price_validation"))
+		return bool(attribute_db.get_single_value('YRP Settings', "enable_price_validation"))
 
 	def apply_item_prices(self, strict=False, warn_on_missing=False):
 		if not self.supplier or not self.get("items"):
@@ -559,7 +561,7 @@ def _get_variant_attribute_value(item_variant, attribute):
 	variant = frappe.get_doc('Item', item_variant)
 	for row in variant.get("attributes") or []:
 		if row.attribute == attribute:
-			return row.attribute_value
+			return _attribute_value(row.attribute_value)
 	return None
 
 

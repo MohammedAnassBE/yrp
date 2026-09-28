@@ -4,11 +4,14 @@ The module path is retained because it is a stable public API used by the YRP
 and Essdee frontends. The old YRP Item/Variant DocTypes are no longer storage
 authorities: templates, variants and standalone stock items are standard Items.
 """
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 
 import copy
 import json
 
 import frappe
+from yrp.attribute_values import get_mapping_document
 from frappe import _
 from frappe.utils import cstr
 
@@ -22,6 +25,7 @@ _YRP_VARIANT_IDENTITY_FIELDS = (
 	"primary_attribute",
 	"dependent_attribute",
 	"dependent_attribute_mapping",
+	"dependent_attribute_value",
 	"item_hash_value",
 	"item_tuple_attribute",
 )
@@ -58,6 +62,7 @@ def get_global_attribute_values(attribute):
 
 
 def has_attribute_value(attribute, value):
+	value = _attribute_value(value)
 	if not attribute or value in (None, ""):
 		return False
 	return bool(
@@ -82,7 +87,14 @@ def ensure_global_attribute_values(attribute, values, *, check_permission=True):
 	doc = frappe.get_doc("Item Attribute", attribute)
 	if check_permission:
 		doc.check_permission("write")
-	existing = {row.attribute_value for row in doc.get("item_attribute_values") or []}
+	if doc.numeric_values:
+		from yrp.attribute_values import ensure_value_master
+		clean_values = [cstr(value).strip() for value in values or []]
+		for value in clean_values:
+			validate_attribute_value(attribute, value)
+			ensure_value_master(attribute, value)
+		return clean_values
+	existing = {_attribute_value(row.attribute_value) for row in doc.get("item_attribute_values") or []}
 	used_abbrs = {
 		cstr(row.abbr).strip().casefold()
 		for row in doc.get("item_attribute_values") or []
@@ -104,7 +116,7 @@ def ensure_global_attribute_values(attribute, values, *, check_permission=True):
 		changed = True
 	if changed:
 		doc.save(ignore_permissions=not check_permission)
-	return [row.attribute_value for row in doc.get("item_attribute_values") or []]
+	return [_attribute_value(row.attribute_value) for row in doc.get("item_attribute_values") or []]
 
 
 def validate_attribute_value(attribute, value):
@@ -129,6 +141,13 @@ class YRPItemMixin:
 
 	def before_validate(self):
 		_call_super(self, "before_validate")
+		dependent_attribute = (
+			frappe.get_cached_value("Item", self.variant_of, "dependent_attribute")
+			if self.variant_of else None
+		)
+		self.dependent_attribute_value = get_dependent_attribute_value(
+			self.get("attributes"), dependent_attribute
+		)
 		if self.meta.has_field("item_tuple_attribute") and not self.item_tuple_attribute:
 			self.item_tuple_attribute = None
 		if not self.get("item_hash_value"):
@@ -198,7 +217,7 @@ class YRPItemMixin:
 				continue
 			mapped_values = []
 			if attribute.get("mapping"):
-				mapping_doc = frappe.get_cached_doc("YRP Item Item Attribute Mapping", attribute.mapping)
+				mapping_doc = get_mapping_document(attribute.mapping, cached=True)
 				mapped_values = mapping_doc.values
 			attribute_list.append(
 				{
@@ -233,7 +252,7 @@ class YRPItemMixin:
 			return
 		for attribute in self.get("attributes") or []:
 			if attribute.get("mapping"):
-				clone = frappe.copy_doc(frappe.get_doc("YRP Item Item Attribute Mapping", attribute.mapping))
+				clone = frappe.copy_doc(get_mapping_document(attribute.mapping))
 				clone.save()
 				attribute.mapping = clone.name
 		if self.dependent_attribute and self.dependent_attribute_mapping:
@@ -252,9 +271,9 @@ class YRPItemMixin:
 				mapping.attribute_name = attribute.attribute
 				mapping.save()
 				attribute.mapping = mapping.name
-			mapping = frappe.get_cached_doc("YRP Item Item Attribute Mapping", attribute.mapping)
+			mapping = get_mapping_document(attribute.mapping, cached=True)
 			for row in mapping.get("values") or []:
-				validate_attribute_value(attribute.attribute, row.attribute_value)
+				validate_attribute_value(attribute.attribute, _attribute_value(row.attribute_value))
 
 	def _validate_dependent_attribute(self):
 		if not self.dependent_attribute:
@@ -267,8 +286,8 @@ class YRPItemMixin:
 		for attribute in self.get("attributes") or []:
 			if attribute.attribute != self.dependent_attribute:
 				continue
-			mapping = frappe.get_doc("YRP Item Item Attribute Mapping", attribute.mapping)
-			dependent_values = [row.attribute_value for row in mapping.get("values") or []]
+			mapping = get_mapping_document(attribute.mapping)
+			dependent_values = [_attribute_value(row.attribute_value) for row in mapping.get("values") or []]
 			break
 		else:
 			frappe.throw(_("Dependent Attribute must be in the standard Variant Attributes table."))
@@ -323,11 +342,11 @@ class YRPItemMixin:
 		)
 		changed = [field for field in restricted if before.get(field) != self.get(field)]
 		before_attrs = [
-			(r.attribute, r.attribute_value, r.get("mapping"))
+			(r.attribute, _attribute_value(r.attribute_value), r.get("mapping"))
 			for r in before.get("attributes") or []
 		]
 		current_attrs = [
-			(r.attribute, r.attribute_value, r.get("mapping"))
+			(r.attribute, _attribute_value(r.attribute_value), r.get("mapping"))
 			for r in self.get("attributes") or []
 		]
 		if before_attrs != current_attrs:
@@ -439,8 +458,8 @@ def update_dependent_attribute_details(dependent_attribute_mapping, detail):
 
 def _mapping_values(attribute_row):
 	if attribute_row.get("mapping"):
-		mapping = frappe.get_cached_doc("YRP Item Item Attribute Mapping", attribute_row.mapping)
-		values = [row.attribute_value for row in mapping.get("values") or []]
+		mapping = get_mapping_document(attribute_row.mapping, cached=True)
+		values = [_attribute_value(row.attribute_value) for row in mapping.get("values") or []]
 		if values:
 			return values
 	return get_global_attribute_values(attribute_row.attribute)
@@ -521,7 +540,7 @@ def build_variant_attributes(my_attributes, stage, item_or_ipd):
 		mapping_name = item_or_ipd.dependent_attribute_mapping
 		source = getattr(item_or_ipd, "name", item_or_ipd)
 	elif frappe.db.exists("YRP Item Production Detail", item_or_ipd):
-		mapping_name = frappe.get_cached_value(
+		mapping_name = attribute_db.get_cached_value(
 			"YRP Item Production Detail", item_or_ipd, "dependent_attribute_mapping"
 		)
 		source = item_or_ipd
@@ -569,7 +588,7 @@ def _variant_code(template, rows):
 	code = template.name
 	for row in rows:
 		if not row.get("display_name_is_empty"):
-			part = row.get("display_name") or row.get("attribute_value")
+			part = row.get("display_name") or _attribute_value(row.get("attribute_value"))
 			if not part:
 				frappe.throw(_("The Item attribute set is incomplete."))
 			code += "-" + cstr(part)
@@ -606,6 +625,7 @@ def _copy_template_fields(template, variant):
 def create_variant(template, args, dependent_attr=None):
 	if isinstance(args, str):
 		args = json.loads(args)
+	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
 	template_doc = frappe.get_cached_doc("Item", template)
 	if not args and not template_doc.has_variants:
 		return template_doc
@@ -636,17 +656,36 @@ def create_variant(template, args, dependent_attr=None):
 	variant.has_variants = 0
 	variant.variant_based_on = "Item Attribute"
 	variant.set("attributes", rows)
+	variant.dependent_attribute_value = get_dependent_attribute_value(
+		rows, template_doc.dependent_attribute
+	)
 	variant.item_tuple_attribute = str(
-		tuple(sorted((row["attribute"], row["attribute_value"]) for row in rows))
+		tuple(sorted((row["attribute"], _attribute_value(row["attribute_value"])) for row in rows))
 	)
 	variant.item_code = _variant_code(template_doc, rows)
 	variant.item_name = variant.item_code
 	return variant
 
 
+def get_dependent_attribute_value(attributes, dependent_attribute):
+	"""Read the actual variant value, never its display label or item-code suffix."""
+	if not dependent_attribute:
+		return None
+	values = {
+		cstr(_attribute_value(row.get("attribute_value")))
+		for row in attributes or []
+		if row.get("attribute") == dependent_attribute
+		and _attribute_value(row.get("attribute_value")) not in (None, "")
+	}
+	if len(values) > 1:
+		frappe.throw(_("Conflicting values for dependent attribute {0}.").format(dependent_attribute))
+	return next(iter(values), None)
+
+
 def get_or_create_variant(template, args, dependent_attr=None):
 	if isinstance(args, str):
 		args = json.loads(args)
+	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
 	if not args:
 		template_doc = frappe.get_cached_doc("Item", template)
 		if not template_doc.has_variants and not template_doc.variant_of:
@@ -668,6 +707,7 @@ def get_or_create_variant(template, args, dependent_attr=None):
 def get_variant(template, args):
 	if isinstance(args, str):
 		args = json.loads(args)
+	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
 	if not args:
 		template_doc = frappe.get_cached_doc("Item", template)
 		if not template_doc.has_variants and not template_doc.variant_of:
@@ -681,7 +721,7 @@ def get_variant(template, args):
 def _find_variant_by_attributes(template, args):
 	for variant_name in _get_variants_by_attributes(args, template):
 		variant = frappe.get_cached_doc("Item", variant_name)
-		actual = {row.attribute: cstr(row.attribute_value) for row in variant.attributes}
+		actual = {row.attribute: cstr(_attribute_value(row.attribute_value)) for row in variant.attributes}
 		if actual == {key: cstr(value) for key, value in args.items()}:
 			return variant.name
 	return None
@@ -690,16 +730,29 @@ def _find_variant_by_attributes(template, args):
 def _get_variants_by_attributes(args, template=None):
 	if not args:
 		return frappe.get_all("Item", {"variant_of": template}, pluck="name") if template else []
+	# Bound the child lookup to this template before searching common values
+	# such as Stage=Cut; otherwise every missing variant scans the whole catalogue.
+	candidates = None
+	if template:
+		candidates = set(frappe.get_all("Item", {"variant_of": template}, pluck="name"))
+		if not candidates:
+			return []
 	matching_sets = []
 	for attribute, values in args.items():
 		values = values if isinstance(values, list) else [values]
+		filters = {"parenttype": "Item", "parentfield": "attributes", "attribute": attribute, "attribute_value": ["in", values]}
+		if candidates is not None:
+			filters["parent"] = ["in", list(candidates)]
 		parents = frappe.get_all(
 			"Item Variant Attribute",
-			filters={"attribute": attribute, "attribute_value": ["in", values]},
+			filters=filters,
 			pluck="parent",
+			order_by="",
 		)
-		if template and parents:
-			parents = frappe.get_all("Item", {"name": ["in", parents], "variant_of": template}, pluck="name")
+		if not parents:
+			return []
+		if candidates is not None:
+			candidates.intersection_update(parents)
 		matching_sets.append(set(parents))
 	return list(set.intersection(*matching_sets)) if matching_sets else []
 
@@ -723,7 +776,11 @@ def get_item_attribute_values(
 	if not values:
 		values = get_global_attribute_values(attribute)
 	needle = (txt or "").lower()
-	return [[value] for value in values if needle in cstr(value).lower()][start : start + page_len]
+	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
+	if doctype == "YRP Item Attribute Value":
+		from yrp.attribute_value_identity import attribute_value_name
+		return [[attribute_value_name(attribute, value), value] for value in matched]
+	return [[value] for value in matched]
 
 
 @frappe.whitelist()
@@ -768,6 +825,8 @@ def get_item_attributes(doctype, txt, searchfield, start, page_len, filters):
 def get_attribute_values(item, attributes=None):
 	item_doc = frappe.get_cached_doc("Item", get_parent_item(item))
 	item_doc.check_permission("read")
+	if isinstance(attributes, str):
+		attributes = frappe.parse_json(attributes)
 	requested = set(attributes or [row.attribute for row in item_doc.get("attributes") or []])
 	return {
 		row.attribute: _mapping_values(row)
@@ -865,7 +924,7 @@ def prevent_yrp_variant_code_change(doc, method=None):
 		return
 	old_abbr = {row.name: row.abbr for row in before.get("item_attribute_values") or []}
 	changed_values = [
-		row.attribute_value
+		_attribute_value(row.attribute_value)
 		for row in doc.get("item_attribute_values") or []
 		if row.name in old_abbr and old_abbr[row.name] != row.abbr
 	]

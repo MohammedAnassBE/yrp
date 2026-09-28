@@ -1,3 +1,4 @@
+from yrp.attribute_links import value as _attribute_value
 import json
 
 import frappe
@@ -20,11 +21,11 @@ def get_panel_colour_combination(ipd_doc):
 	for row in ipd_doc.stiching_item_combination_details:
 		if indexes.get(row.index):
 			major_colour = indexes[row.index]
-			comb_details[major_colour][row.set_item_attribute_value] = row.attribute_value
+			comb_details[major_colour][_attribute_value(row.set_item_attribute_value)] = _attribute_value(row.attribute_value)
 		else:
-			indexes[row.index] = row.major_attribute_value
-			comb_details[row.major_attribute_value] = {}
-			comb_details[row.major_attribute_value][row.set_item_attribute_value] = row.attribute_value
+			indexes[row.index] = _attribute_value(row.major_attribute_value)
+			comb_details[_attribute_value(row.major_attribute_value)] = {}
+			comb_details[_attribute_value(row.major_attribute_value)][_attribute_value(row.set_item_attribute_value)] = _attribute_value(row.attribute_value)
 
 	return comb_details
 
@@ -35,4 +36,4 @@ def get_variant_attr_details(variant):
 		{"parent": variant},
 		as_dict=True,
 	)
-	return {attr_detail["attribute"]: attr_detail["attribute_value"] for attr_detail in attr_details}
+	return {attr_detail["attribute"]: _attribute_value(attr_detail["attribute_value"]) for attr_detail in attr_details}

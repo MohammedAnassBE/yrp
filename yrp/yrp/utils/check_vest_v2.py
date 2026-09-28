@@ -1,3 +1,5 @@
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 import frappe
 
 
@@ -19,9 +21,9 @@ def run():
 		matrix_info = ""
 		for mname in matrices:
 			n_combos = len(frappe.get_all('YRP IPD Matrix Combination', filters={"parent": mname}))
-			n_attrs = len(frappe.get_all('YRP IPD Matrix Combination Attribute', filters={"parent": mname}))
+			n_attrs = len(attribute_db.get_all('YRP IPD Matrix Combination Attribute', filters={"parent": mname}))
 			matrix_info += f"\n      -> {mname} ({n_combos} combos, {n_attrs} attr-rows)"
-		print(f"    {p.process_name}: in={p.in_stage} out={p.out_stage}{matrix_info}")
+		print(f"    {p.process_name}: in={_attribute_value(p.in_stage)} out={_attribute_value(p.out_stage)}{matrix_info}")
 	print(f"  item_bom rows: {len(ipd.item_bom)}")
 	for r in ipd.item_bom:
 		item_name = frappe.db.get_value('Item', r.item, "item_name")

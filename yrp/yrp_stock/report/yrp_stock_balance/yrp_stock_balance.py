@@ -3,6 +3,7 @@
 Shows opening qty/value, in/out movement, and closing balance grouped by
 (item, warehouse, *stock_dimensions) for a given date range.
 """
+from yrp.attribute_links import value as _attribute_value
 
 from typing import Any, Dict, List
 
@@ -305,7 +306,7 @@ def get_item_details(items, sle, filters):
 		)
 		for a in attrs:
 			item_details.setdefault(a.parent, {})
-			item_details[a.parent][a.attribute] = a.attribute_value
+			item_details[a.parent][a.attribute] = _attribute_value(a.attribute_value)
 
 	return item_details
 

@@ -1,7 +1,10 @@
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
 
 import frappe
+from yrp.attribute_values import get_mapping_document
 from frappe import _, utils
 from frappe.model.document import Document
 
@@ -167,7 +170,7 @@ def get_item_attributes(doctype, txt, searchfield, start, page_len, filters):
 
 
 @frappe.whitelist()
-def get_pc_attribute_values(item, attribute):
+def get_pc_attribute_values(item, attribute, for_link=0):
 	"""Generic: return attribute values from Item Item Attribute Mapping."""
 	if not item or not attribute:
 		return []
@@ -175,9 +178,9 @@ def get_pc_attribute_values(item, attribute):
 	item_doc = frappe.get_doc('Item', item)
 	for attr in item_doc.attributes:
 		if attr.attribute == attribute and attr.mapping:
-			mapping_doc = frappe.get_doc('YRP Item Item Attribute Mapping', attr.mapping)
+			mapping_doc = get_mapping_document(attr.mapping)
 			return [
-				{"price": 0, "min_order_qty": 0, "attribute_value": val.attribute_value}
+				{"price": 0, "min_order_qty": 0, "attribute_value": attribute_db.link(_attribute_value(val.attribute_value), attribute) if frappe.utils.cint(for_link) else _attribute_value(val.attribute_value)}
 				for val in mapping_doc.values
 			]
 	return []

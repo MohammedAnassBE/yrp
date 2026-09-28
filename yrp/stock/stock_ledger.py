@@ -1280,7 +1280,10 @@ class UpdateEntriesAfter:
 
 		# Update running state for next SLE
 		self.stock_value = total_value
-		self.valuation_rate = (total_value / total_qty) if total_qty else 0.0
+		# An empty bucket has no new average. Preserve its last known rate,
+		# as the legacy flow did, without retaining any stock quantity/value.
+		if total_qty:
+			self.valuation_rate = total_value / total_qty
 
 		# Write computed values back to the SLE document
 		frappe.db.set_value(

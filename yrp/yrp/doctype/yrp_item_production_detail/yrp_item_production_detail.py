@@ -1,6 +1,8 @@
+from yrp.attribute_links import value as _attribute_value
 import json
 
 import frappe
+from yrp.attribute_values import get_mapping_document
 from frappe.model.document import Document
 
 from yrp.yrp.utils import ipd_engine
@@ -45,10 +47,10 @@ class YRPItemProductionDetail(Document):
 		rows = list(self.ipd_processes)
 		for i in range(len(rows) - 1):
 			a, b = rows[i], rows[i + 1]
-			if a.out_stage and b.in_stage and a.out_stage != b.in_stage:
+			if _attribute_value(a.out_stage) and _attribute_value(b.in_stage) and _attribute_value(a.out_stage) != _attribute_value(b.in_stage):
 				frappe.throw(
-					f"Stage discontinuity: {a.process_name} out_stage ({a.out_stage}) "
-					f"!= {b.process_name} in_stage ({b.in_stage})"
+					f"Stage discontinuity: {a.process_name} out_stage ({_attribute_value(a.out_stage)}) "
+					f"!= {b.process_name} in_stage ({_attribute_value(b.in_stage)})"
 				)
 
 
@@ -133,9 +135,9 @@ def get_ipd_primary_values(production_detail):
 			mapping = row.get("mapping")
 			break
 	if mapping:
-		map_doc = frappe.get_cached_doc('YRP Item Item Attribute Mapping', mapping)
+		map_doc = get_mapping_document(mapping, cached=True)
 		for val in map_doc.values:
-			primary_attr_values.append(val.attribute_value)
+			primary_attr_values.append(_attribute_value(val.attribute_value))
 	return primary_attr_values
 
 

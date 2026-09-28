@@ -221,8 +221,9 @@
   {
    "depends_on": "po_dependent_attribute",
    "fieldname": "po_dependent_attribute_value",
-   "fieldtype": "Data",
-   "label": "Dependent Attribute Value"
+   "fieldtype": "Link",
+   "label": "Dependent Attribute Value",
+   "options": "YRP Item Attribute Value"
   },
   {
    "fieldname": "vendor_bill_section",
@@ -252,7 +253,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-26 10:00:00.000000",
+ "modified": "2026-09-25 15:12:33.705488",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Settings",

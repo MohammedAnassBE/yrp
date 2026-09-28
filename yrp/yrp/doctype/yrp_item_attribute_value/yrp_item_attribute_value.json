@@ -1,0 +1,79 @@
+{
+ "doctype": "DocType",
+ "name": "YRP Item Attribute Value",
+ "module": "YRP",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "title_field": "attribute_value",
+ "show_title_field_in_link": 1,
+ "search_fields": "attribute_name,attribute_value",
+ "field_order": [
+  "attribute_name",
+  "attribute_value"
+ ],
+ "fields": [
+  {
+   "fieldname": "attribute_name",
+   "label": "Attribute",
+   "fieldtype": "Link",
+   "options": "Item Attribute",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "attribute_value",
+   "label": "Attribute Value",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "select": 1
+  },
+  {
+   "role": "Item Master Manager",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "select": 1
+  },
+  {
+   "role": "Production Planner",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "select": 1
+  },
+  {
+   "role": "Merch User",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "select": 1
+  },
+  {
+   "role": "Item Manager",
+   "read": 1,
+   "create": 1,
+   "write": 1,
+   "report": 1,
+   "export": 1,
+   "select": 1
+  }
+ ],
+ "track_changes": 1
+}
