@@ -50,9 +50,14 @@ class TestDeliverSms(FrappeTestCase):
 		from yrp.yrp.doctype.yrp_sms_notification_log.yrp_sms_notification_log import create_sms_log
 
 		log = create_sms_log(
-			reference_doctype='Supplier', reference_name="_T SMS Log Ref",
-			supplier=None, contact=None, mobile_no="9876543210", template=None,
-			message="hi", result={"ok": True, "http_status": 200, "request_id": "ABC", "raw": "ABC"},
+			reference_doctype="Supplier",
+			reference_name="_T SMS Log Ref",
+			supplier=None,
+			contact=None,
+			mobile_no="9876543210",
+			template=None,
+			message="hi",
+			result={"ok": True, "http_status": 200, "request_id": "ABC", "raw": "ABC"},
 		)
 		self.assertEqual(log.status, "Sent")
 		self.assertEqual(log.request_id, "ABC")

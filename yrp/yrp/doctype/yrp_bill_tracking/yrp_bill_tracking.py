@@ -1,8 +1,8 @@
-from yrp import attribute_links as attribute_db
 import frappe
 import frappe.utils
 from frappe.model.document import Document
 
+from yrp import attribute_links as attribute_db
 from yrp.yrp.doctype.yrp_department.yrp_department import get_user_departments
 
 
@@ -24,17 +24,15 @@ class YRPBillTracking(Document):
 
 		Toggled via YRP Settings.unique_vendor_bill_per_year (0 disables).
 		"""
-		flag = attribute_db.get_single_value(
-			'YRP Settings', "unique_vendor_bill_per_year"
-		)
+		flag = attribute_db.get_single_value("YRP Settings", "unique_vendor_bill_per_year")
 		if not flag:
 			return
-		start_date = attribute_db.get_single_value('YRP Settings', "fiscal_year_start_date")
-		end_date = attribute_db.get_single_value('YRP Settings', "fiscal_year_end_date")
+		start_date = attribute_db.get_single_value("YRP Settings", "fiscal_year_start_date")
+		end_date = attribute_db.get_single_value("YRP Settings", "fiscal_year_end_date")
 		if not start_date or not end_date:
 			return
 		exist_bills = frappe.get_all(
-			'YRP Bill Tracking',
+			"YRP Bill Tracking",
 			filters=[
 				["bill_date", "between", [start_date, end_date]],
 				["supplier", "=", self.supplier],
@@ -52,28 +50,37 @@ class YRPBillTracking(Document):
 			)
 
 	def set_amended_log(self):
-		self.append("bill_tracking_history", {
-			"assigned_by": frappe.session.user,
-			"assigned_on": frappe.utils.now_datetime(),
-			"action": "Amend",
-		})
+		self.append(
+			"bill_tracking_history",
+			{
+				"assigned_by": frappe.session.user,
+				"assigned_on": frappe.utils.now_datetime(),
+				"action": "Amend",
+			},
+		)
 		self.set("form_status", "Amended")
 
 	def set_cancelled_log(self):
-		self.append("bill_tracking_history", {
-			"assigned_by": frappe.session.user,
-			"assigned_on": frappe.utils.now_datetime(),
-			"action": "Cancel",
-		})
+		self.append(
+			"bill_tracking_history",
+			{
+				"assigned_by": frappe.session.user,
+				"assigned_on": frappe.utils.now_datetime(),
+				"action": "Cancel",
+			},
+		)
 		self.set("form_status", "Cancelled")
 
 	def set_first_history(self):
 		if not self.bill_tracking_history:
-			self.append("bill_tracking_history", {
-				"assigned_by": frappe.session.user,
-				"assigned_on": frappe.utils.now_datetime(),
-				"action": "Open",
-			})
+			self.append(
+				"bill_tracking_history",
+				{
+					"assigned_by": frappe.session.user,
+					"assigned_on": frappe.utils.now_datetime(),
+					"action": "Open",
+				},
+			)
 			self.set("form_status", "Open")
 
 	def close_vendor_bill(self, purchase_invoice, remarks=None):
@@ -81,33 +88,42 @@ class YRPBillTracking(Document):
 			frappe.throw("Bill Tracking must be submitted before it can be closed.")
 		if self.form_status == "Closed":
 			frappe.throw("Bill Tracking already closed.")
-		self.append("bill_tracking_history", {
-			"assigned_by": frappe.session.user,
-			"assigned_on": frappe.utils.now_datetime(),
-			"remarks": remarks,
-			"action": "Close",
-		})
+		self.append(
+			"bill_tracking_history",
+			{
+				"assigned_by": frappe.session.user,
+				"assigned_on": frappe.utils.now_datetime(),
+				"remarks": remarks,
+				"action": "Close",
+			},
+		)
 		self.set("form_status", "Closed")
 		self.set("purchase_invoice", purchase_invoice)
 
 	def reopen_vendor_bill(self, remarks=None):
-		self.append("bill_tracking_history", {
-			"assigned_by": frappe.session.user,
-			"assigned_on": frappe.utils.now_datetime(),
-			"remarks": remarks,
-			"action": "Reopen",
-		})
+		self.append(
+			"bill_tracking_history",
+			{
+				"assigned_by": frappe.session.user,
+				"assigned_on": frappe.utils.now_datetime(),
+				"remarks": remarks,
+				"action": "Reopen",
+			},
+		)
 		self.set("form_status", "Reopen")
 		self.set("purchase_invoice", None)
 
 	def assign_bill_to_department(self, department, remarks=None):
-		self.append("bill_tracking_history", {
-			"assigned_to": department,
-			"assigned_on": frappe.utils.now_datetime(),
-			"assigned_by": frappe.session.user,
-			"remarks": remarks,
-			"action": "Assign",
-		})
+		self.append(
+			"bill_tracking_history",
+			{
+				"assigned_to": department,
+				"assigned_on": frappe.utils.now_datetime(),
+				"assigned_by": frappe.session.user,
+				"remarks": remarks,
+				"action": "Assign",
+			},
+		)
 		self.set("form_status", "Assigned")
 		self.set("assigned_to", department)
 
@@ -119,7 +135,7 @@ class YRPBillTracking(Document):
 def assign_vendor_bill(name, assigned_to, remarks=None):
 	from yrp.yrp.doctype.yrp_supplier.yrp_supplier import update_supplier_department_on_bill_tracking
 
-	doc = frappe.get_doc('YRP Bill Tracking', name)
+	doc = frappe.get_doc("YRP Bill Tracking", name)
 	if doc.docstatus != 1 or doc.form_status not in ("Reopen", "Open", "Assigned", "Amended"):
 		frappe.throw(f"Cannot assign Bill Tracking {doc.name} (current status: {doc.form_status}).")
 	doc.assign_bill_to_department(assigned_to, remarks)
@@ -129,14 +145,14 @@ def assign_vendor_bill(name, assigned_to, remarks=None):
 
 @frappe.whitelist()
 def close_vendor_bill(name, purchase_invoice, remarks=None):
-	doc = frappe.get_doc('YRP Bill Tracking', name)
+	doc = frappe.get_doc("YRP Bill Tracking", name)
 	doc.close_vendor_bill(purchase_invoice, remarks)
 	doc.save(ignore_permissions=True)
 
 
 @frappe.whitelist()
 def reopen_vendor_bill(name, remarks=None):
-	doc = frappe.get_doc('YRP Bill Tracking', name)
+	doc = frappe.get_doc("YRP Bill Tracking", name)
 	doc.reopen_vendor_bill(remarks)
 	doc.save(ignore_permissions=True)
 
@@ -152,7 +168,7 @@ def revert_purchase_invoice_link(name, pi_name, origin=None):
 	the revert is a no-op (logged). This prevents a stale PI cancellation from
 	clobbering a freshly-linked replacement.
 	"""
-	doc = frappe.get_doc('YRP Bill Tracking', name)
+	doc = frappe.get_doc("YRP Bill Tracking", name)
 	current = doc.get("purchase_invoice")
 	if current != pi_name:
 		frappe.log_error(
@@ -169,13 +185,16 @@ def revert_purchase_invoice_link(name, pi_name, origin=None):
 		# Link already cleared by an earlier hook (e.g. cancel before trash).
 		return
 	doc.set("purchase_invoice", None)
-	doc.append("bill_tracking_history", {
-		"assigned_to": doc.assigned_to,
-		"assigned_on": frappe.utils.now_datetime(),
-		"assigned_by": frappe.session.user,
-		"remarks": f"Auto-reverted: purchase_invoice={pi_name} ({origin or 'cancelled/deleted'})",
-		"action": "Reopen",
-	})
+	doc.append(
+		"bill_tracking_history",
+		{
+			"assigned_to": doc.assigned_to,
+			"assigned_on": frappe.utils.now_datetime(),
+			"assigned_by": frappe.session.user,
+			"remarks": f"Auto-reverted: purchase_invoice={pi_name} ({origin or 'cancelled/deleted'})",
+			"action": "Reopen",
+		},
+	)
 	if doc.form_status == "Closed":
 		doc.set("form_status", "Reopen")
 	doc.save(ignore_permissions=True)
@@ -183,7 +202,7 @@ def revert_purchase_invoice_link(name, pi_name, origin=None):
 
 @frappe.whitelist()
 def cancel_vendor_bill(name, cancel_reason):
-	doc = frappe.get_doc('YRP Bill Tracking', name)
+	doc = frappe.get_doc("YRP Bill Tracking", name)
 	doc.cancel_reason = cancel_reason
 	doc.flags.ignore_permissions = True
 	doc.cancel()
@@ -192,7 +211,7 @@ def cancel_vendor_bill(name, cancel_reason):
 @frappe.whitelist()
 def make_bill_received_acknowledgement(doc_name):
 	departments = get_user_departments()
-	bill_doc = frappe.get_doc('YRP Bill Tracking', doc_name)
+	bill_doc = frappe.get_doc("YRP Bill Tracking", doc_name)
 	if bill_doc.assigned_to not in departments:
 		frappe.throw("This bill is not assigned to your department.")
 	last_doc = None
@@ -220,7 +239,7 @@ def bulk_assign_bills(assign_to, selected_docs, remarks=None):
 
 @frappe.whitelist()
 def check_for_can_show_receive_btn(name):
-	department = frappe.get_value('YRP Bill Tracking', name, "assigned_to")
+	department = frappe.get_value("YRP Bill Tracking", name, "assigned_to")
 	if not department:
 		return False
 	return bool(get_user_departments(department))
@@ -232,9 +251,9 @@ BillTracking = YRPBillTracking
 def remove_legacy_erp_purchase_invoice_custom_field():
 	"""Remove the former Essdee custom-field metadata without dropping its data column."""
 	filters = {
-		"dt": 'YRP Bill Tracking',
+		"dt": "YRP Bill Tracking",
 		"fieldname": "erp_purchase_invoice",
 	}
 	if frappe.db.exists("Custom Field", filters):
 		frappe.db.delete("Custom Field", filters)
-		frappe.clear_cache(doctype='YRP Bill Tracking')
+		frappe.clear_cache(doctype="YRP Bill Tracking")

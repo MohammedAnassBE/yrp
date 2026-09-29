@@ -21,11 +21,11 @@ class YRPTermsandCondition(Document):
 		if not self.get(flag):
 			return
 		for name in frappe.get_all(
-			'YRP Terms and Condition',
+			"YRP Terms and Condition",
 			filters={flag: 1, "name": ["!=", self.name or ""]},
 			pluck="name",
 		):
-			frappe.db.set_value('YRP Terms and Condition', name, flag, 0)
+			frappe.db.set_value("YRP Terms and Condition", name, flag, 0)
 
 
 def get_default_terms(transaction_type, supplier=None):
@@ -50,15 +50,15 @@ def get_default_terms(transaction_type, supplier=None):
 
 	if supplier:
 		for supplier_field in supplier_fields:
-			mapped = frappe.db.get_value('Supplier', supplier, supplier_field)
+			mapped = frappe.db.get_value("Supplier", supplier, supplier_field)
 			if mapped:
 				return mapped
 
-	txn_default = frappe.db.get_value('YRP Terms and Condition', {default_flag: 1}, "name")
+	txn_default = frappe.db.get_value("YRP Terms and Condition", {default_flag: 1}, "name")
 	if txn_default:
 		return txn_default
 
-	return frappe.db.get_value('YRP Terms and Condition', {"is_default_company": 1}, "name")
+	return frappe.db.get_value("YRP Terms and Condition", {"is_default_company": 1}, "name")
 
 
 TermsandCondition = YRPTermsandCondition

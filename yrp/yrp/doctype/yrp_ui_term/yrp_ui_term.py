@@ -7,4 +7,5 @@ from frappe.model.document import Document
 class YRPUITerm(Document):
 	pass
 
+
 UITerm = YRPUITerm

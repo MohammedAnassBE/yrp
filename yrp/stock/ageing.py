@@ -16,7 +16,7 @@ from yrp.stock.dimensions import get_dimension_fieldnames
 # ----------------------------------------------------------------------
 # Stateless helpers
 # ----------------------------------------------------------------------
-def get_average_age(fifo_queue: List, to_date) -> float:
+def get_average_age(fifo_queue: list, to_date) -> float:
 	age_qty = total_qty = 0.0
 	for batch in fifo_queue:
 		batch_age = date_diff(to_date, batch[1])
@@ -29,7 +29,7 @@ def get_average_age(fifo_queue: List, to_date) -> float:
 	return flt(age_qty / total_qty, 2) if total_qty else 0.0
 
 
-def get_range_age(fifo_queue: List, to_date, range1: int, range2: int, range3: int) -> Tuple:
+def get_range_age(fifo_queue: list, to_date, range1: int, range2: int, range3: int) -> tuple:
 	r1 = r2 = r3 = above = 0.0
 	for entry in fifo_queue:
 		age = date_diff(to_date, entry[1])
@@ -51,22 +51,22 @@ def get_range_age(fifo_queue: List, to_date, range1: int, range2: int, range3: i
 class FIFOSlots:
 	"""Build FIFO slots from SLE history, dimension-aware."""
 
-	def __init__(self, filters: Dict | None = None, sle: List | None = None):
+	def __init__(self, filters: dict | None = None, sle: list | None = None):
 		self.filters = filters or {}
 		self.sle = sle
-		self.item_details: Dict = {}
-		self.transferred_item_details: Dict = {}
+		self.item_details: dict = {}
+		self.transferred_item_details: dict = {}
 		self.dim_fields = get_dimension_fieldnames()
 
 	# Public ----------------------------------------------------------
-	def generate(self) -> Dict:
+	def generate(self) -> dict:
 		if self.sle is None:
 			self.sle = self.__get_stock_ledger_entries()
 
 		for d in self.sle:
 			key, fifo_queue, transfer_key = self.__init_key_stores(d)
 
-			if d.voucher_type == 'YRP Stock Reconciliation':
+			if d.voucher_type == "YRP Stock Reconciliation":
 				prev = self.item_details[key].get("qty_after_transaction", 0)
 				d.qty = flt(d.qty_after_transaction) - flt(prev)
 
@@ -83,7 +83,7 @@ class FIFOSlots:
 		return self.item_details
 
 	# Internals -------------------------------------------------------
-	def __init_key_stores(self, row: Dict) -> Tuple:
+	def __init_key_stores(self, row: dict) -> tuple:
 		dim_key = tuple(row.get(fn) for fn in self.dim_fields)
 		key = (row.item, row.warehouse, *dim_key)
 		self.item_details.setdefault(key, {"details": row, "fifo_queue": []})
@@ -92,7 +92,7 @@ class FIFOSlots:
 		self.transferred_item_details.setdefault(transfer_key, [])
 		return key, fifo_queue, transfer_key
 
-	def __compute_incoming_stock(self, row, fifo_queue: List, transfer_key: Tuple):
+	def __compute_incoming_stock(self, row, fifo_queue: list, transfer_key: tuple):
 		transfer_data = self.transferred_item_details.get(transfer_key)
 		if transfer_data:
 			self.__adjust_incoming_transfer(transfer_data, fifo_queue, row)
@@ -103,7 +103,7 @@ class FIFOSlots:
 			else:
 				fifo_queue.append([flt(row.qty), row.posting_date])
 
-	def __compute_outgoing_stock(self, row, fifo_queue: List, transfer_key: Tuple):
+	def __compute_outgoing_stock(self, row, fifo_queue: list, transfer_key: tuple):
 		"""Remove qty from the FIFO queue for ageing calculation.
 
 		Each FIFO slot is [qty, posting_date]. We consume from the front (oldest first).
@@ -130,7 +130,7 @@ class FIFOSlots:
 				self.transferred_item_details[transfer_key].append([qty_to_pop, slot[1]])
 				qty_to_pop = 0
 
-	def __adjust_incoming_transfer(self, transfer_data, fifo_queue: List, row):
+	def __adjust_incoming_transfer(self, transfer_data, fifo_queue: list, row):
 		remaining = flt(row.qty)
 
 		def push(slot):
@@ -156,23 +156,33 @@ class FIFOSlots:
 		self.item_details[key]["qty_after_transaction"] = row.qty_after_transaction
 		self.item_details[key]["total_qty"] = self.item_details[key].get("total_qty", 0) + row.qty
 
-	def __aggregate_by_item(self, wh_wise: Dict) -> Dict:
-		agg: Dict = {}
+	def __aggregate_by_item(self, wh_wise: dict) -> dict:
+		agg: dict = {}
 		for key, row in wh_wise.items():
 			item = key[0]
-			agg.setdefault(item, {"details": frappe._dict(), "fifo_queue": [], "qty_after_transaction": 0.0, "total_qty": 0.0})
+			agg.setdefault(
+				item,
+				{"details": frappe._dict(), "fifo_queue": [], "qty_after_transaction": 0.0, "total_qty": 0.0},
+			)
 			agg[item]["details"].update(row["details"])
 			agg[item]["fifo_queue"].extend(row["fifo_queue"])
 			agg[item]["qty_after_transaction"] += flt(row["qty_after_transaction"])
 			agg[item]["total_qty"] += flt(row["total_qty"])
 		return agg
 
-	def __get_stock_ledger_entries(self) -> List[Dict]:
+	def __get_stock_ledger_entries(self) -> list[dict]:
 		fields = [
-			"item", "warehouse", "qty", "qty_after_transaction",
-			"posting_date", "posting_time", "voucher_type", "voucher_no",
-		] + self.dim_fields
-		filters: Dict = {"is_cancelled": 0}
+			"item",
+			"warehouse",
+			"qty",
+			"qty_after_transaction",
+			"posting_date",
+			"posting_time",
+			"voucher_type",
+			"voucher_no",
+			*self.dim_fields,
+		]
+		filters: dict = {"is_cancelled": 0}
 		if self.filters.get("to_date"):
 			filters["posting_date"] = ["<=", self.filters["to_date"]]
 		if self.filters.get("warehouse"):
@@ -180,7 +190,7 @@ class FIFOSlots:
 		if self.filters.get("item"):
 			filters["item"] = self.filters["item"]
 		return frappe.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters=filters,
 			fields=fields,
 			order_by="posting_date asc, posting_time asc, creation asc",

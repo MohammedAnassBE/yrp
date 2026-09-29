@@ -64,7 +64,7 @@ class BinWiseValuation(ABC):
 	def __eq__(self, other):
 		if isinstance(other, list):
 			return self.state == other
-		return type(self) == type(other) and self.state == other.state
+		return type(self) is type(other) and self.state == other.state
 
 
 class FIFOValuation(BinWiseValuation):

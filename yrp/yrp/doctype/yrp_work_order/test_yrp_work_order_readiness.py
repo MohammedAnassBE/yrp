@@ -8,13 +8,13 @@ from yrp.yrp.doctype.yrp_work_order.yrp_work_order import WorkOrder
 
 class TestWorkOrderReadiness(FrappeTestCase):
 	def test_base_policy_allows_draft_without_process_cost(self):
-		work_order = WorkOrder({"doctype": 'YRP Work Order'})
+		work_order = WorkOrder({"doctype": "YRP Work Order"})
 		self.assertTrue(work_order.allow_draft_without_process_cost())
 
 	def test_permissive_draft_clears_a_stale_process_cost(self):
 		work_order = WorkOrder(
 			{
-				"doctype": 'YRP Work Order',
+				"doctype": "YRP Work Order",
 				"process_name": "Changed Process",
 				"process_cost": "Old Process Cost",
 				"receivables": [
@@ -43,11 +43,9 @@ class TestWorkOrderReadiness(FrappeTestCase):
 
 		work_order = StrictWorkOrder(
 			{
-				"doctype": 'YRP Work Order',
+				"doctype": "YRP Work Order",
 				"process_name": "Strict Process",
-				"receivables": [
-					{"item_variant": "Strict Variant", "qty": 10}
-				],
+				"receivables": [{"item_variant": "Strict Variant", "qty": 10}],
 			}
 		)
 		with (
@@ -59,13 +57,11 @@ class TestWorkOrderReadiness(FrappeTestCase):
 	def test_submit_readiness_returns_all_shared_issues(self):
 		work_order = WorkOrder(
 			{
-				"doctype": 'YRP Work Order',
+				"doctype": "YRP Work Order",
 				"process_name": "Unconfigured Process",
 				"supplier": "Unconfigured Supplier",
 				"deliverables": [],
-				"receivables": [
-					{"item_variant": "Unconfigured Variant", "qty": 10}
-				],
+				"receivables": [{"item_variant": "Unconfigured Variant", "qty": 10}],
 			}
 		)
 		with patch.object(WorkOrder, "get_receivable_process_cost", return_value=None):
@@ -75,7 +71,7 @@ class TestWorkOrderReadiness(FrappeTestCase):
 		self.assertTrue(any("No approved Process Cost" in issue for issue in issues))
 
 	def test_submit_reports_combined_readiness_error(self):
-		work_order = WorkOrder({"doctype": 'YRP Work Order'})
+		work_order = WorkOrder({"doctype": "YRP Work Order"})
 		with self.assertRaises(frappe.ValidationError) as raised:
 			work_order.before_submit()
 

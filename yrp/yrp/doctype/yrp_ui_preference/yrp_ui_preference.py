@@ -13,7 +13,7 @@ class YRPUIPreference(Document):
 			frappe.msgprint(warning, indicator="orange")
 
 		if self.layout:
-			disabled = frappe.db.get_value('YRP UI Layout', self.layout, "disabled")
+			disabled = frappe.db.get_value("YRP UI Layout", self.layout, "disabled")
 			if disabled is None:
 				frappe.throw(_("UI Layout {0} does not exist").format(frappe.bold(self.layout)))
 			elif disabled:
@@ -24,5 +24,6 @@ class YRPUIPreference(Document):
 					).format(frappe.bold(self.layout), frappe.bold(DEFAULT_LAYOUT_NAME)),
 					indicator="orange",
 				)
+
 
 UIPreference = YRPUIPreference

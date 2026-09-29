@@ -2,10 +2,10 @@
 # For license information, please see license.txt
 
 import frappe
-from frappe.model.document import Document
 from frappe import _
+from frappe.model.document import Document
 from frappe.utils.safe_exec import get_safe_globals
-from frappe.core.doctype.sms_settings.sms_settings import send_sms
+
 
 class YRPNotificationTemplate(Document):
 	def send(self, docname, event, recipients: list[str]):
@@ -27,6 +27,7 @@ class YRPNotificationTemplate(Document):
 
 	def send_email(self, docname, recipients):
 		from email.utils import formataddr
+
 		from frappe.core.doctype.communication.email import _make as make_communication
 
 		context = get_context(self.document_type, docname)
@@ -48,17 +49,17 @@ class YRPNotificationTemplate(Document):
 		)
 
 		make_communication(
-				doctype=self.document_type,
-				name=docname,
-				content=message,
-				subject=subject,
-				sender=sender,
-				recipients=recipients,
-				communication_medium="Email",
-				send_email=False,
-				attachments=attachments,
-				communication_type="Automated Message",
-			)
+			doctype=self.document_type,
+			name=docname,
+			content=message,
+			subject=subject,
+			sender=sender,
+			recipients=recipients,
+			communication_medium="Email",
+			send_email=False,
+			attachments=attachments,
+			communication_type="Automated Message",
+		)
 
 	def send_sms(self, docname, recipients, message=None):
 		if not message:
@@ -69,17 +70,18 @@ class YRPNotificationTemplate(Document):
 			dynamic_params = frappe.parse_json(self.parameters)
 		send_sms(recipients, message, dynamic_params=dynamic_params)
 		from frappe.core.doctype.communication.email import _make as make_communication
+
 		make_communication(
-				doctype=self.document_type,
-				name=docname,
-				content=message,
-				subject="SMS",
-				sender="",
-				recipients=recipients,
-				communication_medium="SMS",
-				send_email=False,
-				communication_type="Automated Message",
-			)
+			doctype=self.document_type,
+			name=docname,
+			content=message,
+			subject="SMS",
+			sender="",
+			recipients=recipients,
+			communication_medium="SMS",
+			send_email=False,
+			communication_type="Automated Message",
+		)
 
 	def send_whatsapp(self, docname, recipients):
 		"""Dormant event path: resolve the per-doctype approved template from
@@ -90,9 +92,7 @@ class YRPNotificationTemplate(Document):
 
 		resolved = self._resolve_whatsapp_template()
 		if not resolved:
-			frappe.msgprint(
-				_("No WhatsApp template configured for {0}").format(self.document_type)
-			)
+			frappe.msgprint(_("No WhatsApp template configured for {0}").format(self.document_type))
 			return
 		account_name, template_name, language_code = resolved
 
@@ -111,12 +111,12 @@ class YRPNotificationTemplate(Document):
 	def _resolve_whatsapp_template(self):
 		"""(account_name, template_name, language_code) for this doctype from the
 		Hub Settings routing table, or None when nothing is configured."""
-		settings = frappe.get_cached_doc('YRP WhatsApp Hub Settings')
+		settings = frappe.get_cached_doc("YRP WhatsApp Hub Settings")
 		config = settings.get_template_config(self.document_type)
 		if not config:
 			return None
 		template_name = frappe.db.get_value(
-			'YRP WhatsApp Template', config.whatsapp_template, "template_name"
+			"YRP WhatsApp Template", config.whatsapp_template, "template_name"
 		)
 		language_code = config.language_code or "en"
 		return settings.get_default_account_name(), template_name, language_code
@@ -174,6 +174,7 @@ class YRPNotificationTemplate(Document):
 				}
 			]
 
+
 def get_context(doctype, docname):
 	doc = frappe.get_doc(doctype, docname)
 	return {
@@ -181,6 +182,7 @@ def get_context(doctype, docname):
 		"nowdate": frappe.utils.nowdate,
 		"frappe": frappe._dict(utils=get_safe_globals().get("frappe").get("utils")),
 	}
+
 
 def add_whatsapp_communication_medium():
 	"""Append 'WhatsApp' to Communication.communication_medium options so the
@@ -204,8 +206,8 @@ def add_whatsapp_communication_medium():
 	)
 	frappe.clear_cache(doctype="Communication")
 
-def send_sms(receiver_list, msg, dynamic_params):
 
+def send_sms(receiver_list, msg, dynamic_params):
 	import json
 
 	if isinstance(receiver_list, str):
@@ -219,13 +221,14 @@ def send_sms(receiver_list, msg, dynamic_params):
 		"receiver_list": receiver_list,
 		"message": frappe.safe_decode(msg).encode("utf-8"),
 		"dynamic_params": dynamic_params,
-		"success_msg": True
+		"success_msg": True,
 	}
 
 	if frappe.db.get_single_value("SMS Settings", "sms_gateway_url"):
 		send_via_gateway(arg)
 	else:
 		frappe.throw(_("Please Update SMS Settings"))
+
 
 def send_via_gateway(arg):
 	ss = frappe.get_doc("SMS Settings", "SMS Settings")
@@ -260,6 +263,7 @@ def send_via_gateway(arg):
 		if arg.get("success_msg"):
 			frappe.msgprint(_("SMS sent to following numbers: {0}").format("\n" + "\n".join(success_list)))
 
+
 def get_headers(sms_settings=None):
 	if not sms_settings:
 		sms_settings = frappe.get_doc("SMS Settings", "SMS Settings")
@@ -270,6 +274,7 @@ def get_headers(sms_settings=None):
 			headers.update({d.parameter: d.value})
 
 	return headers
+
 
 def send_request(gateway_url, params, headers=None, use_post=False, use_json=False):
 	import requests
@@ -290,6 +295,7 @@ def send_request(gateway_url, params, headers=None, use_post=False, use_json=Fal
 		response = requests.get(gateway_url, **kwargs)
 	response.raise_for_status()
 	return response
+
 
 def validate_receiver_nos(receiver_list):
 	validated_receiver_list = []

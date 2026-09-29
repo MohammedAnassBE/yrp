@@ -53,13 +53,13 @@ def get_conversion_factor(item_variant, uom):
 	if not variant_of:
 		frappe.throw(_("Item Variant {0} not found").format(item_variant))
 	conv = frappe.db.get_value(
-		'UOM Conversion Detail',
+		"UOM Conversion Detail",
 		{"parent": variant_of, "parenttype": "Item", "parentfield": "uoms", "uom": uom},
 		"conversion_factor",
 	)
 	return {
 		"conversion_factor": conv or 1.0,
-		"stock_uom": frappe.db.get_value('Item', variant_of, "stock_uom", cache=True),
+		"stock_uom": frappe.db.get_value("Item", variant_of, "stock_uom", cache=True),
 	}
 
 
@@ -96,7 +96,7 @@ def get_last_sle_rate(item, warehouse=None, **dimension_filters):
 		row = frappe.db.sql(
 			f"""
 			SELECT valuation_rate FROM `tabYRP Stock Ledger Entry`
-			WHERE {' AND '.join(conds)}
+			WHERE {" AND ".join(conds)}
 			ORDER BY posting_datetime DESC, creation DESC
 			LIMIT 1
 			""",
@@ -144,7 +144,7 @@ def get_or_make_bin(item_code, warehouse, **dimension_filters):
 	for fn in get_dimension_fieldnames():
 		filters[fn] = dimension_filters.get(fn)
 
-	bin_name = frappe.db.get_value('YRP Bin', filters, "name")
+	bin_name = frappe.db.get_value("YRP Bin", filters, "name")
 	if bin_name:
 		return bin_name
 
@@ -156,7 +156,7 @@ def get_or_make_bin(item_code, warehouse, **dimension_filters):
 	import time
 
 	for attempt in range(5):
-		bin_doc = frappe.new_doc('YRP Bin')
+		bin_doc = frappe.new_doc("YRP Bin")
 		bin_doc.item_code = item_code
 		bin_doc.warehouse = warehouse
 		for fn, val in filters.items():
@@ -170,12 +170,12 @@ def get_or_make_bin(item_code, warehouse, **dimension_filters):
 		except frappe.DuplicateEntryError:
 			frappe.db.rollback(save_point=savepoint)
 			# Snapshot may now see the winner's row; if not, sleep + retry.
-			existing = frappe.db.get_value('YRP Bin', filters, "name")
+			existing = frappe.db.get_value("YRP Bin", filters, "name")
 			if existing:
 				return existing
 			time.sleep(0.05 * (attempt + 1))
 	# Final fallback — by this point the row should be visible.
-	existing = frappe.db.get_value('YRP Bin', filters, "name")
+	existing = frappe.db.get_value("YRP Bin", filters, "name")
 	if existing:
 		return existing
 	frappe.throw(
@@ -212,13 +212,15 @@ def get_stock_balance(
 	if posting_time is None:
 		posting_time = nowtime()
 
-	args = frappe._dict({
-		"item": item,
-		"warehouse": warehouse,
-		"posting_date": posting_date,
-		"posting_time": posting_time,
-		"posting_datetime": get_combine_datetime(posting_date, posting_time),
-	})
+	args = frappe._dict(
+		{
+			"item": item,
+			"warehouse": warehouse,
+			"posting_date": posting_date,
+			"posting_time": posting_time,
+			"posting_datetime": get_combine_datetime(posting_date, posting_time),
+		}
+	)
 	for fn in get_dimension_fieldnames():
 		args[fn] = dimension_filters.get(fn)
 
@@ -234,9 +236,7 @@ def get_stock_balance(
 
 	if with_stale:
 		repost_stale = has_pending_repost(item, warehouse)
-		adjustment_stale = has_stale_valuation_sle(
-			item, warehouse, **dimension_filters
-		)
+		adjustment_stale = has_stale_valuation_sle(item, warehouse, **dimension_filters)
 		stale = repost_stale or adjustment_stale
 		if adjustment_stale and repost_stale:
 			stale_reason = "Stock valuation adjustment and repost in progress"
@@ -289,7 +289,7 @@ def close_voucher_reservations(voucher_type, voucher_name):
 	to SREs via voucher_type/voucher_name.
 	"""
 	srs = frappe.get_all(
-		'YRP Stock Reservation Entry',
+		"YRP Stock Reservation Entry",
 		filters={
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_name,
@@ -299,7 +299,7 @@ def close_voucher_reservations(voucher_type, voucher_name):
 		pluck="name",
 	)
 	for sre in srs:
-		doc = frappe.get_doc('YRP Stock Reservation Entry', sre)
+		doc = frappe.get_doc("YRP Stock Reservation Entry", sre)
 		doc.flags.ignore_permissions = True
 		doc.cancel()
 
@@ -441,7 +441,7 @@ def has_pending_repost(item, warehouse):
 	or in progress (Gap #22)."""
 	return bool(
 		frappe.db.exists(
-			'YRP Repost Item Valuation',
+			"YRP Repost Item Valuation",
 			{
 				"item": item,
 				"warehouse": warehouse,
@@ -463,7 +463,7 @@ def has_stale_valuation_sle(item, warehouse, **dimension_filters):
 	for fieldname in get_valuation_dimensions():
 		if fieldname in dimension_filters:
 			filters[fieldname] = dimension_filters.get(fieldname)
-	return bool(frappe.db.exists('YRP Stock Ledger Entry', filters))
+	return bool(frappe.db.exists("YRP Stock Ledger Entry", filters))
 
 
 def future_sle_exists(args):
@@ -480,7 +480,7 @@ def future_sle_exists(args):
 		val = args.get(fn)
 		if val is not None:
 			conds[fn] = val
-	return bool(frappe.db.exists('YRP Stock Ledger Entry', conds))
+	return bool(frappe.db.exists("YRP Stock Ledger Entry", conds))
 
 
 # ----------------------------------------------------------------------

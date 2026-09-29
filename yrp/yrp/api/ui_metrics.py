@@ -74,9 +74,7 @@ def _count(doctype, filters):
 	"""Permission-aware count via ``frappe.get_list`` — the same
 	DatabaseQuery-with-user-permissions path reportview.get_count runs for the
 	frontend, so numbers match the live home cards for the same user."""
-	rows = frappe.get_list(
-		doctype, filters=deepcopy(filters), fields=[{"COUNT": "name", "as": "value"}]
-	)
+	rows = frappe.get_list(doctype, filters=deepcopy(filters), fields=[{"COUNT": "name", "as": "value"}])
 	return cint(rows[0]["value"]) if rows else 0
 
 
@@ -107,13 +105,13 @@ def _wo_child_rows(child_doctype, extra_filters=None):
 	``has_permission`` gate alone would let a User-Permission-restricted user
 	aggregate GLOBAL child-row totals.
 	"""
-	filters = {"parenttype": 'YRP Work Order', "docstatus": 1}
+	filters = {"parenttype": "YRP Work Order", "docstatus": 1}
 	filters.update(extra_filters or {})
 	return frappe.get_all(
 		child_doctype,
 		filters=filters,
 		fields=["parent", "qty", "pending_quantity"],
-		parent_doctype='YRP Work Order',
+		parent_doctype="YRP Work Order",
 	)
 
 
@@ -121,23 +119,23 @@ def _wo_child_rows(child_doctype, extra_filters=None):
 
 
 def _open_wos():
-	return _count('YRP Work Order', OPEN_WO_FILTERS)
+	return _count("YRP Work Order", OPEN_WO_FILTERS)
 
 
 def _draft_dcs():
-	return _count('YRP Delivery Challan', DRAFT_DC_FILTERS)
+	return _count("YRP Delivery Challan", DRAFT_DC_FILTERS)
 
 
 def _draft_grns():
-	return _count('YRP Goods Received Note', DRAFT_GRN_FILTERS)
+	return _count("YRP Goods Received Note", DRAFT_GRN_FILTERS)
 
 
 def _stock_entries():
-	return _count('YRP Stock Entry', [])
+	return _count("YRP Stock Entry", [])
 
 
 def _total_wo():
-	return _count('YRP Work Order', [])
+	return _count("YRP Work Order", [])
 
 
 def _permitted_submitted_wos():
@@ -147,7 +145,7 @@ def _permitted_submitted_wos():
 	and produced sides always aggregate the SAME scope (2026-07-16 review) — a
 	restricted user can never see global produced totals or >100% completion."""
 	return frappe.get_list(
-		'YRP Work Order',
+		"YRP Work Order",
 		filters=[["docstatus", "=", 1]],
 		fields=["name", "planned_quantity"],
 		limit=0,
@@ -174,9 +172,7 @@ def _produced_qty(wos=None):
 	if not wos:
 		return 0.0
 	return _received_from_rows(
-		_wo_child_rows(
-			'YRP Work Order Receivables', {"parent": ["in", [row.name for row in wos]]}
-		)
+		_wo_child_rows("YRP Work Order Receivables", {"parent": ["in", [row.name for row in wos]]})
 	)
 
 
@@ -192,7 +188,7 @@ def _completion():
 
 
 def _delayed():
-	return _count('YRP Work Order', _delayed_wo_filters())
+	return _count("YRP Work Order", _delayed_wo_filters())
 
 
 # ── METRICS registry ─────────────────────────────────────────────────────────
@@ -203,57 +199,57 @@ def _delayed():
 METRICS = {
 	"open_wos": {
 		"label": "Open Work Orders",
-		"doctypes": ['YRP Work Order'],
+		"doctypes": ["YRP Work Order"],
 		"compute": _open_wos,
-		"goto": lambda: {"doctype": 'YRP Work Order', "filters": deepcopy(OPEN_WO_FILTERS)},
+		"goto": lambda: {"doctype": "YRP Work Order", "filters": deepcopy(OPEN_WO_FILTERS)},
 	},
 	"draft_dcs": {
 		"label": "Draft Delivery Challans",
-		"doctypes": ['YRP Delivery Challan'],
+		"doctypes": ["YRP Delivery Challan"],
 		"compute": _draft_dcs,
-		"goto": lambda: {"doctype": 'YRP Delivery Challan', "filters": deepcopy(DRAFT_DC_FILTERS)},
+		"goto": lambda: {"doctype": "YRP Delivery Challan", "filters": deepcopy(DRAFT_DC_FILTERS)},
 	},
 	"draft_grns": {
 		"label": "Draft GRNs",
-		"doctypes": ['YRP Goods Received Note'],
+		"doctypes": ["YRP Goods Received Note"],
 		"compute": _draft_grns,
-		"goto": lambda: {"doctype": 'YRP Goods Received Note', "filters": deepcopy(DRAFT_GRN_FILTERS)},
+		"goto": lambda: {"doctype": "YRP Goods Received Note", "filters": deepcopy(DRAFT_GRN_FILTERS)},
 	},
 	"stock_entries": {
 		"label": "Stock Entries",
-		"doctypes": ['YRP Stock Entry'],
+		"doctypes": ["YRP Stock Entry"],
 		"compute": _stock_entries,
-		"goto": lambda: {"doctype": 'YRP Stock Entry', "filters": []},
+		"goto": lambda: {"doctype": "YRP Stock Entry", "filters": []},
 	},
 	"total_wo": {
 		"label": "Work Orders",
-		"doctypes": ['YRP Work Order'],
+		"doctypes": ["YRP Work Order"],
 		"compute": _total_wo,
-		"goto": lambda: {"doctype": 'YRP Work Order', "filters": []},
+		"goto": lambda: {"doctype": "YRP Work Order", "filters": []},
 	},
 	"ordered_qty": {
 		"label": "Pieces Ordered",
-		"doctypes": ['YRP Work Order'],
+		"doctypes": ["YRP Work Order"],
 		"compute": _ordered_qty,
-		"goto": lambda: {"doctype": 'YRP Work Order', "filters": [["docstatus", "=", 1]]},
+		"goto": lambda: {"doctype": "YRP Work Order", "filters": [["docstatus", "=", 1]]},
 	},
 	"produced_qty": {
 		"label": "Pieces Produced",
-		"doctypes": ['YRP Work Order'],
+		"doctypes": ["YRP Work Order"],
 		"compute": _produced_qty,
-		"goto": lambda: {"doctype": 'YRP Work Order', "filters": [["docstatus", "=", 1]]},
+		"goto": lambda: {"doctype": "YRP Work Order", "filters": [["docstatus", "=", 1]]},
 	},
 	"completion": {
 		"label": "Completion %",
-		"doctypes": ['YRP Work Order'],
+		"doctypes": ["YRP Work Order"],
 		"compute": _completion,
-		"goto": lambda: {"doctype": 'YRP Work Order', "filters": [["docstatus", "=", 1]]},
+		"goto": lambda: {"doctype": "YRP Work Order", "filters": [["docstatus", "=", 1]]},
 	},
 	"delayed": {
 		"label": "Delayed WOs",
-		"doctypes": ['YRP Work Order'],
+		"doctypes": ["YRP Work Order"],
 		"compute": _delayed,
-		"goto": lambda: {"doctype": 'YRP Work Order', "filters": _delayed_wo_filters()},
+		"goto": lambda: {"doctype": "YRP Work Order", "filters": _delayed_wo_filters()},
 	},
 }
 
@@ -273,9 +269,7 @@ def _merge_hook_registry(base, hook_name):
 			_validate_registry_contribution(contribution, hook_name, path)
 			duplicates = set(registry).intersection(contribution)
 			if duplicates:
-				raise ValueError(
-					f"duplicate registry key(s): {', '.join(sorted(duplicates))}"
-				)
+				raise ValueError(f"duplicate registry key(s): {', '.join(sorted(duplicates))}")
 			# Merge a contribution atomically. If any key is invalid/duplicated,
 			# none of that consumer's keys should leak into the live registry.
 			registry.update(contribution)
@@ -368,9 +362,7 @@ def get_ui_metrics(keys=None):
 		missing = [dt for dt in spec["doctypes"] if not frappe.db.exists("DocType", dt)]
 		if missing:
 			warnings.append(
-				_("metric '{0}' skipped: DocType {1} is not installed").format(
-					key, ", ".join(missing)
-				)
+				_("metric '{0}' skipped: DocType {1} is not installed").format(key, ", ".join(missing))
 			)
 			continue
 
@@ -384,9 +376,7 @@ def get_ui_metrics(keys=None):
 			_log_metric_error(key)
 			continue
 
-		metrics.append(
-			{"key": key, "label": spec["label"], "value": value, "goto": spec["goto"]()}
-		)
+		metrics.append({"key": key, "label": spec["label"], "value": value, "goto": spec["goto"]()})
 
 	return {"metrics": metrics, "warnings": warnings}
 
@@ -394,9 +384,7 @@ def get_ui_metrics(keys=None):
 def _log_metric_error(key):
 	"""Error Log write that can itself never break the metrics response."""
 	try:
-		frappe.log_error(
-			title=f"UI metrics: '{key}' failed"[:140], message=frappe.get_traceback()
-		)
+		frappe.log_error(title=f"UI metrics: '{key}' failed"[:140], message=frappe.get_traceback())
 	except Exception:
 		pass
 
@@ -418,9 +406,7 @@ def run_ui_calculation(name=None, params=None):
 	registry = get_calculation_registry()
 	if not name or not isinstance(name, str) or name not in registry:
 		frappe.throw(
-			_("Unknown calculation {0!r}. Available: {1}").format(
-				name, ", ".join(sorted(registry))
-			),
+			_("Unknown calculation {0!r}. Available: {1}").format(name, ", ".join(sorted(registry))),
 			title=_("Unknown Calculation"),
 		)
 

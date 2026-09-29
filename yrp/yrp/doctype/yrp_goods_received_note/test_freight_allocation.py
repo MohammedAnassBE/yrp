@@ -35,35 +35,37 @@ def _po_with_two_lines(warehouse, qty_a=4, qty_b=6, rate_a=10, rate_b=30):
 	"""
 	item_variant = _test_item_variant()
 	uom = _item_uom(item_variant)
-	po = frappe.get_doc({
-		"doctype": 'Purchase Order',
-		"is_yrp_managed": 1,
-		"supplier": _supplier(f"_T_Freight_Supplier_{frappe.generate_hash(length=6)}"),
-		"set_warehouse": warehouse,
-		**_production_group_dimensions(),
-		"items": [
-			{
-				"item_code": item_variant,
-				"qty": qty_a,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"rate": rate_a,
-				"table_index": 0,
-				"row_index": 0,
-			},
-			{
-				"item_code": item_variant,
-				"qty": qty_b,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"rate": rate_b,
-				"table_index": 0,
-				"row_index": 1,
-			},
-		],
-	})
+	po = frappe.get_doc(
+		{
+			"doctype": "Purchase Order",
+			"is_yrp_managed": 1,
+			"supplier": _supplier(f"_T_Freight_Supplier_{frappe.generate_hash(length=6)}"),
+			"set_warehouse": warehouse,
+			**_production_group_dimensions(),
+			"items": [
+				{
+					"item_code": item_variant,
+					"qty": qty_a,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"rate": rate_a,
+					"table_index": 0,
+					"row_index": 0,
+				},
+				{
+					"item_code": item_variant,
+					"qty": qty_b,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"rate": rate_b,
+					"table_index": 0,
+					"row_index": 1,
+				},
+			],
+		}
+	)
 	po.insert(ignore_permissions=True)
 	po.submit()
 	return po
@@ -74,32 +76,36 @@ def _grn_from_po(po, freight=0, full=True):
 	each PO line at PO qty when full=True."""
 	rows = []
 	for i, item in enumerate(po.items):
-		rows.append({
-			"item_variant": item.item_code,
-			"quantity": item.qty if full else flt(item.qty) / 2,
-			"uom": item.uom,
-			"stock_uom": item.stock_uom,
-			"conversion_factor": item.conversion_factor,
-			"rate": item.rate,
-			"ref_doctype": 'Purchase Order Item',
-			"ref_docname": item.name,
-			"table_index": 0,
-			"row_index": str(i),
-		})
-	grn = frappe.get_doc({
-		"doctype": 'YRP Goods Received Note',
-		"against": 'Purchase Order',
-		"against_id": po.name,
-		"posting_date": nowdate(),
-		"posting_time": nowtime(),
-		"to_warehouse": po.set_warehouse,
-		"supplier_address": po.supplier_address
-		or _address(f"_T Freight Supplier Address {frappe.generate_hash(length=6)}"),
-		"delivery_address": po.shipping_address
-		or _address(f"_T Freight Delivery Address {frappe.generate_hash(length=6)}"),
-		"freight_charges": freight,
-		"items": rows,
-	})
+		rows.append(
+			{
+				"item_variant": item.item_code,
+				"quantity": item.qty if full else flt(item.qty) / 2,
+				"uom": item.uom,
+				"stock_uom": item.stock_uom,
+				"conversion_factor": item.conversion_factor,
+				"rate": item.rate,
+				"ref_doctype": "Purchase Order Item",
+				"ref_docname": item.name,
+				"table_index": 0,
+				"row_index": str(i),
+			}
+		)
+	grn = frappe.get_doc(
+		{
+			"doctype": "YRP Goods Received Note",
+			"against": "Purchase Order",
+			"against_id": po.name,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"to_warehouse": po.set_warehouse,
+			"supplier_address": po.supplier_address
+			or _address(f"_T Freight Supplier Address {frappe.generate_hash(length=6)}"),
+			"delivery_address": po.shipping_address
+			or _address(f"_T Freight Delivery Address {frappe.generate_hash(length=6)}"),
+			"freight_charges": freight,
+			"items": rows,
+		}
+	)
 	grn.insert(ignore_permissions=True)
 	return grn
 
@@ -109,22 +115,19 @@ class TestGRNFreightAllocation(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		_default_received_type()
-		cls._original_method = frappe.db.get_single_value(
-			'YRP Stock Settings', "freight_allocation_method"
-		)
+		cls._original_method = frappe.db.get_single_value("YRP Stock Settings", "freight_allocation_method")
 
 	@classmethod
 	def tearDownClass(cls):
 		frappe.db.set_single_value(
-			'YRP Stock Settings', "freight_allocation_method",
+			"YRP Stock Settings",
+			"freight_allocation_method",
 			cls._original_method or "By Quantity",
 		)
 		super().tearDownClass()
 
 	def _set_method(self, method):
-		frappe.db.set_single_value(
-			'YRP Stock Settings', "freight_allocation_method", method
-		)
+		frappe.db.set_single_value("YRP Stock Settings", "freight_allocation_method", method)
 
 	# ---------- By Quantity allocation ----------
 
@@ -183,7 +186,7 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		warehouse = _warehouse(f"_T_Freight_FB_{frappe.generate_hash(length=6)}")
 		po = _purchase_order(qty=10, warehouse=warehouse)
 		# Force the PO rate to 0 to simulate free samples
-		frappe.db.set_value('Purchase Order Item', po.items[0].name, "rate", 0)
+		frappe.db.set_value("Purchase Order Item", po.items[0].name, "rate", 0)
 		po.reload()
 		grn = _grn_from_po(po, freight=50)
 		# GRN inherits rate=0 from PO via _grn_from_po
@@ -241,7 +244,7 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		grn = _grn_from_po(po, freight=100)
 		grn.submit()
 		sles = frappe.db.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": grn.name, "is_cancelled": 0},
 			fields=["qty", "rate"],
 		)
@@ -274,18 +277,47 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		warehouse = _warehouse(f"_T_Freight_3Row_{frappe.generate_hash(length=6)}")
 		item_variant = _test_item_variant()
 		uom = _item_uom(item_variant)
-		po = frappe.get_doc({
-			"doctype": 'Purchase Order',
-			"is_yrp_managed": 1,
-			"supplier": _supplier(f"_T_Freight_3R_{frappe.generate_hash(length=6)}"),
-			"set_warehouse": warehouse,
-			**_production_group_dimensions(),
-			"items": [
-				{"item_code": item_variant, "qty": 100, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 0},
-				{"item_code": item_variant, "qty": 200, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 1},
-				{"item_code": item_variant, "qty": 700, "uom": uom, "stock_uom": uom, "conversion_factor": 1, "rate": 1, "table_index": 0, "row_index": 2},
-			],
-		})
+		po = frappe.get_doc(
+			{
+				"doctype": "Purchase Order",
+				"is_yrp_managed": 1,
+				"supplier": _supplier(f"_T_Freight_3R_{frappe.generate_hash(length=6)}"),
+				"set_warehouse": warehouse,
+				**_production_group_dimensions(),
+				"items": [
+					{
+						"item_code": item_variant,
+						"qty": 100,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"rate": 1,
+						"table_index": 0,
+						"row_index": 0,
+					},
+					{
+						"item_code": item_variant,
+						"qty": 200,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"rate": 1,
+						"table_index": 0,
+						"row_index": 1,
+					},
+					{
+						"item_code": item_variant,
+						"qty": 700,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"rate": 1,
+						"table_index": 0,
+						"row_index": 2,
+					},
+				],
+			}
+		)
 		po.insert(ignore_permissions=True)
 		po.submit()
 		grn = _grn_from_po(po, freight=10)
@@ -308,7 +340,7 @@ class TestGRNFreightAllocation(FrappeTestCase):
 		grn.cancel()
 
 		non_cancelled = frappe.db.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": grn.name, "is_cancelled": 0},
 			fields=["qty"],
 		)

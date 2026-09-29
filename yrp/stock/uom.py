@@ -5,12 +5,12 @@ UOM and, when configured, the selected variant's dependent-attribute value
 supplies the transaction UOM.  Every server controller should overwrite the
 submitted UOM fields with the values returned here.
 """
-from yrp.attribute_links import value as _attribute_value
 
 import frappe
 from frappe import _
 from frappe.utils import flt
 
+from yrp.attribute_links import value as _attribute_value
 from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
@@ -28,13 +28,11 @@ def resolve_item_uom(item_variant):
 	if not parent_item:
 		frappe.throw(_("Item Variant {0} does not exist.").format(item_variant))
 
-	item = frappe.get_cached_doc('Item', parent_item)
+	item = frappe.get_cached_doc("Item", parent_item)
 	stock_uom = item.stock_uom
 	if not stock_uom:
 		frappe.throw(
-			_("Item {0} has no Default Unit of Measure. Complete the Item master first.").format(
-				parent_item
-			)
+			_("Item {0} has no Default Unit of Measure. Complete the Item master first.").format(parent_item)
 		)
 
 	transaction_uom = stock_uom
@@ -48,10 +46,10 @@ def resolve_item_uom(item_variant):
 			)
 
 		attribute_value = frappe.db.get_value(
-			'Item Variant Attribute',
+			"Item Variant Attribute",
 			{
 				"parent": item_variant,
-				"parenttype": 'Item',
+				"parenttype": "Item",
 				"attribute": item.dependent_attribute,
 			},
 			"attribute_value",
@@ -65,10 +63,14 @@ def resolve_item_uom(item_variant):
 			)
 
 		mapping = frappe.get_cached_doc(
-			'YRP Item Dependent Attribute Mapping', item.dependent_attribute_mapping
+			"YRP Item Dependent Attribute Mapping", item.dependent_attribute_mapping
 		)
 		mapping_row = next(
-			(row for row in mapping.get("details") or [] if _attribute_value(row.attribute_value) == attribute_value),
+			(
+				row
+				for row in mapping.get("details") or []
+				if _attribute_value(row.attribute_value) == attribute_value
+			),
 			None,
 		)
 		if not mapping_row or not mapping_row.uom:
@@ -83,11 +85,7 @@ def resolve_item_uom(item_variant):
 	conversion_factor = 1.0
 	if transaction_uom != stock_uom:
 		conversion_row = next(
-			(
-				row
-				for row in item.get("uoms") or []
-				if row.uom == transaction_uom
-			),
+			(row for row in item.get("uoms") or [] if row.uom == transaction_uom),
 			None,
 		)
 		conversion_factor = flt(conversion_row.conversion_factor) if conversion_row else 0

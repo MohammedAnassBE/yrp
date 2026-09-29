@@ -3,10 +3,10 @@
 Reads `IPD Process Matrix` (main I/O groups) and `Item Production Detail.item_bom`
 (auxiliary consumables). No knowledge of garments, pharma, or any specific industry.
 """
-from yrp.attribute_links import value as _attribute_value
 
 import frappe
 
+from yrp.attribute_links import value as _attribute_value
 from yrp.yrp.doctype.yrp_item.yrp_item import get_or_create_variant
 from yrp.yrp.doctype.yrp_item_bom.yrp_item_bom import validate_bom_item_variant_mapping
 
@@ -27,14 +27,14 @@ def get_process_io(ipd_name, process_name, output_demand):
 	    {"item": str, "attrs": {...}, "qty": float, "uom": str}.
 	"""
 	matrix_names = frappe.get_all(
-		'YRP IPD Process Matrix',
+		"YRP IPD Process Matrix",
 		filters={"ipd": ipd_name, "process_name": process_name, "docstatus": ["<", 2]},
 		pluck="name",
 	)
 	if not matrix_names:
 		frappe.throw(f"No IPD Process Matrix found for IPD {ipd_name} / process {process_name}.")
 
-	ipd_doc = frappe.get_doc('YRP Item Production Detail', ipd_name)
+	ipd_doc = frappe.get_doc("YRP Item Production Detail", ipd_name)
 	parent_item = ipd_doc.item
 	dep_attr = ipd_doc.dependent_attribute
 	# Look up in_stage / out_stage for this process from IPD Process row
@@ -47,21 +47,25 @@ def get_process_io(ipd_name, process_name, output_demand):
 
 	matrices = []
 	for mname in matrix_names:
-		mdoc = frappe.get_doc('YRP IPD Process Matrix', mname)
-		matrices.append({
-			"name": mname,
-			"reference_item_variant": mdoc.reference_item_variant,
-			"input_item": mdoc.input_item or parent_item,
-			"output_item": mdoc.output_item or parent_item,
-			"groups": mdoc.get_combinations_grouped(),
-		})
+		mdoc = frappe.get_doc("YRP IPD Process Matrix", mname)
+		matrices.append(
+			{
+				"name": mname,
+				"reference_item_variant": mdoc.reference_item_variant,
+				"input_item": mdoc.input_item or parent_item,
+				"output_item": mdoc.output_item or parent_item,
+				"groups": mdoc.get_combinations_grouped(),
+			}
+		)
 
 	inputs_required = []
 	outputs_produced = []
 
 	for demand in output_demand:
 		# Strip dep attr from demand (matrices don't carry it; engine matches on the rest)
-		demand_attrs_lookup = {k: v for k, v in (demand.get("attrs") or {}).items() if not dep_attr or k != dep_attr}
+		demand_attrs_lookup = {
+			k: v for k, v in (demand.get("attrs") or {}).items() if not dep_attr or k != dep_attr
+		}
 		match = _find_group_across_matrices(
 			matrices,
 			{
@@ -82,25 +86,31 @@ def get_process_io(ipd_name, process_name, output_demand):
 			attrs = dict(inp["attrs"])
 			if dep_attr and in_stage is not None:
 				attrs[dep_attr] = in_stage
-			inputs_required.append({
-				"item": inp.get("item") or matrix["input_item"],
-				"attrs": attrs,
-				"qty": inp["qty"] * scale * (1 + wastage / 100.0),
-				"uom": inp["uom"],
-				"reference_item_variant": demand.get("reference_item_variant") or demand.get("item_variant"),
-			})
+			inputs_required.append(
+				{
+					"item": inp.get("item") or matrix["input_item"],
+					"attrs": attrs,
+					"qty": inp["qty"] * scale * (1 + wastage / 100.0),
+					"uom": inp["uom"],
+					"reference_item_variant": demand.get("reference_item_variant")
+					or demand.get("item_variant"),
+				}
+			)
 
 		for out in group["output"]:
 			attrs = dict(out["attrs"])
 			if dep_attr and out_stage is not None:
 				attrs[dep_attr] = out_stage
-			outputs_produced.append({
-				"item": out.get("item") or matrix["output_item"],
-				"attrs": attrs,
-				"qty": out["qty"] * scale,
-				"uom": out["uom"],
-				"reference_item_variant": demand.get("reference_item_variant") or demand.get("item_variant"),
-			})
+			outputs_produced.append(
+				{
+					"item": out.get("item") or matrix["output_item"],
+					"attrs": attrs,
+					"qty": out["qty"] * scale,
+					"uom": out["uom"],
+					"reference_item_variant": demand.get("reference_item_variant")
+					or demand.get("item_variant"),
+				}
+			)
 
 	return {"inputs": inputs_required, "outputs": outputs_produced}
 
@@ -109,13 +119,11 @@ def _find_group_across_matrices(matrices, demand):
 	demand_attrs = demand["attrs"]
 	demand_reference = demand.get("reference_item_variant")
 	exact_matrices = [
-		matrix for matrix in matrices
+		matrix
+		for matrix in matrices
 		if demand_reference and matrix.get("reference_item_variant") == demand_reference
 	]
-	generic_matrices = [
-		matrix for matrix in matrices
-		if not matrix.get("reference_item_variant")
-	]
+	generic_matrices = [matrix for matrix in matrices if not matrix.get("reference_item_variant")]
 	search_matrices = exact_matrices if exact_matrices else generic_matrices
 	for matrix in search_matrices:
 		for _gidx, g in matrix["groups"].items():
@@ -144,7 +152,7 @@ def calculate_major_deliverables(ipd_name, variant_demands, process_names=None, 
 
 	Returns aggregated rows with `process_name`, `item_variant`, `required_qty`, and `uom`.
 	"""
-	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
+	ipd = frappe.get_doc("YRP Item Production Detail", ipd_name)
 	demands = _normalize_variant_demands(ipd, variant_demands)
 	process_filter = _normalize_process_filter(process_names)
 	stage_by_process = _get_process_stage_map(ipd)
@@ -266,10 +274,13 @@ def _build_available_pool(demands):
 	available = {}
 	for demand in demands:
 		variant = demand["item_variant"]
-		available.setdefault(variant, {
-			"qty": 0.0,
-			"attrs": demand.get("attrs") or {},
-		})
+		available.setdefault(
+			variant,
+			{
+				"qty": 0.0,
+				"attrs": demand.get("attrs") or {},
+			},
+		)
 		available[variant]["qty"] += float(demand.get("qty") or 0)
 	return available
 
@@ -282,7 +293,9 @@ def _get_pool_group_scale(ipd, matrix, group, stages, available):
 	scales = []
 	consumed_refs = []
 	for combo in input_rows:
-		variant = _matrix_combo_variant(ipd, matrix, combo, side="Input", stage=_attribute_value(stages.get("in_stage")))
+		variant = _matrix_combo_variant(
+			ipd, matrix, combo, side="Input", stage=_attribute_value(stages.get("in_stage"))
+		)
 		available_qty = float((available.get(variant) or {}).get("qty") or 0)
 		required_qty = _scaled_combo_qty(combo, scale=1, side="Input")
 		if required_qty <= 0 or available_qty <= 0:
@@ -297,7 +310,9 @@ def _get_pool_group_scale(ipd, matrix, group, stages, available):
 
 def _consume_pool_group(ipd, matrix, group, stages, available, scale):
 	for combo in group.get("input") or []:
-		variant = _matrix_combo_variant(ipd, matrix, combo, side="Input", stage=_attribute_value(stages.get("in_stage")))
+		variant = _matrix_combo_variant(
+			ipd, matrix, combo, side="Input", stage=_attribute_value(stages.get("in_stage"))
+		)
 		if variant not in available:
 			continue
 		available[variant]["qty"] -= _scaled_combo_qty(combo, scale=scale, side="Input")
@@ -306,9 +321,9 @@ def _consume_pool_group(ipd, matrix, group, stages, available, scale):
 
 
 def _matrix_combo_variant(ipd, matrix, combo, side, stage):
-	matrix_item = combo.get("item") or (
-		matrix.input_item if side == "Input" else matrix.output_item
-	) or ipd.item
+	matrix_item = (
+		combo.get("item") or (matrix.input_item if side == "Input" else matrix.output_item) or ipd.item
+	)
 	attrs = dict(combo.get("attrs") or {})
 	if matrix_item == ipd.item and ipd.dependent_attribute and stage is not None:
 		attrs[ipd.dependent_attribute] = stage
@@ -326,12 +341,9 @@ def _scaled_combo_qty(combo, scale, side):
 
 def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
 	"""Scale `Item Production Detail.item_bom` rows for the same demand payload."""
-	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
+	ipd = frappe.get_doc("YRP Item Production Detail", ipd_name)
 	demands = _normalize_variant_demands(ipd, variant_demands)
-	variants = [
-		{"attrs": demand["attrs"], "qty": demand["qty"]}
-		for demand in demands
-	]
+	variants = [{"attrs": demand["attrs"], "qty": demand["qty"]} for demand in demands]
 	aggregated = {}
 	for bom_row in ipd.item_bom:
 		if process_name and bom_row.process_name and bom_row.process_name != process_name:
@@ -365,9 +377,7 @@ def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
 	return list(aggregated.values())
 
 
-def calculate_bom_for_variant_demands(
-	ipd_name, variant_demands, process_names=None, include_outputs=False
-):
+def calculate_bom_for_variant_demands(ipd_name, variant_demands, process_names=None, include_outputs=False):
 	"""Return matrix deliverables and accessory BOM rows for variant demands."""
 	return {
 		"major_deliverables": calculate_major_deliverables(
@@ -381,7 +391,9 @@ def calculate_bom_for_variant_demands(
 
 
 def _normalize_variant_demands(ipd, variant_demands):
-	variant_demands = frappe.parse_json(variant_demands) if isinstance(variant_demands, str) else variant_demands
+	variant_demands = (
+		frappe.parse_json(variant_demands) if isinstance(variant_demands, str) else variant_demands
+	)
 	if isinstance(variant_demands, dict):
 		variant_demands = [variant_demands]
 	if not variant_demands:
@@ -400,11 +412,13 @@ def _normalize_variant_demands(ipd, variant_demands):
 		variant_item = get_parent_item(variant)
 		if variant_item != ipd.item:
 			frappe.throw(f"Item Variant {variant} does not belong to IPD item {ipd.item}.")
-		demands.append({
-			"item_variant": variant,
-			"qty": qty,
-			"attrs": _get_variant_attrs(variant),
-		})
+		demands.append(
+			{
+				"item_variant": variant,
+				"qty": qty,
+				"attrs": _get_variant_attrs(variant),
+			}
+		)
 
 	if not demands:
 		frappe.throw("Please provide a Qty greater than zero to calculate BOM.")
@@ -422,21 +436,17 @@ def _normalize_process_filter(process_names):
 
 def _get_variant_attrs(variant):
 	rows = frappe.get_all(
-		'Item Variant Attribute',
-		filters={"parent": variant, "parenttype": 'Item'},
+		"Item Variant Attribute",
+		filters={"parent": variant, "parenttype": "Item"},
 		fields=["attribute", "attribute_value"],
 	)
 	return {row.attribute: _attribute_value(row.attribute_value) for row in rows}
 
 
 def _project_attrs_for_item(item, source_attrs):
-	item_doc = frappe.get_cached_doc('Item', item)
+	item_doc = frappe.get_cached_doc("Item", item)
 	item_attrs = {row.attribute for row in item_doc.get("attributes") or []}
-	return {
-		attr: value
-		for attr, value in (source_attrs or {}).items()
-		if attr in item_attrs
-	}
+	return {attr: value for attr, value in (source_attrs or {}).items() if attr in item_attrs}
 
 
 def _add_accessory_row(aggregated, item, process_name, uom, qty, attrs):
@@ -444,7 +454,7 @@ def _add_accessory_row(aggregated, item, process_name, uom, qty, attrs):
 	key = (process_name, item_variant, uom)
 	if key not in aggregated:
 		aggregated[key] = {
-			"source": 'YRP Item BOM',
+			"source": "YRP Item BOM",
 			"process_name": process_name,
 			"item": item,
 			"item_variant": item_variant,
@@ -474,21 +484,25 @@ def _get_process_matrices(ipd_name, process_filter=None):
 		filters["process_name"] = ["in", list(process_filter)]
 
 	matrix_names = frappe.get_all(
-		'YRP IPD Process Matrix',
+		"YRP IPD Process Matrix",
 		filters=filters,
 		pluck="name",
 		order_by="process_name asc, idx asc, name asc",
 	)
 	matrices_by_process = {}
 	for matrix_name in matrix_names:
-		matrix = frappe.get_doc('YRP IPD Process Matrix', matrix_name)
+		matrix = frappe.get_doc("YRP IPD Process Matrix", matrix_name)
 		matrices_by_process.setdefault(matrix.process_name, []).append(matrix)
 	return matrices_by_process
 
 
 def _get_scale_side(ipd, stages):
 	pack_out_stage = getattr(ipd, "pack_out_stage", None)
-	if ipd.dependent_attribute and pack_out_stage and _attribute_value(stages.get("out_stage")) == pack_out_stage:
+	if (
+		ipd.dependent_attribute
+		and pack_out_stage
+		and _attribute_value(stages.get("out_stage")) == pack_out_stage
+	):
 		return "input"
 	return "output"
 
@@ -533,9 +547,9 @@ def _add_matrix_group_rows(
 	side_key = side.lower()
 
 	for combo in group[side_key]:
-		matrix_item = combo.get("item") or (
-			matrix.input_item if side == "Input" else matrix.output_item
-		) or parent_item
+		matrix_item = (
+			combo.get("item") or (matrix.input_item if side == "Input" else matrix.output_item) or parent_item
+		)
 		attrs = dict(combo["attrs"] or {})
 		if matrix_item == parent_item and dep_attr and stage is not None:
 			attrs[dep_attr] = stage
@@ -549,7 +563,7 @@ def _add_matrix_group_rows(
 		key = (side, matrix.process_name, item_variant, combo.get("uom"))
 		if key not in aggregated:
 			aggregated[key] = {
-				"source": 'YRP IPD Process Matrix',
+				"source": "YRP IPD Process Matrix",
 				"side": side,
 				"process_name": matrix.process_name,
 				"item": matrix_item,
@@ -584,7 +598,7 @@ def get_consumables(ipd_name, total_output_qty, variants=None, process_name=None
 
 	Returns list of {"item": str, "qty": float, "uom": str, "process": str, "attrs": {...}}.
 	"""
-	ipd = frappe.get_doc('YRP Item Production Detail', ipd_name)
+	ipd = frappe.get_doc("YRP Item Production Detail", ipd_name)
 	out = []
 
 	for row in ipd.item_bom:
@@ -601,20 +615,22 @@ def get_consumables(ipd_name, total_output_qty, variants=None, process_name=None
 		else:
 			ratio = (row.qty_of_bom_item or 0) / (row.qty_of_product or 1)
 			qty = total_output_qty * ratio * wastage_factor
-			out.append({
-				"item": row.item,
-				"qty": qty,
-				"uom": row.uom,
-				"process": row.process_name,
-				"attrs": {},
-			})
+			out.append(
+				{
+					"item": row.item,
+					"qty": qty,
+					"uom": row.uom,
+					"process": row.process_name,
+					"attrs": {},
+				}
+			)
 
 	return out
 
 
 def _resolve_mode_b(bom_row, variants, wastage_factor):
 	"""Resolve Mode B per-variant qty by looking up Item BOM Attribute Mapping."""
-	mapping = frappe.get_doc('YRP Item BOM Attribute Mapping', bom_row.attribute_mapping)
+	mapping = frappe.get_doc("YRP Item BOM Attribute Mapping", bom_row.attribute_mapping)
 	results = []
 	for variant in variants:
 		variant_attrs = variant["attrs"]
@@ -625,13 +641,15 @@ def _resolve_mode_b(bom_row, variants, wastage_factor):
 		qty_of_bom_item = bom_combo.get("qty_of_bom_item") or bom_row.qty_of_bom_item or 0
 		qty_of_product = bom_row.qty_of_product or 1
 		qty = variant_qty * (qty_of_bom_item / qty_of_product) * wastage_factor
-		results.append({
-			"item": bom_row.item or mapping.bom_item,
-			"qty": qty,
-			"uom": bom_row.uom,
-			"process": bom_row.process_name,
-			"attrs": bom_combo.get("bom_attrs", {}),
-		})
+		results.append(
+			{
+				"item": bom_row.item or mapping.bom_item,
+				"qty": qty,
+				"uom": bom_row.uom,
+				"process": bom_row.process_name,
+				"attrs": bom_combo.get("bom_attrs", {}),
+			}
+		)
 	return results
 
 
@@ -644,18 +662,10 @@ def _lookup_mode_b(mapping, variant_attrs):
 		by_index.setdefault(v.index, []).append(v)
 
 	same_attrs = _get_same_mapping_attributes(mapping)
-	item_key_attrs = [
-		row.attribute
-		for row in mapping.item_attributes
-		if row.attribute not in same_attrs
-	]
-	variant_key = {
-		attr: variant_attrs[attr]
-		for attr in item_key_attrs
-		if attr in variant_attrs
-	}
+	item_key_attrs = [row.attribute for row in mapping.item_attributes if row.attribute not in same_attrs]
+	variant_key = {attr: variant_attrs[attr] for attr in item_key_attrs if attr in variant_attrs}
 
-	for idx, rows in by_index.items():
+	for _idx, rows in by_index.items():
 		item_side = {
 			r.attribute: _attribute_value(r.attribute_value)
 			for r in rows
@@ -673,11 +683,7 @@ def _lookup_mode_b(mapping, variant_attrs):
 
 
 def _get_same_mapping_attributes(mapping):
-	item_same_attrs = {
-		row.attribute
-		for row in mapping.item_attributes
-		if row.same_attribute
-	}
+	item_same_attrs = {row.attribute for row in mapping.item_attributes if row.same_attribute}
 	return {
 		row.attribute
 		for row in mapping.bom_item_attributes

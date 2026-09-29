@@ -13,10 +13,10 @@ import frappe
 
 
 def execute():
-	if not frappe.db.exists("DocType", 'YRP Received Type'):
+	if not frappe.db.exists("DocType", "YRP Received Type"):
 		return
 
-	cols = set(frappe.db.get_table_columns('YRP Received Type'))
+	cols = set(frappe.db.get_table_columns("YRP Received Type"))
 
 	if "is_rejected" in cols:
 		rows = frappe.db.sql(
@@ -24,12 +24,10 @@ def execute():
 			as_dict=True,
 		)
 		if rows:
-			current = frappe.db.get_single_value(
-				'YRP Stock Settings', "default_rejected_received_type"
-			)
+			current = frappe.db.get_single_value("YRP Stock Settings", "default_rejected_received_type")
 			if not current:
 				frappe.db.set_single_value(
-					'YRP Stock Settings',
+					"YRP Stock Settings",
 					"default_rejected_received_type",
 					rows[0]["name"],
 				)
@@ -41,6 +39,6 @@ def execute():
 		frappe.db.sql_ddl("ALTER TABLE `tabYRP Received Type` DROP COLUMN `is_rework_source`")
 
 	for fieldname in ("is_rework_source", "is_rejected"):
-		frappe.db.delete("DocField", {"parent": 'YRP Received Type', "fieldname": fieldname})
+		frappe.db.delete("DocField", {"parent": "YRP Received Type", "fieldname": fieldname})
 
-	frappe.clear_cache(doctype='YRP Received Type')
+	frappe.clear_cache(doctype="YRP Received Type")

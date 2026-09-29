@@ -29,4 +29,4 @@ export class ProductionOrderTableWrapper {
     load_data(data) {
         this.component.load_data(data);
     }
-};
+}

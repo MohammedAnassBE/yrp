@@ -4,7 +4,7 @@ from frappe.tests import IntegrationTestCase
 
 class TestStockEntryMetadata(IntegrationTestCase):
 	def test_send_to_warehouse_shows_source_and_target_pairs(self):
-		meta = frappe.get_meta('YRP Stock Entry')
+		meta = frappe.get_meta("YRP Stock Entry")
 		for fieldname in (
 			"from_supplier",
 			"from_warehouse",

@@ -1,12 +1,12 @@
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
-
 import frappe
-from yrp.attribute_values import get_mapping_document
 from frappe import _, utils
 from frappe.model.document import Document
+
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
+from yrp.attribute_values import get_mapping_document
 
 
 class YRPProcessCost(Document):
@@ -32,33 +32,35 @@ class YRPProcessCost(Document):
 
 		from yrp.stock.dimensions import append_production_group_filters
 
-		append_production_group_filters(filters, self, 'YRP Process Cost')
+		append_production_group_filters(filters, self, "YRP Process Cost")
 
-		workflow_state_field = get_active_workflow_state_field('YRP Process Cost')
+		workflow_state_field = get_active_workflow_state_field("YRP Process Cost")
 		if workflow_state_field:
 			filters.append([workflow_state_field, "=", "Approved"])
 
 		process_cost_list = frappe.db.get_list(
-			'YRP Process Cost', filters=filters, pluck="name", order_by="from_date asc"
+			"YRP Process Cost", filters=filters, pluck="name", order_by="from_date asc"
 		)
 
 		for pc_name in process_cost_list:
-			doc = frappe.get_doc('YRP Process Cost', pc_name)
+			doc = frappe.get_doc("YRP Process Cost", pc_name)
 			from_date = utils.get_datetime(self.from_date).date()
 
 			if doc.from_date == from_date:
 				frappe.throw(
-					_("A Process Cost was found with the same From Date. "
-					  "Please expire it before submitting this one.")
+					_(
+						"A Process Cost was found with the same From Date. "
+						"Please expire it before submitting this one."
+					)
 				)
 			elif doc.from_date > from_date:
 				to_date = utils.get_datetime(self.to_date).date() if self.to_date else None
 				if not to_date or to_date >= doc.from_date:
 					frappe.throw(
-						_("An updated Process Cost for the same Item and Supplier exists from {0}. "
-						  "Please set To Date less than that date or cancel the next one.").format(
-							frappe.utils.format_date(doc.from_date)
-						)
+						_(
+							"An updated Process Cost for the same Item and Supplier exists from {0}. "
+							"Please set To Date less than that date or cancel the next one."
+						).format(frappe.utils.format_date(doc.from_date))
 					)
 			else:
 				doc.to_date = utils.add_days(from_date, -1)
@@ -83,11 +85,11 @@ def update_all_expired_process_cost():
 		["docstatus", "=", 1],
 		["is_expired", "=", 0],
 	]
-	cost_list = frappe.db.get_all('YRP Process Cost', filters=filters, pluck="name")
-	workflow_exists = bool(get_active_workflow_state_field('YRP Process Cost'))
+	cost_list = frappe.db.get_all("YRP Process Cost", filters=filters, pluck="name")
+	workflow_exists = bool(get_active_workflow_state_field("YRP Process Cost"))
 
 	for cost_name in cost_list:
-		doc = frappe.get_doc('YRP Process Cost', cost_name)
+		doc = frappe.get_doc("YRP Process Cost", cost_name)
 		if workflow_exists:
 			_cancel_process_cost_via_workflow(doc)
 		else:
@@ -102,7 +104,7 @@ def update_all_expired_process_cost():
 def _cancel_process_cost_via_workflow(doc):
 	"""Cancel a Process Cost through the active workflow."""
 	workflow_name = frappe.db.get_value(
-		"Workflow", {"document_type": 'YRP Process Cost', "is_active": 1}, "name"
+		"Workflow", {"document_type": "YRP Process Cost", "is_active": 1}, "name"
 	)
 	if not workflow_name:
 		doc.is_expired = 1
@@ -110,12 +112,13 @@ def _cancel_process_cost_via_workflow(doc):
 		return
 
 	workflow = frappe.get_doc("Workflow", workflow_name)
-	if not frappe.get_meta('YRP Process Cost').get_field(workflow.workflow_state_field):
+	if not frappe.get_meta("YRP Process Cost").get_field(workflow.workflow_state_field):
 		doc.is_expired = 1
 		doc.cancel()
 		return
 
 	from frappe.utils import cint
+
 	cancel_states = [s.state for s in workflow.states if cint(s.doc_status) == 2]
 	if "Expired" in cancel_states:
 		cancel_states = ["Expired"]
@@ -129,7 +132,7 @@ def _cancel_process_cost_via_workflow(doc):
 	for transition in workflow.transitions:
 		if transition.state == current_state and transition.next_state in cancel_states:
 			doc.set(workflow.workflow_state_field, transition.next_state)
-			next_state = [d for d in workflow.states if d.state == transition.next_state][0]
+			next_state = next(d for d in workflow.states if d.state == transition.next_state)
 			if next_state.update_field:
 				doc.set(next_state.update_field, next_state.update_value)
 			doc.is_expired = 1
@@ -142,15 +145,11 @@ def _cancel_process_cost_via_workflow(doc):
 
 
 def get_active_workflow_state_field(doctype):
-	workflow_name = frappe.db.get_value(
-		"Workflow", {"document_type": doctype, "is_active": 1}, "name"
-	)
+	workflow_name = frappe.db.get_value("Workflow", {"document_type": doctype, "is_active": 1}, "name")
 	if not workflow_name:
 		return None
 
-	workflow_state_field = frappe.db.get_value(
-		"Workflow", workflow_name, "workflow_state_field"
-	)
+	workflow_state_field = frappe.db.get_value("Workflow", workflow_name, "workflow_state_field")
 	if workflow_state_field and frappe.get_meta(doctype).get_field(workflow_state_field):
 		return workflow_state_field
 	return None
@@ -164,7 +163,7 @@ def get_item_attributes(doctype, txt, searchfield, start, page_len, filters):
 	if not item_name:
 		return []
 
-	item = frappe.get_doc('Item', item_name)
+	item = frappe.get_doc("Item", item_name)
 	attributes = [attribute.attribute for attribute in item.attributes]
 	return [[a] for a in attributes if not txt or txt.lower() in a.lower()]
 
@@ -175,12 +174,18 @@ def get_pc_attribute_values(item, attribute, for_link=0):
 	if not item or not attribute:
 		return []
 
-	item_doc = frappe.get_doc('Item', item)
+	item_doc = frappe.get_doc("Item", item)
 	for attr in item_doc.attributes:
 		if attr.attribute == attribute and attr.mapping:
 			mapping_doc = get_mapping_document(attr.mapping)
 			return [
-				{"price": 0, "min_order_qty": 0, "attribute_value": attribute_db.link(_attribute_value(val.attribute_value), attribute) if frappe.utils.cint(for_link) else _attribute_value(val.attribute_value)}
+				{
+					"price": 0,
+					"min_order_qty": 0,
+					"attribute_value": attribute_db.link(_attribute_value(val.attribute_value), attribute)
+					if frappe.utils.cint(for_link)
+					else _attribute_value(val.attribute_value),
+				}
 				for val in mapping_doc.values
 			]
 	return []

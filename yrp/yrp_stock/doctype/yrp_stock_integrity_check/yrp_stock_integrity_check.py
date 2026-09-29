@@ -41,7 +41,7 @@ def run_daily_check():
 	dim_fields = [d["fieldname"] for d in dims]
 
 	doc = frappe.get_doc(
-		{"doctype": 'YRP Stock Integrity Check', "check_date": today(), "status": "In Progress"}
+		{"doctype": "YRP Stock Integrity Check", "check_date": today(), "status": "In Progress"}
 	).insert(ignore_permissions=True)
 
 	mismatches = _detect_qty_mismatches(dim_fields)
@@ -66,8 +66,7 @@ def _detect_qty_mismatches(dim_fields):
 		assert_safe_fieldname(fn)
 	dim_select = ", ".join(f"`{fn}`" for fn in dim_fields) if dim_fields else ""
 	dim_join_on = " AND ".join(
-		f"(sle.`{fn}` = bin.`{fn}` OR (sle.`{fn}` IS NULL AND bin.`{fn}` IS NULL))"
-		for fn in dim_fields
+		f"(sle.`{fn}` = bin.`{fn}` OR (sle.`{fn}` IS NULL AND bin.`{fn}` IS NULL))" for fn in dim_fields
 	)
 	join_extra = (" AND " + dim_join_on) if dim_fields else ""
 	bin_select = (", " + dim_select) if dim_fields else ""
@@ -76,7 +75,7 @@ def _detect_qty_mismatches(dim_fields):
 		f"""
 		SELECT bin.item_code, bin.warehouse, bin.actual_qty AS bin_qty,
 		       COALESCE(SUM(CASE WHEN sle.is_cancelled = 0 THEN sle.qty ELSE 0 END), 0) AS sle_qty
-		       {bin_select.replace(', `', ', bin.`')}
+		       {bin_select.replace(", `", ", bin.`")}
 		FROM `tabYRP Bin` bin
 		LEFT JOIN `tabYRP Stock Ledger Entry` sle
 		  ON sle.item = bin.item_code
@@ -109,8 +108,7 @@ def _detect_missing_bins(dim_fields):
 		assert_safe_fieldname(fn)
 	dim_cols = (", " + ", ".join(f"sle.`{fn}`" for fn in dim_fields)) if dim_fields else ""
 	join_match = " AND ".join(
-		f"(sle.`{fn}` = b.`{fn}` OR (sle.`{fn}` IS NULL AND b.`{fn}` IS NULL))"
-		for fn in dim_fields
+		f"(sle.`{fn}` = b.`{fn}` OR (sle.`{fn}` IS NULL AND b.`{fn}` IS NULL))" for fn in dim_fields
 	)
 	on_extra = (" AND " + join_match) if dim_fields else ""
 
@@ -152,9 +150,7 @@ def _detect_null_dims(dim_fields):
 	for fn in dim_fields:
 		assert_safe_fieldname(fn)
 		# Skip dimensions that don't have a column (newly-added but not migrated).
-		cols = frappe.db.sql(
-			"SHOW COLUMNS FROM `tabYRP Stock Ledger Entry` LIKE %s", fn
-		)
+		cols = frappe.db.sql("SHOW COLUMNS FROM `tabYRP Stock Ledger Entry` LIKE %s", fn)
 		if not cols:
 			continue
 		rows = frappe.db.sql(
@@ -190,7 +186,7 @@ def fix_integrity_row(parent_name, row_name):
 
 	Disabled for `requires_backfill` — those need a dedicated migration patch.
 	"""
-	row = frappe.get_doc('YRP Stock Integrity Check Item', row_name)
+	row = frappe.get_doc("YRP Stock Integrity Check Item", row_name)
 	if row.parent != parent_name:
 		frappe.throw(_("Row does not belong to this Integrity Check"))
 	if row.fixed:
@@ -225,13 +221,13 @@ def fix_integrity_row(parent_name, row_name):
 	from yrp.stock.utils import get_or_make_bin
 
 	bin_name = get_or_make_bin(row.item_code, row.warehouse, **dim_filters)
-	frappe.db.set_value('YRP Bin', bin_name, "actual_qty", live_sum, update_modified=False)
+	frappe.db.set_value("YRP Bin", bin_name, "actual_qty", live_sum, update_modified=False)
 
 	row.db_set("fixed", 1)
 	row.db_set("fixed_by", frappe.session.user)
 	row.db_set("fixed_at", now())
 
-	parent = frappe.get_doc('YRP Stock Integrity Check', parent_name)
+	parent = frappe.get_doc("YRP Stock Integrity Check", parent_name)
 	parent.db_set("fixed_count", (parent.fixed_count or 0) + 1)
 
 
@@ -248,7 +244,7 @@ def fix_all_integrity(parent_name):
 
 
 def _fix_all_worker(parent_name):
-	parent = frappe.get_doc('YRP Stock Integrity Check', parent_name)
+	parent = frappe.get_doc("YRP Stock Integrity Check", parent_name)
 	for row in parent.results:
 		if row.fixed or row.category == "requires_backfill":
 			continue

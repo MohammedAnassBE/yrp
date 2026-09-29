@@ -8,7 +8,7 @@ from yrp.yrp_stock.doctype.yrp_stock_update.yrp_stock_update import get_stock_up
 
 class TestStockUpdateRateValidation(FrappeTestCase):
 	def _stock_update(self, update_type, rate):
-		doc = frappe.new_doc('YRP Stock Update')
+		doc = frappe.new_doc("YRP Stock Update")
 		doc.update_type = update_type
 		doc.append(
 			"stock_update_details",
@@ -76,26 +76,18 @@ class TestStockUpdateRateValidation(FrappeTestCase):
 			)
 
 		self.assertEqual(rates, {"M": 17.25})
-		get_variant.assert_called_once_with(
-			"TEST-ITEM", {"Colour": "Blue", "Size": "M"}
-		)
+		get_variant.assert_called_once_with("TEST-ITEM", {"Colour": "Blue", "Size": "M"})
 		args, kwargs = get_last_sle_rate.call_args
 		self.assertEqual(args, ("TEST-VARIANT-M",))
 		self.assertEqual(kwargs["warehouse"], "TEST-WAREHOUSE")
 		self.assertNotIn("unknown", kwargs)
-		has_permission.assert_any_call('YRP Stock Update', "create", throw=True)
-		has_permission.assert_any_call(
-			'Item', "read", doc="TEST-ITEM", throw=True
-		)
-		has_permission.assert_any_call(
-			'Warehouse', "read", doc="TEST-WAREHOUSE", throw=True
-		)
+		has_permission.assert_any_call("YRP Stock Update", "create", throw=True)
+		has_permission.assert_any_call("Item", "read", doc="TEST-ITEM", throw=True)
+		has_permission.assert_any_call("Warehouse", "read", doc="TEST-WAREHOUSE", throw=True)
 
 	def test_editor_rate_lookup_rejects_unbounded_value_lists(self):
 		with (
-			patch(
-				"yrp.yrp_stock.doctype.yrp_stock_update.yrp_stock_update.frappe.has_permission"
-			),
+			patch("yrp.yrp_stock.doctype.yrp_stock_update.yrp_stock_update.frappe.has_permission"),
 			self.assertRaisesRegex(frappe.ValidationError, "maximum of 200"),
 		):
 			get_stock_update_rates(

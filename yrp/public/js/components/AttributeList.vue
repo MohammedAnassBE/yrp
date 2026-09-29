@@ -27,8 +27,7 @@ const attr_list = ref(cur_frm.doc.__onload.attr_list)
 
 function addAttributeMapping(doctype, name) {
     frappe.model.with_doctype(doctype, function() {
-        var new_doc = frappe.model.get_new_doc(doctype);
-        console.log(new_doc);
+        frappe.model.get_new_doc(doctype);
         frappe.ui.form.make_quick_entry(doctype, (doc) => {});
     });
 }

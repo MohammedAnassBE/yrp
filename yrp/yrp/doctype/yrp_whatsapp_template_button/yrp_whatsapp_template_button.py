@@ -8,4 +8,5 @@ from frappe.model.document import Document
 class YRPWhatsAppTemplateButton(Document):
 	pass
 
+
 WhatsAppTemplateButton = YRPWhatsAppTemplateButton

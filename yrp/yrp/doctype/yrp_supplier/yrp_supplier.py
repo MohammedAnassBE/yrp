@@ -6,6 +6,7 @@ from frappe import _
 from frappe.contacts.doctype.contact.contact import get_default_contact
 from jinja2 import TemplateSyntaxError
 
+
 class YRPSupplierMixin:
 	"""Notification helpers added to ERPNext's standard Supplier controller."""
 
@@ -33,10 +34,14 @@ class YRPSupplierMixin:
 
 	def send_notification(self, doctype: str, docname: str, channels: list[str], event: str):
 		details = self.get_primary_contact_details()
-		recipient_by_channel = {"Email": details["email"], "SMS": details["mobile"], "WhatsApp": details["mobile"]}
+		recipient_by_channel = {
+			"Email": details["email"],
+			"SMS": details["mobile"],
+			"WhatsApp": details["mobile"],
+		}
 
 		templates = frappe.get_all(
-			'YRP Notification Template',
+			"YRP Notification Template",
 			filters={
 				"document_type": doctype,
 				"channel": ["in", channels],
@@ -56,7 +61,7 @@ class YRPSupplierMixin:
 		sent_channels = []
 		skipped_channels = []
 		for template_name in templates:
-			template = frappe.get_doc('YRP Notification Template', template_name)
+			template = frappe.get_doc("YRP Notification Template", template_name)
 			recipient = recipient_by_channel.get(template.channel)
 			if not recipient:
 				skipped_channels.append(template.channel)
@@ -79,35 +84,38 @@ class YRPSupplierMixin:
 				)
 			)
 
+
 @frappe.whitelist()
 def get_primary_address(supplier):
 	filters = [
-		["Dynamic Link", "link_doctype", "=", 'Supplier'],
+		["Dynamic Link", "link_doctype", "=", "Supplier"],
 		["Dynamic Link", "link_name", "=", supplier],
 		["Dynamic Link", "parenttype", "=", "Address"],
 		["Address", "disabled", "=", "0"],
-		["Address", "is_primary_address", "=", 1]
+		["Address", "is_primary_address", "=", 1],
 	]
 
 	address = frappe.get_list("Address", filters=filters, pluck="name") or {}
 
 	if address:
 		return address[0]
+
 
 @frappe.whitelist()
 def get_address(supplier, type):
 	filters = [
-		["Dynamic Link", "link_doctype", "=", 'Supplier'],
+		["Dynamic Link", "link_doctype", "=", "Supplier"],
 		["Dynamic Link", "link_name", "=", supplier],
 		["Dynamic Link", "parenttype", "=", "Address"],
 		["Address", "disabled", "=", "0"],
-		["Address", "address_type", "=", type]
+		["Address", "address_type", "=", type],
 	]
 
 	address = frappe.get_list("Address", filters=filters, pluck="name") or {}
 
 	if address:
 		return address[0]
+
 
 @frappe.whitelist()
 def get_supplier_address_display(supplier):
@@ -118,10 +126,10 @@ def get_supplier_address_display(supplier):
 	if not isinstance(address_dict, dict):
 		address_dict = frappe.db.get_value("Address", address_dict, "*", as_dict=True, cache=True) or {}
 
-	template = '''
+	template = """
 		{{ address_line1 }}, {% if address_line2 %}{{ address_line2 }}{% endif -%}<br>
 		{{ city }}, {% if state %}{{ state }}{% endif -%}{% if pincode %} - {{ pincode }}{% endif -%}
-	'''
+	"""
 
 	try:
 		return frappe.render_template(template, address_dict)
@@ -132,11 +140,11 @@ def get_supplier_address_display(supplier):
 def update_supplier_department_on_bill_tracking(supplier, dept):
 	"""Set Supplier.department if currently empty. Called from Bill Tracking
 	assignment so a supplier's bills route to a consistent department over time."""
-	existing = frappe.db.get_value('Supplier', supplier, "department")
-	if existing is None and not frappe.db.exists('Supplier', supplier):
+	existing = frappe.db.get_value("Supplier", supplier, "department")
+	if existing is None and not frappe.db.exists("Supplier", supplier):
 		frappe.throw(f"Can't find supplier -> {supplier}")
 	if not existing:
-		frappe.db.set_value('Supplier', supplier, "department", dept)
+		frappe.db.set_value("Supplier", supplier, "department", dept)
 
 
 YRPSupplier = YRPSupplierMixin

@@ -1,10 +1,11 @@
 """IPD Process Matrix API helpers."""
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 
 from itertools import product
 
 import frappe
+
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 from yrp.attribute_values import get_mapping_document
 
 
@@ -25,19 +26,21 @@ def generate_cross_product(ipd, input_attributes=None, output_attributes=None, i
 	"""
 	input_attributes = frappe.parse_json(input_attributes) or []
 	output_attributes = frappe.parse_json(output_attributes) or []
-	ipd_item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
+	ipd_item = attribute_db.get_value("YRP Item Production Detail", ipd, "item")
 	if not ipd_item:
 		frappe.throw(f"IPD {ipd} has no item set.")
 
 	output_values = _attribute_values_for_item(ipd_item)
-	input_values = _attribute_values_for_item(input_item) if input_item and input_item != ipd_item else output_values
+	input_values = (
+		_attribute_values_for_item(input_item) if input_item and input_item != ipd_item else output_values
+	)
 
 	def cross(attrs, values_by_attr):
 		if not attrs:
 			return []
 		picked = [[(a, v) for v in values_by_attr.get(a, [])] for a in attrs]
 		if any(len(p) == 0 for p in picked):
-			missing = [a for a, vs in zip(attrs, picked) if len(vs) == 0]
+			missing = [a for a, vs in zip(attrs, picked, strict=False) if len(vs) == 0]
 			frappe.throw(f"No values found for attributes: {missing}")
 		out = []
 		for combo in product(*picked):
@@ -54,7 +57,7 @@ def _attribute_values_for_item(item):
 	`mapping` Link field per row pointing to an `Item Item Attribute Mapping` doc;
 	that mapping's `values` child table holds the attribute_value rows.
 	"""
-	item_doc = frappe.get_doc('Item', item)
+	item_doc = frappe.get_doc("Item", item)
 	values = {}
 	for attr_row in item_doc.get("attributes") or []:
 		if not attr_row.mapping:
@@ -67,7 +70,7 @@ def _attribute_values_for_item(item):
 @frappe.whitelist()
 def get_attribute_values(ipd, attribute):
 	"""Return list of legal values for one attribute on the IPD's item."""
-	item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
+	item = attribute_db.get_value("YRP Item Production Detail", ipd, "item")
 	if not item:
 		return []
 	return _attribute_values_for_item(item).get(attribute, [])
@@ -77,7 +80,7 @@ def get_attribute_values(ipd, attribute):
 def get_attribute_values_bulk(ipd, attributes):
 	"""Return {attribute: [values]} for the requested attributes on the IPD's item."""
 	attributes = frappe.parse_json(attributes) or []
-	item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
+	item = attribute_db.get_value("YRP Item Production Detail", ipd, "item")
 	if not item:
 		return {}
 	all_values = _attribute_values_for_item(item)
@@ -95,7 +98,7 @@ def get_matrix_attribute_values(ipd, input_attributes=None, output_attributes=No
 	"""
 	input_attributes = frappe.parse_json(input_attributes) or []
 	output_attributes = frappe.parse_json(output_attributes) or []
-	ipd_item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
+	ipd_item = attribute_db.get_value("YRP Item Production Detail", ipd, "item")
 	if not ipd_item:
 		return {"input": {}, "output": {}}
 

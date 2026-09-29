@@ -7,4 +7,5 @@ from frappe.model.document import Document
 class YRPWhatsAppTemplateDocType(Document):
 	pass
 
+
 WhatsAppTemplateDocType = YRPWhatsAppTemplateDocType

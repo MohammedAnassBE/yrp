@@ -34,17 +34,11 @@ def _dimension_values():
 	for dimension in get_stock_dimensions():
 		fieldname = dimension["fieldname"]
 		if fieldname == "received_type":
-			value = frappe.db.get_single_value(
-				'YRP Stock Settings', "default_received_type"
-			)
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 		else:
-			value = frappe.db.get_value(
-				dimension["dimension_doctype"], {}, "name"
-			)
+			value = frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
 		if dimension.get("mandatory") and not value:
-			frappe.throw(
-				f"A {dimension['label']} record is required for stock tests."
-			)
+			frappe.throw(f"A {dimension['label']} record is required for stock tests.")
 		if value:
 			values[fieldname] = value
 	return values
@@ -55,15 +49,19 @@ DIMENSIONS = _dimension_values()
 
 def _warehouse(suffix):
 	warehouse_name = f"_Test_MA_{suffix}"
-	name = frappe.db.get_value('Warehouse', {"warehouse_name": warehouse_name}, "name")
+	name = frappe.db.get_value("Warehouse", {"warehouse_name": warehouse_name}, "name")
 	if not name:
-		name = frappe.get_doc(
-			{
-				"doctype": 'Warehouse',
-				"warehouse_name": warehouse_name,
-				"company": frappe.db.get_value('Company', {}, "name"),
-			}
-		).insert(ignore_permissions=True).name
+		name = (
+			frappe.get_doc(
+				{
+					"doctype": "Warehouse",
+					"warehouse_name": warehouse_name,
+					"company": frappe.db.get_value("Company", {}, "name"),
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 	return name
 
 
@@ -79,7 +77,7 @@ def _stock_entry(
 ):
 	doc = frappe.get_doc(
 		{
-			"doctype": 'YRP Stock Entry',
+			"doctype": "YRP Stock Entry",
 			"purpose": purpose,
 			"from_warehouse": from_warehouse,
 			"to_warehouse": to_warehouse,
@@ -107,16 +105,12 @@ def _stock_entry(
 class TestMovingAverageSafety(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
-		self.original_method = frappe.db.get_single_value(
-			'YRP Stock Settings', "default_valuation_method"
-		)
-		frappe.db.set_single_value(
-			'YRP Stock Settings', "default_valuation_method", "Moving Average"
-		)
+		self.original_method = frappe.db.get_single_value("YRP Stock Settings", "default_valuation_method")
+		frappe.db.set_single_value("YRP Stock Settings", "default_valuation_method", "Moving Average")
 
 	def tearDown(self):
 		frappe.db.set_single_value(
-			'YRP Stock Settings',
+			"YRP Stock Settings",
 			"default_valuation_method",
 			self.original_method or "FIFO",
 		)
@@ -124,9 +118,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 
 	def test_material_receipt_requires_positive_rate(self):
 		warehouse = _warehouse("Receipt_Rate")
-		with self.assertRaisesRegex(
-			frappe.ValidationError, "Rate must be greater than zero"
-		):
+		with self.assertRaisesRegex(frappe.ValidationError, "Rate must be greater than zero"):
 			_stock_entry(
 				"Material Receipt",
 				10,
@@ -147,7 +139,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		).submit()
 		template = frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Entry',
+				"doctype": "YRP Stock Entry",
 				"items": [
 					{
 						"item": ITEM_VARIANT,
@@ -161,10 +153,10 @@ class TestMovingAverageSafety(FrappeTestCase):
 				],
 			}
 		)
-		grouped = group_items_for_ui(template.items, 'YRP Stock Entry')
+		grouped = group_items_for_ui(template.items, "YRP Stock Entry")
 		receipt = frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Entry',
+				"doctype": "YRP Stock Entry",
 				"purpose": "Material Receipt",
 				"to_warehouse": warehouse,
 				"item_details": json.dumps(grouped),
@@ -203,7 +195,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		transfer.submit()
 
 		sles = frappe.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": transfer.name, "is_cancelled": 0},
 			fields=[
 				"qty",
@@ -219,9 +211,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		self.assertAlmostEqual(flt(incoming.stock_value_difference), 75.0)
 		self.assertAlmostEqual(flt(outgoing.outgoing_rate), 15.0)
 		self.assertAlmostEqual(flt(incoming.rate), 15.0)
-		self.assertAlmostEqual(
-			sum(flt(row.stock_value_difference) for row in sles), 0.0
-		)
+		self.assertAlmostEqual(sum(flt(row.stock_value_difference) for row in sles), 0.0)
 
 	def test_compound_receipt_can_read_actual_moving_average_issue_value(self):
 		from yrp.stock.stock_ledger import make_sl_entries
@@ -255,7 +245,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 					"item": ITEM_VARIANT,
 					"warehouse": warehouse,
 					"uom": ITEM_UOM,
-					"voucher_type": 'YRP Stock Entry',
+					"voucher_type": "YRP Stock Entry",
 					"voucher_no": issue.name,
 					"voucher_detail_no": issue.items[0].name,
 					"posting_date": issue.posting_date,
@@ -296,7 +286,7 @@ class TestMovingAverageSafety(FrappeTestCase):
 		second.submit()
 
 		latest = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": second.name, "is_cancelled": 0},
 			[
 				"posting_datetime",
@@ -313,6 +303,4 @@ class TestMovingAverageSafety(FrappeTestCase):
 		self.assertAlmostEqual(flt(latest.valuation_rate), 15.0)
 		queue = json.loads(latest.stock_queue)
 		self.assertAlmostEqual(sum(flt(row[0]) for row in queue), 20.0)
-		self.assertAlmostEqual(
-			sum(flt(row[0]) * flt(row[1]) for row in queue), 300.0
-		)
+		self.assertAlmostEqual(sum(flt(row[0]) * flt(row[1]) for row in queue), 300.0)

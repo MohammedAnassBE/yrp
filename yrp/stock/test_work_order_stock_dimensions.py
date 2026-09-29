@@ -12,7 +12,7 @@ class TestWorkOrderStockDimensions(FrappeTestCase):
 		dimensions = get_stock_dimensions()
 		self.assertTrue(dimensions)
 
-		for doctype in ('YRP Work Order Deliverables', 'YRP Work Order Receivables'):
+		for doctype in ("YRP Work Order Deliverables", "YRP Work Order Receivables"):
 			meta = frappe.get_meta(doctype, cached=False)
 			for dimension in dimensions:
 				field = meta.get_field(dimension["fieldname"])
@@ -33,7 +33,7 @@ class TestWorkOrderStockDimensions(FrappeTestCase):
 				self.assertEqual(custom_field.module, "YRP Stock")
 
 	def test_work_order_children_receive_values_through_the_dimension_model(self):
-		work_order = frappe.new_doc('YRP Work Order')
+		work_order = frappe.new_doc("YRP Work Order")
 		expected = {}
 		for dimension in get_stock_dimensions():
 			fieldname = dimension["fieldname"]

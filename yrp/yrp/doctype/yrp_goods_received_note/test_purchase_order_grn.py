@@ -7,20 +7,19 @@ from frappe.utils import nowdate, nowtime
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_stock_balance
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
-from yrp.yrp_stock.report.yrp_stock_availability.yrp_stock_availability import (
-	execute as stock_availability,
+from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
+	_pending_purchase_order_rows,
+	_validate_defaults_source,
 )
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_purchase_order.yrp_purchase_order import (
 	close_purchase_order,
 	refresh_status,
 	reopen_purchase_order,
 )
-from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import _validate_defaults_source
-from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
-	_pending_purchase_order_rows,
+from yrp.yrp_stock.report.yrp_stock_availability.yrp_stock_availability import (
+	execute as stock_availability,
 )
-
 
 ITEM_VARIANT_CANDIDATES = (
 	"Item-00005-45 cm-Blue",
@@ -32,9 +31,7 @@ def _test_item_variant():
 	for item_variant in ITEM_VARIANT_CANDIDATES:
 		parent_item = get_parent_item(item_variant)
 		item = (
-			frappe.db.get_value(
-				'Item', parent_item, ["is_stock_item", "dependent_attribute"], as_dict=True
-			)
+			frappe.db.get_value("Item", parent_item, ["is_stock_item", "dependent_attribute"], as_dict=True)
 			if parent_item
 			else None
 		)
@@ -59,61 +56,67 @@ def _test_item_variant():
 	)
 	if item_variant:
 		return item_variant[0]
-	if item_variant := frappe.db.get_value('Item', {}, "name"):
+	if item_variant := frappe.db.get_value("Item", {}, "name"):
 		return item_variant
 	frappe.throw("No test Item Variant found for Purchase Order GRN tests.")
 
 
 def _item_uom(item_variant):
 	parent_item = get_parent_item(item_variant)
-	return frappe.db.get_value('Item', parent_item, "stock_uom") or "Piece"
+	return frappe.db.get_value("Item", parent_item, "stock_uom") or "Piece"
 
 
 def _supplier(supplier_name):
-	existing = frappe.db.get_value('Supplier', {"supplier_name": supplier_name}, "name")
+	existing = frappe.db.get_value("Supplier", {"supplier_name": supplier_name}, "name")
 	if existing:
 		return existing
-	return frappe.get_doc(
-		{"doctype": 'Supplier', "supplier_name": supplier_name}
-	).insert(
-		ignore_permissions=True,
-		set_name=f"_TEST-SUP-{frappe.generate_hash(length=10)}",
-	).name
+	return (
+		frappe.get_doc({"doctype": "Supplier", "supplier_name": supplier_name})
+		.insert(
+			ignore_permissions=True,
+			set_name=f"_TEST-SUP-{frappe.generate_hash(length=10)}",
+		)
+		.name
+	)
 
 
 def _warehouse(name):
-	existing = frappe.db.get_value('Warehouse', {"name": name}, "name") or frappe.db.get_value(
-		'Warehouse', {"warehouse_name": name}, "name"
+	existing = frappe.db.get_value("Warehouse", {"name": name}, "name") or frappe.db.get_value(
+		"Warehouse", {"warehouse_name": name}, "name"
 	)
 	if existing:
 		return existing
-	return frappe.get_doc({"doctype": 'Warehouse', "warehouse_name": name}).insert(
-		ignore_permissions=True
-	).name
+	return (
+		frappe.get_doc({"doctype": "Warehouse", "warehouse_name": name}).insert(ignore_permissions=True).name
+	)
 
 
 def _supplier_warehouse(supplier, name):
-	existing = frappe.db.get_value('Warehouse', {"name": name}, "name") or frappe.db.get_value(
-		'Warehouse', {"warehouse_name": name}, "name"
+	existing = frappe.db.get_value("Warehouse", {"name": name}, "name") or frappe.db.get_value(
+		"Warehouse", {"warehouse_name": name}, "name"
 	)
 	if not existing:
-		existing = frappe.get_doc(
-			{"doctype": 'Warehouse', "warehouse_name": name, "supplier": supplier}
-		).insert(ignore_permissions=True).name
+		existing = (
+			frappe.get_doc({"doctype": "Warehouse", "warehouse_name": name, "supplier": supplier})
+			.insert(ignore_permissions=True)
+			.name
+		)
 	else:
-		frappe.db.set_value('Warehouse', existing, "supplier", supplier)
+		frappe.db.set_value("Warehouse", existing, "supplier", supplier)
 	return existing
 
 
 def _process(name):
-	if not frappe.db.exists('YRP Process', name):
-		frappe.get_doc({"doctype": 'YRP Process', "process_name": name}).insert(ignore_permissions=True)
+	if not frappe.db.exists("YRP Process", name):
+		frappe.get_doc({"doctype": "YRP Process", "process_name": name}).insert(ignore_permissions=True)
 	return name
 
 
 def _tax_slab():
-	if not frappe.db.exists('YRP Tax Slab', "0"):
-		frappe.get_doc({"doctype": 'YRP Tax Slab', "percentage": "0", "enabled": 1}).insert(ignore_permissions=True)
+	if not frappe.db.exists("YRP Tax Slab", "0"):
+		frappe.get_doc({"doctype": "YRP Tax Slab", "percentage": "0", "enabled": 1}).insert(
+			ignore_permissions=True
+		)
 	return "0"
 
 
@@ -128,25 +131,29 @@ def _process_cost(process_name, item, supplier, dimensions=None, rate=12, is_rew
 		"docstatus": 1,
 		**dimensions,
 	}
-	existing = frappe.db.get_value('YRP Process Cost', filters, "name")
+	existing = frappe.db.get_value("YRP Process Cost", filters, "name")
 	if existing:
 		return existing
-	uom = frappe.db.get_value('Item', item, "stock_uom") or "Piece"
-	doc = frappe.get_doc({
-		"doctype": 'YRP Process Cost',
-		"item": item,
-		"uom": uom,
-		"supplier": supplier,
-		"process_name": process_name,
-		"from_date": "2000-01-01",
-		"tax_slab": _tax_slab(),
-		"is_rework": is_rework,
-		**dimensions,
-		"process_cost_values": [{
-			"min_order_qty": 0,
-			"price": rate,
-		}],
-	})
+	uom = frappe.db.get_value("Item", item, "stock_uom") or "Piece"
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Process Cost",
+			"item": item,
+			"uom": uom,
+			"supplier": supplier,
+			"process_name": process_name,
+			"from_date": "2000-01-01",
+			"tax_slab": _tax_slab(),
+			"is_rework": is_rework,
+			**dimensions,
+			"process_cost_values": [
+				{
+					"min_order_qty": 0,
+					"price": rate,
+				}
+			],
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	doc.submit()
 	return doc.name
@@ -155,26 +162,32 @@ def _process_cost(process_name, item, supplier, dimensions=None, rate=12, is_rew
 def _address(title):
 	if frappe.db.exists("Address", title):
 		return title
-	return frappe.get_doc({
-		"doctype": "Address",
-		"address_title": title,
-		"address_type": "Office",
-		"address_line1": "Test Address",
-		"city": "Test City",
-		"state": "Tamil Nadu",
-		"country": "India",
-	}).insert(ignore_permissions=True).name
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Address",
+				"address_title": title,
+				"address_type": "Office",
+				"address_line1": "Test Address",
+				"city": "Test City",
+				"state": "Tamil Nadu",
+				"country": "India",
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 def _default_received_type():
-	received_type = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
+	received_type = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 	if received_type:
 		return received_type
-	if not frappe.db.exists('YRP Received Type', "Accepted"):
+	if not frappe.db.exists("YRP Received Type", "Accepted"):
 		frappe.get_doc(
-			{"doctype": 'YRP Received Type', "received_type_name": "Accepted", "is_default": 1}
+			{"doctype": "YRP Received Type", "received_type_name": "Accepted", "is_default": 1}
 		).insert(ignore_permissions=True)
-	frappe.db.set_single_value('YRP Stock Settings', "default_received_type", "Accepted")
+	frappe.db.set_single_value("YRP Stock Settings", "default_received_type", "Accepted")
 	return "Accepted"
 
 
@@ -205,17 +218,15 @@ def _item_variant_for_production_dimensions(item_variant, dimensions):
 		doctype = dimension["dimension_doctype"]
 		if not frappe.get_meta(doctype).has_field("item"):
 			continue
-		dimension_item = frappe.db.get_value(
-			doctype, dimensions.get(fieldname), "item"
-		)
+		dimension_item = frappe.db.get_value(doctype, dimensions.get(fieldname), "item")
 		if not dimension_item:
 			continue
 		if get_parent_item(item_variant) == dimension_item:
 			return item_variant
-		dimension_variant = frappe.db.get_value('Item', {"variant_of": dimension_item}, "name")
+		dimension_variant = frappe.db.get_value("Item", {"variant_of": dimension_item}, "name")
 		if dimension_variant:
 			return dimension_variant
-		if frappe.db.exists('Item', dimension_item):
+		if frappe.db.exists("Item", dimension_item):
 			return dimension_item
 	return item_variant
 
@@ -230,24 +241,28 @@ def _purchase_order(
 ):
 	item_variant = item_variant or _test_item_variant()
 	uom = _item_uom(item_variant)
-	po = frappe.get_doc({
-		"doctype": 'Purchase Order',
-		"is_yrp_managed": 1,
-		"supplier": supplier or _supplier("_Test PO GRN Supplier"),
-		"set_warehouse": warehouse,
-		**_production_group_dimensions(),
-		"items": [{
-			"item_code": item_variant,
-			"qty": qty,
-			"uom": uom,
-			"stock_uom": uom,
-			"conversion_factor": 1,
-			"rate": rate,
-			"discount_percentage": discount_percentage,
-			"table_index": 0,
-			"row_index": 0,
-		}],
-	})
+	po = frappe.get_doc(
+		{
+			"doctype": "Purchase Order",
+			"is_yrp_managed": 1,
+			"supplier": supplier or _supplier("_Test PO GRN Supplier"),
+			"set_warehouse": warehouse,
+			**_production_group_dimensions(),
+			"items": [
+				{
+					"item_code": item_variant,
+					"qty": qty,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"rate": rate,
+					"discount_percentage": discount_percentage,
+					"table_index": 0,
+					"row_index": 0,
+				}
+			],
+		}
+	)
 	po.flags.ignore_permissions = True
 	# These tests supply explicit rates and exercise GRN valuation, not the
 	# separate Item Price resolver. Keep site-level price masters out of scope.
@@ -262,28 +277,32 @@ def _purchase_order(
 
 def _purchase_order_grn(po, qty):
 	item = po.items[0]
-	grn = frappe.get_doc({
-		"doctype": 'YRP Goods Received Note',
-		"against": 'Purchase Order',
-		"against_id": po.name,
-		"posting_date": nowdate(),
-		"posting_time": nowtime(),
-		"to_warehouse": po.set_warehouse,
-		"supplier_address": po.supplier_address
-		or _address(f"_Test PO GRN Supplier Address {frappe.generate_hash(length=6)}"),
-		"delivery_address": po.shipping_address
-		or _address(f"_Test PO GRN Delivery Address {frappe.generate_hash(length=6)}"),
-		"items": [{
-			"item_variant": item.item_code,
-			"quantity": qty,
-			"uom": item.uom,
-			"stock_uom": item.stock_uom,
-			"conversion_factor": item.conversion_factor,
-			"rate": item.rate,
-			"ref_doctype": 'Purchase Order Item',
-			"ref_docname": item.name,
-		}],
-	})
+	grn = frappe.get_doc(
+		{
+			"doctype": "YRP Goods Received Note",
+			"against": "Purchase Order",
+			"against_id": po.name,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"to_warehouse": po.set_warehouse,
+			"supplier_address": po.supplier_address
+			or _address(f"_Test PO GRN Supplier Address {frappe.generate_hash(length=6)}"),
+			"delivery_address": po.shipping_address
+			or _address(f"_Test PO GRN Delivery Address {frappe.generate_hash(length=6)}"),
+			"items": [
+				{
+					"item_variant": item.item_code,
+					"quantity": qty,
+					"uom": item.uom,
+					"stock_uom": item.stock_uom,
+					"conversion_factor": item.conversion_factor,
+					"rate": item.rate,
+					"ref_doctype": "Purchase Order Item",
+					"ref_docname": item.name,
+				}
+			],
+		}
+	)
 	grn.flags.ignore_permissions = True
 	grn.insert(ignore_permissions=True)
 	return grn
@@ -325,31 +344,37 @@ def _work_order(qty, warehouse):
 	process_name = _process("_Test WO Availability Process")
 	_supplier_warehouse(delivery_location, warehouse)
 	_process_cost(process_name, parent_item, supplier, dimensions)
-	wo = frappe.get_doc({
-		"doctype": 'YRP Work Order',
-		"supplier": supplier,
-		"delivery_location": delivery_location,
-		"planned_end_date": nowdate(),
-		"supplier_address": _address(f"_Test WO Supplier Address {frappe.generate_hash(length=6)}"),
-		"delivery_address": _address(f"_Test WO Delivery Address {frappe.generate_hash(length=6)}"),
-		"process_name": process_name,
-		"item": parent_item,
-		**dimensions,
-		"deliverables": [{
-			"item_variant": item_variant,
-			"qty": 1,
-			"uom": uom,
-			"table_index": 0,
-			"row_index": 0,
-		}],
-		"receivables": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"uom": uom,
-			"table_index": 0,
-			"row_index": 0,
-		}],
-	})
+	wo = frappe.get_doc(
+		{
+			"doctype": "YRP Work Order",
+			"supplier": supplier,
+			"delivery_location": delivery_location,
+			"planned_end_date": nowdate(),
+			"supplier_address": _address(f"_Test WO Supplier Address {frappe.generate_hash(length=6)}"),
+			"delivery_address": _address(f"_Test WO Delivery Address {frappe.generate_hash(length=6)}"),
+			"process_name": process_name,
+			"item": parent_item,
+			**dimensions,
+			"deliverables": [
+				{
+					"item_variant": item_variant,
+					"qty": 1,
+					"uom": uom,
+					"table_index": 0,
+					"row_index": 0,
+				}
+			],
+			"receivables": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"uom": uom,
+					"table_index": 0,
+					"row_index": 0,
+				}
+			],
+		}
+	)
 	host_validator = (
 		patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
 		if "essdee_yrp" in frappe.get_installed_apps()
@@ -389,53 +414,57 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 				return_value=0,
 			),
 		):
-			rows = _pending_purchase_order_rows(
-				frappe._dict(items=[row]), existing_rows=None
-			)
+			rows = _pending_purchase_order_rows(frappe._dict(items=[row]), existing_rows=None)
 
 		self.assertEqual(rows[0]["lot"], "LOT-ROW")
 		self.assertEqual(rows[0]["received_type"], "Accepted")
 
 	def test_source_defaults_require_submitted_open_document(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "must be submitted"):
-			_validate_defaults_source(frappe._dict(
-				doctype='Purchase Order',
-				name="PO-DRAFT",
-				docstatus=0,
-				open_status="Open",
-			))
+			_validate_defaults_source(
+				frappe._dict(
+					doctype="Purchase Order",
+					name="PO-DRAFT",
+					docstatus=0,
+					open_status="Open",
+				)
+			)
 		with self.assertRaisesRegex(frappe.ValidationError, "is closed"):
-			_validate_defaults_source(frappe._dict(
-				doctype='YRP Work Order',
-				name="WO-CLOSED",
-				docstatus=1,
-				open_status="Close",
-			))
+			_validate_defaults_source(
+				frappe._dict(
+					doctype="YRP Work Order",
+					name="WO-CLOSED",
+					docstatus=1,
+					open_status="Close",
+				)
+			)
 
 	def test_po_ignores_blank_child_rows_before_mandatory_validation(self):
 		warehouse = _warehouse("_Test_PO_BLANK_ROW_WH")
 		item_variant = _test_item_variant()
 		uom = _item_uom(item_variant)
-		po = frappe.get_doc({
-			"doctype": 'Purchase Order',
-			"is_yrp_managed": 1,
-			"supplier": _supplier("_Test PO Blank Row Supplier"),
-			"set_warehouse": warehouse,
-			**_production_group_dimensions(),
-			"items": [
-				{},
-				{
-					"item_code": item_variant,
-					"qty": 3,
-					"uom": uom,
-					"stock_uom": uom,
-					"conversion_factor": 1,
-					"rate": 25,
-					"table_index": 0,
-					"row_index": 0,
-				},
-			],
-		})
+		po = frappe.get_doc(
+			{
+				"doctype": "Purchase Order",
+				"is_yrp_managed": 1,
+				"supplier": _supplier("_Test PO Blank Row Supplier"),
+				"set_warehouse": warehouse,
+				**_production_group_dimensions(),
+				"items": [
+					{},
+					{
+						"item_code": item_variant,
+						"qty": 3,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"rate": 25,
+						"table_index": 0,
+						"row_index": 0,
+					},
+				],
+			}
+		)
 		po.insert(ignore_permissions=True)
 
 		self.assertEqual(len(po.items), 1)
@@ -494,9 +523,9 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 		self.assertAlmostEqual(grn.total, 900)
 
 		sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{
-				"voucher_type": 'YRP Goods Received Note',
+				"voucher_type": "YRP Goods Received Note",
 				"voucher_no": grn.name,
 				"voucher_detail_no": grn.items[0].name,
 				"is_cancelled": 0,
@@ -512,9 +541,7 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 		from yrp.stock.test_uom import _dependent_item_variant, _ensure_uom
 
 		warehouse = _warehouse(f"_Test_PO_GRN_DISCOUNT_UOM_{frappe.generate_hash(length=6)}")
-		_item, variant = _dependent_item_variant(
-			_ensure_uom("Piece"), _ensure_uom("Box")
-		)
+		_item, variant = _dependent_item_variant(_ensure_uom("Piece"), _ensure_uom("Box"))
 		po = _purchase_order(
 			qty=2,
 			warehouse=warehouse,
@@ -583,9 +610,7 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 	def test_stock_availability_includes_work_order_receivables_pending(self):
 		warehouse = f"_Test_WO_AVAIL_{frappe.generate_hash(length=6)}"
 		wo = _work_order(qty=6, warehouse=warehouse)
-		warehouse = frappe.db.get_value(
-			'Warehouse', {"supplier": wo.delivery_location}, "name"
-		)
+		warehouse = frappe.db.get_value("Warehouse", {"supplier": wo.delivery_location}, "name")
 		item_variant = wo.receivables[0].item_variant
 
 		row = _stock_availability_row(item_variant, warehouse)

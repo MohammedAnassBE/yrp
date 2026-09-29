@@ -23,10 +23,8 @@ def validate_bom_item_variant_mapping(bom_row):
 	if not item:
 		return
 
-	item_doc = frappe.get_cached_doc('Item', item)
-	item_attributes = {
-		row.attribute for row in item_doc.get("attributes") or [] if row.attribute
-	}
+	item_doc = frappe.get_cached_doc("Item", item)
+	item_attributes = {row.attribute for row in item_doc.get("attributes") or [] if row.attribute}
 	if not item_attributes:
 		return
 

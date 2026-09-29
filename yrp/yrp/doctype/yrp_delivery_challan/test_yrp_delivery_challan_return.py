@@ -5,16 +5,16 @@ from frappe.utils import flt
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.uom import resolve_item_uom
 from yrp.stock.utils import get_stock_balance
-from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import (
-	create_return_grn,
-	get_return_delivery_items,
-)
 from yrp.yrp.doctype.yrp_delivery_challan.test_internal_unit_transfer import (
 	_make_dc,
 	_make_wo,
 	_non_company_supplier,
 	_row_dimensions,
 	_seed_stock,
+)
+from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import (
+	create_return_grn,
+	get_return_delivery_items,
 )
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
@@ -39,16 +39,14 @@ def _make_return_cycle(*, delivered=10, consumed=6, with_reservation=False):
 		reserved_stock_qty = delivered * flt(uom_details.conversion_factor or 1)
 		reservation = frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Reservation Entry',
+				"doctype": "YRP Stock Reservation Entry",
 				"item_code": item_variant,
 				"warehouse": from_warehouse,
-				"voucher_type": 'YRP Work Order',
+				"voucher_type": "YRP Work Order",
 				"voucher_no": work_order.name,
 				"voucher_detail_no": deliverable.name,
 				"stock_uom": uom_details.stock_uom,
-				"available_qty": (delivered + 10) * flt(
-					uom_details.conversion_factor or 1
-				),
+				"available_qty": (delivered + 10) * flt(uom_details.conversion_factor or 1),
 				"voucher_qty": reserved_stock_qty,
 				"reserved_qty": reserved_stock_qty,
 				"delivered_qty": 0,
@@ -68,7 +66,7 @@ def _make_return_cycle(*, delivered=10, consumed=6, with_reservation=False):
 	)
 	delivery_challan.submit()
 	frappe.db.set_value(
-		'YRP Work Order Deliverables',
+		"YRP Work Order Deliverables",
 		deliverable.name,
 		"stock_update",
 		consumed,
@@ -105,9 +103,7 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			item_variant,
 			_,
 		) = _make_return_cycle(delivered=10, consumed=6)
-		target_received_type = _received_type(
-			f"_T_Returned_{frappe.generate_hash(length=6)}"
-		)
+		target_received_type = _received_type(f"_T_Returned_{frappe.generate_hash(length=6)}")
 
 		defaults = get_return_delivery_items(delivery_challan.name)
 		self.assertEqual(len(defaults["items"]), 1)
@@ -125,7 +121,7 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			],
 			received_type=target_received_type,
 		)
-		return_grn = frappe.get_doc('YRP Goods Received Note', grn_name)
+		return_grn = frappe.get_doc("YRP Goods Received Note", grn_name)
 		self.assertEqual(return_grn.docstatus, 0)
 		self.assertEqual(return_grn.is_return, 1)
 		self.assertEqual(return_grn.delivery_challan, delivery_challan.name)
@@ -152,12 +148,12 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			delivery_challan.items[0].name,
 		)
 		self.assertAlmostEqual(return_grn.items[0].max_receivable_quantity, 4)
-		self.assertEqual(return_grn.items[0].ref_doctype, 'YRP Work Order Deliverables')
+		self.assertEqual(return_grn.items[0].ref_doctype, "YRP Work Order Deliverables")
 
 		# Loading the saved draft must retain return rows; ordinary GRN onload
 		# rebuilds rows from Work Order Receivables and would corrupt this draft.
 		return_grn.run_method("onload")
-		self.assertEqual(return_grn.items[0].ref_doctype, 'YRP Work Order Deliverables')
+		self.assertEqual(return_grn.items[0].ref_doctype, "YRP Work Order Deliverables")
 
 		source_dimensions = _row_dimensions(delivery_challan.items[0])
 		target_dimensions = dict(source_dimensions)
@@ -181,19 +177,22 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 		)
 
 		sles = frappe.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={
-				"voucher_type": 'YRP Goods Received Note',
+				"voucher_type": "YRP Goods Received Note",
 				"voucher_no": return_grn.name,
 				"is_cancelled": 0,
 			},
 			fields=["warehouse", "qty", "valuation_rate"],
 			order_by="creation asc",
 		)
-		self.assertEqual([(row.warehouse, flt(row.qty)) for row in sles], [
-			(to_warehouse, -returned_stock_qty),
-			(from_warehouse, returned_stock_qty),
-		])
+		self.assertEqual(
+			[(row.warehouse, flt(row.qty)) for row in sles],
+			[
+				(to_warehouse, -returned_stock_qty),
+				(from_warehouse, returned_stock_qty),
+			],
+		)
 		self.assertGreater(flt(sles[0].valuation_rate), 0)
 		self.assertAlmostEqual(flt(sles[1].valuation_rate), flt(sles[0].valuation_rate))
 
@@ -251,7 +250,7 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			],
 			received_type=_default_received_type(),
 		)
-		return_grn = frappe.get_doc('YRP Goods Received Note', grn_name)
+		return_grn = frappe.get_doc("YRP Goods Received Note", grn_name)
 		return_grn.submit()
 		reservation.reload()
 		work_order.reload()
@@ -264,9 +263,7 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 
 	def test_return_keeps_every_dimension_except_selected_received_type(self):
 		_, delivery_challan, *_rest = _make_return_cycle(delivered=10, consumed=6)
-		target_received_type = _received_type(
-			f"_T_Return_Dim_{frappe.generate_hash(length=6)}"
-		)
+		target_received_type = _received_type(f"_T_Return_Dim_{frappe.generate_hash(length=6)}")
 		grn_name = create_return_grn(
 			delivery_challan.name,
 			[
@@ -277,7 +274,7 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			],
 			received_type=target_received_type,
 		)
-		return_grn = frappe.get_doc('YRP Goods Received Note', grn_name)
+		return_grn = frappe.get_doc("YRP Goods Received Note", grn_name)
 		for dimension in get_stock_dimensions():
 			fieldname = dimension["fieldname"]
 			if fieldname == "received_type":
@@ -303,7 +300,7 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 			],
 			received_type=_default_received_type(),
 		)
-		return_grn = frappe.get_doc('YRP Goods Received Note', grn_name)
+		return_grn = frappe.get_doc("YRP Goods Received Note", grn_name)
 		return_grn.submit()
 		work_order.reload()
 		work_order.deliverables[0].db_set(

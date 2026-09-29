@@ -53,11 +53,11 @@ MAX_REPOST_RETRY_COUNT = 3
 
 def get_last_stock_valuation_closing_date():
 	"""Return the system-maintained stock cutoff, or None before first close."""
-	settings_meta = frappe.get_meta('YRP Stock Settings')
+	settings_meta = frappe.get_meta("YRP Stock Settings")
 	if not settings_meta.get_field("last_stock_valuation_closing_date"):
 		return None
 	value = frappe.db.get_single_value(
-		'YRP Stock Settings',
+		"YRP Stock Settings",
 		"last_stock_valuation_closing_date",
 		cache=False,
 	)
@@ -114,14 +114,14 @@ def _validate_sl_entries_period(sl_entries):
 
 def _validate_no_active_valuation_for_cancel(sl_entries):
 	"""Do not remove ledger nodes owned by unfinished or unreversed valuation."""
-	if not sl_entries or not frappe.db.exists("DocType", 'YRP Stock Valuation Adjustment'):
+	if not sl_entries or not frappe.db.exists("DocType", "YRP Stock Valuation Adjustment"):
 		return
 	voucher_type = sl_entries[0].get("voucher_type")
 	voucher_no = sl_entries[0].get("voucher_no")
 	if not voucher_type or not voucher_no:
 		return
 	sle_names = frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_no,
@@ -194,9 +194,7 @@ def _validate_no_active_valuation_for_cancel(sl_entries):
 
 def _deactivate_production_links_for_cancel(sle_names):
 	"""Retain production lineage audit but stop traversal through cancelled SLEs."""
-	if not sle_names or not frappe.db.exists(
-		"DocType", 'YRP Stock Valuation Production Link'
-	):
+	if not sle_names or not frappe.db.exists("DocType", "YRP Stock Valuation Production Link"):
 		return
 	links = frappe.db.sql(
 		"""
@@ -212,7 +210,7 @@ def _deactivate_production_links_for_cancel(sle_names):
 	)
 	for link_name in links:
 		frappe.db.set_value(
-			'YRP Stock Valuation Production Link',
+			"YRP Stock Valuation Production Link",
 			link_name,
 			"active",
 			0,
@@ -236,9 +234,7 @@ def lock_valuation_bucket(bucket):
 	}
 	for fieldname in get_valuation_dimensions():
 		filters[fieldname] = bucket.get(fieldname)
-	bin_names = frappe.get_all(
-		'YRP Bin', filters=filters, pluck="name", order_by="name asc"
-	)
+	bin_names = frappe.get_all("YRP Bin", filters=filters, pluck="name", order_by="name asc")
 	for bin_name in bin_names:
 		frappe.db.sql("SELECT name FROM `tabYRP Bin` WHERE name=%s FOR UPDATE", (bin_name,))
 
@@ -248,10 +244,7 @@ def _valuation_bucket_mutex_name(bucket):
 		frappe.conf.get("db_name") or frappe.local.site,
 		str(bucket.get("item") or ""),
 		str(bucket.get("warehouse") or ""),
-		tuple(
-			(fieldname, str(bucket.get(fieldname) or ""))
-			for fieldname in get_valuation_dimensions()
-		),
+		tuple((fieldname, str(bucket.get(fieldname) or "")) for fieldname in get_valuation_dimensions()),
 	)
 	digest = hashlib.sha256(repr(values).encode()).hexdigest()[:40]
 	return f"yrp-valuation-{digest}"
@@ -282,9 +275,7 @@ def _acquire_valuation_bucket_mutex(bucket):
 			# transaction that Frappe starts immediately after commit/rollback.
 			frappe.db.sql("DO RELEASE_LOCK(%s)", (lock_name,))
 		except Exception:
-			frappe.logger("yrp").exception(
-				"Unable to release stock valuation mutex %s", lock_name
-			)
+			frappe.logger("yrp").exception("Unable to release stock valuation mutex %s", lock_name)
 		finally:
 			acquired.discard(lock_name)
 
@@ -326,9 +317,9 @@ def _is_effective_sl_entry(row):
 	if not row.item:
 		return False
 	parent_item = get_parent_item(row.item)
-	if not parent_item or not frappe.get_cached_value('Item', parent_item, "is_stock_item"):
+	if not parent_item or not frappe.get_cached_value("Item", parent_item, "is_stock_item"):
 		return False
-	return bool(row.get("qty") or row.get("voucher_type") == 'YRP Stock Reconciliation')
+	return bool(row.get("qty") or row.get("voucher_type") == "YRP Stock Reconciliation")
 
 
 def _lock_voucher_sles_for_cancel(sl_entries, dimension_fields):
@@ -340,7 +331,7 @@ def _lock_voucher_sles_for_cancel(sl_entries, dimension_fields):
 	if not voucher_type or not voucher_no:
 		return []
 	rows = frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_no,
@@ -360,9 +351,7 @@ def _lock_voucher_sles_for_cancel(sl_entries, dimension_fields):
 def _should_queue_repost(args):
 	from yrp.stock.utils import future_sle_count
 
-	threshold = (
-		frappe.db.get_single_value('YRP Stock Settings', "backdated_repost_threshold") or 0
-	)
+	threshold = frappe.db.get_single_value("YRP Stock Settings", "backdated_repost_threshold") or 0
 	if threshold <= 0:
 		return False
 	return future_sle_count(args) > int(threshold)
@@ -379,9 +368,7 @@ def _valuation_bucket_has_active_reservation(args):
 	"""
 	from yrp.stock.utils import get_sre_reserved_qty
 
-	dimension_values = {
-		fieldname: args.get(fieldname) for fieldname in get_valuation_dimensions()
-	}
+	dimension_values = {fieldname: args.get(fieldname) for fieldname in get_valuation_dimensions()}
 	return bool(
 		flt(
 			get_sre_reserved_qty(
@@ -402,7 +389,7 @@ def _is_retryable_repost(row):
 
 def _get_matching_reposts(filters):
 	rows = frappe.get_all(
-		'YRP Repost Item Valuation',
+		"YRP Repost Item Valuation",
 		filters={
 			**filters,
 			"docstatus": 1,
@@ -411,11 +398,7 @@ def _get_matching_reposts(filters):
 		fields=["name", "status", "retry_count", "posting_date", "posting_time"],
 		order_by="posting_date asc, posting_time asc, creation asc",
 	)
-	return [
-		frappe._dict(row)
-		for row in rows
-		if _is_retryable_repost(frappe._dict(row))
-	]
+	return [frappe._dict(row) for row in rows if _is_retryable_repost(frappe._dict(row))]
 
 
 def _dedupe_bucket_repost(values):
@@ -447,7 +430,7 @@ def _dedupe_bucket_repost(values):
 			return row.name
 		if row.status != "In Progress":
 			frappe.db.set_value(
-				'YRP Repost Item Valuation',
+				"YRP Repost Item Valuation",
 				row.name,
 				{
 					"posting_date": values.get("posting_date"),
@@ -477,7 +460,7 @@ def _enqueue_backdated_repost(args):
 	so the bucket is in a consistent (if temporarily stale) state."""
 	dim_fields = get_dimension_fieldnames()
 	values = {
-		"doctype": 'YRP Repost Item Valuation',
+		"doctype": "YRP Repost Item Valuation",
 		"based_on": "Item and Warehouse",
 		"item": args.get("item"),
 		"warehouse": args.get("warehouse"),
@@ -512,7 +495,7 @@ def voucher_has_future_sles(voucher_type, voucher_no, posting_date, posting_time
 		return False
 	posting_dt = get_combine_datetime(posting_date, posting_time or "00:00:00")
 	touched = frappe.db.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_no,
@@ -523,7 +506,7 @@ def voucher_has_future_sles(voucher_type, voucher_no, posting_date, posting_time
 	)
 	for bucket in touched:
 		if frappe.db.exists(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{
 				"item": bucket.item,
 				"warehouse": bucket.warehouse,
@@ -553,15 +536,17 @@ def enqueue_voucher_repost(doc):
 	"""
 	if not voucher_has_future_sles(doc.doctype, doc.name, doc.posting_date, doc.posting_time):
 		return
-	riv = frappe.get_doc({
-		"doctype": 'YRP Repost Item Valuation',
-		"based_on": "Transaction",
-		"voucher_type": doc.doctype,
-		"voucher_no": doc.name,
-		"posting_date": doc.posting_date,
-		"posting_time": doc.posting_time or "00:00:00",
-		"allow_negative_stock": 1,
-	})
+	riv = frappe.get_doc(
+		{
+			"doctype": "YRP Repost Item Valuation",
+			"based_on": "Transaction",
+			"voucher_type": doc.doctype,
+			"voucher_no": doc.name,
+			"posting_date": doc.posting_date,
+			"posting_time": doc.posting_time or "00:00:00",
+			"allow_negative_stock": 1,
+		}
+	)
 	if _dedupe_transaction_repost(riv.as_dict()):
 		return
 	riv.flags.ignore_permissions = True
@@ -576,7 +561,7 @@ def _item_allows_negative_stock(item_variant):
 	parent = get_parent_item(item_variant)
 	if not parent:
 		return False
-	return bool(frappe.get_cached_value('Item', parent, "allow_negative_stock"))
+	return bool(frappe.get_cached_value("Item", parent, "allow_negative_stock"))
 
 
 # ======================================================================
@@ -650,11 +635,7 @@ def make_sl_entries(
 		transfer_key = sle.pop("_transfer_key", None)
 		transfer_role = sle.pop("_transfer_role", None)
 		result_key = sle.pop("_result_key", None)
-		if (
-			not cancel
-			and transfer_role == "incoming"
-			and transfer_key in transfer_rates
-		):
+		if not cancel and transfer_role == "incoming" and transfer_key in transfer_rates:
 			sle["rate"] = transfer_rates[transfer_key]
 
 		# Skip non-stock items
@@ -662,7 +643,7 @@ def make_sl_entries(
 		if not item_variant:
 			continue
 		parent_item = get_parent_item(item_variant)
-		if not parent_item or not frappe.get_cached_value('Item', parent_item, "is_stock_item"):
+		if not parent_item or not frappe.get_cached_value("Item", parent_item, "is_stock_item"):
 			continue
 
 		# For cancellation, mark entry and derive outgoing rate if needed
@@ -674,7 +655,7 @@ def make_sl_entries(
 				)
 
 		# Skip entries with zero qty (except Stock Reconciliation which uses qty=0)
-		if not (sle.get("qty") or sle.get("voucher_type") == 'YRP Stock Reconciliation'):
+		if not (sle.get("qty") or sle.get("voucher_type") == "YRP Stock Reconciliation"):
 			continue
 
 		# Step 1: Create the SLE document
@@ -685,14 +666,14 @@ def make_sl_entries(
 			elif transfer_role == "incoming" and transfer_key in transfer_sles:
 				outgoing_sle = transfer_sles[transfer_key]
 				frappe.db.set_value(
-					'YRP Stock Ledger Entry',
+					"YRP Stock Ledger Entry",
 					outgoing_sle,
 					"paired_stock_ledger_entry",
 					sle_doc.name,
 					update_modified=False,
 				)
 				frappe.db.set_value(
-					'YRP Stock Ledger Entry',
+					"YRP Stock Ledger Entry",
 					sle_doc.name,
 					"paired_stock_ledger_entry",
 					outgoing_sle,
@@ -712,6 +693,7 @@ def make_sl_entries(
 		# Reservation no longer mutates Bin in the new design (D-008).
 		# Compute reserved-stock fresh from active SREs.
 		from yrp.stock.utils import get_sre_reserved_qty
+
 		args["reserved_stock"] = get_sre_reserved_qty(
 			item_code=args["item"],
 			warehouse=args["warehouse"],
@@ -744,19 +726,15 @@ def make_sl_entries(
 				transfer_rate = flt(sle.get("outgoing_rate"))
 			else:
 				stock_value_difference = flt(
-					frappe.db.get_value(
-						'YRP Stock Ledger Entry', sle_doc.name, "stock_value_difference"
-					)
+					frappe.db.get_value("YRP Stock Ledger Entry", sle_doc.name, "stock_value_difference")
 				)
 				transfer_rate = (
-					abs(stock_value_difference) / abs(flt(sle.get("qty")))
-					if flt(sle.get("qty"))
-					else 0.0
+					abs(stock_value_difference) / abs(flt(sle.get("qty"))) if flt(sle.get("qty")) else 0.0
 				)
 				# Keep the source SLE audit field aligned with the cost that
 				# was actually removed by FIFO or Moving Average.
 				frappe.db.set_value(
-					'YRP Stock Ledger Entry',
+					"YRP Stock Ledger Entry",
 					sle_doc.name,
 					"outgoing_rate",
 					transfer_rate,
@@ -766,9 +744,7 @@ def make_sl_entries(
 
 		if not cancel and result_key:
 			stock_value_difference = flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', sle_doc.name, "stock_value_difference"
-				)
+				frappe.db.get_value("YRP Stock Ledger Entry", sle_doc.name, "stock_value_difference")
 			)
 			qty = abs(flt(sle.get("qty")))
 			result_details[result_key] = {
@@ -781,6 +757,7 @@ def make_sl_entries(
 
 		# Step 4: Refresh the Bin with updated qty and rate
 		from yrp.yrp_stock.doctype.yrp_bin.yrp_bin import update_qty as update_bin_qty
+
 		update_bin_qty(bin_name, args)
 
 	if return_details:
@@ -799,7 +776,7 @@ def _set_voucher_cancelled(sl_entry):
 
 def _create_sle_document(args):
 	"""Create and submit a Stock Ledger Entry from a dict of field values."""
-	doc = frappe.new_doc('YRP Stock Ledger Entry')
+	doc = frappe.new_doc("YRP Stock Ledger Entry")
 	for key, value in args.items():
 		if hasattr(doc, key):
 			doc.set(key, value)
@@ -813,7 +790,7 @@ def _create_sle_document(args):
 # ======================================================================
 def repost_current_voucher(args, allow_negative_stock=False):
 	"""Recompute valuation starting from this voucher's posting datetime."""
-	if not (args.get("qty") or args.get("voucher_type") == 'YRP Stock Reconciliation'):
+	if not (args.get("qty") or args.get("voucher_type") == "YRP Stock Reconciliation"):
 		return
 	if not args.get("posting_date"):
 		args["posting_date"] = nowdate()
@@ -859,7 +836,7 @@ def get_previous_sle(args, dim_fields=None, strictly_before=False):
 	if dim_fields is None:
 		dim_fields = get_dimension_fieldnames()
 
-	sle = frappe.qb.DocType('YRP Stock Ledger Entry')
+	sle = frappe.qb.DocType("YRP Stock Ledger Entry")
 	query = (
 		frappe.qb.from_(sle)
 		.select(sle.star)
@@ -925,13 +902,11 @@ class UpdateEntriesAfter:
 		self.valuation_dim_fields = get_valuation_dimensions()
 
 		self.valuation_method = (
-			frappe.db.get_single_value('YRP Stock Settings', "default_valuation_method") or "FIFO"
+			frappe.db.get_single_value("YRP Stock Settings", "default_valuation_method") or "FIFO"
 		)
 		# D-009: negative stock is per-Item now. The legacy
 		# YRP Stock Settings.allow_negative_stock flag is ignored.
-		self.allow_negative_stock = allow_negative_stock or _item_allows_negative_stock(
-			self.args.get("item")
-		)
+		self.allow_negative_stock = allow_negative_stock or _item_allows_negative_stock(self.args.get("item"))
 		self.allow_zero_rate = self.args.get("allow_zero_rate", False)
 
 		# Previous SLE document (for reference only)
@@ -1122,7 +1097,7 @@ class UpdateEntriesAfter:
 		different non-valuation dimensions (e.g., Fresh and Used) are fetched
 		together and processed through one shared FIFO queue.
 		"""
-		sle = frappe.qb.DocType('YRP Stock Ledger Entry')
+		sle = frappe.qb.DocType("YRP Stock Ledger Entry")
 		query = (
 			frappe.qb.from_(sle)
 			.select(sle.star)
@@ -1160,7 +1135,7 @@ class UpdateEntriesAfter:
 		current_dim_qty = self.qty_by_dims.get(dim_key, 0.0)
 
 		# Route to the appropriate handler based on transaction type
-		if sle.voucher_type == 'YRP Stock Reconciliation':
+		if sle.voucher_type == "YRP Stock Reconciliation":
 			new_dim_qty = self._handle_reconciliation(sle, valuator, current_dim_qty)
 		elif sle.qty > 0:
 			new_dim_qty = self._handle_incoming(sle, valuator, current_dim_qty)
@@ -1171,7 +1146,7 @@ class UpdateEntriesAfter:
 		# runs for future rows reached by a backdated replay, preserving the old
 		# protection against making a later balance fall below its reservation.
 		if self.args.get("validate_reserved_stock") and (
-			sle.voucher_type == 'YRP Stock Reconciliation' or flt(sle.qty) < 0
+			sle.voucher_type == "YRP Stock Reconciliation" or flt(sle.qty) < 0
 		):
 			self._validate_reservation_floor(sle, new_dim_qty)
 
@@ -1287,7 +1262,7 @@ class UpdateEntriesAfter:
 
 		# Write computed values back to the SLE document
 		frappe.db.set_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			sle.name,
 			{
 				"qty_after_transaction": self.qty_by_dims[dim_key],
@@ -1389,7 +1364,7 @@ def _update_bins_in_valuation_bucket(bucket, val_dim_fields, dim_fields):
 	for fn in val_dim_fields:
 		bin_filters[fn] = bucket.get(fn)
 
-	bin_names = frappe.get_all('YRP Bin', filters=bin_filters, pluck="name")
+	bin_names = frappe.get_all("YRP Bin", filters=bin_filters, pluck="name")
 	for bin_name in bin_names:
 		update_bin_qty(bin_name, bucket)
 
@@ -1405,9 +1380,9 @@ def get_items_to_be_repost(voucher_type, voucher_no, val_dim_fields=None):
 	if val_dim_fields is None:
 		val_dim_fields = get_valuation_dimensions()
 
-	fields = ["item", "warehouse"] + val_dim_fields
+	fields = ["item", "warehouse", *val_dim_fields]
 	return frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={"voucher_type": voucher_type, "voucher_no": voucher_no, "is_cancelled": 0},
 		fields=fields,
 		distinct=True,

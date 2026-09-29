@@ -12,8 +12,6 @@ Data flow:
   before_validate flattens back into self.items child rows → existing
   validation / SLE construction operates on self.items unchanged.
 """
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 
 import json
 from collections import defaultdict
@@ -22,8 +20,10 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, nowdate, nowtime
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 class YRPInspectionEntry(Document):
@@ -67,11 +67,11 @@ class YRPInspectionEntry(Document):
 		# cancelled.
 		if self.get("is_converted") or (self.status or "") == "Converted":
 			frappe.throw(
-				_(
-					"Inspection Entry {0} has already converted stock and cannot be cancelled."
-				).format(self.name)
+				_("Inspection Entry {0} has already converted stock and cannot be cancelled.").format(
+					self.name
+				)
 			)
-		self.ignore_linked_doctypes = ('YRP Stock Ledger Entry', 'YRP Repost Item Valuation')
+		self.ignore_linked_doctypes = ("YRP Stock Ledger Entry", "YRP Repost Item Valuation")
 		self.status = "Cancelled"
 
 	def on_cancel(self):
@@ -82,13 +82,13 @@ class YRPInspectionEntry(Document):
 	# Validation helpers
 	# ------------------------------------------------------------------
 	def _validate_source(self):
-		if self.against not in ('YRP Goods Received Note', 'YRP Stock Entry'):
+		if self.against not in ("YRP Goods Received Note", "YRP Stock Entry"):
 			frappe.throw(_("Inspection Entry supports Against = Goods Received Note or Stock Entry."))
 		if not self.against_id:
 			frappe.throw(_("Against ID is required."))
-		if self.against == 'YRP Goods Received Note':
+		if self.against == "YRP Goods Received Note":
 			docstatus, is_rework = frappe.db.get_value(
-				'YRP Goods Received Note', self.against_id, ["docstatus", "is_rework"]
+				"YRP Goods Received Note", self.against_id, ["docstatus", "is_rework"]
 			)
 			if docstatus != 1:
 				frappe.throw(_("Goods Received Note {0} must be submitted.").format(self.against_id))
@@ -96,7 +96,7 @@ class YRPInspectionEntry(Document):
 				frappe.throw(_("Rework Goods Received Notes are not inspectable."))
 		else:  # Stock Entry
 			row = frappe.db.get_value(
-				'YRP Stock Entry',
+				"YRP Stock Entry",
 				self.against_id,
 				["docstatus", "purpose"],
 				as_dict=True,
@@ -151,15 +151,13 @@ class YRPInspectionEntry(Document):
 		from yrp.stock.utils import get_stock_balance
 
 		dim_fields = get_dimension_fieldnames()
-		default_rt = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
+		default_rt = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 		groups = defaultdict(list)
 		for row in self.items:
 			groups[self._bin_key(row)].append(row)
-		for key, rows in groups.items():
+		for _key, rows in groups.items():
 			source_rt = rows[0].get("received_type") or default_rt
-			out_qty = sum(
-				flt(r.qty) for r in rows if r.target_received_type != source_rt
-			)
+			out_qty = sum(flt(r.qty) for r in rows if r.target_received_type != source_rt)
 			if out_qty <= 0:
 				continue
 			dim_filters = {}
@@ -213,11 +211,7 @@ class YRPInspectionEntry(Document):
 				continue
 
 			parent_item = get_parent_item(row.item_variant)
-			stock_uom = (
-				frappe.get_cached_value('Item', parent_item, "stock_uom")
-				if parent_item
-				else None
-			)
+			stock_uom = frappe.get_cached_value("Item", parent_item, "stock_uom") if parent_item else None
 
 			base = {
 				"item": row.item_variant,
@@ -307,12 +301,14 @@ def _group_items_for_ui(rows):
 				source[fn] = row_data.get(fn)
 			by_source[key] = source
 			order.append(key)
-		by_source[key]["splits"].append({
-			"target_received_type": row_data.get("target_received_type"),
-			"qty": flt(row_data.get("qty")),
-			"received_date": row_data.get("received_date"),
-			"comments": row_data.get("comments") or "",
-		})
+		by_source[key]["splits"].append(
+			{
+				"target_received_type": row_data.get("target_received_type"),
+				"qty": flt(row_data.get("qty")),
+				"received_date": row_data.get("received_date"),
+				"comments": row_data.get("comments") or "",
+			}
+		)
 	sources = [by_source[k] for k in order]
 	_attach_display_meta(sources)
 	return sources
@@ -372,15 +368,15 @@ def get_initial_payload(against, against_id):
 	"""Build the source-bin grouped payload for a fresh Inspection Entry from a
 	submitted source document. Each source row becomes one source bin with a
 	single default split (target = source, qty = source qty)."""
-	if against == 'YRP Goods Received Note':
+	if against == "YRP Goods Received Note":
 		return _grn_initial_payload(against_id)
-	if against == 'YRP Stock Entry':
+	if against == "YRP Stock Entry":
 		return _stock_entry_initial_payload(against_id)
 	frappe.throw(_("Inspection Entry against {0} is not supported yet.").format(against))
 
 
 def _grn_initial_payload(grn):
-	grn_doc = frappe.get_doc('YRP Goods Received Note', grn)
+	grn_doc = frappe.get_doc("YRP Goods Received Note", grn)
 	if grn_doc.docstatus != 1:
 		frappe.throw(_("Goods Received Note {0} must be submitted.").format(grn))
 	if grn_doc.get("is_rework"):
@@ -401,7 +397,7 @@ def _grn_initial_payload(grn):
 			"item_variant": item.item_variant,
 			"warehouse": grn_doc.to_warehouse,
 			"grn_qty": qty,
-			"ref_doctype": 'YRP Goods Received Note Item',
+			"ref_doctype": "YRP Goods Received Note Item",
 			"ref_docname": item.name,
 			"source_received_type": source_rt,
 			"splits": [
@@ -422,13 +418,11 @@ def _grn_initial_payload(grn):
 
 
 def _stock_entry_initial_payload(ste):
-	ste_doc = frappe.get_doc('YRP Stock Entry', ste)
+	ste_doc = frappe.get_doc("YRP Stock Entry", ste)
 	if ste_doc.docstatus != 1:
 		frappe.throw(_("Stock Entry {0} must be submitted.").format(ste))
 	if (ste_doc.purpose or "") != "Material Receipt":
-		frappe.throw(
-			_("Stock Entry {0} must have Purpose = 'Material Receipt' to be inspected.").format(ste)
-		)
+		frappe.throw(_("Stock Entry {0} must have Purpose = 'Material Receipt' to be inspected.").format(ste))
 
 	from yrp.stock.dimensions import get_dimension_fieldnames
 
@@ -446,7 +440,7 @@ def _stock_entry_initial_payload(ste):
 			"item_variant": row.item,  # Stock Entry Detail uses `item`, not `item_variant`
 			"warehouse": default_warehouse,
 			"grn_qty": qty,
-			"ref_doctype": 'YRP Stock Entry Detail',
+			"ref_doctype": "YRP Stock Entry Detail",
 			"ref_docname": row.name,
 			"source_received_type": source_rt,
 			"splits": [
@@ -489,7 +483,7 @@ def _attach_display_meta(sources):
 
 	def _get_variant(name):
 		if name not in variant_cache:
-			variant_cache[name] = frappe.get_cached_doc('Item', name)
+			variant_cache[name] = frappe.get_cached_doc("Item", name)
 		return variant_cache[name]
 
 	def _get_attr(parent):
@@ -505,7 +499,7 @@ def _attach_display_meta(sources):
 			variant_doc = _get_variant(iv)
 		except frappe.DoesNotExistError:
 			continue
-		parent_item = (variant_doc.variant_of or variant_doc.name)
+		parent_item = variant_doc.variant_of or variant_doc.name
 		if not parent_item:
 			continue
 		attr_details = _get_attr(parent_item)
@@ -515,8 +509,7 @@ def _attach_display_meta(sources):
 		non_primary_names = list(attr_details.get("attributes") or [])
 
 		variant_attrs = {
-			row.attribute: _attribute_value(row.attribute_value)
-			for row in (variant_doc.attributes or [])
+			row.attribute: _attribute_value(row.attribute_value) for row in (variant_doc.attributes or [])
 		}
 		primary_value = variant_attrs.get(primary, "") if primary else ""
 		non_primary_attrs = {a: variant_attrs.get(a, "") for a in non_primary_names}
@@ -562,17 +555,14 @@ def _attach_display_meta(sources):
 @frappe.whitelist()
 def get_received_types():
 	"""Dropdown source for the Vue editor."""
-	return [
-		r["name"]
-		for r in frappe.get_all('YRP Received Type', fields=["name"], order_by="name asc")
-	]
+	return [r["name"] for r in frappe.get_all("YRP Received Type", fields=["name"], order_by="name asc")]
 
 
 # ----------------------------------------------------------------------
 # Convert Stock — approver-gated SLE generation, separated from submit.
 # ----------------------------------------------------------------------
 def _approver_role():
-	role = attribute_db.get_single_value('YRP Settings', "inspection_entry_approver_role")
+	role = attribute_db.get_single_value("YRP Settings", "inspection_entry_approver_role")
 	return (role or "").strip()
 
 
@@ -593,14 +583,14 @@ def can_convert_stock(name):
 	  }
 	"""
 	role = _approver_role()
-	doc = frappe.get_doc('YRP Inspection Entry', name)
+	doc = frappe.get_doc("YRP Inspection Entry", name)
 
 	# Only show siblings whose stock has actually been converted — drafts and
 	# submitted-but-not-converted IEs are noise for this dialog.
 	siblings = []
 	if doc.against and doc.against_id:
 		siblings = frappe.get_all(
-			'YRP Inspection Entry',
+			"YRP Inspection Entry",
 			filters={
 				"against": doc.against,
 				"against_id": doc.against_id,
@@ -657,7 +647,7 @@ def convert_stock(name):
 			frappe.PermissionError,
 		)
 
-	doc = frappe.get_doc('YRP Inspection Entry', name)
+	doc = frappe.get_doc("YRP Inspection Entry", name)
 	if doc.docstatus != 1:
 		frappe.throw(_("Inspection Entry {0} must be submitted before converting stock.").format(name))
 	current_status = doc.status or ""

@@ -5,7 +5,7 @@ from frappe.tests.utils import FrappeTestCase
 
 
 def _rework_work_order(**row_values):
-	doc = frappe.new_doc('YRP Work Order')
+	doc = frappe.new_doc("YRP Work Order")
 	doc.is_rework = 1
 	doc.append("deliverables", row_values)
 	return doc

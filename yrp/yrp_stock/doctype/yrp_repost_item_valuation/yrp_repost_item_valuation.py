@@ -55,7 +55,7 @@ def repost(doc):
 		"SELECT name FROM `tabYRP Repost Item Valuation` WHERE name=%s FOR UPDATE",
 		(doc,),
 	)
-	rv = frappe.get_doc('YRP Repost Item Valuation', doc)
+	rv = frappe.get_doc("YRP Repost Item Valuation", doc)
 	if rv.docstatus != 1 or rv.status in {"Completed", "In Progress"}:
 		return
 	try:
@@ -70,7 +70,7 @@ def repost(doc):
 		# the last per-bucket checkpoint before persisting the failure state;
 		# otherwise the failure commit would also commit a half-replayed bucket.
 		frappe.db.rollback()
-		rv = frappe.get_doc('YRP Repost Item Valuation', doc)
+		rv = frappe.get_doc("YRP Repost Item Valuation", doc)
 		rv.db_set("status", "Failed")
 		rv.db_set("retry_count", cint(rv.retry_count) + 1)
 		rv.db_set("error_log", error_log)
@@ -111,15 +111,12 @@ def repost_entries():
 	)
 	frappe.db.commit()
 
-	riv = frappe.qb.DocType('YRP Repost Item Valuation')
+	riv = frappe.qb.DocType("YRP Repost Item Valuation")
 	names = (
 		frappe.qb.from_(riv)
 		.select(riv.name)
 		.where(riv.docstatus == 1)
-		.where(
-			(riv.status == "Queued")
-			| ((riv.status == "Failed") & (riv.retry_count < MAX_RETRY_COUNT))
-		)
+		.where((riv.status == "Queued") | ((riv.status == "Failed") & (riv.retry_count < MAX_RETRY_COUNT)))
 		.orderby(riv.posting_date)
 		.orderby(riv.posting_time)
 		.limit(MAX_PER_RUN)

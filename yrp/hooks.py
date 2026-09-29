@@ -103,7 +103,9 @@ doctype_js = {
 # ------------
 
 # before_install = "yrp.install.before_install"
-after_install = "yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium"
+after_install = (
+	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium"
+)
 
 # Uninstallation
 # ------------
@@ -177,7 +179,7 @@ scheduler_events = {
 }
 
 doc_events = {
-	'YRP Stock Settings': {
+	"YRP Stock Settings": {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
 	"Item Attribute": {
@@ -320,10 +322,30 @@ extend_doctype_class = {
 
 # Scoped attribute-value Link normalization for internal document writes.
 extend_doctype_class = globals().get("extend_doctype_class", {})
-for _attribute_link_doctype in ['YRP IPD Matrix Combination Attribute', 'YRP IPD Process', 'YRP IPD Process Matrix', 'YRP Item BOM', 'YRP Item BOM Attribute Mapping', 'YRP Item BOM Attribute Mapping Value', 'YRP Item Dependent Attribute Mapping', 'YRP Item Dependent Attribute Mapping Detail', 'YRP Item Dependent Attribute Mapping Value', 'YRP Item Price', 'YRP Item Price Value', 'YRP Item Production Detail', 'YRP Process Cost', 'YRP Process Cost Value', 'YRP Production Order', 'YRP Settings']:
+for _attribute_link_doctype in [
+	"YRP IPD Matrix Combination Attribute",
+	"YRP IPD Process",
+	"YRP IPD Process Matrix",
+	"YRP Item BOM",
+	"YRP Item BOM Attribute Mapping",
+	"YRP Item BOM Attribute Mapping Value",
+	"YRP Item Dependent Attribute Mapping",
+	"YRP Item Dependent Attribute Mapping Detail",
+	"YRP Item Dependent Attribute Mapping Value",
+	"YRP Item Price",
+	"YRP Item Price Value",
+	"YRP Item Production Detail",
+	"YRP Process Cost",
+	"YRP Process Cost Value",
+	"YRP Production Order",
+	"YRP Settings",
+]:
 	_existing_mixins = extend_doctype_class.get(_attribute_link_doctype, [])
 	if isinstance(_existing_mixins, str):
 		_existing_mixins = [_existing_mixins]
-	extend_doctype_class[_attribute_link_doctype] = [*_existing_mixins, "yrp.attribute_links.AttributeLinkStorageMixin"]
+	extend_doctype_class[_attribute_link_doctype] = [
+		*_existing_mixins,
+		"yrp.attribute_links.AttributeLinkStorageMixin",
+	]
 
 boot_session = "yrp.attribute_links.boot_session"

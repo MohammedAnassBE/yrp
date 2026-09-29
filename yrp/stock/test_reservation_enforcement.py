@@ -116,7 +116,7 @@ class TestReservationEnforcement(TestCase):
 			{
 				**engine.args,
 				"name": "SLE-HISTORICAL",
-				"voucher_type": 'YRP Stock Entry',
+				"voucher_type": "YRP Stock Entry",
 				"qty": -9,
 				"outgoing_rate": 0,
 			}
@@ -136,7 +136,7 @@ class TestReservationEnforcement(TestCase):
 			{
 				**engine.args,
 				"name": "SLE-OUT",
-				"voucher_type": 'YRP Stock Entry',
+				"voucher_type": "YRP Stock Entry",
 				"qty": -2,
 				"outgoing_rate": 0,
 			}
@@ -160,7 +160,7 @@ class TestReservationEnforcement(TestCase):
 				"lot": "LOT-1",
 				"received_type": "Rejected",
 				"name": "SLE-FUTURE",
-				"voucher_type": 'YRP Stock Entry',
+				"voucher_type": "YRP Stock Entry",
 				"qty": -3,
 				"outgoing_rate": 0,
 			}
@@ -180,7 +180,7 @@ class TestReservationEnforcement(TestCase):
 			{
 				**engine.args,
 				"name": "SLE-RECON",
-				"voucher_type": 'YRP Stock Reconciliation',
+				"voucher_type": "YRP Stock Reconciliation",
 				"qty": -5,
 				"qty_after_transaction": 5,
 				"rate": 5,

@@ -1,9 +1,10 @@
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt, getdate, nowdate, nowtime
+
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
@@ -21,11 +22,11 @@ class YRPWorkOrder(Document):
 
 		self.set_onload(
 			"deliverable_details",
-			group_items_for_ui(self.get("deliverables") or [], 'YRP Work Order Deliverables'),
+			group_items_for_ui(self.get("deliverables") or [], "YRP Work Order Deliverables"),
 		)
 		self.set_onload(
 			"receivable_details",
-			group_items_for_ui(self.get("receivables") or [], 'YRP Work Order Receivables'),
+			group_items_for_ui(self.get("receivables") or [], "YRP Work Order Receivables"),
 		)
 
 	def before_validate(self):
@@ -48,14 +49,16 @@ class YRPWorkOrder(Document):
 	def set_linked_process_and_supplier_flags(self):
 		if self.supplier:
 			self.is_internal_unit = cint(
-				frappe.db.get_value('Supplier', self.supplier, "is_company_location")
+				frappe.db.get_value("Supplier", self.supplier, "is_company_location")
 			)
 		if self.process_name:
-			self.is_manual_entry = cint(frappe.db.get_value(
-				'YRP Process',
-				self.process_name,
-				"is_manual_entry_in_grn",
-			))
+			self.is_manual_entry = cint(
+				frappe.db.get_value(
+					"YRP Process",
+					self.process_name,
+					"is_manual_entry_in_grn",
+				)
+			)
 
 	def set_stock_dimension_values(self):
 		"""Populate Work Order child dimensions through the shared stock model."""
@@ -63,8 +66,8 @@ class YRPWorkOrder(Document):
 
 		dimensions = get_stock_dimensions()
 		for child_doctype, rows in (
-			('YRP Work Order Deliverables', self.get("deliverables") or []),
-			('YRP Work Order Receivables', self.get("receivables") or []),
+			("YRP Work Order Deliverables", self.get("deliverables") or []),
+			("YRP Work Order Receivables", self.get("receivables") or []),
 		):
 			meta = frappe.get_meta(child_doctype)
 			for row in rows:
@@ -103,11 +106,14 @@ class YRPWorkOrder(Document):
 		if not self.start_date:
 			self.start_date = nowdate()
 		if not self.get("work_order_tracking_logs"):
-			self.append("work_order_tracking_logs", {
-				"from_date": self.planned_start_date,
-				"to_date": self.expected_delivery_date,
-				"user": frappe.session.user,
-			})
+			self.append(
+				"work_order_tracking_logs",
+				{
+					"from_date": self.planned_start_date,
+					"to_date": self.expected_delivery_date,
+					"user": frappe.session.user,
+				},
+			)
 		self.set_pending_quantities()
 		self.set_total_quantity()
 		self.set_status()
@@ -121,11 +127,14 @@ class YRPWorkOrder(Document):
 			issues.append(_("There are no receivables on the Work Order."))
 
 		if self.get("production_detail"):
-			status = attribute_db.get_value(
-				'YRP Item Production Detail',
-				self.production_detail,
-				"approval_status",
-			) or "Not Approved"
+			status = (
+				attribute_db.get_value(
+					"YRP Item Production Detail",
+					self.production_detail,
+					"approval_status",
+				)
+				or "Not Approved"
+			)
 			if status != "Approved":
 				issues.append(
 					_("Item Production Detail {0} is not Approved (status: {1}).").format(
@@ -138,11 +147,7 @@ class YRPWorkOrder(Document):
 
 	def get_process_cost_readiness_issues(self):
 		"""Return shared Process Cost blockers; company apps may extend this."""
-		if (
-			not self.get("receivables")
-			or self.get("is_rework")
-			or self.get("rework_type") == "No Cost"
-		):
+		if not self.get("receivables") or self.get("is_rework") or self.get("rework_type") == "No Cost":
 			return []
 		if self.get_receivable_process_cost():
 			return []
@@ -174,20 +179,20 @@ class YRPWorkOrder(Document):
 		# SREs against this WO are cancelled in `on_cancel`; tell Frappe's
 		# linked-docs guard to skip them so the cancel isn't blocked.
 		self.ignore_linked_doctypes = (
-			'YRP Delivery Challan',
-			'YRP Goods Received Note',
-			'YRP Stock Reservation Entry',
+			"YRP Delivery Challan",
+			"YRP Goods Received Note",
+			"YRP Stock Reservation Entry",
 		)
 
 	def on_cancel(self):
 		from yrp.stock.utils import close_voucher_reservations
 
-		close_voucher_reservations('YRP Work Order', self.name)
+		close_voucher_reservations("YRP Work Order", self.name)
 		self.db_set("status", "Cancelled", update_modified=False)
 
 	def validate_no_submitted_downstream_documents(self):
 		delivery_challan = frappe.db.get_value(
-			'YRP Delivery Challan',
+			"YRP Delivery Challan",
 			{"work_order": self.name, "docstatus": 1},
 			"name",
 		)
@@ -199,8 +204,8 @@ class YRPWorkOrder(Document):
 			)
 
 		goods_received_note = frappe.db.get_value(
-			'YRP Goods Received Note',
-			{"against": 'YRP Work Order', "against_id": self.name, "docstatus": 1},
+			"YRP Goods Received Note",
+			{"against": "YRP Work Order", "against_id": self.name, "docstatus": 1},
 			"name",
 		)
 		if goods_received_note:
@@ -217,9 +222,7 @@ class YRPWorkOrder(Document):
 		if self.get("rework_type") and self.rework_type != "No Cost":
 			frappe.throw(_("Only No Cost rework is supported in YRP core."))
 
-		if self.get("parent_wo") and frappe.db.get_value(
-			'YRP Work Order', self.parent_wo, "is_rework"
-		):
+		if self.get("parent_wo") and frappe.db.get_value("YRP Work Order", self.parent_wo, "is_rework"):
 			frappe.throw(
 				_("Nested rework is not allowed. Work Order {0} is already a rework Work Order.").format(
 					self.parent_wo
@@ -229,9 +232,7 @@ class YRPWorkOrder(Document):
 		for row in self.get("deliverables") or []:
 			if not row.get("source_grn_item"):
 				frappe.throw(
-					_(
-						"Row {0}: Rework deliverable must reference a Source GRN Item."
-					).format(row.idx)
+					_("Row {0}: Rework deliverable must reference a Source GRN Item.").format(row.idx)
 				)
 			if not row.get("received_type"):
 				frappe.throw(
@@ -248,7 +249,9 @@ class YRPWorkOrder(Document):
 
 		warehouse = _get_warehouse_for_supplier(self.delivery_location)
 		if not warehouse:
-			frappe.throw(_("No active Warehouse found for delivery location {0}.").format(self.delivery_location))
+			frappe.throw(
+				_("No active Warehouse found for delivery location {0}.").format(self.delivery_location)
+			)
 
 		for row in self.get("deliverables") or []:
 			voucher_qty = flt(row.qty)
@@ -257,9 +260,9 @@ class YRPWorkOrder(Document):
 			uom_details = resolve_item_uom(row.item_variant)
 			stock_qty = voucher_qty * flt(uom_details.conversion_factor or 1)
 			existing = frappe.db.exists(
-				'YRP Stock Reservation Entry',
+				"YRP Stock Reservation Entry",
 				{
-					"voucher_type": 'YRP Work Order',
+					"voucher_type": "YRP Work Order",
 					"voucher_no": self.name,
 					"voucher_detail_no": row.name,
 					"docstatus": 1,
@@ -272,28 +275,30 @@ class YRPWorkOrder(Document):
 			available = get_available_stock(
 				row.item_variant,
 				warehouse,
-				exclude_voucher_type='YRP Work Order',
+				exclude_voucher_type="YRP Work Order",
 				exclude_voucher_name=self.name,
 				**dim_values,
 			)
-			sre = frappe.get_doc({
-				"doctype": 'YRP Stock Reservation Entry',
-				"item_code": row.item_variant,
-				"warehouse": warehouse,
-				"voucher_type": 'YRP Work Order',
-				"voucher_no": self.name,
-				"voucher_detail_no": row.name,
-				"stock_uom": uom_details.stock_uom,
-				"available_qty": available,
-				# SLE/Bin balances are always stock-UOM quantities. Convert the
-				# voucher quantity before creating its reservation;
-				# retaining the voucher-UOM quantity here under-reserves any Item
-				# whose conversion factor is not one.
-				"voucher_qty": stock_qty,
-				"reserved_qty": stock_qty,
-				"delivered_qty": 0,
-				**dim_values,
-			})
+			sre = frappe.get_doc(
+				{
+					"doctype": "YRP Stock Reservation Entry",
+					"item_code": row.item_variant,
+					"warehouse": warehouse,
+					"voucher_type": "YRP Work Order",
+					"voucher_no": self.name,
+					"voucher_detail_no": row.name,
+					"stock_uom": uom_details.stock_uom,
+					"available_qty": available,
+					# SLE/Bin balances are always stock-UOM quantities. Convert the
+					# voucher quantity before creating its reservation;
+					# retaining the voucher-UOM quantity here under-reserves any Item
+					# whose conversion factor is not one.
+					"voucher_qty": stock_qty,
+					"reserved_qty": stock_qty,
+					"delivered_qty": 0,
+					**dim_values,
+				}
+			)
 			sre.insert(ignore_permissions=True)
 			sre.submit()
 
@@ -360,7 +365,7 @@ class YRPWorkOrder(Document):
 			)
 
 		self.process_cost = process_cost_name
-		process_cost = frappe.get_doc('YRP Process Cost', process_cost_name)
+		process_cost = frappe.get_doc("YRP Process Cost", process_cost_name)
 		self.apply_receivable_process_costs(process_cost)
 
 	def apply_receivable_process_costs(self, process_cost):
@@ -433,7 +438,7 @@ class YRPWorkOrder(Document):
 		if not self.process_name or not self.item or not self.wo_date:
 			return None
 
-		meta = frappe.get_meta('YRP Process Cost')
+		meta = frappe.get_meta("YRP Process Cost")
 		filters = [
 			["process_name", "=", self.process_name],
 			["item", "=", self.item],
@@ -448,15 +453,15 @@ class YRPWorkOrder(Document):
 
 		from yrp.stock.dimensions import append_production_group_filters
 
-		append_production_group_filters(filters, self, 'YRP Process Cost')
+		append_production_group_filters(filters, self, "YRP Process Cost")
 
 		if meta.get_field("workflow_state") and frappe.db.exists(
-			"Workflow", {"document_type": 'YRP Process Cost', "is_active": 1}
+			"Workflow", {"document_type": "YRP Process Cost", "is_active": 1}
 		):
 			filters.append(["workflow_state", "=", "Approved"])
 
 		process_costs = frappe.get_all(
-			'YRP Process Cost',
+			"YRP Process Cost",
 			filters=filters,
 			fields=["name", "to_date"],
 			order_by="from_date desc, creation desc",
@@ -494,7 +499,9 @@ class YRPWorkOrder(Document):
 		# Per-row floor at 0: excess delivery drives a row's pending NEGATIVE
 		# (2026-07-10) — a raw sum would let one excess row mask another row's
 		# genuinely-owed pending and flip the WO to a false "Fully Delivered".
-		total_delivery_pending = sum(max(flt(row.pending_quantity), 0) for row in self.get("deliverables") or [])
+		total_delivery_pending = sum(
+			max(flt(row.pending_quantity), 0) for row in self.get("deliverables") or []
+		)
 		if total_deliverable_qty:
 			if total_delivery_pending <= 0:
 				status = "Fully Delivered"
@@ -504,7 +511,9 @@ class YRPWorkOrder(Document):
 		total_receivable_qty = sum(flt(row.qty) for row in self.get("receivables") or [])
 		# Same floor as deliverables: GRN's allowance-governed excess receipt
 		# can push a row's pending negative — don't let it mask other rows.
-		total_received_pending = sum(max(flt(row.pending_quantity), 0) for row in self.get("receivables") or [])
+		total_received_pending = sum(
+			max(flt(row.pending_quantity), 0) for row in self.get("receivables") or []
+		)
 		if total_receivable_qty:
 			received_qty = total_receivable_qty - total_received_pending
 			if received_qty > 0:
@@ -531,12 +540,12 @@ class YRPWorkOrder(Document):
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
 		if self.get("deliverable_details"):
-			rows = ungroup_items_from_ui(self.deliverable_details, 'YRP Work Order Deliverables')
+			rows = ungroup_items_from_ui(self.deliverable_details, "YRP Work Order Deliverables")
 			self.set("deliverables", [])
 			for row in rows:
 				self.append("deliverables", row)
 		if self.get("receivable_details"):
-			rows = ungroup_items_from_ui(self.receivable_details, 'YRP Work Order Receivables')
+			rows = ungroup_items_from_ui(self.receivable_details, "YRP Work Order Receivables")
 			self.set("receivables", [])
 			for row in rows:
 				self.append("receivables", row)
@@ -557,7 +566,10 @@ def get_process_cost_rate(item_variant, quantity, process_cost):
 	low_price = 0
 	found = False
 	for cost_row in cost_rows:
-		if process_cost.depends_on_attribute and _attribute_value(cost_row.attribute_value) != attribute_value:
+		if (
+			process_cost.depends_on_attribute
+			and _attribute_value(cost_row.attribute_value) != attribute_value
+		):
 			continue
 		min_order_qty = flt(cost_row.min_order_qty)
 		if min_order_qty > flt(quantity):
@@ -592,8 +604,8 @@ def get_receivable_stock_quantity(row):
 
 def get_variant_attributes(item_variant):
 	rows = frappe.get_all(
-		'Item Variant Attribute',
-		filters={"parent": item_variant, "parenttype": 'Item'},
+		"Item Variant Attribute",
+		filters={"parent": item_variant, "parenttype": "Item"},
 		fields=["attribute", "attribute_value"],
 	)
 	return {row.attribute: _attribute_value(row.attribute_value) for row in rows}
@@ -605,7 +617,7 @@ def update_stock(work_order, close_reason=None, close_other_reason=None, close_r
 	from yrp.stock.utils import close_voucher_reservations, get_stock_balance
 	from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import _get_warehouse_for_supplier
 
-	doc = frappe.get_doc('YRP Work Order', work_order)
+	doc = frappe.get_doc("YRP Work Order", work_order)
 	if doc.docstatus != 1:
 		frappe.throw(_("Only submitted Work Orders can be closed."))
 	if doc.open_status == "Close":
@@ -642,21 +654,23 @@ def update_stock(work_order, close_reason=None, close_other_reason=None, close_r
 		reduce_qty = min(reduce_qty, flt(balance))
 		if reduce_qty <= 0:
 			continue
-		entries.append({
-			"item": row.item_variant,
-			"warehouse": warehouse,
-			"uom": row.uom,
-			"voucher_type": doc.doctype,
-			"voucher_no": doc.name,
-			"voucher_detail_no": row.name,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"qty": -reduce_qty,
-			"rate": 0,
-			"outgoing_rate": flt(row.valuation_rate or row.rate or valuation_rate),
-			"is_cancelled": 0,
-			**dim_values,
-		})
+		entries.append(
+			{
+				"item": row.item_variant,
+				"warehouse": warehouse,
+				"uom": row.uom,
+				"voucher_type": doc.doctype,
+				"voucher_no": doc.name,
+				"voucher_detail_no": row.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"qty": -reduce_qty,
+				"rate": 0,
+				"outgoing_rate": flt(row.valuation_rate or row.rate or valuation_rate),
+				"is_cancelled": 0,
+				**dim_values,
+			}
+		)
 		row.stock_update = flt(row.stock_update) + reduce_qty
 
 	make_sl_entries(entries)
@@ -665,16 +679,16 @@ def update_stock(work_order, close_reason=None, close_other_reason=None, close_r
 	doc.is_delivered = 1
 	doc.total_quantity = 0
 	doc.save(ignore_permissions=True)
-	close_voucher_reservations('YRP Work Order', doc.name)
+	close_voucher_reservations("YRP Work Order", doc.name)
 	return "Close"
 
 
 @frappe.whitelist()
 def get_debits(work_order):
-	if not frappe.db.exists("DocType", 'YRP Debit'):
+	if not frappe.db.exists("DocType", "YRP Debit"):
 		return []
 	return frappe.get_all(
-		'YRP Debit',
+		"YRP Debit",
 		filters={"work_order": work_order, "docstatus": 1},
 		fields=[
 			"name",
@@ -692,18 +706,22 @@ def get_debits(work_order):
 
 def _validate_wo_close(doc):
 	grn = frappe.db.get_value(
-		'YRP Goods Received Note',
-		{"against": 'YRP Work Order', "against_id": doc.name, "docstatus": 1},
+		"YRP Goods Received Note",
+		{"against": "YRP Work Order", "against_id": doc.name, "docstatus": 1},
 		"name",
 	)
 	if not grn:
 		frappe.throw(_("There is no submitted Goods Received Note for this Work Order."))
 
-	unapproved_debit = frappe.db.get_value(
-		'YRP Debit',
-		{"work_order": doc.name, "docstatus": 1, "status": ["!=", "Approved"]},
-		"name",
-	) if frappe.db.exists("DocType", 'YRP Debit') else None
+	unapproved_debit = (
+		frappe.db.get_value(
+			"YRP Debit",
+			{"work_order": doc.name, "docstatus": 1, "status": ["!=", "Approved"]},
+			"name",
+		)
+		if frappe.db.exists("DocType", "YRP Debit")
+		else None
+	)
 	if unapproved_debit:
 		frappe.throw(_("Debit {0} must be approved before closing.").format(unapproved_debit))
 
@@ -727,13 +745,13 @@ def _stock_dimension_values(doc, row):
 		doc_value = doc.get(fieldname) if doc.meta.get_field(fieldname) else None
 		values[fieldname] = row_value or doc_value
 	if "received_type" in values and not values.get("received_type"):
-		values["received_type"] = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
+		values["received_type"] = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 	return values
 
 
 @frappe.whitelist()
 def get_rework_source_rows(work_order):
-	doc = frappe.get_doc('YRP Work Order', work_order)
+	doc = frappe.get_doc("YRP Work Order", work_order)
 	if doc.docstatus != 1:
 		frappe.throw(_("Work Order {0} must be submitted.").format(work_order))
 	if doc.open_status == "Close":
@@ -762,8 +780,7 @@ def _enrich_dimension_metadata(rows):
 	}
 	for row in rows:
 		row["dimension_labels"] = {
-			fieldname: labels.get(fieldname, fieldname)
-			for fieldname in (row.get("dimensions") or {})
+			fieldname: labels.get(fieldname, fieldname) for fieldname in (row.get("dimensions") or {})
 		}
 
 
@@ -784,25 +801,33 @@ def _enrich_variant_attributes(rows):
 	parent_by_variant = {
 		name: variant_of or name
 		for name, variant_of in frappe.get_all(
-			'Item',
+			"Item",
 			filters={"name": ["in", variants]},
 			fields=["name", "variant_of"],
 			as_list=True,
 		)
 	}
-	primary_by_item = dict(
-		frappe.get_all(
-			'Item',
-			filters={"name": ["in", list({v for v in parent_by_variant.values() if v})]},
-			fields=["name", "primary_attribute"],
-			as_list=True,
+	primary_by_item = (
+		dict(
+			frappe.get_all(
+				"Item",
+				filters={"name": ["in", list({v for v in parent_by_variant.values() if v})]},
+				fields=["name", "primary_attribute"],
+				as_list=True,
+			)
 		)
-	) if parent_by_variant else {}
-	attr_rows = frappe.get_all(
-		'Item Variant Attribute',
-		filters={"parent": ["in", variants], "parenttype": 'Item'},
-		fields=["parent", "attribute", "attribute_value"],
-	) if variants else []
+		if parent_by_variant
+		else {}
+	)
+	attr_rows = (
+		frappe.get_all(
+			"Item Variant Attribute",
+			filters={"parent": ["in", variants], "parenttype": "Item"},
+			fields=["parent", "attribute", "attribute_value"],
+		)
+		if variants
+		else []
+	)
 	attrs_by_variant = {}
 	for r in attr_rows:
 		attrs_by_variant.setdefault(r.parent, {})[r.attribute] = _attribute_value(r.attribute_value)
@@ -815,15 +840,13 @@ def _enrich_variant_attributes(rows):
 		row["parent_item"] = parent_item
 		row["primary_attribute"] = primary_attr
 		row["primary_attribute_value"] = attrs.get(primary_attr) if primary_attr else None
-		row["non_primary_attrs"] = {
-			attr: val for attr, val in attrs.items() if attr != primary_attr
-		}
+		row["non_primary_attrs"] = {attr: val for attr, val in attrs.items() if attr != primary_attr}
 
 
 @frappe.whitelist()
 def create_rework_work_order(parent_wo, rows, supplier_type="Same Supplier", supplier=None):
-	frappe.has_permission('YRP Work Order', "create", throw=True)
-	parent = frappe.get_doc('YRP Work Order', parent_wo)
+	frappe.has_permission("YRP Work Order", "create", throw=True)
+	parent = frappe.get_doc("YRP Work Order", parent_wo)
 	if parent.docstatus != 1:
 		frappe.throw(_("Parent Work Order {0} must be submitted.").format(parent_wo))
 	if parent.open_status == "Close":
@@ -866,11 +889,15 @@ def create_rework_work_order(parent_wo, rows, supplier_type="Same Supplier", sup
 	elif supplier_type != "Same Supplier":
 		frappe.throw(_("Invalid Supplier Type {0}.").format(supplier_type))
 
-	supplier_address = parent.supplier_address if target_supplier == parent.supplier else _primary_supplier_address(target_supplier)
+	supplier_address = (
+		parent.supplier_address
+		if target_supplier == parent.supplier
+		else _primary_supplier_address(target_supplier)
+	)
 	if not supplier_address:
 		frappe.throw(_("No primary address found for supplier {0}.").format(target_supplier))
 
-	wo = frappe.new_doc('YRP Work Order')
+	wo = frappe.new_doc("YRP Work Order")
 	wo.is_rework = 1
 	wo.parent_wo = parent.name
 	wo.supplier_type = supplier_type
@@ -898,7 +925,7 @@ def create_rework_work_order(parent_wo, rows, supplier_type="Same Supplier", sup
 
 @frappe.whitelist()
 def get_close_permission():
-	approver_role = attribute_db.get_single_value('YRP Settings', "work_order_closing_approver_role")
+	approver_role = attribute_db.get_single_value("YRP Settings", "work_order_closing_approver_role")
 	return {
 		"approver_role": approver_role,
 		"is_close_manager": bool(approver_role and approver_role in frappe.get_roles(frappe.session.user)),
@@ -906,7 +933,7 @@ def get_close_permission():
 
 
 def _get_wo_close_approver_role():
-	approver_role = attribute_db.get_single_value('YRP Settings', "work_order_closing_approver_role")
+	approver_role = attribute_db.get_single_value("YRP Settings", "work_order_closing_approver_role")
 	if not approver_role:
 		frappe.throw(_("Please configure Work Order Closing Approver Role in YRP Settings."))
 	return approver_role
@@ -914,14 +941,14 @@ def _get_wo_close_approver_role():
 
 def _submitted_work_order_grns(work_order):
 	filters = {
-		"against": 'YRP Work Order',
+		"against": "YRP Work Order",
 		"against_id": work_order,
 		"docstatus": 1,
 	}
-	if frappe.get_meta('YRP Goods Received Note').get_field("is_rework"):
+	if frappe.get_meta("YRP Goods Received Note").get_field("is_rework"):
 		filters["is_rework"] = 0
 	return frappe.get_all(
-		'YRP Goods Received Note',
+		"YRP Goods Received Note",
 		filters=filters,
 		fields=["name", "to_warehouse", "posting_date"],
 		order_by="posting_date asc, creation asc",
@@ -944,12 +971,13 @@ def _direct_grn_rework_sources(grn_by_name):
 		"table_index",
 		"row_index",
 		"set_combination",
-	] + dim_fields
+		*dim_fields,
+	]
 	rows = frappe.get_all(
-		'YRP Goods Received Note Item',
+		"YRP Goods Received Note Item",
 		filters={
 			"parent": ["in", list(grn_by_name)],
-			"parenttype": 'YRP Goods Received Note',
+			"parenttype": "YRP Goods Received Note",
 		},
 		fields=fields,
 		order_by="parent asc, idx asc",
@@ -965,7 +993,7 @@ def _direct_grn_rework_sources(grn_by_name):
 		warehouse = grn.to_warehouse if grn else None
 		if not row.item_variant or not warehouse:
 			continue
-		dim_values = _row_dimension_values(row, 'YRP Goods Received Note Item')
+		dim_values = _row_dimension_values(row, "YRP Goods Received Note Item")
 		available = (
 			flt(row.quantity)
 			- flt(_inspection_outflow_from_grn_row(row.name))
@@ -973,25 +1001,27 @@ def _direct_grn_rework_sources(grn_by_name):
 		)
 		if available <= 0:
 			continue
-		out.append({
-			"source_key": f"grn::{row.name}",
-			"source_type": 'YRP Goods Received Note Item',
-			"source_label": f"{row.parent} / {row.name}",
-			"source_grn": row.parent,
-			"source_grn_item": row.name,
-			"item_variant": row.item_variant,
-			"uom": row.uom or _item_uom(row.item_variant),
-			"warehouse": warehouse,
-			"received_type": dim_values.get("received_type") or rt,
-			"role": _rework_role_label(rt),
-			"table_index": row.table_index,
-			"row_index": row.row_index,
-			"set_combination": row.set_combination,
-			"dimensions": dim_values,
-			"available_qty": flt(available),
-			"qty": 0,
-			**dim_values,
-		})
+		out.append(
+			{
+				"source_key": f"grn::{row.name}",
+				"source_type": "YRP Goods Received Note Item",
+				"source_label": f"{row.parent} / {row.name}",
+				"source_grn": row.parent,
+				"source_grn_item": row.name,
+				"item_variant": row.item_variant,
+				"uom": row.uom or _item_uom(row.item_variant),
+				"warehouse": warehouse,
+				"received_type": dim_values.get("received_type") or rt,
+				"role": _rework_role_label(rt),
+				"table_index": row.table_index,
+				"row_index": row.row_index,
+				"set_combination": row.set_combination,
+				"dimensions": dim_values,
+				"available_qty": flt(available),
+				"qty": 0,
+				**dim_values,
+			}
+		)
 	return out
 
 
@@ -1085,38 +1115,38 @@ def _inspection_rework_sources(grn_by_name):
 			fieldname: target_rt if fieldname == "received_type" else row.get(fieldname)
 			for fieldname in dim_fields
 		}
-		available = flt(row.converted_qty) - flt(
-			_prior_rework_consumed(row.source_grn_item, dim_values)
-		)
+		available = flt(row.converted_qty) - flt(_prior_rework_consumed(row.source_grn_item, dim_values))
 		if available <= 0:
 			continue
 		row_index = f"inspection::{row.source_grn_item}::{target_rt or ''}"
 		if row.row_index not in (None, ""):
 			row_index = f"{row.row_index}::{target_rt or ''}"
-		out.append({
-			"source_key": f"inspection::{row.source_grn_item}::{target_rt}::{_json_key(dim_values)}",
-			"source_type": "Inspected GRN Stock",
-			"source_label": f"{row.source_grn} / {row.source_grn_item} / {target_rt}",
-			"source_grn": row.source_grn,
-			"source_grn_item": row.source_grn_item,
-			"item_variant": row.item_variant,
-			"uom": _item_uom(row.item_variant),
-			"warehouse": row.warehouse,
-			"received_type": target_rt,
-			"role": _rework_role_label(target_rt),
-			"table_index": row.table_index,
-			"row_index": row_index,
-			"set_combination": row.set_combination,
-			"dimensions": dim_values,
-			"available_qty": flt(available),
-			"qty": 0,
-			**dim_values,
-		})
+		out.append(
+			{
+				"source_key": f"inspection::{row.source_grn_item}::{target_rt}::{_json_key(dim_values)}",
+				"source_type": "Inspected GRN Stock",
+				"source_label": f"{row.source_grn} / {row.source_grn_item} / {target_rt}",
+				"source_grn": row.source_grn,
+				"source_grn_item": row.source_grn_item,
+				"item_variant": row.item_variant,
+				"uom": _item_uom(row.item_variant),
+				"warehouse": row.warehouse,
+				"received_type": target_rt,
+				"role": _rework_role_label(target_rt),
+				"table_index": row.table_index,
+				"row_index": row_index,
+				"set_combination": row.set_combination,
+				"dimensions": dim_values,
+				"available_qty": flt(available),
+				"qty": 0,
+				**dim_values,
+			}
+		)
 	return out
 
 
 def _eligible_rt_context():
-	settings = frappe.get_cached_doc('YRP Stock Settings')
+	settings = frappe.get_cached_doc("YRP Stock Settings")
 	return settings.get("default_received_type"), settings.get("default_rejected_received_type")
 
 
@@ -1165,8 +1195,8 @@ def _inspection_outflow_from_grn_row(grn_item_name):
 
 def _prior_rework_consumed(source_grn_item, dimensions):
 	"""Sum qty in non-cancelled, non-closed rework Work Order deliverables that
-	 cite this GRN row and stock bucket. Draft (docstatus=0) consumption is
-	 included so in-flight rework WOs reduce the popup's available_qty.
+	cite this GRN row and stock bucket. Draft (docstatus=0) consumption is
+	included so in-flight rework WOs reduce the popup's available_qty.
 	"""
 	if not source_grn_item:
 		return 0
@@ -1181,7 +1211,7 @@ def _prior_rework_consumed(source_grn_item, dimensions):
 
 	from yrp.stock.dimensions import assert_safe_fieldname, get_dimension_fieldnames
 
-	deliverable_meta = frappe.get_meta('YRP Work Order Deliverables')
+	deliverable_meta = frappe.get_meta("YRP Work Order Deliverables")
 	for fieldname in get_dimension_fieldnames():
 		if not deliverable_meta.get_field(fieldname):
 			continue
@@ -1199,8 +1229,7 @@ def _prior_rework_consumed(source_grn_item, dimensions):
 		FROM `tabYRP Work Order Deliverables` d
 		JOIN `tabYRP Work Order` wo ON wo.name = d.parent
 		WHERE {where_sql}
-		"""
-		,
+		""",
 		values,
 	)
 	return flt(row[0][0]) if row else 0
@@ -1218,7 +1247,7 @@ def _row_dimension_values(row, child_doctype, override_received_type=None):
 		if fn == "received_type" and override_received_type is not None:
 			value = override_received_type
 		if fn == "received_type" and not value:
-			value = frappe.db.get_single_value('YRP Stock Settings', "default_received_type")
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 		if value is not None:
 			values[fn] = value
 	return values
@@ -1299,11 +1328,7 @@ def _copy_rework_header_dimensions(target, parent, rows):
 			continue
 		if not dim.get("is_production_group"):
 			continue
-		values = {
-			row.get("dimensions", {}).get(fn)
-			for row in rows
-			if row.get("dimensions", {}).get(fn)
-		}
+		values = {row.get("dimensions", {}).get(fn) for row in rows if row.get("dimensions", {}).get(fn)}
 		if len(values) > 1:
 			frappe.throw(
 				_("Create separate Rework Work Orders for different {0} values.").format(
@@ -1325,7 +1350,7 @@ def _rework_deliverable_row(source, idx):
 		"source_grn": source.get("source_grn"),
 		"source_grn_item": source.get("source_grn_item"),
 	}
-	_apply_child_dimension_values(row, 'YRP Work Order Deliverables', source.get("dimensions") or {})
+	_apply_child_dimension_values(row, "YRP Work Order Deliverables", source.get("dimensions") or {})
 	return row
 
 
@@ -1350,7 +1375,7 @@ def _rework_receivable_rows(rows):
 			}
 			_apply_child_dimension_values(
 				grouped[key],
-				'YRP Work Order Receivables',
+				"YRP Work Order Receivables",
 				row.get("dimensions") or {},
 				exclude={"received_type"},
 			)
@@ -1396,7 +1421,7 @@ def _item_uom(item_variant):
 	parent_item = get_parent_item(item_variant)
 	if not parent_item:
 		return None
-	return frappe.get_cached_value('Item', parent_item, "stock_uom")
+	return frappe.get_cached_value("Item", parent_item, "stock_uom")
 
 
 def _json_key(value):
@@ -1412,7 +1437,7 @@ def _is_wo_close_manager(throw_if_missing=False):
 	if throw_if_missing:
 		approver_role = _get_wo_close_approver_role()
 	else:
-		approver_role = attribute_db.get_single_value('YRP Settings', "work_order_closing_approver_role")
+		approver_role = attribute_db.get_single_value("YRP Settings", "work_order_closing_approver_role")
 		if not approver_role:
 			return False
 	return approver_role in frappe.get_roles(frappe.session.user)

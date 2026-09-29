@@ -8,7 +8,7 @@ import frappe
 
 
 def execute():
-	if not frappe.db.has_column('YRP IPD Item Attribute', "mapping"):
+	if not frappe.db.has_column("YRP IPD Item Attribute", "mapping"):
 		return  # field hasn't synced yet
 	# For each IPD, for each item_attributes row missing a mapping, look up the
 	# parent Item's Item Item Attribute row matching the same attribute and copy
@@ -25,9 +25,9 @@ def execute():
 	)
 	for r in rows:
 		mapping = frappe.db.get_value(
-			'YRP Item Item Attribute',
-			{"parent": r.item, "parenttype": 'Item', "attribute": r.attribute},
+			"YRP Item Item Attribute",
+			{"parent": r.item, "parenttype": "Item", "attribute": r.attribute},
 			"mapping",
 		)
 		if mapping:
-			frappe.db.set_value('YRP IPD Item Attribute', r.name, "mapping", mapping, update_modified=False)
+			frappe.db.set_value("YRP IPD Item Attribute", r.name, "mapping", mapping, update_modified=False)

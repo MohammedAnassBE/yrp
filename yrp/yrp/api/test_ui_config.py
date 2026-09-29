@@ -47,12 +47,12 @@ LAYOUT_CONFIG = {
 				"id": "Production",
 				"label": "Production",
 				"items": [
-					{"doctype": 'YRP Delivery Challan', "icon": "pi pi-inbox"},
-					{"doctype": 'YRP Work Order', "icon": "pi pi-bars"},
+					{"doctype": "YRP Delivery Challan", "icon": "pi pi-inbox"},
+					{"doctype": "YRP Work Order", "icon": "pi pi-bars"},
 				],
 			}
 		],
-		"hidden": {'YRP Work Order': True},
+		"hidden": {"YRP Work Order": True},
 	},
 	"screens": {
 		"home": {
@@ -61,14 +61,14 @@ LAYOUT_CONFIG = {
 		}
 	},
 	"listViews": {},
-	"quickCreate": ['YRP Delivery Challan'],
+	"quickCreate": ["YRP Delivery Challan"],
 	"theme": {"mode": "user", "accent": None},
 }
 
 BASE_OVERRIDES = {
 	"schema_version": 1,
 	"theme": {"accent": "#2563EB"},
-	"nav": {"hidden": {'YRP Stock Entry': True}},
+	"nav": {"hidden": {"YRP Stock Entry": True}},
 }
 
 
@@ -80,11 +80,11 @@ def _plant_layout_config(value, layout=TEST_LAYOUT):
 	here; the unparseable-JSON branch is covered by calling ``_prepare_layer``
 	directly (it can still see raw strings from non-MariaDB sources).
 	"""
-	frappe.db.set_value('YRP UI Layout', layout, "config", value, update_modified=False)
+	frappe.db.set_value("YRP UI Layout", layout, "config", value, update_modified=False)
 
 
 def _plant_overrides(value, user=TEST_USER):
-	frappe.db.set_value('YRP UI Preference', user, "overrides", value, update_modified=False)
+	frappe.db.set_value("YRP UI Preference", user, "overrides", value, update_modified=False)
 
 
 def _ui_error_log_count():
@@ -96,14 +96,17 @@ class TestUIConfigMerge(IntegrationTestCase):
 
 	BASE = {
 		"schema_version": 1,
-		"nav": {"groups": [{"id": "A", "items": [{"doctype": 'YRP Delivery Challan'}]}], "hidden": {'YRP Stock Entry': True}},
-		"quickCreate": ['YRP Delivery Challan', 'YRP Work Order'],
+		"nav": {
+			"groups": [{"id": "A", "items": [{"doctype": "YRP Delivery Challan"}]}],
+			"hidden": {"YRP Stock Entry": True},
+		},
+		"quickCreate": ["YRP Delivery Challan", "YRP Work Order"],
 		"theme": {"mode": "user", "accent": "#111111"},
 	}
 	DELTA = {
 		"schema_version": 1,
-		"nav": {"hidden": {'YRP Stock Entry': False, 'YRP Delivery Challan': True}},
-		"quickCreate": ['YRP Delivery Challan'],
+		"nav": {"hidden": {"YRP Stock Entry": False, "YRP Delivery Challan": True}},
+		"quickCreate": ["YRP Delivery Challan"],
 		"theme": {"accent": "#2563EB"},
 	}
 
@@ -139,12 +142,12 @@ class TestUIConfigMerge(IntegrationTestCase):
 
 	def test_arrays_replace_wholesale(self):
 		out = merge(self.BASE, self.DELTA)
-		self.assertEqual(out["quickCreate"], ['YRP Delivery Challan'])
+		self.assertEqual(out["quickCreate"], ["YRP Delivery Challan"])
 
 	def test_null_skip_means_no_opinion(self):
 		out = merge(self.BASE, {"theme": {"accent": None}, "quickCreate": None})
 		self.assertEqual(out["theme"]["accent"], "#111111")
-		self.assertEqual(out["quickCreate"], ['YRP Delivery Challan', 'YRP Work Order'])
+		self.assertEqual(out["quickCreate"], ["YRP Delivery Challan", "YRP Work Order"])
 
 	def test_whitelist_filters_unknown_top_level_keys(self):
 		delta = {"schema_version": 99, "evil": {"x": 1}, "theme": {"accent": "#2563EB"}}
@@ -159,7 +162,7 @@ class TestUIConfigMerge(IntegrationTestCase):
 	def test_hidden_reshow_through_dict_merge(self):
 		out = merge(self.BASE, self.DELTA)
 		# Upper layer re-shows Stock Entry (false wins) and hides Delivery Challan; composes.
-		self.assertEqual(out["nav"]["hidden"], {'YRP Stock Entry': False, 'YRP Delivery Challan': True})
+		self.assertEqual(out["nav"]["hidden"], {"YRP Stock Entry": False, "YRP Delivery Challan": True})
 
 	def test_skeleton_guarantees_every_renderer_key(self):
 		skeleton = get_skeleton()
@@ -330,26 +333,26 @@ class TestUIConfigResolver(IntegrationTestCase):
 					"enabled": 1,
 				}
 			).insert(ignore_permissions=True)
-		if not frappe.db.exists('YRP UI Layout', DEFAULT_LAYOUT_NAME):
+		if not frappe.db.exists("YRP UI Layout", DEFAULT_LAYOUT_NAME):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP UI Layout',
+					"doctype": "YRP UI Layout",
 					"layout_name": DEFAULT_LAYOUT_NAME,
 					"config": json.dumps(get_skeleton()),
 				}
 			).insert(ignore_permissions=True)
-		if not frappe.db.exists('YRP UI Layout', TEST_LAYOUT):
+		if not frappe.db.exists("YRP UI Layout", TEST_LAYOUT):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP UI Layout',
+					"doctype": "YRP UI Layout",
 					"layout_name": TEST_LAYOUT,
 					"config": json.dumps(LAYOUT_CONFIG),
 				}
 			).insert(ignore_permissions=True)
-		if not frappe.db.exists('YRP UI Preference', TEST_USER):
+		if not frappe.db.exists("YRP UI Preference", TEST_USER):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP UI Preference',
+					"doctype": "YRP UI Preference",
 					"user": TEST_USER,
 					"layout": TEST_LAYOUT,
 					"overrides": json.dumps(BASE_OVERRIDES),
@@ -360,7 +363,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		# Canonical state, re-asserted so the defect-planting tests stay independent.
 		frappe.db.set_value(
-			'YRP UI Layout',
+			"YRP UI Layout",
 			TEST_LAYOUT,
 			{
 				"config": json.dumps(LAYOUT_CONFIG),
@@ -371,7 +374,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 			update_modified=False,
 		)
 		frappe.db.set_value(
-			'YRP UI Preference',
+			"YRP UI Preference",
 			TEST_USER,
 			{"layout": TEST_LAYOUT, "overrides": json.dumps(BASE_OVERRIDES)},
 			update_modified=False,
@@ -397,13 +400,13 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertEqual(meta["warnings"], [])
 		# Layout layer applied…
 		self.assertEqual(config["nav"]["groups"], LAYOUT_CONFIG["nav"]["groups"])
-		self.assertEqual(config["quickCreate"], ['YRP Delivery Challan'])
+		self.assertEqual(config["quickCreate"], ["YRP Delivery Challan"])
 		# …overrides on top: accent replaced, hidden dicts composed (rule 1).
 		self.assertEqual(config["theme"], {"mode": "user", "accent": "#2563EB"})
-		self.assertEqual(config["nav"]["hidden"], {'YRP Work Order': True, 'YRP Stock Entry': True})
+		self.assertEqual(config["nav"]["hidden"], {"YRP Work Order": True, "YRP Stock Entry": True})
 
 	def test_selected_layout_terminology_is_returned_in_meta(self):
-		terminology = frappe.get_doc('YRP UI Terminology', TEST_LAYOUT)
+		terminology = frappe.get_doc("YRP UI Terminology", TEST_LAYOUT)
 		terminology.set("terms", [])
 		terminology.append(
 			"terms",
@@ -433,7 +436,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 			},
 		}
 		frappe.db.set_value(
-			'YRP UI Layout',
+			"YRP UI Layout",
 			TEST_LAYOUT,
 			{
 				"config": json.dumps(registered_config),
@@ -455,7 +458,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 
 	def test_unknown_registered_experience_falls_back_to_default(self):
 		frappe.db.set_value(
-			'YRP UI Layout',
+			"YRP UI Layout",
 			TEST_LAYOUT,
 			{
 				"render_mode": ui_config.REGISTERED_EXPERIENCE,
@@ -472,7 +475,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertTrue(any("not registered" in warning for warning in meta["warnings"]))
 
 	def test_layout_link_empty_falls_to_default_with_overrides_on_top(self):
-		frappe.db.set_value('YRP UI Preference', TEST_USER, "layout", "", update_modified=False)
+		frappe.db.set_value("YRP UI Preference", TEST_USER, "layout", "", update_modified=False)
 		config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)
 		self.assertTrue(meta["has_preference"])
@@ -483,7 +486,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["warnings"], [])
 		self.assertIsNone(config["theme"]["accent"])
-		self.assertEqual(config["nav"]["hidden"], {'YRP Work Order': True})
+		self.assertEqual(config["nav"]["hidden"], {"YRP Work Order": True})
 
 	# ── §14 rows 4–6, 8, 14: degradations — always with a trace ─────────
 
@@ -514,16 +517,14 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertGreater(_ui_error_log_count(), before)
 
 	def test_missing_layout_record_falls_back_to_default(self):
-		frappe.db.set_value(
-			'YRP UI Preference', TEST_USER, "layout", "No Such Layout", update_modified=False
-		)
-		config, meta = resolve_config(TEST_USER)
+		frappe.db.set_value("YRP UI Preference", TEST_USER, "layout", "No Such Layout", update_modified=False)
+		_config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)
 		self.assertTrue(any("No Such Layout" in w for w in meta["warnings"]))
 
 	def test_disabled_layout_falls_back_to_default(self):
-		frappe.db.set_value('YRP UI Layout', TEST_LAYOUT, "disabled", 1, update_modified=False)
-		config, meta = resolve_config(TEST_USER)
+		frappe.db.set_value("YRP UI Layout", TEST_LAYOUT, "disabled", 1, update_modified=False)
+		_config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)
 		self.assertTrue(any("disabled" in w for w in meta["warnings"]))
 
@@ -540,7 +541,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		before = _ui_error_log_count()
 		newer = dict(LAYOUT_CONFIG, schema_version=CURRENT_SCHEMA_VERSION + 98)
 		_plant_layout_config(json.dumps(newer))
-		config, meta = resolve_config(TEST_USER)
+		_config, meta = resolve_config(TEST_USER)
 		self.assertEqual(meta["layout"], DEFAULT_LAYOUT_NAME)  # never guess-interpreted forward
 		self.assertTrue(any("newer" in w for w in meta["warnings"]))
 		self.assertGreater(_ui_error_log_count(), before)
@@ -628,7 +629,7 @@ class TestUIConfigResolver(IntegrationTestCase):
 		# grant read to role "All" (so the roleless user may read), but create
 		# needs a real role — Administrator (the caller) would have both full.
 		self.assertEqual(hints["can_create"], [])
-		self.assertTrue(set(hints["can_read"]) <= {'YRP Delivery Challan', 'YRP Work Order'})
+		self.assertTrue(set(hints["can_read"]) <= {"YRP Delivery Challan", "YRP Work Order"})
 
 	def test_get_ui_config_for_layout_previews_bare_layout(self):
 		payload = get_ui_config_for(layout=TEST_LAYOUT)
@@ -639,16 +640,16 @@ class TestUIConfigResolver(IntegrationTestCase):
 		self.assertEqual(payload["config"]["nav"]["groups"], LAYOUT_CONFIG["nav"]["groups"])
 		# Perm hints = the caller's own (Administrator sees everything) over
 		# nav + quickCreate doctypes of the RESOLVED config.
-		self.assertEqual(payload["perm_hints"]["can_read"], ['YRP Delivery Challan', 'YRP Work Order'])
-		self.assertEqual(payload["perm_hints"]["can_create"], ['YRP Delivery Challan', 'YRP Work Order'])
+		self.assertEqual(payload["perm_hints"]["can_read"], ["YRP Delivery Challan", "YRP Work Order"])
+		self.assertEqual(payload["perm_hints"]["can_create"], ["YRP Delivery Challan", "YRP Work Order"])
 
 	def test_get_ui_config_for_unknown_disabled_or_broken_layout_fails_loudly(self):
 		with self.assertRaises(frappe.ValidationError):
 			get_ui_config_for(layout="No Such Layout")
-		frappe.db.set_value('YRP UI Layout', TEST_LAYOUT, "disabled", 1, update_modified=False)
+		frappe.db.set_value("YRP UI Layout", TEST_LAYOUT, "disabled", 1, update_modified=False)
 		with self.assertRaises(frappe.ValidationError):
 			get_ui_config_for(layout=TEST_LAYOUT)
-		frappe.db.set_value('YRP UI Layout', TEST_LAYOUT, "disabled", 0, update_modified=False)
+		frappe.db.set_value("YRP UI Layout", TEST_LAYOUT, "disabled", 0, update_modified=False)
 		_plant_layout_config(json.dumps("just a string"))  # valid JSON, not an object
 		with self.assertRaises(frappe.ValidationError):
 			get_ui_config_for(layout=TEST_LAYOUT)
@@ -687,18 +688,18 @@ class TestUIConfigSelfService(IntegrationTestCase):
 						"enabled": 1,
 					}
 				).insert(ignore_permissions=True)
-		if not frappe.db.exists('YRP UI Layout', DEFAULT_LAYOUT_NAME):
+		if not frappe.db.exists("YRP UI Layout", DEFAULT_LAYOUT_NAME):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP UI Layout',
+					"doctype": "YRP UI Layout",
 					"layout_name": DEFAULT_LAYOUT_NAME,
 					"config": json.dumps(get_skeleton()),
 				}
 			).insert(ignore_permissions=True)
-		if not frappe.db.exists('YRP UI Layout', TEST_LAYOUT):
+		if not frappe.db.exists("YRP UI Layout", TEST_LAYOUT):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP UI Layout',
+					"doctype": "YRP UI Layout",
 					"layout_name": TEST_LAYOUT,
 					"config": json.dumps(LAYOUT_CONFIG),
 				}
@@ -708,21 +709,19 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user("Administrator")
 		# Canonical state: SELF_USER starts with NO preference (each test builds
 		# the record it needs); OTHER_USER always holds the untouchable record.
-		if frappe.db.exists('YRP UI Preference', self.SELF_USER):
-			frappe.delete_doc(
-				'YRP UI Preference', self.SELF_USER, ignore_permissions=True, force=True
-			)
-		if not frappe.db.exists('YRP UI Preference', self.OTHER_USER):
+		if frappe.db.exists("YRP UI Preference", self.SELF_USER):
+			frappe.delete_doc("YRP UI Preference", self.SELF_USER, ignore_permissions=True, force=True)
+		if not frappe.db.exists("YRP UI Preference", self.OTHER_USER):
 			frappe.get_doc(
 				{
-					"doctype": 'YRP UI Preference',
+					"doctype": "YRP UI Preference",
 					"user": self.OTHER_USER,
 					"overrides": json.dumps(self.OTHER_OVERRIDES),
 				}
 			).insert(ignore_permissions=True)
 		else:
 			frappe.db.set_value(
-				'YRP UI Preference',
+				"YRP UI Preference",
 				self.OTHER_USER,
 				{"layout": "", "overrides": json.dumps(self.OTHER_OVERRIDES), "notes": ""},
 				update_modified=False,
@@ -735,7 +734,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		"""Plant SELF_USER's record as an SM would (Desk path), for update tests."""
 		frappe.get_doc(
 			{
-				"doctype": 'YRP UI Preference',
+				"doctype": "YRP UI Preference",
 				"user": self.SELF_USER,
 				"layout": layout,
 				"overrides": json.dumps(overrides) if overrides else None,
@@ -744,7 +743,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		).insert(ignore_permissions=True)
 
 	def _stored(self, field, user=None):
-		return frappe.db.get_value('YRP UI Preference', user or self.SELF_USER, field)
+		return frappe.db.get_value("YRP UI Preference", user or self.SELF_USER, field)
 
 	# ── identity: Guest rejected, other users unreachable ────────────────
 
@@ -759,33 +758,25 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		# No user parameter exists; the save lands on the CALLER's record only.
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#111111"}})
-		self.assertEqual(
-			json.loads(self._stored("overrides", self.OTHER_USER)), self.OTHER_OVERRIDES
-		)
+		self.assertEqual(json.loads(self._stored("overrides", self.OTHER_USER)), self.OTHER_OVERRIDES)
 		# Reset likewise touches only the caller's record.
 		reset_my_ui_overrides()
-		self.assertTrue(frappe.db.exists('YRP UI Preference', self.OTHER_USER))
-		self.assertEqual(
-			json.loads(self._stored("overrides", self.OTHER_USER)), self.OTHER_OVERRIDES
-		)
+		self.assertTrue(frappe.db.exists("YRP UI Preference", self.OTHER_USER))
+		self.assertEqual(json.loads(self._stored("overrides", self.OTHER_USER)), self.OTHER_OVERRIDES)
 
 	# ── save: create → update, JSON-string input, resolved payload back ──
 
 	def test_save_creates_own_record_with_layout_left_empty(self):
 		frappe.set_user(self.SELF_USER)
 		# String input = the over-the-wire shape frappe hands a whitelisted fn.
-		payload = save_my_ui_overrides(
-			json.dumps({"schema_version": 1, "theme": {"accent": "#123456"}})
-		)
+		payload = save_my_ui_overrides(json.dumps({"schema_version": 1, "theme": {"accent": "#123456"}}))
 		row = frappe.db.get_value(
-			'YRP UI Preference', self.SELF_USER, ["user", "layout", "overrides"], as_dict=True
+			"YRP UI Preference", self.SELF_USER, ["user", "layout", "overrides"], as_dict=True
 		)
 		self.assertIsNotNone(row)
 		self.assertEqual(row.user, self.SELF_USER)
 		self.assertFalse(row.layout)  # left empty → resolver falls back to Default
-		self.assertEqual(
-			json.loads(row.overrides), {"schema_version": 1, "theme": {"accent": "#123456"}}
-		)
+		self.assertEqual(json.loads(row.overrides), {"schema_version": 1, "theme": {"accent": "#123456"}})
 		# Resolved payload comes back so the client can re-render immediately.
 		self.assertEqual(set(payload), {"config", "meta"})
 		self.assertEqual(payload["meta"]["layout"], DEFAULT_LAYOUT_NAME)
@@ -796,10 +787,8 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#111111"}})
 		payload = save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#222222"}})
-		self.assertEqual(frappe.db.count('YRP UI Preference', {"user": self.SELF_USER}), 1)
-		self.assertEqual(
-			json.loads(self._stored("overrides"))["theme"]["accent"], "#222222"
-		)
+		self.assertEqual(frappe.db.count("YRP UI Preference", {"user": self.SELF_USER}), 1)
+		self.assertEqual(json.loads(self._stored("overrides"))["theme"]["accent"], "#222222")
 		self.assertEqual(payload["config"]["theme"]["accent"], "#222222")
 
 	def test_save_survives_losing_the_first_insert_race(self):
@@ -810,16 +799,14 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		real_exists = frappe.db.exists
 
 		def exists_missing_own_pref(doctype, name=None, *args, **kwargs):
-			if doctype == 'YRP UI Preference' and name == self.SELF_USER:
+			if doctype == "YRP UI Preference" and name == self.SELF_USER:
 				return None
 			return real_exists(doctype, name, *args, **kwargs)
 
 		with patch.object(frappe.db, "exists", side_effect=exists_missing_own_pref):
 			save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#444444"}})
-		self.assertEqual(frappe.db.count('YRP UI Preference', {"user": self.SELF_USER}), 1)
-		self.assertEqual(
-			json.loads(self._stored("overrides"))["theme"]["accent"], "#444444"
-		)
+		self.assertEqual(frappe.db.count("YRP UI Preference", {"user": self.SELF_USER}), 1)
+		self.assertEqual(json.loads(self._stored("overrides"))["theme"]["accent"], "#444444")
 
 	# ── bounding: whitelist filter, layout/notes untouched, hard errors ──
 
@@ -848,7 +835,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		payload = save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#2563EB"}})
 		row = frappe.db.get_value(
-			'YRP UI Preference',
+			"YRP UI Preference",
 			self.SELF_USER,
 			["layout", "notes", "overrides"],
 			as_dict=True,
@@ -870,7 +857,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		):
 			with self.assertRaises(frappe.ValidationError):
 				save_my_ui_overrides(bad)
-		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists("YRP UI Preference", self.SELF_USER))
 
 	def test_save_rejects_oversize_overrides_and_stores_nothing(self):
 		# M6: any authenticated user reaches this endpoint — a >256 KB payload
@@ -884,10 +871,10 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		for shape in (json.dumps(big), big):  # over-the-wire string AND direct dict
 			with self.assertRaises(frappe.ValidationError):
 				save_my_ui_overrides(shape)
-		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists("YRP UI Preference", self.SELF_USER))
 		# An in-budget save on the same session still lands.
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#123456"}})
-		self.assertTrue(frappe.db.exists('YRP UI Preference', self.SELF_USER))
+		self.assertTrue(frappe.db.exists("YRP UI Preference", self.SELF_USER))
 
 	def test_write_endpoints_are_post_only_reads_stay_gettable(self):
 		# M5: a GET save/reset would return "saved" config and then be rolled
@@ -905,7 +892,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		frappe.set_user(self.SELF_USER)
 		save_my_ui_overrides({"schema_version": 1, "theme": {"accent": "#123456"}})
 		payload = reset_my_ui_overrides()
-		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists("YRP UI Preference", self.SELF_USER))
 		self.assertFalse(payload["meta"]["has_preference"])
 		self.assertEqual(payload["meta"]["layout"], DEFAULT_LAYOUT_NAME)
 		self.assertIsNone(payload["config"]["theme"]["accent"])
@@ -916,9 +903,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		)
 		frappe.set_user(self.SELF_USER)
 		payload = reset_my_ui_overrides()
-		row = frappe.db.get_value(
-			'YRP UI Preference', self.SELF_USER, ["layout", "overrides"], as_dict=True
-		)
+		row = frappe.db.get_value("YRP UI Preference", self.SELF_USER, ["layout", "overrides"], as_dict=True)
 		self.assertIsNotNone(row)  # record survives — it still carries the layout link
 		self.assertEqual(row.layout, TEST_LAYOUT)
 		self.assertFalse(row.overrides)
@@ -933,9 +918,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 		)
 		frappe.set_user(self.SELF_USER)
 		reset_my_ui_overrides()
-		row = frappe.db.get_value(
-			'YRP UI Preference', self.SELF_USER, ["notes", "overrides"], as_dict=True
-		)
+		row = frappe.db.get_value("YRP UI Preference", self.SELF_USER, ["notes", "overrides"], as_dict=True)
 		self.assertIsNotNone(row)
 		self.assertEqual(row.notes, "SM breadcrumb — keep")
 		self.assertFalse(row.overrides)
@@ -943,7 +926,7 @@ class TestUIConfigSelfService(IntegrationTestCase):
 	def test_reset_without_a_record_is_a_clean_no_op(self):
 		frappe.set_user(self.SELF_USER)
 		payload = reset_my_ui_overrides()
-		self.assertFalse(frappe.db.exists('YRP UI Preference', self.SELF_USER))
+		self.assertFalse(frappe.db.exists("YRP UI Preference", self.SELF_USER))
 		self.assertEqual(set(payload), {"config", "meta"})
 		self.assertFalse(payload["meta"]["has_preference"])
 		self.assertEqual(payload["meta"]["layout"], DEFAULT_LAYOUT_NAME)
@@ -1055,9 +1038,7 @@ class TestUIConfigShellKeys(IntegrationTestCase):
 	def test_overrides_layer_still_rejects_the_shell_keys(self):
 		# NOT overridable: one unknown-key warning each (no duplicate shape
 		# warnings), and the save-side whitelist filter drops them from storage.
-		warnings = ui_config.validate_config(
-			{"schema_version": 1, **self.DEMO7_SHELL}, layer="overrides"
-		)
+		warnings = ui_config.validate_config({"schema_version": 1, **self.DEMO7_SHELL}, layer="overrides")
 		self.assertEqual(len(warnings), 3)
 		for key in ("chrome", "realtime", "dateFormat"):
 			self.assertTrue(any(f"unknown key '{key}'" in w for w in warnings), key)
@@ -1118,23 +1099,15 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 			)
 			# dialogPosition: CONSUMED since item 9 — every valid anchor is
 			# accepted warning-free (no more item-17 reserved notice).
-			self.assertEqual(
-				self._layout_warnings({"actions": {"dialogPosition": anchor}}), [], anchor
-			)
+			self.assertEqual(self._layout_warnings({"actions": {"dialogPosition": anchor}}), [], anchor)
 		for variant in ui_config.DC_ENTRY_VARIANTS:
 			self.assertEqual(self._layout_warnings({"dcEntry": {"variant": variant}}), [], variant)
 		for qty_control in ui_config.DC_ENTRY_QTY_CONTROLS:
-			self.assertEqual(
-				self._layout_warnings({"dcEntry": {"qtyControl": qty_control}}), [], qty_control
-			)
+			self.assertEqual(self._layout_warnings({"dcEntry": {"qtyControl": qty_control}}), [], qty_control)
 		for picker in ui_config.DC_ENTRY_SUPPLIER_PICKERS:
-			self.assertEqual(
-				self._layout_warnings({"dcEntry": {"supplierPicker": picker}}), [], picker
-			)
+			self.assertEqual(self._layout_warnings({"dcEntry": {"supplierPicker": picker}}), [], picker)
 		for placement in ui_config.ACTIONS_PLACEMENTS:
-			self.assertEqual(
-				self._layout_warnings({"actions": {"placement": placement}}), [], placement
-			)
+			self.assertEqual(self._layout_warnings({"actions": {"placement": placement}}), [], placement)
 
 	def test_absent_structural_keys_stay_silent(self):
 		# PARITY LAW: a layout without any knob validates exactly as today.
@@ -1161,9 +1134,7 @@ class TestUIConfigStructuralKnobs(IntegrationTestCase):
 			},
 			"dcEntry.variant 'wizard' is not one of": {"dcEntry": {"variant": "wizard"}},
 			"dcEntry.qtyControl 'wheel' is not one of": {"dcEntry": {"qtyControl": "wheel"}},
-			"dcEntry.supplierPicker 'dropdown' is not one of": {
-				"dcEntry": {"supplierPicker": "dropdown"}
-			},
+			"dcEntry.supplierPicker 'dropdown' is not one of": {"dcEntry": {"supplierPicker": "dropdown"}},
 			"actions.placement 'sidebar' is not one of": {"actions": {"placement": "sidebar"}},
 			# dialogPosition is CONSUMED now — an off-vocabulary value draws ONLY
 			# the vocabulary warning (no reserved notice).
@@ -1357,7 +1328,7 @@ class TestUIConfigItem7StoryScroller(IntegrationTestCase):
 		self.assertEqual(
 			self._block_warnings(
 				{
-					"source": 'YRP Work Order',
+					"source": "YRP Work Order",
 					"fields": ["supplier", "status"],
 					"limit": 8,
 					"orientation": "vertical",
@@ -1367,13 +1338,13 @@ class TestUIConfigItem7StoryScroller(IntegrationTestCase):
 		)
 		for orientation in ui_config.STORY_SCROLLER_ORIENTATIONS:
 			self.assertEqual(
-				self._block_warnings({"source": 'YRP Work Order', "orientation": orientation}),
+				self._block_warnings({"source": "YRP Work Order", "orientation": orientation}),
 				[],
 				orientation,
 			)
 
 	def test_unknown_orientation_soft_warns(self):
-		warnings = self._block_warnings({"source": 'YRP Work Order', "orientation": "diagonal"})
+		warnings = self._block_warnings({"source": "YRP Work Order", "orientation": "diagonal"})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("orientation 'diagonal'", warnings[0])
 
@@ -1386,15 +1357,15 @@ class TestUIConfigItem7StoryScroller(IntegrationTestCase):
 		self.assertIn("does not exist as a DocType", warnings[0])
 
 	def test_bad_limit_and_unknown_field_soft_warn(self):
-		warnings = self._block_warnings({"source": 'YRP Work Order', "limit": 99})
+		warnings = self._block_warnings({"source": "YRP Work Order", "limit": 99})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("limit must be an integer between", warnings[0])
-		warnings = self._block_warnings({"source": 'YRP Work Order', "fields": ["not_a_field"]})
+		warnings = self._block_warnings({"source": "YRP Work Order", "fields": ["not_a_field"]})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("field 'not_a_field'", warnings[0])
 
 	def test_unknown_prop_soft_warns_via_generic_check(self):
-		warnings = self._block_warnings({"source": 'YRP Work Order', "sparkles": 1})
+		warnings = self._block_warnings({"source": "YRP Work Order", "sparkles": 1})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("prop 'sparkles' is not a prop of block type 'story-scroller'", warnings[0])
 
@@ -1459,7 +1430,7 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 		"""Distinct accent per record so the merge test can prove WHOSE record survived."""
 		frappe.get_doc(
 			{
-				"doctype": 'YRP UI Preference',
+				"doctype": "YRP UI Preference",
 				"user": user,
 				"overrides": json.dumps({"schema_version": 1, "theme": {"accent": accent}}),
 			}
@@ -1467,7 +1438,7 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 
 	@staticmethod
 	def _accent_of(pref_name):
-		overrides = frappe.db.get_value('YRP UI Preference', pref_name, "overrides")
+		overrides = frappe.db.get_value("YRP UI Preference", pref_name, "overrides")
 		return json.loads(overrides)["theme"]["accent"]
 
 	def test_deleting_user_with_preference_is_not_blocked_and_removes_it(self):
@@ -1477,15 +1448,15 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 		# LinkExistsError here — offboarding blocked by a cosmetic record.
 		frappe.delete_doc("User", user, ignore_permissions=True)
 		self.assertFalse(frappe.db.exists("User", user))
-		self.assertFalse(frappe.db.exists('YRP UI Preference', user))
+		self.assertFalse(frappe.db.exists("YRP UI Preference", user))
 
 	def test_renaming_user_makes_preference_docname_follow(self):
 		old = self._make_user("yrp-ui-lifecycle-rename-old@essdee.local")
 		new = "yrp-ui-lifecycle-rename-new@essdee.local"
 		self._make_preference(old, "#222222")
 		frappe.rename_doc("User", old, new)
-		self.assertFalse(frappe.db.exists('YRP UI Preference', old))
-		pref = frappe.db.get_value('YRP UI Preference', new, ["name", "user"], as_dict=True)
+		self.assertFalse(frappe.db.exists("YRP UI Preference", old))
+		pref = frappe.db.get_value("YRP UI Preference", new, ["name", "user"], as_dict=True)
 		self.assertIsNotNone(pref)
 		self.assertEqual(pref.user, new)  # docname AND user Link both follow
 		self.assertEqual(self._accent_of(new), "#222222")
@@ -1499,9 +1470,9 @@ class TestUIPreferenceUserLifecycle(IntegrationTestCase):
 		# IntegrityError on the UNIQUE ``user`` column when rename_doc
 		# bulk-updates Link values before after_rename can dedup.
 		frappe.rename_doc("User", merged_away, survivor, merge=True)
-		self.assertFalse(frappe.db.exists('YRP UI Preference', merged_away))
+		self.assertFalse(frappe.db.exists("YRP UI Preference", merged_away))
 		self.assertEqual(
-			frappe.db.count('YRP UI Preference', {"user": survivor}), 1
+			frappe.db.count("YRP UI Preference", {"user": survivor}), 1
 		)  # exactly one record left
 		# …and it is the SURVIVOR's own preference, not the merged-away user's.
 		self.assertEqual(self._accent_of(survivor), "#444444")
@@ -1568,9 +1539,7 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		# VALID density is now silent, only an off-vocab value warns).
 		self.assertEqual(len(warnings), 5, warnings)
 		for fragment in ("theme.bg", "theme.radius", "theme.density", "theme.fontScale", "theme.font"):
-			self.assertTrue(
-				any(fragment in w for w in warnings), f"missing soft warning for {fragment}"
-			)
+			self.assertTrue(any(fragment in w for w in warnings), f"missing soft warning for {fragment}")
 
 	def test_valid_density_is_silent_off_vocab_warns(self):
 		# Track 1 item 10 (live 2026-07-18): the host consumes --yrp-pad/gap/row,
@@ -1625,15 +1594,13 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 		# M13: same soft rule as nav items — the client catalog drops a typo'd
 		# entry silently, so the save must surface it.
 		warnings = ui_config.validate_config(
-			{"schema_version": 1, "quickCreate": ['Item', "No Such DocType"]}, layer="overrides"
+			{"schema_version": 1, "quickCreate": ["Item", "No Such DocType"]}, layer="overrides"
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("No Such DocType", warnings[0])
 
 	def test_dark_overlay_tokens_get_the_same_soft_checks(self):
-		warnings = self._warnings(
-			{"dark": {"accent": "not-a-hex", "bg": "black", "dark": {}, "sparkles": 1}}
-		)
+		warnings = self._warnings({"dark": {"accent": "not-a-hex", "bg": "black", "dark": {}, "sparkles": 1}})
 		self.assertEqual(len(warnings), 4)
 		self.assertTrue(any("theme.dark.accent" in w for w in warnings))  # soft, unlike top-level
 		self.assertTrue(any("theme.dark.bg" in w for w in warnings))
@@ -1665,15 +1632,11 @@ class TestUIConfigThemeValidation(IntegrationTestCase):
 			self.assertIn("bg, surface, text", warnings[0])
 
 	def test_light_colors_with_forced_light_mode_do_not_warn(self):
-		self.assertEqual(
-			self._warnings({"mode": "light", "bg": "#ffffff", "surface": "#ffffff"}), []
-		)
+		self.assertEqual(self._warnings({"mode": "light", "bg": "#ffffff", "surface": "#ffffff"}), [])
 
 	def test_light_colors_with_dark_palette_do_not_warn(self):
 		self.assertEqual(
-			self._warnings(
-				{"mode": "user", "surface": "#ffffff", "dark": {"surface": "#271b10"}}
-			),
+			self._warnings({"mode": "user", "surface": "#ffffff", "dark": {"surface": "#271b10"}}),
 			[],
 		)
 
@@ -1719,22 +1682,16 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		# maxCards has been validated since day one but is consumed by NOTHING
 		# (HomeQueues reads only `stats`) — item 17 makes it a RESERVED knob:
 		# presence always draws the notice, the bounds check stays on top.
-		warnings = self._block_warnings(
-			{"id": "q", "type": "home-queues", "props": {"maxCards": 4}}
-		)
+		warnings = self._block_warnings({"id": "q", "type": "home-queues", "props": {"maxCards": 4}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("maxCards is RESERVED", warnings[0])
-		warnings = self._block_warnings(
-			{"id": "q", "type": "home-queues", "props": {"maxCards": 99}}
-		)
+		warnings = self._block_warnings({"id": "q", "type": "home-queues", "props": {"maxCards": 99}})
 		self.assertEqual(len(warnings), 2, warnings)
 		self.assertTrue(any("maxCards is RESERVED" in w for w in warnings))
 		self.assertTrue(any("maxCards must be an integer between 1 and 10" in w for w in warnings))
 
 	def test_non_object_props_warn_once_and_skip_per_type_checks(self):
-		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": "doctype=Item"}
-		)
+		warnings = self._block_warnings({"id": "r", "type": "record-list", "props": "doctype=Item"})
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("props must be an object", warnings[0])
 
@@ -1752,9 +1709,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 
 	def test_summary_tiles_metrics_must_be_a_list_of_strings(self):
 		for bad in ("open_wos", {"a": 1}, ["open_wos", 7]):
-			warnings = self._block_warnings(
-				{"id": "s", "type": "summary-tiles", "props": {"metrics": bad}}
-			)
+			warnings = self._block_warnings({"id": "s", "type": "summary-tiles", "props": {"metrics": bad}})
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn("metrics must be a list of strings", warnings[0])
 
@@ -1793,7 +1748,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			"id": "r",
 			"type": "record-list",
 			"props": {
-				"doctype": 'YRP Work Order',
+				"doctype": "YRP Work Order",
 				"variant": "kanban",
 				"columns": ["supplier", "status"],
 				"pageSize": 25,
@@ -1820,11 +1775,11 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": 'Item', "variant": good},
+				"props": {"doctype": "Item", "variant": good},
 			}
 			self.assertEqual(self._block_warnings(block), [], good)
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "variant": "list"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "variant": "list"}}
 		)
 		self.assertEqual(len(warnings), 1)
 		self.assertIn("variant", warnings[0])
@@ -1834,12 +1789,12 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		# → one per-entry warning. Both messages now name the {field,label}
 		# object form the client ALSO accepts (item 17 mismatch fix).
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "columns": "name,status"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "columns": "name,status"}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("columns must be a list of fieldname strings or {field, label} objects", warnings[0])
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "columns": ["disabled", 7]}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "columns": ["disabled", 7]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("neither a fieldname string nor a {field, label} object", warnings[0])
@@ -1851,7 +1806,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			"id": "r",
 			"type": "record-list",
 			"props": {
-				"doctype": 'YRP Work Order',
+				"doctype": "YRP Work Order",
 				"columns": ["status", {"field": "supplier", "label": "Supplier"}],
 			},
 		}
@@ -1863,7 +1818,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 				"id": "r",
 				"type": "record-list",
 				"props": {
-					"doctype": 'YRP Work Order',
+					"doctype": "YRP Work Order",
 					"columns": ["status", "no_such_field", {"field": "also_missing"}],
 				},
 			}
@@ -1881,13 +1836,13 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		# RecordList.vue resolves columns strictly against visible meta fields.
 		for field in ("modified", "owner", "name"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Work Order', "columns": [field]}}
+				{"id": "r", "type": "record-list", "props": {"doctype": "YRP Work Order", "columns": [field]}}
 			)
 			self.assertEqual(len(warnings), 1, f"{field}: {warnings}")
 			self.assertIn(f"column '{field}' is not a field on 'YRP Work Order'", warnings[0])
 		# groupBy on a default field silently regroups by status client-side.
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'YRP Work Order', "groupBy": "owner"}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "YRP Work Order", "groupBy": "owner"}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("groupBy 'owner' is not a field on 'YRP Work Order'", warnings[0])
@@ -1898,7 +1853,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 				{
 					"id": "r",
 					"type": "record-list",
-					"props": {"doctype": 'YRP Work Order', key: "no_such_field"},
+					"props": {"doctype": "YRP Work Order", key: "no_such_field"},
 				}
 			)
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
@@ -1909,7 +1864,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 				{
 					"id": "r",
 					"type": "record-list",
-					"props": {"doctype": 'YRP Work Order', "title": "Anything Goes"},
+					"props": {"doctype": "YRP Work Order", "title": "Anything Goes"},
 				}
 			),
 			[],
@@ -1929,7 +1884,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 	def test_record_list_page_size_bounds(self):
 		for bad in (0, 51, True, "10"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "pageSize": bad}}
+				{"id": "r", "type": "record-list", "props": {"doctype": "Item", "pageSize": bad}}
 			)
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn("pageSize", warnings[0])
@@ -1937,14 +1892,14 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": 'Item', "pageSize": good},
+				"props": {"doctype": "Item", "pageSize": good},
 			}
 			self.assertEqual(self._block_warnings(block), [], good)
 
 	def test_record_list_string_props(self):
 		for key in ("groupBy", "titleField", "title"):
 			warnings = self._block_warnings(
-				{"id": "r", "type": "record-list", "props": {"doctype": 'Item', key: 1}}
+				{"id": "r", "type": "record-list", "props": {"doctype": "Item", key: 1}}
 			)
 			self.assertEqual(len(warnings), 1, key)
 			self.assertIn(f"{key} must be a string", warnings[0])
@@ -1959,7 +1914,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 			block = {
 				"id": "r",
 				"type": "record-list",
-				"props": {"doctype": 'YRP Work Order', "variant": variant, "cardTemplate": tree},
+				"props": {"doctype": "YRP Work Order", "variant": variant, "cardTemplate": tree},
 			}
 			self.assertEqual(self._block_warnings(block), [], variant)
 
@@ -1973,7 +1928,7 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 				{
 					"id": "r",
 					"type": "record-list",
-					"props": {"doctype": 'YRP Work Order', "variant": "cards", "cardTemplate": bad},
+					"props": {"doctype": "YRP Work Order", "variant": "cards", "cardTemplate": bad},
 				}
 			)
 			self.assertEqual(len(warnings), 1, bad)
@@ -1986,8 +1941,8 @@ class TestUIConfigBlockProps(IntegrationTestCase):
 		# The clients render the template only in the cards/kanban variants —
 		# a template on the (default) table presentation is dead config.
 		for props in (
-			{"doctype": 'YRP Work Order', "cardTemplate": {"type": "stack"}},  # variant absent → table
-			{"doctype": 'YRP Work Order', "variant": "table", "cardTemplate": {"type": "stack"}},
+			{"doctype": "YRP Work Order", "cardTemplate": {"type": "stack"}},  # variant absent → table
+			{"doctype": "YRP Work Order", "variant": "table", "cardTemplate": {"type": "stack"}},
 		):
 			warnings = self._block_warnings({"id": "r", "type": "record-list", "props": props})
 			self.assertEqual(len(warnings), 1, props)
@@ -2063,7 +2018,7 @@ class TestUIConfigCompositeBlock(IntegrationTestCase):
 			"id": "cmp",
 			"type": "composite",
 			"props": {
-				"source": {"metrics": ["open_wos"], "doctype": 'YRP Work Order', "limit": 3},
+				"source": {"metrics": ["open_wos"], "doctype": "YRP Work Order", "limit": 3},
 				"tree": self._tree(),
 			},
 		}
@@ -2080,9 +2035,7 @@ class TestUIConfigCompositeBlock(IntegrationTestCase):
 
 	def test_composite_tree_must_be_an_object_with_a_type_root(self):
 		for bad in ([{"type": "stack"}], "stack", {"props": {}}, {"type": 7}):
-			warnings = self._block_warnings(
-				{"id": "cmp", "type": "composite", "props": {"tree": bad}}
-			)
+			warnings = self._block_warnings({"id": "cmp", "type": "composite", "props": {"tree": bad}})
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn("string 'type' root node", warnings[0])
 
@@ -2179,7 +2132,7 @@ class CompositeTreeTestBase(IntegrationTestCase):
 	# Work Order source: item/supplier/status/process_name/planned_quantity/
 	# wo_date are real visible fields; total_quantity is a real HIDDEN field
 	# (fetchable but not renderable — the distinction under test).
-	SOURCE = {"metrics": ["open_wos", "total_wo"], "doctype": 'YRP Work Order', "limit": 5}
+	SOURCE = {"metrics": ["open_wos", "total_wo"], "doctype": "YRP Work Order", "limit": 5}
 
 	@staticmethod
 	def _composite_warnings(tree, source=None, layer="layout"):
@@ -2188,15 +2141,11 @@ class CompositeTreeTestBase(IntegrationTestCase):
 			block["props"]["source"] = source
 		screens = {"home": {"blocks": [block], "hidden": {}}}
 		if layer == "overrides":
-			return ui_config.validate_config(
-				{"schema_version": 1, "screens": screens}, layer="overrides"
-			)
-		return ui_config.validate_config(
-			dict(LAYOUT_CONFIG, screens=screens), layer="layout"
-		)
+			return ui_config.validate_config({"schema_version": 1, "screens": screens}, layer="overrides")
+		return ui_config.validate_config(dict(LAYOUT_CONFIG, screens=screens), layer="layout")
 
 	@staticmethod
-	def _record_list_template_warnings(tree, doctype='YRP Work Order'):
+	def _record_list_template_warnings(tree, doctype="YRP Work Order"):
 		block = {
 			"id": "r",
 			"type": "record-list",
@@ -2208,7 +2157,7 @@ class CompositeTreeTestBase(IntegrationTestCase):
 		)
 
 	@staticmethod
-	def _list_view_template_warnings(tree, doctype='YRP Work Order'):
+	def _list_view_template_warnings(tree, doctype="YRP Work Order"):
 		return ui_config.validate_config(
 			dict(LAYOUT_CONFIG, listViews={doctype: {"variant": "cards", "cardTemplate": tree}}),
 			layer="layout",
@@ -2260,8 +2209,14 @@ class TestUIConfigCompositeTreeValidFamily(CompositeTreeTestBase):
 								"align": "center",
 							},
 						},
-						{"type": "stat", "props": {"value": {"bind": "metrics.total_wo.value"}, "label": "Work Orders"}},
-						{"type": "progress", "props": {"value": {"bind": "rows.0.planned_quantity"}, "tone": "muted"}},
+						{
+							"type": "stat",
+							"props": {"value": {"bind": "metrics.total_wo.value"}, "label": "Work Orders"},
+						},
+						{
+							"type": "progress",
+							"props": {"value": {"bind": "rows.0.planned_quantity"}, "tone": "muted"},
+						},
 					],
 				},
 				{
@@ -2285,13 +2240,20 @@ class TestUIConfigCompositeTreeValidFamily(CompositeTreeTestBase):
 								"tone": "accent",
 							},
 						},
-						{"type": "badge", "props": {"status": {"bind": "rows.0.status", "format": "status-label"}}},
+						{
+							"type": "badge",
+							"props": {"status": {"bind": "rows.0.status", "format": "status-label"}},
+						},
 						{"type": "spacer", "props": {"size": "xs"}},
 					],
 				},
 				{
 					"type": "kv-row",
-					"props": {"label": "Qty", "value": {"bind": "rows.0.planned_quantity", "format": "qty"}, "mono": True},
+					"props": {
+						"label": "Qty",
+						"value": {"bind": "rows.0.planned_quantity", "format": "qty"},
+						"mono": True,
+					},
 					"showIf": {"field": "rows.0.planned_quantity", "op": ">", "value": 0},
 				},
 				{
@@ -2299,7 +2261,10 @@ class TestUIConfigCompositeTreeValidFamily(CompositeTreeTestBase):
 					"props": {"label": "Date", "value": {"bind": "rows.0.wo_date", "format": "date"}},
 					"showIf": {"field": "rows.0.status", "op": "!=", "value": "Cancelled"},
 				},
-				{"type": "image", "props": {"src": "/files/logo.png", "alt": "Logo", "height": 120, "fit": "contain"}},
+				{
+					"type": "image",
+					"props": {"src": "/files/logo.png", "alt": "Logo", "height": 120, "fit": "contain"},
+				},
 			],
 		}
 		self.assertEqual(self._composite_warnings(tree, source=self.SOURCE), [])
@@ -2312,7 +2277,10 @@ class TestUIConfigCompositeTreeValidFamily(CompositeTreeTestBase):
 			"children": [
 				{"type": "text", "props": {"value": {"bind": "name"}, "mono": True}},
 				{"type": "badge", "props": {"status": {"bind": "docstatus", "format": "status-label"}}},
-				{"type": "kv-row", "props": {"label": "Qty", "value": {"bind": "planned_quantity", "format": "qty"}}},
+				{
+					"type": "kv-row",
+					"props": {"label": "Qty", "value": {"bind": "planned_quantity", "format": "qty"}},
+				},
 				{
 					"type": "kv-row",
 					"props": {"label": "Updated", "value": {"bind": "modified", "format": "date"}},
@@ -2463,9 +2431,7 @@ class TestUIConfigCompositeTreePropViolationsFamily(CompositeTreeTestBase):
 			({"columns": "2"}, "grid"),
 		):
 			self._one({"type": node_type, "props": props}, "must be an integer between 1 and 6")
-		self._one(
-			{"type": "heading", "props": {"level": 4}}, "must be an integer between 1 and 3"
-		)
+		self._one({"type": "heading", "props": {"level": 4}}, "must be an integer between 1 and 3")
 		self._one(
 			{"type": "image", "props": {"src": "/files/a.png", "height": 8}},
 			"must be an integer between 16 and 480",
@@ -2560,7 +2526,9 @@ class TestUIConfigCompositeTreeCapsFamily(CompositeTreeTestBase):
 		# over-cap first, hard.)
 		tree = {
 			"type": "text",
-			"children": [{"type": "text", "props": {"value": "x"}} for _ in range(ui_config.COMPOSITE_MAX_NODES)],
+			"children": [
+				{"type": "text", "props": {"value": "x"}} for _ in range(ui_config.COMPOSITE_MAX_NODES)
+			],
 		}
 		with self.assertRaises(frappe.ValidationError):
 			self._composite_warnings(tree)
@@ -2595,9 +2563,7 @@ class TestUIConfigCompositeTreeBindPathFamily(CompositeTreeTestBase):
 			self.assertIn("metrics.<name>.value or metrics.<name>.label", warnings[0])
 
 	def test_metric_not_in_source_metrics_warns_as_dead(self):
-		warnings = self._composite_warnings(
-			self._text_bind("metrics.draft_dcs.value"), source=self.SOURCE
-		)
+		warnings = self._composite_warnings(self._text_bind("metrics.draft_dcs.value"), source=self.SOURCE)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("metric 'draft_dcs' is not in source.metrics", warnings[0])
 		# No source at all → every metric binding is dead.
@@ -2606,9 +2572,7 @@ class TestUIConfigCompositeTreeBindPathFamily(CompositeTreeTestBase):
 		self.assertIn("not in source.metrics", warnings[0])
 
 	def test_rows_without_source_doctype_warns_as_dead(self):
-		warnings = self._composite_warnings(
-			self._text_bind("rows.0.item"), source={"metrics": ["open_wos"]}
-		)
+		warnings = self._composite_warnings(self._text_bind("rows.0.item"), source={"metrics": ["open_wos"]})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("source.doctype is not set", warnings[0])
 
@@ -2623,17 +2587,13 @@ class TestUIConfigCompositeTreeBindPathFamily(CompositeTreeTestBase):
 		warnings = self._composite_warnings(self._text_bind("rows.3.item"), source=source)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("row index 3 is beyond source.limit (3)", warnings[0])
-		self.assertEqual(
-			self._composite_warnings(self._text_bind("rows.2.item"), source=source), []
-		)
+		self.assertEqual(self._composite_warnings(self._text_bind("rows.2.item"), source=source), [])
 		# Default limit is 5 when source.limit is absent.
-		source_no_limit = {"metrics": ["open_wos"], "doctype": 'YRP Work Order'}
+		source_no_limit = {"metrics": ["open_wos"], "doctype": "YRP Work Order"}
 		warnings = self._composite_warnings(self._text_bind("rows.5.item"), source=source_no_limit)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("(5)", warnings[0])
-		self.assertEqual(
-			self._composite_warnings(self._text_bind("rows.4.item"), source=source_no_limit), []
-		)
+		self.assertEqual(self._composite_warnings(self._text_bind("rows.4.item"), source=source_no_limit), [])
 
 	def test_row_fieldname_typo_warns_against_meta(self):
 		warnings = self._composite_warnings(self._text_bind("rows.0.no_such_field"), source=self.SOURCE)
@@ -2811,9 +2771,7 @@ class TestUIConfigCompositeTreeInjectionFamily(CompositeTreeTestBase):
 		# The markup gate must not eat legitimate prose — an HTML tag never
 		# has whitespace (or a digit) after '<'.
 		for value in ("qty < 5 pieces", "a < b", "5<6", "< 10%"):
-			self.assertEqual(
-				self._composite_warnings({"type": "text", "props": {"value": value}}), [], value
-			)
+			self.assertEqual(self._composite_warnings({"type": "text", "props": {"value": value}}), [], value)
 
 	def test_markup_hard_fails_in_every_string_slot(self):
 		self._hard({"type": "heading", "props": {"text": "<img src=x onerror=alert(1)>"}})
@@ -2821,7 +2779,11 @@ class TestUIConfigCompositeTreeInjectionFamily(CompositeTreeTestBase):
 		self._hard({"type": "image", "props": {"src": "/files/a.png", "alt": "<svg/onload=x>"}})
 		self._hard({"type": "<script>"})  # node type
 		self._hard(
-			{"type": "text", "props": {"value": "x"}, "showIf": {"field": "status", "op": "=", "value": "<b>x"}}
+			{
+				"type": "text",
+				"props": {"value": "x"},
+				"showIf": {"field": "status", "op": "=", "value": "<b>x"},
+			}
 		)
 
 	def test_prototype_shaped_bind_paths_hard_fail(self):
@@ -2886,7 +2848,7 @@ class TestUIConfigCompositeGrammarVersionFamily(CompositeTreeTestBase):
 							"id": "rl",
 							"type": "record-list",
 							"props": {
-								"doctype": 'YRP Work Order',
+								"doctype": "YRP Work Order",
 								"variant": "cards",
 								"cardTemplate": deepcopy(tree),
 							},
@@ -2894,7 +2856,7 @@ class TestUIConfigCompositeGrammarVersionFamily(CompositeTreeTestBase):
 					]
 				}
 			},
-			"listViews": {'YRP Work Order': {"variant": "cards", "cardTemplate": deepcopy(tree)}},
+			"listViews": {"YRP Work Order": {"variant": "cards", "cardTemplate": deepcopy(tree)}},
 		}
 
 	@staticmethod
@@ -2903,7 +2865,7 @@ class TestUIConfigCompositeGrammarVersionFamily(CompositeTreeTestBase):
 		return [
 			blocks[0]["props"]["tree"],
 			blocks[1]["props"]["cardTemplate"],
-			cfg["listViews"]['YRP Work Order']["cardTemplate"],
+			cfg["listViews"]["YRP Work Order"]["cardTemplate"],
 		]
 
 	def test_current_constants(self):
@@ -2989,7 +2951,7 @@ class TestUIConfigCompositeGrammarVersionFamily(CompositeTreeTestBase):
 		for tree in self._trees_of(out):
 			self.assertIsNone(tree)
 		self.assertEqual(out["schema_version"], 1)
-		self.assertEqual(out["listViews"]['YRP Work Order']["variant"], "cards")
+		self.assertEqual(out["listViews"]["YRP Work Order"]["variant"], "cards")
 		self.assertGreater(_ui_error_log_count(), before)
 
 	def test_failing_upgrader_drops_the_tree_alone(self):
@@ -3120,9 +3082,7 @@ class TestUIConfigItem17HomeQueuesStats(IntegrationTestCase):
 
 	def test_stats_must_be_a_list_of_strings(self):
 		for bad in ("open_wos", {"a": 1}, ["open_wos", 7]):
-			warnings = self._block_warnings(
-				{"id": "q", "type": "home-queues", "props": {"stats": bad}}
-			)
+			warnings = self._block_warnings({"id": "q", "type": "home-queues", "props": {"stats": bad}})
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn("stats must be a list of metric names", warnings[0])
 
@@ -3179,12 +3139,8 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 	@staticmethod
 	def _warnings(list_views, layer="layout"):
 		if layer == "layout":
-			return ui_config.validate_config(
-				dict(LAYOUT_CONFIG, listViews=list_views), layer="layout"
-			)
-		return ui_config.validate_config(
-			{"schema_version": 1, "listViews": list_views}, layer="overrides"
-		)
+			return ui_config.validate_config(dict(LAYOUT_CONFIG, listViews=list_views), layer="layout")
+		return ui_config.validate_config({"schema_version": 1, "listViews": list_views}, layer="overrides")
 
 	def test_fully_valid_deep_list_view_is_warning_free(self):
 		# {field, label} objects ONLY — the routed list page drops bare strings
@@ -3192,7 +3148,7 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		self.assertEqual(
 			self._warnings(
 				{
-					'YRP Work Order': {
+					"YRP Work Order": {
 						"variant": "kanban",
 						"columns": [{"field": "status"}, {"field": "supplier", "label": "Job-worker"}],
 						"groupBy": "process_name",
@@ -3208,19 +3164,23 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		# `if (!lc || !lc.field) continue` — a plain string has no .field, so
 		# EVERY string entry is skipped and an all-string list silently falls
 		# back to the meta defaults. The validator used to certify strings here.
-		warnings = self._warnings({'YRP Work Order': {"columns": ["supplier", "process_name", "status"]}})
+		warnings = self._warnings({"YRP Work Order": {"columns": ["supplier", "process_name", "status"]}})
 		self.assertEqual(len(warnings), 3, warnings)
 		for w in warnings:
 			self.assertIn("DROPS string entries", w)
 		# The {field, label} spelling of the same columns is clean.
 		self.assertEqual(
 			self._warnings(
-				{'YRP Work Order': {"columns": [{"field": "supplier"}, {"field": "process_name"}, {"field": "status"}]}}
+				{
+					"YRP Work Order": {
+						"columns": [{"field": "supplier"}, {"field": "process_name"}, {"field": "status"}]
+					}
+				}
 			),
 			[],
 		)
 		# A string entry that is ALSO a fieldname typo draws both warnings.
-		warnings = self._warnings({'YRP Work Order': {"columns": ["no_such_field"]}})
+		warnings = self._warnings({"YRP Work Order": {"columns": ["no_such_field"]}})
 		self.assertEqual(len(warnings), 2, warnings)
 
 	def test_default_and_unrenderable_fields_warn_as_columns(self):
@@ -3228,11 +3188,7 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		# renderable columns — both clients build their column maps strictly
 		# from visible meta fields, so every one of these renders nothing.
 		warnings = self._warnings(
-			{
-				'YRP Work Order': {
-					"columns": [{"field": "name"}, {"field": "modified"}, {"field": "owner"}]
-				}
-			}
+			{"YRP Work Order": {"columns": [{"field": "name"}, {"field": "modified"}, {"field": "owner"}]}}
 		)
 		self.assertEqual(len(warnings), 3, warnings)
 		for fragment in ("'name'", "'modified'", "'owner'"):
@@ -3246,20 +3202,18 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		# `item_details_tab` is a Tab Break (NON_LISTABLE_FIELDTYPES) — the
 		# routed list drops both, so the save must warn (2026-07-17 review).
 		warnings = self._warnings(
-			{
-				'YRP Item Production Detail': {
-					"columns": [{"field": "version"}, {"field": "item_details_tab"}]
-				}
-			}
+			{"YRP Item Production Detail": {"columns": [{"field": "version"}, {"field": "item_details_tab"}]}}
 		)
 		self.assertEqual(len(warnings), 2, warnings)
 		for fragment in ("'version'", "'item_details_tab'"):
 			self.assertTrue(
-				any(fragment in w and "is not a field on 'YRP Item Production Detail'" in w for w in warnings),
+				any(
+					fragment in w and "is not a field on 'YRP Item Production Detail'" in w for w in warnings
+				),
 				fragment,
 			)
 		# groupBy on a default field falls back to status client-side — warns.
-		warnings = self._warnings({'YRP Work Order': {"groupBy": "owner"}})
+		warnings = self._warnings({"YRP Work Order": {"groupBy": "owner"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("groupBy 'owner' is not a field on 'YRP Work Order'", warnings[0])
 
@@ -3271,67 +3225,67 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 	def test_off_catalog_doctype_key_warns(self):
 		# Catalog keeps the base config's nav doctypes so ONLY the listViews
 		# key under test ("Item" — real, off-catalog) warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
-			warnings = self._warnings({'Item': {"variant": "cards"}})
+		with patch.object(
+			ui_config, "_web_doctype_catalog", return_value={"YRP Delivery Challan", "YRP Work Order"}
+		):
+			warnings = self._warnings({"Item": {"variant": "cards"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
 
 	def test_no_catalog_hook_skips_the_catalog_check_only(self):
 		with patch.object(ui_config, "_web_doctype_catalog", return_value=None):
-			self.assertEqual(self._warnings({'YRP Work Order': {"variant": "cards"}}), [])
+			self.assertEqual(self._warnings({"YRP Work Order": {"variant": "cards"}}), [])
 			warnings = self._warnings({"No Such DocType": {}})
 		self.assertEqual(len(warnings), 1, warnings)  # existence check still runs
 
 	def test_non_object_value_warns_and_null_stays_silent(self):
-		warnings = self._warnings({'Item': "cards"})
+		warnings = self._warnings({"Item": "cards"})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("listViews['Item'] must be an object", warnings[0])
-		self.assertEqual(self._warnings({'Item': None}), [])  # null = no opinion
+		self.assertEqual(self._warnings({"Item": None}), [])  # null = no opinion
 
 	def test_unknown_key_inside_a_list_view_warns(self):
-		warnings = self._warnings({'Item': {"pageSize": 5}})
+		warnings = self._warnings({"Item": {"pageSize": 5}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("unknown key 'pageSize' inside listViews['Item']", warnings[0])
 
 	def test_variant_vocabulary(self):
 		for good in ui_config.LIST_VIEW_VARIANTS:
-			self.assertEqual(self._warnings({'Item': {"variant": good}}), [], good)
-		warnings = self._warnings({'Item': {"variant": "grid"}})
+			self.assertEqual(self._warnings({"Item": {"variant": good}}), [], good)
+		warnings = self._warnings({"Item": {"variant": "grid"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("listViews['Item'].variant 'grid' is not one of", warnings[0])
 
 	def test_column_fieldname_typo_warns(self):
-		warnings = self._warnings(
-			{'Item': {"columns": [{"field": "item_name"}, {"field": "no_such_field"}]}}
-		)
+		warnings = self._warnings({"Item": {"columns": [{"field": "item_name"}, {"field": "no_such_field"}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("column 'no_such_field' is not a field on 'Item'", warnings[0])
 
 	def test_column_object_families(self):
 		# Dead annotation key ("type" — the client reads only field/label).
 		warnings = self._warnings(
-			{'Item': {"columns": [{"field": "item_name", "label": "Item", "type": "Date"}]}}
+			{"Item": {"columns": [{"field": "item_name", "label": "Item", "type": "Date"}]}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("key 'type' is ignored", warnings[0])
 		# Object without a usable field.
-		warnings = self._warnings({'Item': {"columns": [{"label": "X"}]}})
+		warnings = self._warnings({"Item": {"columns": [{"label": "X"}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("needs a non-empty string 'field'", warnings[0])
 		# Non-string label.
-		warnings = self._warnings({'Item': {"columns": [{"field": "item_name", "label": 7}]}})
+		warnings = self._warnings({"Item": {"columns": [{"field": "item_name", "label": 7}]}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("label must be a string", warnings[0])
 
 	def test_group_by_and_title_field_checked_against_meta(self):
 		for key in ("groupBy", "titleField"):
-			warnings = self._warnings({'Item': {key: "no_such_field"}})
+			warnings = self._warnings({"Item": {key: "no_such_field"}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
 			self.assertIn(
 				f"listViews['Item'].{key} 'no_such_field' is not a field on 'Item'",
 				warnings[0],
 			)
-			warnings = self._warnings({'Item': {key: 7}})
+			warnings = self._warnings({"Item": {key: 7}})
 			self.assertEqual(len(warnings), 1, f"{key}: {warnings}")
 			self.assertIn(f"listViews['Item'].{key} must be a fieldname string", warnings[0])
 
@@ -3350,14 +3304,14 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 		}
 		for variant in ("cards", "kanban"):
 			self.assertEqual(
-				self._warnings({'YRP Work Order': {"variant": variant, "cardTemplate": tree}}),
+				self._warnings({"YRP Work Order": {"variant": variant, "cardTemplate": tree}}),
 				[],
 				variant,
 			)
 
 	def test_card_template_must_be_a_tree_object(self):
 		for bad in ("stack", ["stack"], 7, {}, {"type": 3}):
-			warnings = self._warnings({'YRP Work Order': {"variant": "cards", "cardTemplate": bad}})
+			warnings = self._warnings({"YRP Work Order": {"variant": "cards", "cardTemplate": bad}})
 			self.assertEqual(len(warnings), 1, bad)
 			self.assertIn(
 				"listViews['YRP Work Order'] cardTemplate must be a composite tree object "
@@ -3372,12 +3326,12 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 			{"cardTemplate": {"type": "stack"}},  # variant absent → table
 			{"variant": "table", "cardTemplate": {"type": "stack"}},
 		):
-			warnings = self._warnings({'YRP Work Order': view})
+			warnings = self._warnings({"YRP Work Order": view})
 			self.assertEqual(len(warnings), 1, view)
 			self.assertIn("cardTemplate does nothing without variant 'cards' or 'kanban'", warnings[0])
 
 	def test_overrides_layer_gets_the_same_deep_checks(self):
-		warnings = self._warnings({'Item': {"variant": "grid"}}, layer="overrides")
+		warnings = self._warnings({"Item": {"variant": "grid"}}, layer="overrides")
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("overrides: listViews['Item'].variant 'grid'", warnings[0])
 
@@ -3401,8 +3355,8 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		}
 
 	def test_web_doctype_catalog_helper_reads_the_hook_fail_safe(self):
-		with patch.object(frappe, "get_hooks", return_value=['Item', 'Item']):
-			self.assertEqual(ui_config._web_doctype_catalog(), {'Item', 'Item'})
+		with patch.object(frappe, "get_hooks", return_value=["Item", "Item"]):
+			self.assertEqual(ui_config._web_doctype_catalog(), {"Item"})
 		with patch.object(frappe, "get_hooks", return_value=[]):
 			self.assertIsNone(ui_config._web_doctype_catalog())
 		with patch.object(frappe, "get_hooks", side_effect=RuntimeError):
@@ -3414,23 +3368,19 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		catalog = ui_config._web_doctype_catalog()
 		if catalog is None:
 			self.skipTest("no yrp_web_doctype_catalog hook on this site")
-		self.assertIn('Item', catalog)
-		self.assertIn('YRP Terms and Condition', catalog)
+		self.assertIn("Item", catalog)
+		self.assertIn("YRP Terms and Condition", catalog)
 
 	def test_existing_but_off_catalog_nav_doctype_warns(self):
-		with patch.object(
-			ui_config, "_web_doctype_catalog", return_value={'Item', 'YRP Delivery Challan'}
-		):
+		with patch.object(ui_config, "_web_doctype_catalog", return_value={"Item", "YRP Delivery Challan"}):
 			warnings = self._nav_warnings(
-				self._items_nav([{"doctype": 'Item'}, {"doctype": 'YRP Work Order'}])
+				self._items_nav([{"doctype": "Item"}, {"doctype": "YRP Work Order"}])
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("nav doctype 'YRP Work Order' is not in the /web doctype catalog", warnings[0])
 
 	def test_view_home_item_is_soft_not_a_hard_error(self):
-		warnings = self._nav_warnings(
-			self._items_nav([{"view": "home"}, {"doctype": 'Item'}])
-		)
+		warnings = self._nav_warnings(self._items_nav([{"view": "home"}, {"doctype": "Item"}]))
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("{'view': 'home'} is redundant", warnings[0])
 		# Any OTHER doctype-less item keeps the pre-existing hard error.
@@ -3440,8 +3390,8 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 	def test_duplicate_nav_doctypes_and_group_ids_warn(self):
 		nav = {
 			"groups": [
-				{"id": "A", "label": "A", "items": [{"doctype": 'Item'}, {"doctype": 'Item'}]},
-				{"id": "A", "label": "Again", "items": [{"doctype": 'Item'}]},
+				{"id": "A", "label": "A", "items": [{"doctype": "Item"}, {"doctype": "Item"}]},
+				{"id": "A", "label": "Again", "items": [{"doctype": "Item"}]},
 			],
 			"hidden": {},
 		}
@@ -3459,7 +3409,7 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 					"id": "G",
 					"label": "G",
 					"colour": "red",
-					"items": [{"doctype": 'Item', "label": "My Lots"}],
+					"items": [{"doctype": "Item", "label": "My Lots"}],
 				}
 			],
 			"hidden": {},
@@ -3476,23 +3426,23 @@ class TestUIConfigItem17NavAndCatalog(IntegrationTestCase):
 		)
 
 	def test_dead_nav_hidden_target_warns_on_layout_layer_only(self):
-		nav = self._items_nav([{"doctype": 'Item'}], hidden={'YRP Delivery Challan': True})
+		nav = self._items_nav([{"doctype": "Item"}], hidden={"YRP Delivery Challan": True})
 		warnings = self._nav_warnings(nav)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn(
-			"nav.hidden['YRP Delivery Challan'] matches no nav item doctype", warnings[0]
-		)
+		self.assertIn("nav.hidden['YRP Delivery Challan'] matches no nav item doctype", warnings[0])
 		# Overrides legitimately hide doctypes that live in the LAYOUT's groups.
 		self.assertEqual(
-			self._nav_warnings({"hidden": {'YRP Delivery Challan': True}}, layer="overrides"), []
+			self._nav_warnings({"hidden": {"YRP Delivery Challan": True}}, layer="overrides"), []
 		)
 
 	def test_quick_create_off_catalog_warns(self):
 		# Catalog keeps the base config's nav doctypes so
 		# only the off-catalog quickCreate entry warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
+		with patch.object(
+			ui_config, "_web_doctype_catalog", return_value={"YRP Delivery Challan", "YRP Work Order"}
+		):
 			warnings = ui_config.validate_config(
-				dict(LAYOUT_CONFIG, quickCreate=['YRP Delivery Challan', 'Item']), layer="layout"
+				dict(LAYOUT_CONFIG, quickCreate=["YRP Delivery Challan", "Item"]), layer="layout"
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("quickCreate doctype 'Item' is not in the /web doctype catalog", warnings[0])
@@ -3508,17 +3458,13 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 	def _screens_warnings(screens, layer="layout"):
 		if layer == "layout":
 			return ui_config.validate_config(dict(LAYOUT_CONFIG, screens=screens), layer="layout")
-		return ui_config.validate_config(
-			{"schema_version": 1, "screens": screens}, layer="overrides"
-		)
+		return ui_config.validate_config({"schema_version": 1, "screens": screens}, layer="overrides")
 
 	def _block_warnings(self, block):
 		return self._screens_warnings({"home": {"blocks": [block], "hidden": {}}})
 
 	def test_unknown_screen_key_warns(self):
-		warnings = self._screens_warnings(
-			{"home": {"blocks": [], "hidden": {}}, "hme": {"blocks": []}}
-		)
+		warnings = self._screens_warnings({"home": {"blocks": [], "hidden": {}}, "hme": {"blocks": []}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("screens['hme'] is not rendered by any client today", warnings[0])
 
@@ -3531,16 +3477,12 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 		for good in ui_config.BLOCK_SIZES:
 			block = {"id": "g", "type": "home-greeting", "size": good, "props": {}}
 			self.assertEqual(self._block_warnings(block), [], good)
-		warnings = self._block_warnings(
-			{"id": "g", "type": "home-greeting", "size": "wide", "props": {}}
-		)
+		warnings = self._block_warnings({"id": "g", "type": "home-greeting", "size": "wide", "props": {}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("size 'wide' is not one of full, half, third", warnings[0])
 
 	def test_unknown_key_inside_a_block_warns(self):
-		warnings = self._block_warnings(
-			{"id": "g", "type": "home-greeting", "span": "full", "props": {}}
-		)
+		warnings = self._block_warnings({"id": "g", "type": "home-greeting", "span": "full", "props": {}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("unknown key 'span' inside block 'g'", warnings[0])
 
@@ -3576,17 +3518,13 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 
 	def test_unknown_prop_on_a_known_block_type_warns(self):
 		warnings = self._block_warnings(
-			{"id": "r", "type": "record-list", "props": {"doctype": 'Item', "pagesize": 8}}
+			{"id": "r", "type": "record-list", "props": {"doctype": "Item", "pagesize": 8}}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
-		self.assertIn(
-			"prop 'pagesize' is not a prop of block type 'record-list'", warnings[0]
-		)
+		self.assertIn("prop 'pagesize' is not a prop of block type 'record-list'", warnings[0])
 		# Unknown block types still skip prop validation (client may be newer).
 		self.assertEqual(
-			self._block_warnings(
-				{"id": "x", "type": "some-future-block", "props": {"anything": 1}}
-			),
+			self._block_warnings({"id": "x", "type": "some-future-block", "props": {"anything": 1}}),
 			[],
 		)
 
@@ -3595,15 +3533,17 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 			{
 				"id": "recent",
 				"type": "home-recent",
-				"props": {"doctypes": ['YRP Work Order', "No Such DocType"]},
+				"props": {"doctypes": ["YRP Work Order", "No Such DocType"]},
 			}
 		)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("'No Such DocType' does not exist as a DocType", warnings[0])
 		# Catalog keeps the base config's nav doctypes so only the block warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
+		with patch.object(
+			ui_config, "_web_doctype_catalog", return_value={"YRP Delivery Challan", "YRP Work Order"}
+		):
 			warnings = self._block_warnings(
-				{"id": "recent", "type": "home-recent", "props": {"doctypes": ['Item']}}
+				{"id": "recent", "type": "home-recent", "props": {"doctypes": ["Item"]}}
 			)
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("'Item' is not in the /web doctype catalog", warnings[0])
@@ -3615,7 +3555,7 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 				{
 					"id": "g",
 					"type": "home-greeting",
-					"props": {"newCta": {"primary": 'YRP Delivery Challan', "menu": ['YRP Work Order']}},
+					"props": {"newCta": {"primary": "YRP Delivery Challan", "menu": ["YRP Work Order"]}},
 				}
 			),
 			[],
@@ -3623,8 +3563,8 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 		cases = {
 			"newCta.primary must be a DocType name": {"primary": 7},
 			"'No Such DocType' does not exist as a DocType": {"primary": "No Such DocType"},
-			"newCta.menu must be a list of DocType names": {"menu": 'YRP Work Order'},
-			"unknown key 'colour' inside newCta": {"primary": 'YRP Delivery Challan', "colour": "red"},
+			"newCta.menu must be a list of DocType names": {"menu": "YRP Work Order"},
+			"unknown key 'colour' inside newCta": {"primary": "YRP Delivery Challan", "colour": "red"},
 		}
 		for fragment, new_cta in cases.items():
 			warnings = self._block_warnings(
@@ -3633,12 +3573,14 @@ class TestUIConfigItem17ScreensAndBlocks(IntegrationTestCase):
 			self.assertEqual(len(warnings), 1, f"{new_cta}: {warnings}")
 			self.assertIn(fragment, warnings[0])
 		# Catalog keeps the base config's nav doctypes so only newCta warns.
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
+		with patch.object(
+			ui_config, "_web_doctype_catalog", return_value={"YRP Delivery Challan", "YRP Work Order"}
+		):
 			warnings = self._block_warnings(
 				{
 					"id": "g",
 					"type": "home-greeting",
-					"props": {"newCta": {"primary": 'YRP Delivery Challan', "menu": ['Item']}},
+					"props": {"newCta": {"primary": "YRP Delivery Challan", "menu": ["Item"]}},
 				}
 			)
 		self.assertEqual(len(warnings), 1, warnings)
@@ -3674,7 +3616,7 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 		self.assertEqual(self._nav_warnings({"shell": "mobile-shell"}), [])
 		self.assertEqual(
 			self._nav_warnings(
-				{"footer": [{"doctype": 'Item', "icon": "pi pi-cog"}, {"doctype": 'YRP Work Order'}]}
+				{"footer": [{"doctype": "Item", "icon": "pi pi-cog"}, {"doctype": "YRP Work Order"}]}
 			),
 			[],
 		)
@@ -3719,9 +3661,11 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 		self.assertIn("nav.overflow must be an integer", warnings[0])
 
 	def test_footer_off_catalog_unknown_key_and_duplicate_soft_warn(self):
-		with patch.object(ui_config, "_web_doctype_catalog", return_value={'YRP Delivery Challan', 'YRP Work Order'}):
+		with patch.object(
+			ui_config, "_web_doctype_catalog", return_value={"YRP Delivery Challan", "YRP Work Order"}
+		):
 			warnings = self._nav_warnings(
-				{"footer": [{"doctype": 'Item', "label": "x"}, {"doctype": 'Item'}, {"doctype": 'Item'}]}
+				{"footer": [{"doctype": "Item", "label": "x"}, {"doctype": "Item"}, {"doctype": "Item"}]}
 			)
 		self.assertEqual(len(warnings), 3, warnings)
 		self.assertTrue(
@@ -3732,12 +3676,12 @@ class TestUIConfigTrack1NavFamily(IntegrationTestCase):
 
 	# ── structurally-bad hard ────────────────────────────────────────────────
 	def test_footer_structural_shapes_hard_error(self):
-		for bad in ({"footer": 'Item'}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
+		for bad in ({"footer": "Item"}, {"footer": [7]}, {"footer": [{"icon": "pi pi-cog"}]}):
 			with self.assertRaises(frappe.ValidationError):
 				self._nav_warnings(bad)
 		# A malformed footer icon is a hard error (same rule as group items).
 		with self.assertRaises(frappe.ValidationError):
-			self._nav_warnings({"footer": [{"doctype": 'Item', "icon": "cog"}]})
+			self._nav_warnings({"footer": [{"doctype": "Item", "icon": "cog"}]})
 
 	def test_new_nav_family_checks_run_on_overrides_layer_too(self):
 		warnings = self._nav_warnings({"sidebar": "docked"}, layer="overrides")
@@ -3756,16 +3700,14 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 	def _warnings(list_views, layer="layout"):
 		if layer == "layout":
 			return ui_config.validate_config(dict(LAYOUT_CONFIG, listViews=list_views), layer="layout")
-		return ui_config.validate_config(
-			{"schema_version": 1, "listViews": list_views}, layer="overrides"
-		)
+		return ui_config.validate_config({"schema_version": 1, "listViews": list_views}, layer="overrides")
 
 	# ── valid ──────────────────────────────────────────────────────────────
 	def test_all_flags_on_a_table_variant_are_warning_free(self):
 		self.assertEqual(
 			self._warnings(
 				{
-					'YRP Work Order': {
+					"YRP Work Order": {
 						"variant": "table",
 						"rowSize": "compact",
 						"colourBy": "status",
@@ -3779,9 +3721,9 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 			[],
 		)
 		# colourBy may also name a real renderable field.
-		self.assertEqual(self._warnings({'YRP Work Order': {"colourBy": "process_name"}}), [])
+		self.assertEqual(self._warnings({"YRP Work Order": {"colourBy": "process_name"}}), [])
 		# Flags with variant absent (defaults to table) are clean too.
-		self.assertEqual(self._warnings({'Item': {"rowSize": "comfortable", "monoId": True}}), [])
+		self.assertEqual(self._warnings({"Item": {"rowSize": "comfortable", "monoId": True}}), [])
 
 	def test_flag_keys_are_not_unknown_keys(self):
 		# LIST_VIEW_KEYS grew the six flags — none draws the unknown-key warning.
@@ -3793,46 +3735,44 @@ class TestUIConfigTrack1ListTableFlags(IntegrationTestCase):
 			("headerBand", True),
 			("edgeStatus", True),
 		):
-			self.assertEqual(self._warnings({'Item': {flag: value}}), [], flag)
+			self.assertEqual(self._warnings({"Item": {flag: value}}), [], flag)
 
 	# ── unknown value soft-warns ─────────────────────────────────────────────
 	def test_rowsize_and_chipstyle_off_vocabulary_soft_warn(self):
-		warnings = self._warnings({'Item': {"rowSize": "huge"}})
+		warnings = self._warnings({"Item": {"rowSize": "huge"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("listViews['Item'].rowSize 'huge' is not one of", warnings[0])
-		warnings = self._warnings({'Item': {"chipStyle": "pills"}})
+		warnings = self._warnings({"Item": {"chipStyle": "pills"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("listViews['Item'].chipStyle 'pills' is not one of", warnings[0])
 
 	def test_colour_by_fieldname_typo_warns_and_status_keyword_is_clean(self):
-		warnings = self._warnings({'YRP Work Order': {"colourBy": "no_such_field"}})
+		warnings = self._warnings({"YRP Work Order": {"colourBy": "no_such_field"}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("colourBy 'no_such_field' is not a field on 'YRP Work Order'", warnings[0])
 		self.assertIn("'status' keyword", warnings[0])
 		# A non-string colourBy warns as a shape error.
-		warnings = self._warnings({'YRP Work Order': {"colourBy": 7}})
+		warnings = self._warnings({"YRP Work Order": {"colourBy": 7}})
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("colourBy must be a fieldname string or 'status'", warnings[0])
 
 	def test_boolean_flags_reject_non_booleans_softly(self):
 		for flag in ("monoId", "headerBand", "edgeStatus"):
-			warnings = self._warnings({'Item': {flag: "yes"}})
+			warnings = self._warnings({"Item": {flag: "yes"}})
 			self.assertEqual(len(warnings), 1, f"{flag}: {warnings}")
 			self.assertIn(f"listViews['Item'].{flag} should be a boolean", warnings[0])
 
 	def test_table_flags_are_dead_on_card_variants(self):
 		for variant in ("cards", "kanban"):
 			warnings = self._warnings(
-				{'YRP Work Order': {"variant": variant, "rowSize": "compact", "monoId": True}}
+				{"YRP Work Order": {"variant": variant, "rowSize": "compact", "monoId": True}}
 			)
 			self.assertEqual(len(warnings), 1, f"{variant}: {warnings}")
-			self.assertIn(
-				"table flags (rowSize, monoId) apply to the table renderer only", warnings[0]
-			)
+			self.assertIn("table flags (rowSize, monoId) apply to the table renderer only", warnings[0])
 			self.assertIn(f"the '{variant}' variant", warnings[0])
 
 	def test_overrides_layer_gets_the_same_flag_checks(self):
-		warnings = self._warnings({'Item': {"rowSize": "huge"}}, layer="overrides")
+		warnings = self._warnings({"Item": {"rowSize": "huge"}}, layer="overrides")
 		self.assertEqual(len(warnings), 1, warnings)
 		self.assertIn("overrides: listViews['Item'].rowSize 'huge'", warnings[0])
 
@@ -3853,9 +3793,9 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 
 	VALID_RELATED: ClassVar[dict] = {
 		"related": {
-			'YRP Work Order': [
+			"YRP Work Order": [
 				{
-					"doctype": 'Supplier',
+					"doctype": "Supplier",
 					"fromField": "supplier",
 					"filterField": "name",
 					"title": "Supplier",
@@ -3866,7 +3806,7 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 					},
 				},
 				{
-					"doctype": 'YRP Process',
+					"doctype": "YRP Process",
 					"fromField": "process_name",
 					"filterField": "name",
 					"title": "Process",
@@ -3893,14 +3833,14 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		self.assertTrue(any("No Such DocType" in x for x in w), w)
 
 	def test_missing_required_entry_keys_warn(self):
-		w = self._layout_warnings({"related": {'Item': [{"title": "x"}]}})
+		w = self._layout_warnings({"related": {"Item": [{"title": "x"}]}})
 		self.assertTrue(any("doctype is required" in x for x in w), w)
 		self.assertTrue(any("fromField is required" in x for x in w), w)
 		self.assertTrue(any("filterField is required" in x for x in w), w)
 
 	def test_nonexistent_target_doctype_warns(self):
 		w = self._layout_warnings(
-			{"related": {'Item': [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
+			{"related": {"Item": [{"doctype": "Nope DT", "fromField": "item", "filterField": "name"}]}}
 		)
 		self.assertTrue(any("Nope DT" in x and "does not exist" in x for x in w), w)
 
@@ -3908,9 +3848,9 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		w = self._layout_warnings(
 			{
 				"related": {
-					'Item': [
+					"Item": [
 						{
-							"doctype": 'YRP Item Production Detail',
+							"doctype": "YRP Item Production Detail",
 							"fromField": "not_a_lot_field",
 							"filterField": "not_an_ipd_field",
 						}
@@ -3923,13 +3863,30 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 
 	def test_out_of_range_limit_warns(self):
 		w = self._layout_warnings(
-			{"related": {'Item': [{"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name", "limit": 999}]}}
+			{
+				"related": {
+					"Item": [
+						{
+							"doctype": "YRP Item Production Detail",
+							"fromField": "production_detail",
+							"filterField": "name",
+							"limit": 999,
+						}
+					]
+				}
+			}
 		)
 		self.assertTrue(any("limit must be an integer" in x for x in w), w)
 
 	def test_too_many_sets_warns(self):
-		one = {"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name"}
-		w = self._layout_warnings({"related": {'Item': [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}})
+		one = {
+			"doctype": "YRP Item Production Detail",
+			"fromField": "production_detail",
+			"filterField": "name",
+		}
+		w = self._layout_warnings(
+			{"related": {"Item": [dict(one) for _ in range(ui_config.DETAIL_RELATED_MAX_SETS + 1)]}}
+		)
 		self.assertTrue(any("sets" in x and "keep it under" in x for x in w), w)
 
 	# ── hard fails (shape + injection) ────────────────────────────────────
@@ -3940,7 +3897,18 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 	def test_markup_title_hard_fails(self):
 		with self.assertRaises(frappe.ValidationError):
 			self._layout_warnings(
-				{"related": {'Item': [{"doctype": 'YRP Item Production Detail', "fromField": "production_detail", "filterField": "name", "title": "<script>x</script>"}]}}
+				{
+					"related": {
+						"Item": [
+							{
+								"doctype": "YRP Item Production Detail",
+								"fromField": "production_detail",
+								"filterField": "name",
+								"title": "<script>x</script>",
+							}
+						]
+					}
+				}
 			)
 
 	def test_cardtemplate_injection_hard_fails(self):
@@ -3948,9 +3916,9 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 			self._layout_warnings(
 				{
 					"related": {
-						'Item': [
+						"Item": [
 							{
-								"doctype": 'YRP Item Production Detail',
+								"doctype": "YRP Item Production Detail",
 								"fromField": "production_detail",
 								"filterField": "name",
 								"cardTemplate": {"type": "text", "props": {"value": "<img src=x onerror=1>"}},
@@ -3983,7 +3951,9 @@ class TestUIConfigDetailRelated(IntegrationTestCase):
 		self.assertEqual(ui_config.get_related("User", "name", ["like", "%Administrator%"]), [])
 
 	def test_get_related_bogus_requested_fields_are_dropped(self):
-		rows = ui_config.get_related("User", "name", "Administrator", fields=json.dumps(["full_name", "__nope__"]))
+		rows = ui_config.get_related(
+			"User", "name", "Administrator", fields=json.dumps(["full_name", "__nope__"])
+		)
 		self.assertEqual(len(rows), 1)
 		self.assertNotIn("__nope__", rows[0])
 

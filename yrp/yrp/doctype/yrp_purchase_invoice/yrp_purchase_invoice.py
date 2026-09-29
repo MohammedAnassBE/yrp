@@ -1,4 +1,3 @@
-from yrp import attribute_links as attribute_db
 import json
 
 import frappe
@@ -6,20 +5,24 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, getdate, money_in_words, now_datetime, nowdate, nowtime
 
+from yrp import attribute_links as attribute_db
+
 
 class YRPPurchaseInvoice(Document):
 	def onload(self):
-		if self.against == 'YRP Work Order' and self.get("pi_work_order_billed_details"):
+		if self.against == "YRP Work Order" and self.get("pi_work_order_billed_details"):
 			self.set_onload(
 				"item_details",
 				fetch_work_order_items(self.get("pi_work_order_billed_details")),
 			)
-			work_orders = sorted({row.work_order for row in self.pi_work_order_billed_details if row.work_order})
-			if work_orders and frappe.db.exists("DocType", 'YRP Debit'):
+			work_orders = sorted(
+				{row.work_order for row in self.pi_work_order_billed_details if row.work_order}
+			)
+			if work_orders and frappe.db.exists("DocType", "YRP Debit"):
 				self.set_onload(
 					"debit_summary",
 					frappe.get_all(
-						'YRP Debit',
+						"YRP Debit",
 						filters={"work_order": ["in", work_orders], "docstatus": 1},
 						fields=[
 							"name",
@@ -56,7 +59,7 @@ class YRPPurchaseInvoice(Document):
 	def before_submit(self):
 		if not self.get("grn") or not self.get("items"):
 			frappe.throw(_("Please set at least one GRN and one item row."))
-		if self.against == 'YRP Work Order':
+		if self.against == "YRP Work Order":
 			override_pi_approve = _override_pi_approve()
 			if not override_pi_approve and not self.approved_by:
 				frappe.throw(_("Invoice is not approved."))
@@ -84,12 +87,12 @@ class YRPPurchaseInvoice(Document):
 		# or Bill Tracking. An exception therefore leaves the submitted PI intact.
 		validate_reversal_allowed(self.doctype, self.name)
 		self.ignore_linked_doctypes = (
-			'YRP Goods Received Note',
-			'YRP Bill Tracking',
-			'YRP Stock Valuation Adjustment',
+			"YRP Goods Received Note",
+			"YRP Bill Tracking",
+			"YRP Stock Valuation Adjustment",
 		)
 		self.unlink_grns()
-		if self.against == 'YRP Work Order':
+		if self.against == "YRP Work Order":
 			update_wo_billed_qty(self, docstatus=2)
 		self.revert_bill_tracking_link(origin="PI-cancel")
 		self.status = "Cancelled"
@@ -111,7 +114,7 @@ class YRPPurchaseInvoice(Document):
 		if not self.bill_tracking:
 			return
 		frappe.db.set_value(
-			'YRP Bill Tracking',
+			"YRP Bill Tracking",
 			self.bill_tracking,
 			"purchase_invoice",
 			self.name,
@@ -126,9 +129,7 @@ class YRPPurchaseInvoice(Document):
 		from yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking import close_vendor_bill
 
 		# close_vendor_bill rejects a second close — only call on first submit.
-		current_status = frappe.db.get_value(
-			'YRP Bill Tracking', self.bill_tracking, "form_status"
-		)
+		current_status = frappe.db.get_value("YRP Bill Tracking", self.bill_tracking, "form_status")
 		if current_status == "Closed":
 			return
 		close_vendor_bill(self.bill_tracking, self.name)
@@ -158,7 +159,7 @@ class YRPPurchaseInvoice(Document):
 		if not self.bill_tracking:
 			return
 		bill = frappe.db.get_value(
-			'YRP Bill Tracking',
+			"YRP Bill Tracking",
 			self.bill_tracking,
 			["supplier", "bill_no", "bill_date"],
 			as_dict=True,
@@ -166,20 +167,14 @@ class YRPPurchaseInvoice(Document):
 		if not bill:
 			frappe.throw(_("Bill Tracking {0} does not exist.").format(self.bill_tracking))
 		if self.supplier != bill.supplier:
-			frappe.throw(
-				_("Supplier must match linked Bill Tracking {0}.").format(self.bill_tracking)
-			)
+			frappe.throw(_("Supplier must match linked Bill Tracking {0}.").format(self.bill_tracking))
 		if self.bill_no != bill.bill_no:
 			frappe.throw(
-				_("Supplier Invoice No must match linked Bill Tracking {0}.").format(
-					self.bill_tracking
-				)
+				_("Supplier Invoice No must match linked Bill Tracking {0}.").format(self.bill_tracking)
 			)
 		if getdate(self.bill_date) != getdate(bill.bill_date):
 			frappe.throw(
-				_("Supplier Invoice Date must match linked Bill Tracking {0}.").format(
-					self.bill_tracking
-				)
+				_("Supplier Invoice Date must match linked Bill Tracking {0}.").format(self.bill_tracking)
 			)
 
 	def validate_grns(self):
@@ -200,15 +195,19 @@ class YRPPurchaseInvoice(Document):
 			previous = {row.grn for row in before.get("grn") or [] if row.grn}
 
 		for grn in previous - current:
-			if frappe.db.get_value('YRP Goods Received Note', grn, "purchase_invoice_name") == self.name:
-				frappe.db.set_value('YRP Goods Received Note', grn, "purchase_invoice_name", None)
+			if frappe.db.get_value("YRP Goods Received Note", grn, "purchase_invoice_name") == self.name:
+				frappe.db.set_value("YRP Goods Received Note", grn, "purchase_invoice_name", None)
 		for grn in current:
-			frappe.db.set_value('YRP Goods Received Note', grn, "purchase_invoice_name", self.name)
+			frappe.db.set_value("YRP Goods Received Note", grn, "purchase_invoice_name", self.name)
 
 	def unlink_grns(self):
 		for row in self.get("grn") or []:
-			if row.grn and frappe.db.get_value('YRP Goods Received Note', row.grn, "purchase_invoice_name") == self.name:
-				frappe.db.set_value('YRP Goods Received Note', row.grn, "purchase_invoice_name", None)
+			if (
+				row.grn
+				and frappe.db.get_value("YRP Goods Received Note", row.grn, "purchase_invoice_name")
+				== self.name
+			):
+				frappe.db.set_value("YRP Goods Received Note", row.grn, "purchase_invoice_name", None)
 
 	def calculate_total(self):
 		total = 0
@@ -233,7 +232,7 @@ class YRPPurchaseInvoice(Document):
 		if not self.get("grn"):
 			return
 		grn_total = sum(
-			flt(frappe.db.get_value('YRP Goods Received Note', row.grn, "total"))
+			flt(frappe.db.get_value("YRP Goods Received Note", row.grn, "total"))
 			for row in self.get("grn") or []
 			if row.grn
 		)
@@ -241,7 +240,7 @@ class YRPPurchaseInvoice(Document):
 		# Compare PRE-TAX (self.total) against the GRN total, which is itself pre-tax.
 		# Using the tax-inclusive grand_total would falsely trip on any taxed row.
 		if (
-			self.against == 'Purchase Order'
+			self.against == "Purchase Order"
 			and not self.allow_to_change_rate
 			and flt(self.total) > flt(grn_total) + 0.01
 		):
@@ -260,14 +259,16 @@ def update_wo_billed_qty(doc, docstatus=1):
 	for row in doc.get("pi_work_order_billed_details") or []:
 		if not row.work_order:
 			continue
-		wo = wo_docs.setdefault(row.work_order, frappe.get_doc('YRP Work Order', row.work_order))
+		wo = wo_docs.setdefault(row.work_order, frappe.get_doc("YRP Work Order", row.work_order))
 		for wo_item in wo.get("work_order_calculated_items") or []:
 			if wo_item.item_variant != row.item_variant:
 				continue
 			if _normal_json(wo_item.get("set_combination")) != _normal_json(row.get("set_combination")):
 				continue
 			delta = flt(row.quantity)
-			wo_item.billed_qty = flt(wo_item.billed_qty) - delta if docstatus == 2 else flt(wo_item.billed_qty) + delta
+			wo_item.billed_qty = (
+				flt(wo_item.billed_qty) - delta if docstatus == 2 else flt(wo_item.billed_qty) + delta
+			)
 
 	for wo in wo_docs.values():
 		wo.save(ignore_permissions=True)
@@ -283,10 +284,10 @@ def get_eligible_grns(supplier, against, search_text=None, purchase_invoice=None
 	by that same draft invoice remain selectable.
 	"""
 	_check_invoice_fetch_permission(purchase_invoice)
-	frappe.has_permission('YRP Goods Received Note', "read", throw=True)
+	frappe.has_permission("YRP Goods Received Note", "read", throw=True)
 	if not supplier:
 		frappe.throw(_("Supplier is required."))
-	if against not in {'Purchase Order', 'YRP Work Order'}:
+	if against not in {"Purchase Order", "YRP Work Order"}:
 		frappe.throw(_("Against must be Purchase Order or Work Order."))
 
 	purchase_invoice = purchase_invoice if _is_active_invoice(purchase_invoice) else None
@@ -297,15 +298,15 @@ def get_eligible_grns(supplier, against, search_text=None, purchase_invoice=None
 	if search_text:
 		like = f"%{search_text}%"
 		or_filters = [
-			['YRP Goods Received Note', "name", "like", like],
-			['YRP Goods Received Note', "against_id", "like", like],
-			['YRP Goods Received Note', "supplier_document_no", "like", like],
+			["YRP Goods Received Note", "name", "like", like],
+			["YRP Goods Received Note", "against_id", "like", like],
+			["YRP Goods Received Note", "supplier_document_no", "like", like],
 		]
 
 	# Fetch a bounded superset: rows already billed elsewhere are removed below.
 	# frappe.get_list (rather than get_all) keeps User Permissions authoritative.
 	rows = frappe.get_list(
-		'YRP Goods Received Note',
+		"YRP Goods Received Note",
 		filters=filters,
 		or_filters=or_filters,
 		fields=[
@@ -337,7 +338,7 @@ def get_eligible_grns(supplier, against, search_text=None, purchase_invoice=None
 @frappe.whitelist()
 def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 	_check_invoice_fetch_permission(purchase_invoice)
-	frappe.has_permission('YRP Goods Received Note', "read", throw=True)
+	frappe.has_permission("YRP Goods Received Note", "read", throw=True)
 	grns = frappe.parse_json(grns) if isinstance(grns, str) else grns
 	grns = list(dict.fromkeys(grns or []))
 	if not grns:
@@ -348,9 +349,11 @@ def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 	total_quantity = 0
 	for grn_name in grns:
 		_validate_selected_grn(grn_name, supplier, against, purchase_invoice)
-		grn = frappe.get_doc('YRP Goods Received Note', grn_name)
+		grn = frappe.get_doc("YRP Goods Received Note", grn_name)
 
-		work_order = frappe.get_doc('YRP Work Order', grn.against_id) if grn.against == 'YRP Work Order' else None
+		work_order = (
+			frappe.get_doc("YRP Work Order", grn.against_id) if grn.against == "YRP Work Order" else None
+		)
 		for grn_item in grn.get("items") or []:
 			qty = flt(grn_item.quantity)
 			stock_rate = flt(grn_item.rate)
@@ -366,9 +369,7 @@ def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 				# bills *something* rather than silently zeroing — it should not occur
 				# in practice; if it does it signals a WO/GRN data mismatch to chase.
 				process_cost_rate = _get_wo_process_cost(work_order, grn_item.item_variant, set_combination)
-				conversion_factor = (
-					flt(grn_item.stock_qty) / qty if qty and flt(grn_item.stock_qty) else 1
-				)
+				conversion_factor = flt(grn_item.stock_qty) / qty if qty and flt(grn_item.stock_qty) else 1
 				rate = (
 					process_cost_rate * conversion_factor
 					if process_cost_rate is not None
@@ -433,15 +434,12 @@ def fetch_grn_details(grns, against, supplier, purchase_invoice=None):
 		row["rate"] = flt(row["amount"]) / flt(row["qty"]) if flt(row["qty"]) else 0
 		row["source_rate"] = row["rate"]
 		row["actual_rate"] = (
-			flt(row.pop("_actual_amount")) / flt(row["actual_qty"])
-			if flt(row["actual_qty"])
-			else 0
+			flt(row.pop("_actual_amount")) / flt(row["actual_qty"]) if flt(row["actual_qty"]) else 0
 		)
 		row["amount"] = flt(row["qty"]) * flt(row["rate"])
 
 	grand_total = sum(
-		flt(row["amount"]) + (flt(row["amount"]) * _get_tax_rate(row.get("tax")) / 100)
-		for row in item_rows
+		flt(row["amount"]) + (flt(row["amount"]) * _get_tax_rate(row.get("tax")) / 100) for row in item_rows
 	)
 
 	return {
@@ -481,12 +479,12 @@ def fetch_work_order_items(rows):
 
 @frappe.whitelist()
 def approve_invoice(name, comments=None):
-	doc = frappe.get_doc('YRP Purchase Invoice', name)
+	doc = frappe.get_doc("YRP Purchase Invoice", name)
 	if doc.docstatus != 0:
 		frappe.throw(_("Only draft invoices can be approved."))
 
 	role = get_merch_roles()
-	if doc.against == 'YRP Work Order' and role == "merch_manager" and not _override_pi_approve():
+	if doc.against == "YRP Work Order" and role == "merch_manager" and not _override_pi_approve():
 		status = check_all_wo_closed(doc.name)
 		if not status["all_closed"]:
 			frappe.throw(_("Cannot approve before closing all Work Orders."))
@@ -517,9 +515,9 @@ def approve_invoice(name, comments=None):
 @frappe.whitelist()
 def get_merch_roles():
 	roles = set(frappe.get_roles(frappe.session.user))
-	approver_role = attribute_db.get_single_value('YRP Settings', "purchase_invoice_approver_role")
-	pending_role = attribute_db.get_single_value('YRP Settings', "purchase_invoice_approval_pending_role")
-	initiate_role = attribute_db.get_single_value('YRP Settings', "purchase_invoice_approval_initiate_role")
+	approver_role = attribute_db.get_single_value("YRP Settings", "purchase_invoice_approver_role")
+	pending_role = attribute_db.get_single_value("YRP Settings", "purchase_invoice_approval_pending_role")
+	initiate_role = attribute_db.get_single_value("YRP Settings", "purchase_invoice_approval_initiate_role")
 	if approver_role and approver_role in roles:
 		return "merch_manager"
 	if pending_role and pending_role in roles:
@@ -532,15 +530,15 @@ def get_merch_roles():
 @frappe.whitelist()
 def check_all_wo_closed(purchase_invoice):
 	work_orders = frappe.get_all(
-		'YRP PI Work Order Billed Detail',
-		filters={"parent": purchase_invoice, "parenttype": 'YRP Purchase Invoice'},
+		"YRP PI Work Order Billed Detail",
+		filters={"parent": purchase_invoice, "parenttype": "YRP Purchase Invoice"},
 		pluck="work_order",
 	)
 	work_orders = [work_order for work_order in dict.fromkeys(work_orders) if work_order]
 	open_wos = []
 	close_request_wos = []
 	for work_order in work_orders:
-		status = frappe.db.get_value('YRP Work Order', work_order, "open_status")
+		status = frappe.db.get_value("YRP Work Order", work_order, "open_status")
 		if status == "Close Request":
 			close_request_wos.append(work_order)
 		elif status != "Close":
@@ -593,7 +591,7 @@ def _get_item_group(item_variant):
 	from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 	item = get_parent_item(item_variant)
-	return frappe.db.get_value('Item', item, "item_group") if item else None
+	return frappe.db.get_value("Item", item, "item_group") if item else None
 
 
 def _get_wo_process_cost(work_order, item_variant, set_combination):
@@ -612,9 +610,9 @@ def _get_po_material_rate(grn, grn_item):
 	rate = grn._get_source_base_rate(grn_item)
 	if rate is None:
 		frappe.throw(
-			_(
-				"Goods Received Note row {0} has no Purchase Order material-rate source."
-			).format(grn_item.idx or grn_item.name)
+			_("Goods Received Note row {0} has no Purchase Order material-rate source.").format(
+				grn_item.idx or grn_item.name
+			)
 		)
 	return flt(rate)
 
@@ -622,7 +620,7 @@ def _get_po_material_rate(grn, grn_item):
 def _get_tax_rate(tax):
 	if not tax:
 		return 0
-	return flt(frappe.db.get_value('YRP Tax Slab', tax, "percentage") or tax)
+	return flt(frappe.db.get_value("YRP Tax Slab", tax, "percentage") or tax)
 
 
 def _normal_json(value):
@@ -632,19 +630,19 @@ def _normal_json(value):
 
 
 def _check_invoice_fetch_permission(purchase_invoice=None):
-	if purchase_invoice and frappe.db.exists('YRP Purchase Invoice', purchase_invoice):
-		invoice = frappe.get_doc('YRP Purchase Invoice', purchase_invoice)
-		frappe.has_permission('YRP Purchase Invoice', "write", doc=invoice, throw=True)
+	if purchase_invoice and frappe.db.exists("YRP Purchase Invoice", purchase_invoice):
+		invoice = frappe.get_doc("YRP Purchase Invoice", purchase_invoice)
+		frappe.has_permission("YRP Purchase Invoice", "write", doc=invoice, throw=True)
 		return
-	frappe.has_permission('YRP Purchase Invoice', "create", throw=True)
+	frappe.has_permission("YRP Purchase Invoice", "create", throw=True)
 
 
 def _validate_selected_grn(grn_name, supplier=None, against=None, purchase_invoice=None):
-	if not frappe.db.exists('YRP Goods Received Note', grn_name):
+	if not frappe.db.exists("YRP Goods Received Note", grn_name):
 		frappe.throw(_("Goods Received Note {0} does not exist.").format(grn_name))
-	frappe.has_permission('YRP Goods Received Note', "read", doc=grn_name, throw=True)
+	frappe.has_permission("YRP Goods Received Note", "read", doc=grn_name, throw=True)
 	grn = frappe.db.get_value(
-		'YRP Goods Received Note',
+		"YRP Goods Received Note",
 		grn_name,
 		["docstatus", "supplier", "against", "purchase_invoice_name"],
 		as_dict=True,
@@ -673,32 +671,36 @@ def _validate_selected_grn(grn_name, supplier=None, against=None, purchase_invoi
 
 def _active_invoice_links_for_grns(grns):
 	grns = list(dict.fromkeys(grn for grn in (grns or []) if grn))
-	if not grns or not frappe.db.exists("DocType", 'YRP Purchase Invoice GRN'):
+	if not grns or not frappe.db.exists("DocType", "YRP Purchase Invoice GRN"):
 		return {}
 	rows = frappe.get_all(
-		'YRP Purchase Invoice GRN',
-		filters={"grn": ["in", grns], "parenttype": 'YRP Purchase Invoice'},
+		"YRP Purchase Invoice GRN",
+		filters={"grn": ["in", grns], "parenttype": "YRP Purchase Invoice"},
 		fields=["grn", "parent"],
 		limit_page_length=0,
 	)
 	parents = list(dict.fromkeys(row.parent for row in rows if row.parent))
-	active = set(
-		frappe.get_all(
-			'YRP Purchase Invoice',
-			filters={"name": ["in", parents], "docstatus": ["!=", 2]},
-			pluck="name",
-			limit_page_length=0,
+	active = (
+		set(
+			frappe.get_all(
+				"YRP Purchase Invoice",
+				filters={"name": ["in", parents], "docstatus": ["!=", 2]},
+				pluck="name",
+				limit_page_length=0,
+			)
 		)
-	) if parents else set()
+		if parents
+		else set()
+	)
 	return {row.grn: row.parent for row in rows if row.parent in active}
 
 
 def _get_linked_invoice_from_child_table(grn, exclude=None):
-	if not frappe.db.exists("DocType", 'YRP Purchase Invoice GRN'):
+	if not frappe.db.exists("DocType", "YRP Purchase Invoice GRN"):
 		return None
 	for row in frappe.get_all(
-		'YRP Purchase Invoice GRN',
-		filters={"grn": grn, "parenttype": 'YRP Purchase Invoice'},
+		"YRP Purchase Invoice GRN",
+		filters={"grn": grn, "parenttype": "YRP Purchase Invoice"},
 		fields=["parent"],
 		limit=20,
 	):
@@ -712,12 +714,12 @@ def _get_linked_invoice_from_child_table(grn, exclude=None):
 def _is_active_invoice(name):
 	if not name:
 		return False
-	docstatus = frappe.db.get_value('YRP Purchase Invoice', name, "docstatus")
+	docstatus = frappe.db.get_value("YRP Purchase Invoice", name, "docstatus")
 	return docstatus is not None and int(docstatus) != 2
 
 
 def _override_pi_approve():
-	return bool(attribute_db.get_single_value('YRP Settings', "override_pi_approve"))
+	return bool(attribute_db.get_single_value("YRP Settings", "override_pi_approve"))
 
 
 PurchaseInvoice = YRPPurchaseInvoice

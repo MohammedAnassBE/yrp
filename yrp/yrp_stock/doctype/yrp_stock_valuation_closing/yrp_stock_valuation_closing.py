@@ -13,7 +13,6 @@ from yrp.stock.dimensions import (
 	get_valuation_dimensions,
 )
 
-
 ACTIVE_REPOST_STATUSES = ("Queued", "In Progress", "Failed")
 QTY_TOLERANCE = 0.000001
 
@@ -30,7 +29,7 @@ class YRPStockValuationClosing(Document):
 		if self.validation_status == "Blocked":
 			summary = _parse_summary(self.validation_summary)
 			frappe.throw(
-				summary.get("blocking_issues") or [_('Stock valuation is not ready to close.')],
+				summary.get("blocking_issues") or [_("Stock valuation is not ready to close.")],
 				as_list=True,
 				title=_("Stock Valuation Closing Blocked"),
 			)
@@ -92,9 +91,7 @@ class YRPStockValuationClosing(Document):
 		self.active_stock_ledger_entries = snapshot["active_stock_ledger_entries"]
 		self.closing_stock_value = snapshot["closing_stock_value"]
 		self.active_repost_count = snapshot["active_repost_count"]
-		self.active_valuation_adjustment_count = snapshot.get(
-			"active_valuation_adjustment_count", 0
-		)
+		self.active_valuation_adjustment_count = snapshot.get("active_valuation_adjustment_count", 0)
 		self.negative_stock_bucket_count = snapshot["negative_stock_bucket_count"]
 		self.zero_valuation_bucket_count = snapshot["zero_valuation_bucket_count"]
 		self.validation_status = "Blocked" if snapshot["blocking_issues"] else "Ready"
@@ -118,7 +115,7 @@ def lock_stock_valuation_period(*, shared=False):
 	lock_clause = "LOCK IN SHARE MODE" if shared else "FOR UPDATE"
 	frappe.db.sql(
 		f"SELECT name FROM `tabDocType` WHERE name=%s {lock_clause}",
-		('YRP Stock Valuation Closing',),
+		("YRP Stock Valuation Closing",),
 	)
 
 
@@ -127,7 +124,7 @@ def get_latest_submitted_closing(exclude_name=None):
 	if exclude_name:
 		filters["name"] = ["!=", exclude_name]
 	rows = frappe.get_all(
-		'YRP Stock Valuation Closing',
+		"YRP Stock Valuation Closing",
 		filters=filters,
 		fields=["name", "closing_through_date"],
 		order_by="closing_through_date desc, creation desc",
@@ -141,17 +138,15 @@ def _set_settings_cutoff(closing_date):
 		frappe.db.delete(
 			"Singles",
 			filters={
-				"doctype": 'YRP Stock Settings',
+				"doctype": "YRP Stock Settings",
 				"field": "last_stock_valuation_closing_date",
 			},
 		)
-		frappe.clear_document_cache('YRP Stock Settings', 'YRP Stock Settings')
-		frappe.db.value_cache.get('YRP Stock Settings', {}).pop(
-			"last_stock_valuation_closing_date", None
-		)
+		frappe.clear_document_cache("YRP Stock Settings", "YRP Stock Settings")
+		frappe.db.value_cache.get("YRP Stock Settings", {}).pop("last_stock_valuation_closing_date", None)
 		return
 	frappe.db.set_single_value(
-		'YRP Stock Settings',
+		"YRP Stock Settings",
 		"last_stock_valuation_closing_date",
 		getdate(closing_date),
 	)
@@ -171,7 +166,7 @@ def _parse_summary(value):
 def get_closing_snapshot(closing_through_date):
 	closing_date = getdate(closing_through_date)
 	active_repost_count = frappe.db.count(
-		'YRP Repost Item Valuation',
+		"YRP Repost Item Valuation",
 		filters={
 			"docstatus": 1,
 			"status": ["in", ACTIVE_REPOST_STATUSES],
@@ -179,7 +174,7 @@ def get_closing_snapshot(closing_through_date):
 		},
 	)
 	active_valuation_adjustment_count = frappe.db.count(
-		'YRP Stock Valuation Adjustment',
+		"YRP Stock Valuation Adjustment",
 		filters={
 			"docstatus": 1,
 			"status": ["not in", ["Completed", "Reversed"]],
@@ -188,15 +183,11 @@ def get_closing_snapshot(closing_through_date):
 	)
 	negative_count = _get_negative_stock_bucket_count(closing_date)
 	latest_valuation_rows = _get_latest_valuation_rows(closing_date)
-	zero_valuation_count = sum(
-		1 for row in latest_valuation_rows if _has_positive_zero_valuation_stock(row)
-	)
+	zero_valuation_count = sum(1 for row in latest_valuation_rows if _has_positive_zero_valuation_stock(row))
 	blocking_issues = []
 	if active_repost_count:
 		blocking_issues.append(
-			_("{0} pending or failed valuation repost(s) affect this period.").format(
-				active_repost_count
-			)
+			_("{0} pending or failed valuation repost(s) affect this period.").format(active_repost_count)
 		)
 	if active_valuation_adjustment_count:
 		blocking_issues.append(
@@ -219,7 +210,7 @@ def get_closing_snapshot(closing_through_date):
 		"closing_through_date": str(closing_date),
 		"checked_at": str(now()),
 		"active_stock_ledger_entries": frappe.db.count(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"is_cancelled": 0, "posting_date": ["<=", closing_date]},
 		),
 		"closing_stock_value": flt(sum(flt(row.stock_value) for row in latest_valuation_rows), 6),
@@ -289,7 +280,7 @@ def _has_positive_zero_valuation_stock(row):
 
 @frappe.whitelist()
 def check_readiness(name):
-	doc = frappe.get_doc('YRP Stock Valuation Closing', name)
+	doc = frappe.get_doc("YRP Stock Valuation Closing", name)
 	doc.check_permission("write")
 	if doc.docstatus != 0:
 		frappe.throw(_("Only a draft Stock Valuation Closing can be checked."))

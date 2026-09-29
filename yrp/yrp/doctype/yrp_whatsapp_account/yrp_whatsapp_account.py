@@ -17,4 +17,5 @@ class YRPWhatsAppAccount(Document):
 				self.name,
 			)
 
+
 WhatsAppAccount = YRPWhatsAppAccount

@@ -1,11 +1,11 @@
 """Tests for Inspection Entry — new model (2026-05-19+):
 
-  - Submit locks the form but does NOT write SLEs.
-  - Convert Stock writes SLEs (gated by `YRP Settings.inspection_entry_approver_role`).
-  - Multiple IEs per source doc (GRN or Material-Receipt Stock Entry) are allowed.
-  - `_validate_bin_balance` + the stock engine's NegativeStockError are the only
-    cross-IE safeguards — no explicit cross-IE total cap.
-  - Cancel allowed only before Convert.
+- Submit locks the form but does NOT write SLEs.
+- Convert Stock writes SLEs (gated by `YRP Settings.inspection_entry_approver_role`).
+- Multiple IEs per source doc (GRN or Material-Receipt Stock Entry) are allowed.
+- `_validate_bin_balance` + the stock engine's NegativeStockError are the only
+  cross-IE safeguards — no explicit cross-IE total cap.
+- Cancel allowed only before Convert.
 """
 
 from unittest.mock import patch
@@ -27,13 +27,15 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 # Helpers
 # ----------------------------------------------------------------------
 def _received_type(name):
-	if frappe.db.exists('YRP Received Type', name):
+	if frappe.db.exists("YRP Received Type", name):
 		return name
-	doc = frappe.get_doc({
-		"doctype": 'YRP Received Type',
-		"received_type_name": name,
-		"is_default": 0,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Received Type",
+			"received_type_name": name,
+			"is_default": 0,
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	return doc.name
 
@@ -63,15 +65,17 @@ def _new_ie_from_grn(grn):
 		get_initial_payload,
 	)
 
-	sources = get_initial_payload(against='YRP Goods Received Note', against_id=grn.name)
-	doc = frappe.get_doc({
-		"doctype": 'YRP Inspection Entry',
-		"against": 'YRP Goods Received Note',
-		"against_id": grn.name,
-		"posting_date": nowdate(),
-		"inspector": frappe.session.user or "Administrator",
-		"items": [],
-	})
+	sources = get_initial_payload(against="YRP Goods Received Note", against_id=grn.name)
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Inspection Entry",
+			"against": "YRP Goods Received Note",
+			"against_id": grn.name,
+			"posting_date": nowdate(),
+			"inspector": frappe.session.user or "Administrator",
+			"items": [],
+		}
+	)
 	for r in _ungroup_items_from_ui(sources):
 		doc.append("items", r)
 	return doc
@@ -102,7 +106,7 @@ class TestInspectionEntry(FrappeTestCase):
 		from yrp.yrp.doctype.yrp_inspection_entry.yrp_inspection_entry import get_initial_payload
 
 		grn = _submitted_grn(qty=10)
-		sources = get_initial_payload(against='YRP Goods Received Note', against_id=grn.name)
+		sources = get_initial_payload(against="YRP Goods Received Note", against_id=grn.name)
 		self.assertEqual(len(sources), len(grn.items))
 		for s in sources:
 			self.assertIn("display_meta", s)
@@ -122,15 +126,15 @@ class TestInspectionEntry(FrappeTestCase):
 		from yrp.yrp.doctype.yrp_inspection_entry.yrp_inspection_entry import get_initial_payload
 
 		grn = _submitted_grn(qty=10)
-		sources_before = get_initial_payload('YRP Goods Received Note', grn.name)
+		sources_before = get_initial_payload("YRP Goods Received Note", grn.name)
 
 		ie1 = _new_ie_from_grn(grn)
 		ie1.insert(ignore_permissions=True)
 		ie1.submit()
 
-		sources_after = get_initial_payload('YRP Goods Received Note', grn.name)
+		sources_after = get_initial_payload("YRP Goods Received Note", grn.name)
 		self.assertEqual(len(sources_after), len(sources_before))
-		for a, b in zip(sources_before, sources_after):
+		for a, b in zip(sources_before, sources_after, strict=False):
 			self.assertEqual(a["grn_qty"], b["grn_qty"])
 			self.assertEqual(a["ref_docname"], b["ref_docname"])
 
@@ -146,7 +150,7 @@ class TestInspectionEntry(FrappeTestCase):
 		self.assertEqual(ie.status, "Submitted")
 		self.assertEqual(int(ie.is_converted or 0), 0)
 		sles = frappe.db.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": ie.name, "is_cancelled": 0},
 		)
 		self.assertEqual(len(sles), 0)
@@ -170,8 +174,7 @@ class TestInspectionEntry(FrappeTestCase):
 
 		self.assertNotEqual(ie1.name, ie2.name)
 		self.assertEqual(
-			frappe.db.count('YRP Inspection Entry',
-				{"against_id": grn.name, "docstatus": 1}),
+			frappe.db.count("YRP Inspection Entry", {"against_id": grn.name, "docstatus": 1}),
 			2,
 		)
 
@@ -185,8 +188,8 @@ class TestInspectionEntry(FrappeTestCase):
 		grn = _submitted_grn(qty=10)
 		ie = _new_ie_from_grn(grn)
 		source_sles = frappe.get_all(
-			'YRP Stock Ledger Entry',
-			filters={"voucher_type": 'YRP Goods Received Note', "voucher_no": grn.name},
+			"YRP Stock Ledger Entry",
+			filters={"voucher_type": "YRP Goods Received Note", "voucher_no": grn.name},
 			fields=["item", "warehouse", "qty", "lot", "received_type", "is_cancelled"],
 		)
 		self.assertTrue(source_sles, "The fixture GRN must post source stock before conversion")
@@ -198,18 +201,21 @@ class TestInspectionEntry(FrappeTestCase):
 			for fieldname in get_dimension_fieldnames()
 			if fieldname != "received_type" and default_row.get(fieldname)
 		}
-		ie.append("items", {
-			"item_variant": default_row.item_variant,
-			"warehouse": default_row.warehouse,
-			"received_type": default_row.received_type,
-			**dimensions,
-			"grn_qty": default_row.grn_qty,
-			"qty": 3,
-			"target_received_type": self.rejected_rt,
-			"received_date": nowdate(),
-			"ref_doctype": default_row.ref_doctype,
-			"ref_docname": default_row.ref_docname,
-		})
+		ie.append(
+			"items",
+			{
+				"item_variant": default_row.item_variant,
+				"warehouse": default_row.warehouse,
+				"received_type": default_row.received_type,
+				**dimensions,
+				"grn_qty": default_row.grn_qty,
+				"qty": 3,
+				"target_received_type": self.rejected_rt,
+				"received_date": nowdate(),
+				"ref_doctype": default_row.ref_doctype,
+				"ref_docname": default_row.ref_docname,
+			},
+		)
 		ie.insert(ignore_permissions=True)
 		ie.submit()
 
@@ -220,7 +226,7 @@ class TestInspectionEntry(FrappeTestCase):
 		self.assertEqual(int(ie.is_converted), 1)
 
 		sles = frappe.db.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": ie.name, "is_cancelled": 0},
 			fields=["received_type", "qty"],
 		)

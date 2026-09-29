@@ -14,7 +14,7 @@ from frappe.utils import flt
 
 
 def execute():
-	if not frappe.db.exists("DocType", 'YRP Stock Ledger Entry'):
+	if not frappe.db.exists("DocType", "YRP Stock Ledger Entry"):
 		return
 
 	from yrp.stock.dimensions import assert_safe_fieldname, get_dimension_fieldnames
@@ -24,9 +24,9 @@ def execute():
 		assert_safe_fieldname(fn)
 
 	rows = frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={
-			"voucher_type": 'YRP Stock Reconciliation',
+			"voucher_type": "YRP Stock Reconciliation",
 			"is_cancelled": 0,
 		},
 		fields=[
@@ -46,7 +46,7 @@ def execute():
 		if abs(flt(row.qty)) < 0.0000001 and abs(flt(row.qty_after_transaction)) > 0.0000001:
 			previous_qty = _get_previous_qty_after_transaction(row, dim_fields)
 			updates["qty"] = flt(row.qty_after_transaction) - flt(previous_qty)
-		frappe.db.set_value('YRP Stock Ledger Entry', row.name, updates, update_modified=False)
+		frappe.db.set_value("YRP Stock Ledger Entry", row.name, updates, update_modified=False)
 
 
 def _get_previous_qty_after_transaction(row, dim_fields):

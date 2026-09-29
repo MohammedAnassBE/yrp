@@ -1,10 +1,10 @@
-from yrp.attribute_links import value as _attribute_value
 import json
 
 import frappe
-from yrp.attribute_values import get_mapping_document
 from frappe.model.document import Document
 
+from yrp.attribute_links import value as _attribute_value
+from yrp.attribute_values import get_mapping_document
 from yrp.yrp.utils import ipd_engine
 
 
@@ -37,9 +37,13 @@ class YRPItemProductionDetail(Document):
 	def validate_attribute_references(self):
 		listed = {row.attribute for row in self.item_attributes}
 		if self.primary_item_attribute and self.primary_item_attribute not in listed:
-			frappe.throw(f"Primary attribute {self.primary_item_attribute} must appear in Item Attributes table.")
+			frappe.throw(
+				f"Primary attribute {self.primary_item_attribute} must appear in Item Attributes table."
+			)
 		if self.dependent_attribute and self.dependent_attribute not in listed:
-			frappe.throw(f"Dependent attribute {self.dependent_attribute} must appear in Item Attributes table.")
+			frappe.throw(
+				f"Dependent attribute {self.dependent_attribute} must appear in Item Attributes table."
+			)
 		if self.dependent_attribute and not self.dependent_attribute_mapping:
 			frappe.throw("Dependent Attribute Mapping is required when Dependent Attribute is set.")
 
@@ -47,7 +51,11 @@ class YRPItemProductionDetail(Document):
 		rows = list(self.ipd_processes)
 		for i in range(len(rows) - 1):
 			a, b = rows[i], rows[i + 1]
-			if _attribute_value(a.out_stage) and _attribute_value(b.in_stage) and _attribute_value(a.out_stage) != _attribute_value(b.in_stage):
+			if (
+				_attribute_value(a.out_stage)
+				and _attribute_value(b.in_stage)
+				and _attribute_value(a.out_stage) != _attribute_value(b.in_stage)
+			):
 				frappe.throw(
 					f"Stage discontinuity: {a.process_name} out_stage ({_attribute_value(a.out_stage)}) "
 					f"!= {b.process_name} in_stage ({_attribute_value(b.in_stage)})"
@@ -89,9 +97,7 @@ def calculate_accessory_bom(ipd_name, variant_demands, process_name=None):
 	)
 
 
-def calculate_bom_for_variant_demands(
-	ipd_name, variant_demands, process_names=None, include_outputs=False
-):
+def calculate_bom_for_variant_demands(ipd_name, variant_demands, process_names=None, include_outputs=False):
 	return ipd_engine.calculate_bom_for_variant_demands(
 		ipd_name,
 		variant_demands,
@@ -126,7 +132,7 @@ def calculate_bom(ipd_name, variant_demands, process_names=None, include_outputs
 
 
 def get_ipd_primary_values(production_detail):
-	doc = frappe.get_cached_doc('YRP Item Production Detail', production_detail)
+	doc = frappe.get_cached_doc("YRP Item Production Detail", production_detail)
 	primary_attr_values = []
 	mapping = None
 	for row in doc.item_attributes:

@@ -1,13 +1,12 @@
-from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
-
 import json
 
 import frappe
 from frappe import _
 from frappe.utils import date_diff, flt, getdate, now, nowdate
 
+from yrp.attribute_links import value as _attribute_value
 from yrp.yrp.doctype.yrp_item.yrp_item import (
 	get_attribute_details,
 	get_attribute_values,
@@ -32,7 +31,7 @@ class YRPProductionOrder(frappe.model.document.Document):
 
 	def before_submit(self):
 		if self.production_term:
-			docstatus = frappe.get_value('YRP Production Term', self.production_term, "docstatus")
+			docstatus = frappe.get_value("YRP Production Term", self.production_term, "docstatus")
 			if docstatus != 1:
 				frappe.throw(_("Selected Production Term is not submitted."))
 
@@ -58,9 +57,7 @@ class YRPProductionOrder(frappe.model.document.Document):
 				if row.reference_name:
 					refs.add(row.reference_name)
 			if refs:
-				frappe.throw(
-					_("Cannot cancel. Production groups are linked: {0}").format(", ".join(refs))
-				)
+				frappe.throw(_("Cannot cancel. Production groups are linked: {0}").format(", ".join(refs)))
 
 	def on_update_after_submit(self):
 		self.set_lead_time_given()
@@ -87,7 +84,7 @@ class YRPProductionOrder(frappe.model.document.Document):
 @frappe.whitelist()
 def get_production_order_settings():
 	"""Return active attributes, grid attribute, and dependent attribute config from YRP Settings."""
-	settings = frappe.get_cached_doc('YRP Settings')
+	settings = frappe.get_cached_doc("YRP Settings")
 	attrs = []
 	grid_attribute = None
 	for row in settings.production_order_attributes or []:
@@ -168,7 +165,7 @@ def save_production_order_items(item_details_json):
 		if not item_name:
 			continue
 
-		item_doc = frappe.get_cached_doc('Item', item_name)
+		item_doc = frappe.get_cached_doc("Item", item_name)
 
 		for entry in group.get("entries", []):
 			attr_args = dict(entry.get("attributes", {}))
@@ -182,12 +179,14 @@ def save_production_order_items(item_details_json):
 					attr_args[dep_attr] = dep_attr_value
 
 			variant_name = get_or_create_variant(item_name, attr_args)
-			rows.append({
-				"item": item_name,
-				"item_variant": variant_name,
-				"attributes_json": json.dumps(entry.get("attributes", {}), separators=(",", ":")),
-				"quantity": qty,
-			})
+			rows.append(
+				{
+					"item": item_name,
+					"item_variant": variant_name,
+					"attributes_json": json.dumps(entry.get("attributes", {}), separators=(",", ":")),
+					"quantity": qty,
+				}
+			)
 	return rows
 
 
@@ -220,7 +219,7 @@ def fetch_production_order_items(doc):
 				attr_map = json.loads(row.attributes_json)
 			elif row.item_variant:
 				# Fallback: read from variant attributes
-				variant = frappe.get_cached_doc('Item', row.item_variant)
+				variant = frappe.get_cached_doc("Item", row.item_variant)
 				attr_map = {
 					a.attribute: _attribute_value(a.attribute_value)
 					for a in variant.attributes
@@ -228,10 +227,12 @@ def fetch_production_order_items(doc):
 				}
 			else:
 				attr_map = {}
-			group["entries"].append({
-				"attributes": attr_map,
-				"qty": row.quantity,
-			})
+			group["entries"].append(
+				{
+					"attributes": attr_map,
+					"qty": row.quantity,
+				}
+			)
 		result.append(group)
 	return result
 
@@ -245,12 +246,12 @@ def get_item_attribute_details(item):
 @frappe.whitelist()
 def get_order_summary(production_order):
 	"""Aggregate quantities by item and primary attribute value."""
-	doc = frappe.get_doc('YRP Production Order', production_order)
+	doc = frappe.get_doc("YRP Production Order", production_order)
 	summary = {}
 
 	for row in doc.production_order_details:
 		summary.setdefault(row.item, {})
-		item_doc = frappe.get_cached_doc('Item', row.item)
+		item_doc = frappe.get_cached_doc("Item", row.item)
 		primary_attr = item_doc.primary_attribute
 		attr_map = json.loads(row.attributes_json) if row.attributes_json else {}
 
@@ -259,7 +260,7 @@ def get_order_summary(production_order):
 			summary[row.item].setdefault(val, 0)
 			summary[row.item][val] += row.quantity
 		elif row.item_variant:
-			variant = frappe.get_cached_doc('Item', row.item_variant)
+			variant = frappe.get_cached_doc("Item", row.item_variant)
 			if primary_attr:
 				for attr in variant.attributes:
 					if attr.attribute == primary_attr:

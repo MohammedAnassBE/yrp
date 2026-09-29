@@ -8,18 +8,47 @@ def execute(filters=None):
 
 def get_columns():
 	return [
-		{"fieldname": "name", "label": "Bill Tracking Number", "fieldtype": "Link", "options": 'YRP Bill Tracking', "width": 115},
-		{"fieldname": "supplier", "label": "Supplier", "fieldtype": "Link", "options": 'Supplier', "width": 115},
+		{
+			"fieldname": "name",
+			"label": "Bill Tracking Number",
+			"fieldtype": "Link",
+			"options": "YRP Bill Tracking",
+			"width": 115,
+		},
+		{
+			"fieldname": "supplier",
+			"label": "Supplier",
+			"fieldtype": "Link",
+			"options": "Supplier",
+			"width": 115,
+		},
 		{"fieldname": "supplier_name", "label": "Supplier Name", "fieldtype": "Data", "width": 115},
 		{"fieldname": "gstin", "label": "GST", "fieldtype": "Data", "width": 115},
 		{"fieldname": "pan", "label": "PAN", "fieldtype": "Data", "width": 115},
 		{"fieldname": "bill_no", "label": "Invoice No", "fieldtype": "Data", "width": 115},
 		{"fieldname": "bill_age", "label": "Bill Age", "fieldtype": "Int", "width": 115},
-		{"fieldname": "assigned_to", "label": "Assigned To", "fieldtype": "Link", "options": 'Department', "width": 115},
-		{"fieldname": "assigned_by", "label": "Assigned User", "fieldtype": "Link", "options": "User", "width": 115},
+		{
+			"fieldname": "assigned_to",
+			"label": "Assigned To",
+			"fieldtype": "Link",
+			"options": "Department",
+			"width": 115,
+		},
+		{
+			"fieldname": "assigned_by",
+			"label": "Assigned User",
+			"fieldtype": "Link",
+			"options": "User",
+			"width": 115,
+		},
 		{"fieldname": "assigned_on", "label": "Assigned On", "fieldtype": "Date", "width": 115},
 		{"fieldname": "date_diff", "label": "Assigned Age", "fieldtype": "Int", "width": 115},
-		{"fieldname": "assignment_comment", "label": "Assignment Comment", "fieldtype": "Small Text", "width": 115},
+		{
+			"fieldname": "assignment_comment",
+			"label": "Assignment Comment",
+			"fieldtype": "Small Text",
+			"width": 115,
+		},
 		{"fieldname": "received", "label": "Bill Received", "fieldtype": "Check", "width": 115},
 	]
 

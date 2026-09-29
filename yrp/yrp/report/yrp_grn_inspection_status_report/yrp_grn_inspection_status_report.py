@@ -6,7 +6,6 @@ from frappe.utils import date_diff, flt, today
 
 from yrp.stock.dimensions import assert_safe_fieldname, get_stock_dimensions
 
-
 MAX_GRN_ROWS = 10000
 
 
@@ -29,56 +28,137 @@ def execute(filters=None):
 
 def _get_columns(dims, target_field_map):
 	columns = [
-		{"label": _("GRN"), "fieldname": "grn", "fieldtype": "Link", "options": 'YRP Goods Received Note', "width": 150},
+		{
+			"label": _("GRN"),
+			"fieldname": "grn",
+			"fieldtype": "Link",
+			"options": "YRP Goods Received Note",
+			"width": 150,
+		},
 		{"label": _("GRN Date"), "fieldname": "posting_date", "fieldtype": "Date", "width": 100},
 		{"label": _("Against"), "fieldname": "against", "fieldtype": "Data", "width": 110},
-		{"label": _("Against ID"), "fieldname": "against_id", "fieldtype": "Dynamic Link", "options": "against", "width": 150},
-		{"label": _("Supplier"), "fieldname": "supplier", "fieldtype": "Link", "options": 'Supplier', "width": 140},
-		{"label": _("Process"), "fieldname": "process_name", "fieldtype": "Link", "options": 'YRP Process', "width": 140},
-		{"label": _("Item Variant"), "fieldname": "item_variant", "fieldtype": "Link", "options": 'Item', "width": 160},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 140},
-		{"label": _("Source Received Type"), "fieldname": "source_received_type", "fieldtype": "Link", "options": 'YRP Received Type', "width": 140},
+		{
+			"label": _("Against ID"),
+			"fieldname": "against_id",
+			"fieldtype": "Dynamic Link",
+			"options": "against",
+			"width": 150,
+		},
+		{
+			"label": _("Supplier"),
+			"fieldname": "supplier",
+			"fieldtype": "Link",
+			"options": "Supplier",
+			"width": 140,
+		},
+		{
+			"label": _("Process"),
+			"fieldname": "process_name",
+			"fieldtype": "Link",
+			"options": "YRP Process",
+			"width": 140,
+		},
+		{
+			"label": _("Item Variant"),
+			"fieldname": "item_variant",
+			"fieldtype": "Link",
+			"options": "Item",
+			"width": 160,
+		},
+		{
+			"label": _("Warehouse"),
+			"fieldname": "warehouse",
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 140,
+		},
+		{
+			"label": _("Source Received Type"),
+			"fieldname": "source_received_type",
+			"fieldtype": "Link",
+			"options": "YRP Received Type",
+			"width": 140,
+		},
 	]
 	for dim in dims:
 		if dim["fieldname"] == "received_type":
 			continue
-		columns.append({
-			"label": _(dim["label"]),
-			"fieldname": dim["fieldname"],
-			"fieldtype": "Link",
-			"options": dim["dimension_doctype"],
-			"width": 120,
-		})
+		columns.append(
+			{
+				"label": _(dim["label"]),
+				"fieldname": dim["fieldname"],
+				"fieldtype": "Link",
+				"options": dim["dimension_doctype"],
+				"width": 120,
+			}
+		)
 
-	columns.extend([
-		{"label": _("GRN Qty"), "fieldname": "grn_qty", "fieldtype": "Float", "width": 100},
-		{"label": _("Inspected Qty"), "fieldname": "inspected_qty", "fieldtype": "Float", "width": 110},
-		{"label": _("Pending Inspection Qty"), "fieldname": "pending_inspection_qty", "fieldtype": "Float", "width": 150},
-	])
+	columns.extend(
+		[
+			{"label": _("GRN Qty"), "fieldname": "grn_qty", "fieldtype": "Float", "width": 100},
+			{"label": _("Inspected Qty"), "fieldname": "inspected_qty", "fieldtype": "Float", "width": 110},
+			{
+				"label": _("Pending Inspection Qty"),
+				"fieldname": "pending_inspection_qty",
+				"fieldtype": "Float",
+				"width": 150,
+			},
+		]
+	)
 	for received_type, fieldname in target_field_map.items():
-		columns.append({
-			"label": _("{0} Qty").format(received_type),
-			"fieldname": fieldname,
-			"fieldtype": "Float",
-			"width": 110,
-		})
+		columns.append(
+			{
+				"label": _("{0} Qty").format(received_type),
+				"fieldname": fieldname,
+				"fieldtype": "Float",
+				"width": 110,
+			}
+		)
 
-	columns.extend([
-		{"label": _("Inspection Status"), "fieldname": "inspection_status", "fieldtype": "Data", "width": 130},
-		{"label": _("Conversion Status"), "fieldname": "conversion_status", "fieldtype": "Data", "width": 140},
-		{"label": _("Inspection Entries"), "fieldname": "inspection_entries", "fieldtype": "Data", "width": 220},
-		{"label": _("Last Inspection Entry"), "fieldname": "last_inspection_entry", "fieldtype": "Link", "options": 'YRP Inspection Entry', "width": 160},
-		{"label": _("Inspector"), "fieldname": "inspector", "fieldtype": "Data", "width": 160},
-		{"label": _("Last Inspection Date"), "fieldname": "last_inspection_date", "fieldtype": "Date", "width": 130},
-		{"label": _("Age Days"), "fieldname": "age_days", "fieldtype": "Int", "width": 90},
-		{"label": _("GRN Item Row"), "fieldname": "grn_item", "fieldtype": "Data", "width": 120},
-	])
+	columns.extend(
+		[
+			{
+				"label": _("Inspection Status"),
+				"fieldname": "inspection_status",
+				"fieldtype": "Data",
+				"width": 130,
+			},
+			{
+				"label": _("Conversion Status"),
+				"fieldname": "conversion_status",
+				"fieldtype": "Data",
+				"width": 140,
+			},
+			{
+				"label": _("Inspection Entries"),
+				"fieldname": "inspection_entries",
+				"fieldtype": "Data",
+				"width": 220,
+			},
+			{
+				"label": _("Last Inspection Entry"),
+				"fieldname": "last_inspection_entry",
+				"fieldtype": "Link",
+				"options": "YRP Inspection Entry",
+				"width": 160,
+			},
+			{"label": _("Inspector"), "fieldname": "inspector", "fieldtype": "Data", "width": 160},
+			{
+				"label": _("Last Inspection Date"),
+				"fieldname": "last_inspection_date",
+				"fieldtype": "Date",
+				"width": 130,
+			},
+			{"label": _("Age Days"), "fieldname": "age_days", "fieldtype": "Int", "width": 90},
+			{"label": _("GRN Item Row"), "fieldname": "grn_item", "fieldtype": "Data", "width": 120},
+		]
+	)
 	return columns
 
 
 def _get_grn_rows(filters, dims):
-	grn_meta = frappe.get_meta('YRP Goods Received Note')
-	item_meta = frappe.get_meta('YRP Goods Received Note Item')
+	grn_meta = frappe.get_meta("YRP Goods Received Note")
+	item_meta = frappe.get_meta("YRP Goods Received Note Item")
 
 	select_cols = [
 		"grn.name AS grn",
@@ -276,10 +356,10 @@ def _conversion_status(inspected_qty, converted_qty):
 
 
 def _get_received_types():
-	if not frappe.db.exists("DocType", 'YRP Received Type'):
+	if not frappe.db.exists("DocType", "YRP Received Type"):
 		return []
 	return frappe.get_all(
-		'YRP Received Type',
+		"YRP Received Type",
 		pluck="name",
 		order_by="is_default desc, name asc",
 	)

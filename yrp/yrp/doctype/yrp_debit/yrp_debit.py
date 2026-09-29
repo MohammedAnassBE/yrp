@@ -1,7 +1,8 @@
-from yrp import attribute_links as attribute_db
 import frappe
 from frappe import _
 from frappe.model.document import Document
+
+from yrp import attribute_links as attribute_db
 
 
 class YRPDebit(Document):
@@ -35,7 +36,7 @@ def approve_debit(name):
 	if not _user_has_settings_role("debit_approval_role"):
 		frappe.throw(_("You do not have permission to approve debits."))
 
-	doc = frappe.get_doc('YRP Debit', name)
+	doc = frappe.get_doc("YRP Debit", name)
 	if doc.docstatus != 1:
 		frappe.throw(_("Debit must be submitted before approval."))
 	if doc.status != "Debit Requested":
@@ -48,29 +49,27 @@ def approve_debit(name):
 
 @frappe.whitelist()
 def create_debit(work_order, debit_no=None, debit_value=None, reason=None, on_close=0):
-	required_role = (
-		"work_order_closing_approver_role"
-		if int(on_close or 0)
-		else "debit_request_role"
-	)
+	required_role = "work_order_closing_approver_role" if int(on_close or 0) else "debit_request_role"
 	if not _user_has_settings_role(required_role):
 		frappe.throw(_("You do not have permission to request a Debit."))
-	doc = frappe.get_doc({
-		"doctype": 'YRP Debit',
-		"work_order": work_order,
-		"debit_type": "Permanent",
-		"debit_no": debit_no,
-		"debit_value": debit_value,
-		"reason": reason,
-		"on_close": on_close,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Debit",
+			"work_order": work_order,
+			"debit_type": "Permanent",
+			"debit_no": debit_no,
+			"debit_value": debit_value,
+			"reason": reason,
+			"on_close": on_close,
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	doc.submit()
 	return doc.as_dict()
 
 
 def _user_has_settings_role(field):
-	role = attribute_db.get_single_value('YRP Settings', field)
+	role = attribute_db.get_single_value("YRP Settings", field)
 	if not role:
 		return False
 	return role in frappe.get_roles(frappe.session.user)

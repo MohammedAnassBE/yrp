@@ -10,11 +10,11 @@ class YRPDeliveryChallan(Document):
 
 		self.set_onload(
 			"item_details",
-			group_items_for_ui(self.get("items") or [], 'YRP Delivery Challan'),
+			group_items_for_ui(self.get("items") or [], "YRP Delivery Challan"),
 		)
 		self.set_onload(
 			"correction_item_details",
-			group_correction_items_for_ui(self.get("correction_items") or [], 'YRP Delivery Challan'),
+			group_correction_items_for_ui(self.get("correction_items") or [], "YRP Delivery Challan"),
 		)
 
 	def before_validate(self):
@@ -31,9 +31,7 @@ class YRPDeliveryChallan(Document):
 		# untouched so the user can come back and re-edit.
 		if self.docstatus == 1:
 			self.items = [it for it in self.get("items") or [] if (it.qty or 0) > 0]
-			self.correction_items = [
-				it for it in self.get("correction_items") or [] if (it.qty or 0) > 0
-			]
+			self.correction_items = [it for it in self.get("correction_items") or [] if (it.qty or 0) > 0]
 
 	def validate(self):
 		self.validate_work_order()
@@ -59,16 +57,16 @@ class YRPDeliveryChallan(Document):
 	def before_cancel(self):
 		_lock_work_order_deliverables(self.work_order)
 		self.ignore_linked_doctypes = (
-			'YRP Stock Ledger Entry',
-			'YRP Repost Item Valuation',
-			'YRP Stock Valuation Adjustment',
-			'YRP Stock Entry',
+			"YRP Stock Ledger Entry",
+			"YRP Repost Item Valuation",
+			"YRP Stock Valuation Adjustment",
+			"YRP Stock Entry",
 		)
 		if self.is_internal_unit:
 			ste_names = frappe.get_all(
-				'YRP Stock Entry',
+				"YRP Stock Entry",
 				filters={
-					"against": 'YRP Delivery Challan',
+					"against": "YRP Delivery Challan",
 					"against_id": self.name,
 					"purpose": "DC Completion",
 					"docstatus": 1,
@@ -76,7 +74,7 @@ class YRPDeliveryChallan(Document):
 				pluck="name",
 			)
 			for name in ste_names:
-				frappe.get_doc('YRP Stock Entry', name).cancel()
+				frappe.get_doc("YRP Stock Entry", name).cancel()
 
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
@@ -97,7 +95,7 @@ class YRPDeliveryChallan(Document):
 		if not self.work_order:
 			return
 
-		wo = frappe.get_cached_doc('YRP Work Order', self.work_order)
+		wo = frappe.get_cached_doc("YRP Work Order", self.work_order)
 		if self.meta.get_field("is_rework"):
 			self.is_rework = wo.is_rework
 		self.process_name = self.process_name or wo.process_name
@@ -106,9 +104,7 @@ class YRPDeliveryChallan(Document):
 		self.supplier = self.supplier or wo.supplier
 		self.from_location = self.from_location or wo.delivery_location
 		self.to_warehouse = self.to_warehouse or _get_warehouse_for_supplier(wo.supplier)
-		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(
-			self.from_location
-		)
+		self.from_warehouse = self.from_warehouse or _get_warehouse_for_supplier(self.from_location)
 		_copy_production_group_dimensions_from_source(self, wo)
 
 	def sync_vue_item_details(self):
@@ -120,7 +116,7 @@ class YRPDeliveryChallan(Document):
 		# typically zeroes rows they aren't dispatching in this DC; we keep
 		# them across draft saves so the row can be re-edited, then strip
 		# qty=0 in before_validate when docstatus==1 (the submit pass).
-		rows = ungroup_items_from_ui(self.item_details, 'YRP Delivery Challan', keep_zero=True)
+		rows = ungroup_items_from_ui(self.item_details, "YRP Delivery Challan", keep_zero=True)
 		self.set("items", [])
 		for row in rows:
 			self.append("items", row)
@@ -131,7 +127,7 @@ class YRPDeliveryChallan(Document):
 		from yrp.stock.save_stock_items import ungroup_correction_items_from_ui
 
 		rows = ungroup_correction_items_from_ui(
-			self.correction_item_details, 'YRP Delivery Challan', keep_zero=True
+			self.correction_item_details, "YRP Delivery Challan", keep_zero=True
 		)
 		self.set("correction_items", [])
 		for row in rows:
@@ -155,7 +151,7 @@ class YRPDeliveryChallan(Document):
 				self.from_warehouse,
 				self.posting_date,
 				self.posting_time,
-				child_doctype='YRP Delivery Challan Item',
+				child_doctype="YRP Delivery Challan Item",
 			)
 			row.valuation_rate = flt(rate)
 			row.rate = flt(rate)
@@ -165,7 +161,7 @@ class YRPDeliveryChallan(Document):
 		if not self.work_order:
 			frappe.throw(_("Work Order is required."))
 		docstatus, open_status = frappe.db.get_value(
-			'YRP Work Order', self.work_order, ["docstatus", "open_status"]
+			"YRP Work Order", self.work_order, ["docstatus", "open_status"]
 		)
 		if docstatus != 1:
 			frappe.throw(_("Work Order {0} must be submitted.").format(self.work_order))
@@ -197,16 +193,16 @@ class YRPDeliveryChallan(Document):
 		self.total_value = sum(flt(row.amount) for row in all_rows)
 
 	def validate_against_work_order_pending(self):
-		wo = frappe.get_doc('YRP Work Order', self.work_order)
+		wo = frappe.get_doc("YRP Work Order", self.work_order)
 		for row in self.items:
-			target = _find_matching_row(wo.deliverables, row, 'YRP Work Order Deliverables')
+			target = _find_matching_row(wo.deliverables, row, "YRP Work Order Deliverables")
 			if not target:
 				frappe.throw(
 					_("Row {0}: no matching Work Order Deliverable found for {1}.").format(
 						row.idx, row.item_variant
 					)
 				)
-			row.ref_doctype = 'YRP Work Order Deliverables'
+			row.ref_doctype = "YRP Work Order Deliverables"
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
 
@@ -214,10 +210,8 @@ class YRPDeliveryChallan(Document):
 		for row in self.get("correction_items") or []:
 			name = row.work_order_correction
 			if not name:
-				frappe.throw(
-					_("Row {0}: correction item missing Work Order Correction.").format(row.idx)
-				)
-			corr = corr_cache.get(name) or frappe.get_doc('YRP Work Order Correction', name)
+				frappe.throw(_("Row {0}: correction item missing Work Order Correction.").format(row.idx))
+			corr = corr_cache.get(name) or frappe.get_doc("YRP Work Order Correction", name)
 			corr_cache[name] = corr
 			if corr.work_order != self.work_order:
 				frappe.throw(
@@ -225,14 +219,14 @@ class YRPDeliveryChallan(Document):
 						row.idx, name, corr.work_order, self.work_order
 					)
 				)
-			target = _find_matching_row(corr.deliverables, row, 'YRP Work Order Deliverables')
+			target = _find_matching_row(corr.deliverables, row, "YRP Work Order Deliverables")
 			if not target:
 				frappe.throw(
 					_("Row {0}: no matching correction deliverable for {1}.").format(
 						row.idx, row.item_variant
 					)
 				)
-			row.ref_doctype = 'YRP Work Order Deliverables'
+			row.ref_doctype = "YRP Work Order Deliverables"
 			row.ref_docname = target.name
 			row.pending_quantity = target.pending_quantity
 
@@ -255,7 +249,11 @@ class YRPDeliveryChallan(Document):
 			key = (row.item_variant, self.from_warehouse, dim_values)
 			required_by_bucket.setdefault(
 				key,
-				{"item": row.item_variant, "qty": 0.0, "dims": dict(zip(dim_fields, dim_values))},
+				{
+					"item": row.item_variant,
+					"qty": 0.0,
+					"dims": dict(zip(dim_fields, dim_values, strict=False)),
+				},
 			)
 			required_by_bucket[key]["qty"] += qty
 
@@ -264,7 +262,7 @@ class YRPDeliveryChallan(Document):
 				available = get_available_stock(
 					bucket["item"],
 					self.from_warehouse,
-					exclude_voucher_type='YRP Work Order',
+					exclude_voucher_type="YRP Work Order",
 					exclude_voucher_name=self.work_order,
 					**bucket["dims"],
 				)
@@ -279,10 +277,7 @@ class YRPDeliveryChallan(Document):
 			required = flt(bucket["qty"])
 			if flt(available) + 0.0001 < required:
 				frappe.throw(
-					_(
-						"Insufficient stock for {0} at {1} as of {2} {3}: "
-						"available {4}, required {5}."
-					).format(
+					_("Insufficient stock for {0} at {1} as of {2} {3}: available {4}, required {5}.").format(
 						bucket["item"],
 						self.from_warehouse,
 						self.posting_date,
@@ -293,10 +288,10 @@ class YRPDeliveryChallan(Document):
 				)
 
 	def update_work_order_deliverables(self, cancel=False):
-		wo = frappe.get_doc('YRP Work Order', self.work_order)
+		wo = frappe.get_doc("YRP Work Order", self.work_order)
 		changed = False
 		for row in self.items:
-			target = _find_matching_row(wo.deliverables, row, 'YRP Work Order Deliverables')
+			target = _find_matching_row(wo.deliverables, row, "YRP Work Order Deliverables")
 			if not target:
 				continue
 			qty = flt(row.delivered_quantity or row.qty)
@@ -311,10 +306,10 @@ class YRPDeliveryChallan(Document):
 		for row in self.get("correction_items") or []:
 			by_corr.setdefault(row.work_order_correction, []).append(row)
 		for name, rows in by_corr.items():
-			corr = frappe.get_doc('YRP Work Order Correction', name)
+			corr = frappe.get_doc("YRP Work Order Correction", name)
 			touched = False
 			for row in rows:
-				target = _find_matching_row(corr.deliverables, row, 'YRP Work Order Deliverables')
+				target = _find_matching_row(corr.deliverables, row, "YRP Work Order Deliverables")
 				if not target:
 					continue
 				qty = flt(row.delivered_quantity or row.qty)
@@ -332,7 +327,7 @@ class YRPDeliveryChallan(Document):
 		if not self.work_order:
 			return
 		for row in self.items:
-			if row.ref_doctype != 'YRP Work Order Deliverables' or not row.ref_docname:
+			if row.ref_doctype != "YRP Work Order Deliverables" or not row.ref_docname:
 				continue
 			qty = flt(row.stock_qty) or flt(row.delivered_quantity or row.qty)
 			_update_work_order_sre_delivered_qty(
@@ -346,10 +341,12 @@ class YRPDeliveryChallan(Document):
 
 		destination = self.to_warehouse
 		if self.is_internal_unit:
-			destination = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
+			destination = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
 			if not destination:
 				frappe.throw(
-					_("Transit Warehouse must be set in YRP Stock Settings for internal-unit Delivery Challan.")
+					_(
+						"Transit Warehouse must be set in YRP Stock Settings for internal-unit Delivery Challan."
+					)
 				)
 
 		entries = []
@@ -359,23 +356,27 @@ class YRPDeliveryChallan(Document):
 				continue
 			base = _sle_base(self, row)
 			transfer_key = f"Delivery Challan:{self.name}:{row.name}"
-			entries.append({
-				**base,
-				"warehouse": self.from_warehouse,
-				"qty": -qty,
-				"rate": 0,
-				"outgoing_rate": flt(row.valuation_rate or row.rate),
-				"_transfer_key": transfer_key,
-				"_transfer_role": "outgoing",
-			})
-			entries.append({
-				**base,
-				"warehouse": destination,
-				"qty": qty,
-				"rate": flt(row.valuation_rate or row.rate),
-				"_transfer_key": transfer_key,
-				"_transfer_role": "incoming",
-			})
+			entries.append(
+				{
+					**base,
+					"warehouse": self.from_warehouse,
+					"qty": -qty,
+					"rate": 0,
+					"outgoing_rate": flt(row.valuation_rate or row.rate),
+					"_transfer_key": transfer_key,
+					"_transfer_role": "outgoing",
+				}
+			)
+			entries.append(
+				{
+					**base,
+					"warehouse": destination,
+					"qty": qty,
+					"rate": flt(row.valuation_rate or row.rate),
+					"_transfer_key": transfer_key,
+					"_transfer_role": "incoming",
+				}
+			)
 
 		make_sl_entries(entries, cancel=cancel)
 
@@ -391,7 +392,7 @@ class YRPDeliveryChallan(Document):
 		flags = {
 			row.name: row.is_company_location
 			for row in frappe.db.get_all(
-				'Supplier',
+				"Supplier",
 				filters={"name": ["in", [self.from_location, self.supplier]]},
 				fields=["name", "is_company_location"],
 			)
@@ -424,7 +425,7 @@ def _lock_work_order_deliverables(work_order):
 def rebuild_work_order_deliverable_pending(work_order):
 	"""Rebuild pending quantities from committed DC and return-GRN evidence."""
 	_lock_work_order_deliverables(work_order)
-	work_order_doc = frappe.get_doc('YRP Work Order', work_order)
+	work_order_doc = frappe.get_doc("YRP Work Order", work_order)
 	delivered = {
 		row.ref_docname: flt(row.quantity)
 		for row in frappe.db.sql(
@@ -477,9 +478,9 @@ def rebuild_work_order_deliverable_pending(work_order):
 
 
 def _get_warehouse_for_supplier(supplier):
-	if not supplier or not frappe.db.exists("DocType", 'Warehouse'):
+	if not supplier or not frappe.db.exists("DocType", "Warehouse"):
 		return None
-	warehouses = frappe.get_all('Warehouse', filters={"supplier": supplier, "disabled": 0}, pluck="name")
+	warehouses = frappe.get_all("Warehouse", filters={"supplier": supplier, "disabled": 0}, pluck="name")
 	return warehouses[0] if len(warehouses) == 1 else None
 
 
@@ -540,9 +541,7 @@ def _sle_base(doc, row):
 		doc_value = doc.get(fn) if doc.meta.get_field(fn) else None
 		base[fn] = row_value or doc_value
 	if "received_type" in base and not base.get("received_type"):
-		base["received_type"] = frappe.db.get_single_value(
-			'YRP Stock Settings', "default_received_type"
-		)
+		base["received_type"] = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 	return base
 
 
@@ -566,30 +565,28 @@ def _find_matching_row(rows, source_row, ref_doctype):
 def _same_item_row(target_row, source_row):
 	if target_row.item_variant != source_row.item_variant:
 		return False
-	return _normal_json(target_row.get("set_combination")) == _normal_json(
-		source_row.get("set_combination")
-	)
+	return _normal_json(target_row.get("set_combination")) == _normal_json(source_row.get("set_combination"))
 
 
 def _update_work_order_status(work_order):
-	wo = frappe.get_doc('YRP Work Order', work_order)
+	wo = frappe.get_doc("YRP Work Order", work_order)
 	wo.set_status()
 	wo.db_set("status", wo.status, update_modified=False)
 	wo.db_set("is_delivered", wo.is_delivered, update_modified=False)
 
 
 def _update_work_order_correction_status(name):
-	corr = frappe.get_doc('YRP Work Order Correction', name)
+	corr = frappe.get_doc("YRP Work Order Correction", name)
 	corr.set_status()
 	corr.db_set("status", corr.status, update_modified=False)
 
 
 @frappe.whitelist()
 def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
-	from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 	from yrp.stock.dimensions import apply_dimension_defaults
+	from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 
-	wo = frappe.get_doc('YRP Work Order', work_order)
+	wo = frappe.get_doc("YRP Work Order", work_order)
 	items = _pending_deliverable_rows(wo)
 	dimensions = _get_production_group_dimensions(wo)
 	_apply_dimension_values_to_rows(items, dimensions)
@@ -601,11 +598,13 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 			from_warehouse,
 			posting_date or nowdate(),
 			posting_time or nowtime(),
-			child_doctype='YRP Delivery Challan Item',
+			child_doctype="YRP Delivery Challan Item",
 		)
 		row["rate"] = flt(rate)
 		row["valuation_rate"] = flt(rate)
-		row["amount"] = flt(row.get("stock_qty") or row.get("delivered_quantity") or row.get("qty")) * flt(rate)
+		row["amount"] = flt(row.get("stock_qty") or row.get("delivered_quantity") or row.get("qty")) * flt(
+			rate
+		)
 
 	correction_items = _pending_correction_deliverable_rows(wo)
 	_apply_dimension_values_to_rows(correction_items, dimensions)
@@ -616,11 +615,13 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 			from_warehouse,
 			posting_date or nowdate(),
 			posting_time or nowtime(),
-			child_doctype='YRP Delivery Challan Item',
+			child_doctype="YRP Delivery Challan Item",
 		)
 		row["rate"] = flt(rate)
 		row["valuation_rate"] = flt(rate)
-		row["amount"] = flt(row.get("stock_qty") or row.get("delivered_quantity") or row.get("qty")) * flt(rate)
+		row["amount"] = flt(row.get("stock_qty") or row.get("delivered_quantity") or row.get("qty")) * flt(
+			rate
+		)
 	defaults = {
 		"process_name": wo.process_name,
 		"item": wo.item,
@@ -631,9 +632,9 @@ def get_work_order_defaults(work_order, posting_date=None, posting_time=None):
 		"from_warehouse": from_warehouse,
 		"to_warehouse": _get_warehouse_for_supplier(wo.supplier),
 		"items": items,
-		"item_details": group_items_for_ui(items, 'YRP Delivery Challan'),
+		"item_details": group_items_for_ui(items, "YRP Delivery Challan"),
 		"correction_items": correction_items,
-		"correction_item_details": group_correction_items_for_ui(correction_items, 'YRP Delivery Challan'),
+		"correction_item_details": group_correction_items_for_ui(correction_items, "YRP Delivery Challan"),
 	}
 	defaults.update(dimensions)
 	return defaults
@@ -657,7 +658,7 @@ def _pending_deliverable_rows(wo):
 			"delivered_quantity": prefill,
 			"uom": row.uom,
 			"pending_quantity": pending,
-			"ref_doctype": 'YRP Work Order Deliverables',
+			"ref_doctype": "YRP Work Order Deliverables",
 			"ref_docname": row.name,
 			"table_index": row.table_index,
 			"row_index": row.row_index,
@@ -677,12 +678,12 @@ def _pending_correction_deliverable_rows(wo):
 	dim_fields = get_dimension_fieldnames()
 	rows = []
 	names = frappe.get_all(
-		'YRP Work Order Correction',
+		"YRP Work Order Correction",
 		filters={"work_order": wo.name, "docstatus": 1},
 		pluck="name",
 	)
 	for name in names:
-		corr = frappe.get_doc('YRP Work Order Correction', name)
+		corr = frappe.get_doc("YRP Work Order Correction", name)
 		for row in corr.get("deliverables") or []:
 			pending = flt(row.pending_quantity)
 			if pending <= 0:
@@ -693,7 +694,7 @@ def _pending_correction_deliverable_rows(wo):
 				"delivered_quantity": pending,
 				"uom": row.uom,
 				"pending_quantity": pending,
-				"ref_doctype": 'YRP Work Order Deliverables',
+				"ref_doctype": "YRP Work Order Deliverables",
 				"ref_docname": row.name,
 				"work_order_correction": name,
 				"table_index": row.table_index,
@@ -742,16 +743,16 @@ def _row_dimension_filters(row, child_doctype=None):
 def _is_rework_work_order(work_order):
 	if not work_order:
 		return False
-	return bool(frappe.db.get_value('YRP Work Order', work_order, "is_rework"))
+	return bool(frappe.db.get_value("YRP Work Order", work_order, "is_rework"))
 
 
 def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delta):
 	if not work_order or not voucher_detail_no or not qty_delta:
 		return
 	sre_name = frappe.db.get_value(
-		'YRP Stock Reservation Entry',
+		"YRP Stock Reservation Entry",
 		{
-			"voucher_type": 'YRP Work Order',
+			"voucher_type": "YRP Work Order",
 			"voucher_no": work_order,
 			"voucher_detail_no": voucher_detail_no,
 			"docstatus": 1,
@@ -760,13 +761,13 @@ def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delt
 	)
 	if not sre_name:
 		return
-	sre = frappe.get_doc('YRP Stock Reservation Entry', sre_name)
+	sre = frappe.get_doc("YRP Stock Reservation Entry", sre_name)
 	# Once an SRE has been manually closed-short, its delivered_qty is
 	# frozen. A later DC submit/cancel must not silently mutate it.
 	if sre.status == "Closed":
-		frappe.throw(_(
-			"Stock Reservation Entry {0} has been closed; cannot update delivered qty."
-		).format(sre.name))
+		frappe.throw(
+			_("Stock Reservation Entry {0} has been closed; cannot update delivered qty.").format(sre.name)
+		)
 	# Clamp into [0, reserved_qty]: excess delivery (2026-07-10) can exceed the
 	# reservation — delivered_qty beyond reserved_qty would drive the SRE's
 	# remaining negative and INFLATE apparent availability downstream
@@ -777,7 +778,7 @@ def _update_work_order_sre_delivered_qty(work_order, voucher_detail_no, qty_delt
 	sre.delivered_qty = delivered_qty
 	sre.set_status()
 	frappe.db.set_value(
-		'YRP Stock Reservation Entry',
+		"YRP Stock Reservation Entry",
 		sre.name,
 		{"delivered_qty": delivered_qty, "status": sre.status},
 		update_modified=False,
@@ -795,7 +796,7 @@ def _validate_return_source(delivery_challan):
 			)
 		)
 	docstatus, open_status = frappe.db.get_value(
-		'YRP Work Order', delivery_challan.work_order, ["docstatus", "open_status"]
+		"YRP Work Order", delivery_challan.work_order, ["docstatus", "open_status"]
 	)
 	if docstatus != 1:
 		frappe.throw(_("Work Order {0} must be submitted.").format(delivery_challan.work_order))
@@ -805,9 +806,9 @@ def _validate_return_source(delivery_challan):
 
 def _submitted_dc_return_quantities(delivery_challan):
 	return_grns = frappe.get_all(
-		'YRP Goods Received Note',
+		"YRP Goods Received Note",
 		filters={
-			"against": 'YRP Work Order',
+			"against": "YRP Work Order",
 			"delivery_challan": delivery_challan,
 			"is_return": 1,
 			"docstatus": 1,
@@ -818,18 +819,18 @@ def _submitted_dc_return_quantities(delivery_challan):
 		return {}
 	quantities = {}
 	for row in frappe.get_all(
-		'YRP Goods Received Note Item',
+		"YRP Goods Received Note Item",
 		filters={
 			"parent": ["in", return_grns],
 			"parentfield": "items",
-			"parenttype": 'YRP Goods Received Note',
+			"parenttype": "YRP Goods Received Note",
 		},
 		fields=["delivery_challan_item", "quantity"],
 	):
 		if not row.delivery_challan_item:
 			continue
-		quantities[row.delivery_challan_item] = (
-			flt(quantities.get(row.delivery_challan_item)) + flt(row.quantity)
+		quantities[row.delivery_challan_item] = flt(quantities.get(row.delivery_challan_item)) + flt(
+			row.quantity
 		)
 	return quantities
 
@@ -846,16 +847,16 @@ def get_return_delivery_items(doc_name):
 	"""Return F15-style DC return choices with authoritative available qty."""
 	from yrp.stock.utils import get_stock_balance
 
-	delivery_challan = frappe.get_doc('YRP Delivery Challan', doc_name)
+	delivery_challan = frappe.get_doc("YRP Delivery Challan", doc_name)
 	delivery_challan.check_permission("read")
 	_validate_return_source(delivery_challan)
-	work_order = frappe.get_doc('YRP Work Order', delivery_challan.work_order)
+	work_order = frappe.get_doc("YRP Work Order", delivery_challan.work_order)
 	work_order.check_permission("read")
 	deliverables = {row.name: row for row in work_order.get("deliverables") or []}
 	previous_returns = _submitted_dc_return_quantities(delivery_challan.name)
 	rows = []
 	for dc_item in delivery_challan.get("items") or []:
-		if dc_item.get("ref_doctype") != 'YRP Work Order Deliverables':
+		if dc_item.get("ref_doctype") != "YRP Work Order Deliverables":
 			continue
 		deliverable = deliverables.get(dc_item.get("ref_docname"))
 		if not deliverable:
@@ -891,13 +892,11 @@ def get_return_delivery_items(doc_name):
 	if not rows:
 		frappe.throw(_("No unconsumed quantity is available to return for this Delivery Challan."))
 
-	item_meta = frappe.get_meta('YRP Goods Received Note Item')
+	item_meta = frappe.get_meta("YRP Goods Received Note Item")
 	has_received_type = bool(item_meta.get_field("received_type"))
 	default_received_type = None
 	if has_received_type:
-		default_received_type = frappe.db.get_single_value(
-			'YRP Stock Settings', "default_received_type"
-		)
+		default_received_type = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 	return {
 		"items": rows,
 		"has_received_type": has_received_type,
@@ -910,8 +909,8 @@ def create_return_grn(doc_name, items, received_type=None):
 	"""Create the F15-style draft return GRN against a submitted DC."""
 	from yrp.stock.dimensions import get_dimension_fieldnames
 
-	frappe.has_permission('YRP Goods Received Note', "create", throw=True)
-	delivery_challan = frappe.get_doc('YRP Delivery Challan', doc_name)
+	frappe.has_permission("YRP Goods Received Note", "create", throw=True)
+	delivery_challan = frappe.get_doc("YRP Delivery Challan", doc_name)
 	delivery_challan.check_permission("read")
 	_validate_return_source(delivery_challan)
 	items = frappe.parse_json(items) if isinstance(items, str) else items
@@ -919,14 +918,12 @@ def create_return_grn(doc_name, items, received_type=None):
 		frappe.throw(_("Return Items must be a list."))
 
 	defaults = get_return_delivery_items(delivery_challan.name)
-	available_by_row = {
-		row["delivery_challan_item"]: row for row in defaults["items"]
-	}
+	available_by_row = {row["delivery_challan_item"]: row for row in defaults["items"]}
 	if defaults["has_received_type"]:
 		received_type = received_type or defaults["default_received_type"]
 		if not received_type:
 			frappe.throw(_("Received Type is required for returned stock."))
-		if not frappe.db.exists('YRP Received Type', received_type):
+		if not frappe.db.exists("YRP Received Type", received_type):
 			frappe.throw(_("Received Type {0} does not exist.").format(received_type))
 
 	dc_items = {row.name: row for row in delivery_challan.get("items") or []}
@@ -954,7 +951,7 @@ def create_return_grn(doc_name, items, received_type=None):
 			"uom": dc_item.uom,
 			"stock_uom": dc_item.stock_uom,
 			"conversion_factor": flt(dc_item.conversion_factor) or 1,
-			"ref_doctype": 'YRP Work Order Deliverables',
+			"ref_doctype": "YRP Work Order Deliverables",
 			"ref_docname": dc_item.ref_docname,
 			"delivery_challan_item": dc_item.name,
 			"table_index": dc_item.table_index,
@@ -972,10 +969,10 @@ def create_return_grn(doc_name, items, received_type=None):
 	if not return_rows:
 		frappe.throw(_("Select at least one Return Quantity."))
 
-	grn = frappe.new_doc('YRP Goods Received Note')
+	grn = frappe.new_doc("YRP Goods Received Note")
 	grn.update(
 		{
-			"against": 'YRP Work Order',
+			"against": "YRP Work Order",
 			"against_id": delivery_challan.work_order,
 			"delivery_challan": delivery_challan.name,
 			"is_return": 1,
@@ -995,9 +992,7 @@ def create_return_grn(doc_name, items, received_type=None):
 			"to_warehouse": delivery_challan.from_warehouse,
 			"supplier_document_no": delivery_challan.name,
 			"vehicle_no": delivery_challan.vehicle_no or "NA",
-			"comments": _("Material returned against Delivery Challan {0}.").format(
-				delivery_challan.name
-			),
+			"comments": _("Material returned against Delivery Challan {0}.").format(delivery_challan.name),
 		}
 	)
 	grn.set("items", return_rows)
@@ -1007,8 +1002,8 @@ def create_return_grn(doc_name, items, received_type=None):
 
 @frappe.whitelist()
 def make_dc_completion(doc_name):
-	frappe.has_permission('YRP Stock Entry', "create", throw=True)
-	dc = frappe.get_doc('YRP Delivery Challan', doc_name)
+	frappe.has_permission("YRP Stock Entry", "create", throw=True)
+	dc = frappe.get_doc("YRP Delivery Challan", doc_name)
 	if dc.docstatus != 1:
 		frappe.throw(_("Delivery Challan must be submitted."))
 	if not dc.is_internal_unit:
@@ -1016,12 +1011,19 @@ def make_dc_completion(doc_name):
 	if dc.transfer_complete:
 		frappe.throw(_("Transfer is already complete for this Delivery Challan."))
 	pending_draft = frappe.db.exists(
-		'YRP Stock Entry',
-		{"against": 'YRP Delivery Challan', "against_id": doc_name, "purpose": "DC Completion", "docstatus": 0},
+		"YRP Stock Entry",
+		{
+			"against": "YRP Delivery Challan",
+			"against_id": doc_name,
+			"purpose": "DC Completion",
+			"docstatus": 0,
+		},
 	)
 	if pending_draft:
 		frappe.throw(
-			_("A draft DC Completion Stock Entry already exists ({0}). Submit or delete it before creating a new one.").format(pending_draft)
+			_(
+				"A draft DC Completion Stock Entry already exists ({0}). Submit or delete it before creating a new one."
+			).format(pending_draft)
 		)
 
 	from yrp.stock.dimensions import get_dimension_fieldnames
@@ -1043,7 +1045,7 @@ def make_dc_completion(doc_name):
 			"rate": flt(item.valuation_rate or item.rate),
 			"table_index": item.table_index,
 			"row_index": item.row_index,
-			"against": 'YRP Delivery Challan Item',
+			"against": "YRP Delivery Challan Item",
 			"against_id_detail": item.name,
 			"remarks": item.comments,
 		}
@@ -1055,9 +1057,9 @@ def make_dc_completion(doc_name):
 	if not items:
 		frappe.throw(_("Nothing left to transfer."))
 
-	ste = frappe.new_doc('YRP Stock Entry')
+	ste = frappe.new_doc("YRP Stock Entry")
 	ste.purpose = "DC Completion"
-	ste.against = 'YRP Delivery Challan'
+	ste.against = "YRP Delivery Challan"
 	ste.against_id = doc_name
 	ste.from_warehouse = dc.from_warehouse
 	ste.to_warehouse = dc.to_warehouse

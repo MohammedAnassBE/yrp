@@ -11,7 +11,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from yrp.stock.dimensions import get_stock_dimensions, get_dimension_fieldnames
+from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 from yrp.stock.stock_ledger import get_previous_sle
 from yrp.stock.utils import get_combine_datetime
 
@@ -30,26 +30,64 @@ def execute(filters=None):
 
 def get_columns(dims):
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'Item', "width": 150},
-		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Link", "options": 'Item', "width": 150},
-		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'Item Group', "width": 100},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 120},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": "Item", "width": 150},
+		{
+			"label": _("Item Name"),
+			"fieldname": "item_name",
+			"fieldtype": "Link",
+			"options": "Item",
+			"width": 150,
+		},
+		{
+			"label": _("Item Group"),
+			"fieldname": "item_group",
+			"fieldtype": "Link",
+			"options": "Item Group",
+			"width": 100,
+		},
+		{
+			"label": _("Warehouse"),
+			"fieldname": "warehouse",
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 120,
+		},
 	]
 	for dim in dims:
-		columns.append({
-			"label": _(dim["label"]),
-			"fieldname": dim["fieldname"],
-			"fieldtype": "Link",
-			"options": dim["dimension_doctype"],
-			"width": 100,
-		})
-	columns.extend([
-		{"label": _("Stock UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'UOM', "width": 90},
-		{"label": _("Qty"), "fieldname": "qty", "fieldtype": "Float", "width": 100},
-		{"label": _("Valuation Rate"), "fieldname": "valuation_rate", "fieldtype": "Currency", "width": 120},
-		{"label": _("Stock Value"), "fieldname": "stock_value", "fieldtype": "Currency", "width": 130},
-		{"label": _("% of Total Value"), "fieldname": "pct_of_total", "fieldtype": "Percent", "width": 110},
-	])
+		columns.append(
+			{
+				"label": _(dim["label"]),
+				"fieldname": dim["fieldname"],
+				"fieldtype": "Link",
+				"options": dim["dimension_doctype"],
+				"width": 100,
+			}
+		)
+	columns.extend(
+		[
+			{
+				"label": _("Stock UOM"),
+				"fieldname": "stock_uom",
+				"fieldtype": "Link",
+				"options": "UOM",
+				"width": 90,
+			},
+			{"label": _("Qty"), "fieldname": "qty", "fieldtype": "Float", "width": 100},
+			{
+				"label": _("Valuation Rate"),
+				"fieldname": "valuation_rate",
+				"fieldtype": "Currency",
+				"width": 120,
+			},
+			{"label": _("Stock Value"), "fieldname": "stock_value", "fieldtype": "Currency", "width": 130},
+			{
+				"label": _("% of Total Value"),
+				"fieldname": "pct_of_total",
+				"fieldtype": "Percent",
+				"width": 110,
+			},
+		]
+	)
 	return columns
 
 
@@ -60,16 +98,18 @@ def get_data(filters, dim_fields):
 	# Single query: get the latest SLE per (item, warehouse, *dims) bucket
 	# using a subquery for max posting_datetime per group, then joining back
 	# to get the full row. This replaces the N+1 per-bucket get_previous_sle calls.
-	sle = frappe.qb.DocType('YRP Stock Ledger Entry')
-	group_cols = [sle.item, sle.warehouse] + [getattr(sle, fn) for fn in dim_fields]
+	sle = frappe.qb.DocType("YRP Stock Ledger Entry")
+	[sle.item, sle.warehouse] + [getattr(sle, fn) for fn in dim_fields]
 
 	# Subquery: max posting_datetime per bucket
 	from frappe.query_builder.functions import Max
+
 	sub = (
 		frappe.qb.from_(sle)
 		.select(
 			Max(sle.posting_datetime).as_("max_dt"),
-			sle.item, sle.warehouse,
+			sle.item,
+			sle.warehouse,
 			*[getattr(sle, fn) for fn in dim_fields],
 		)
 		.where((sle.is_cancelled == 0) & (sle.posting_date <= to_date))
@@ -80,10 +120,8 @@ def get_data(filters, dim_fields):
 	if filters.get("item"):
 		sub = sub.where(sle.item == filters["item"])
 	elif filters.get("parent_item"):
-		variants = frappe.get_all(
-			'Item', filters={"variant_of": filters["parent_item"]}, pluck="name"
-		)
-		if frappe.db.exists('Item', filters["parent_item"]):
+		variants = frappe.get_all("Item", filters={"variant_of": filters["parent_item"]}, pluck="name")
+		if frappe.db.exists("Item", filters["parent_item"]):
 			variants.append(filters["parent_item"])
 		if variants:
 			sub = sub.where(sle.item.isin(variants))
@@ -123,7 +161,7 @@ def get_data(filters, dim_fields):
 
 		# Index by (item, warehouse, *dims) — keep only the first (latest) per bucket
 		for r in rows:
-			key = (r.item, r.warehouse) + tuple(r.get(fn) for fn in dim_fields)
+			key = (r.item, r.warehouse, *tuple(r.get(fn) for fn in dim_fields))
 			if key not in latest_sles:
 				latest_sles[key] = r
 
@@ -133,7 +171,7 @@ def get_data(filters, dim_fields):
 	total_value = 0.0
 
 	for bucket in bucket_rows:
-		key = (bucket.item, bucket.warehouse) + tuple(bucket.get(fn) for fn in dim_fields)
+		key = (bucket.item, bucket.warehouse, *tuple(bucket.get(fn) for fn in dim_fields))
 		last_sle = latest_sles.get(key)
 
 		qty = flt(last_sle.qty_after_transaction) if last_sle else 0.0
@@ -148,11 +186,15 @@ def get_data(filters, dim_fields):
 			from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 			parent = get_parent_item(bucket.item)
-			item_cache[bucket.item] = frappe.db.get_value(
-				'Item', parent,
-				["name as item_name", "item_group", "stock_uom as stock_uom"],
-				as_dict=True,
-			) or {}
+			item_cache[bucket.item] = (
+				frappe.db.get_value(
+					"Item",
+					parent,
+					["name as item_name", "item_group", "stock_uom as stock_uom"],
+					as_dict=True,
+				)
+				or {}
+			)
 		details = item_cache[bucket.item]
 
 		row = {

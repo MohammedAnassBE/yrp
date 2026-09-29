@@ -1,9 +1,11 @@
 """YRP Link identities at storage boundaries; actual values at business boundaries."""
+
 import copy
 
 import frappe
 from frappe import _
 from frappe.utils import cstr
+
 from yrp.attribute_value_identity import attribute_value_name
 
 MASTER = "YRP Item Attribute Value"
@@ -21,12 +23,19 @@ def ensure_value_master(attribute, value):
 	attribute_doc = frappe.get_cached_doc("Item Attribute", attribute)
 	if attribute_doc.numeric_values:
 		from erpnext.controllers.item_variant import validate_is_incremental
+
 		validate_is_incremental(attribute_doc, attribute, value, attribute)
 	else:
-		actual = frappe.db.get_value("Item Attribute Value", {
-			"parent": attribute, "parenttype": "Item Attribute",
-			"parentfield": "item_attribute_values", "attribute_value": value,
-		}, "attribute_value")
+		actual = frappe.db.get_value(
+			"Item Attribute Value",
+			{
+				"parent": attribute,
+				"parenttype": "Item Attribute",
+				"parentfield": "item_attribute_values",
+				"attribute_value": value,
+			},
+			"attribute_value",
+		)
 		if actual != value:
 			frappe.throw(_("Value {0} does not belong to attribute {1}.").format(value, attribute))
 	doc = frappe.get_doc({"doctype": MASTER, "attribute_name": attribute, "attribute_value": value})
@@ -44,7 +53,11 @@ def normalize_mapping(doc):
 		linked = frappe.db.get_value(MASTER, value, ["attribute_name", "attribute_value"], as_dict=True)
 		if linked:
 			if linked.attribute_name != doc.attribute_name:
-				frappe.throw(_("Attribute Value {0} belongs to {1}, not {2}.").format(value, linked.attribute_name, doc.attribute_name))
+				frappe.throw(
+					_("Attribute Value {0} belongs to {1}, not {2}.").format(
+						value, linked.attribute_name, doc.attribute_name
+					)
+				)
 		else:
 			row.attribute_value = ensure_value_master(doc.attribute_name, value)
 
@@ -58,10 +71,19 @@ def get_mapping_document(name, *, cached=False):
 	doc = (frappe.get_cached_doc if cached else frappe.get_doc)(MAPPING, name)
 	data = copy.deepcopy(doc.as_dict())
 	links = [row.get("attribute_value") for row in data.get("values") or []]
-	values = {row.name: row for row in frappe.get_all(
-		MASTER, filters={"name": ["in", links]}, fields=["name", "attribute_name", "attribute_value"],
-		limit_page_length=0,
-	)} if links else {}
+	values = (
+		{
+			row.name: row
+			for row in frappe.get_all(
+				MASTER,
+				filters={"name": ["in", links]},
+				fields=["name", "attribute_name", "attribute_value"],
+				limit_page_length=0,
+			)
+		}
+		if links
+		else {}
+	)
 	for row in data.get("values") or []:
 		if not row.get("attribute_value"):
 			continue
@@ -73,7 +95,11 @@ def get_mapping_document(name, *, cached=False):
 
 
 def get_mapping_values(name):
-	return [row.attribute_value for row in get_mapping_document(name, cached=True).get("values") or [] if row.attribute_value]
+	return [
+		row.attribute_value
+		for row in get_mapping_document(name, cached=True).get("values") or []
+		if row.attribute_value
+	]
 
 
 def sync_attribute_value_masters(doc, method=None):
@@ -81,13 +107,16 @@ def sync_attribute_value_masters(doc, method=None):
 		return
 	if doc.numeric_values:
 		from erpnext.controllers.item_variant import validate_is_incremental
+
 		for value in frappe.get_all(MASTER, filters={"attribute_name": doc.name}, pluck="attribute_value"):
 			validate_is_incremental(doc, doc.name, value, doc.name)
 		return
 	current = {cstr(row.attribute_value) for row in doc.get("item_attribute_values") or []}
 	for value in current:
 		ensure_value_master(doc.name, value)
-	for row in frappe.get_all(MASTER, filters={"attribute_name": doc.name}, fields=["name", "attribute_value"]):
+	for row in frappe.get_all(
+		MASTER, filters={"attribute_name": doc.name}, fields=["name", "attribute_value"]
+	):
 		if row.attribute_value not in current:
 			# Normal link validation blocks removal while any mapping uses it.
 			frappe.delete_doc(MASTER, row.name, ignore_permissions=True)
@@ -97,7 +126,13 @@ def rename_attribute_value_masters(doc, method, old, new, merge=False):
 	for row in frappe.get_all(MASTER, filters={"attribute_name": new}, fields=["name", "attribute_value"]):
 		expected = attribute_value_name(new, row.attribute_value)
 		if row.name != expected:
-			frappe.rename_doc(MASTER, row.name, expected, force=True, merge=bool(merge and frappe.db.exists(MASTER, expected)))
+			frappe.rename_doc(
+				MASTER,
+				row.name,
+				expected,
+				force=True,
+				merge=bool(merge and frappe.db.exists(MASTER, expected)),
+			)
 
 
 def verify_attribute_value_links():
@@ -116,8 +151,11 @@ def verify_attribute_value_links():
 		WHERE n.name IS NULL AND NOT EXISTS (SELECT 1 FROM `tabItem Attribute` t
 		WHERE t.name=a.attribute_name AND t.numeric_values=1) LIMIT 20""")
 	failures = [f"Invalid mapping Link {row[0]}" for row in invalid] + [
-		f"YRP attribute value missing in ERPNext: {row[0]}" for row in missing]
-	for row in frappe.get_all(MASTER, fields=["name", "attribute_name", "attribute_value"], limit_page_length=0):
+		f"YRP attribute value missing in ERPNext: {row[0]}" for row in missing
+	]
+	for row in frappe.get_all(
+		MASTER, fields=["name", "attribute_name", "attribute_value"], limit_page_length=0
+	):
 		if row.name != attribute_value_name(row.attribute_name, row.attribute_value):
 			failures.append(f"Attribute value identity mismatch: {row.name}")
 	return failures

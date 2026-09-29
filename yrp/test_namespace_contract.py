@@ -8,11 +8,9 @@ import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import call
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from yrp.patches import prefix_owned_doctypes_and_reports
-
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 OWNED_MODULES = {"YRP", "YRP Stock"}
@@ -110,7 +108,6 @@ class TestNamespaceContract(unittest.TestCase):
 		redundant = sorted(name for name in doctypes if name.startswith("YRP YRP "))
 		self.assertEqual(redundant, [])
 
-
 	def test_owned_link_and_table_targets_never_use_an_old_name(self):
 		doctypes = list(_owned_metadata("DocType"))
 		old_names = {name.removeprefix(PREFIX) for _path, _data, name in doctypes}
@@ -134,8 +131,7 @@ class TestNamespaceContract(unittest.TestCase):
 			aliases = {
 				(target.id, node.value.id)
 				for node in ast.walk(tree)
-				if isinstance(node, ast.Assign)
-				and isinstance(node.value, ast.Name)
+				if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
 				for target in node.targets
 				if isinstance(target, ast.Name)
 			}

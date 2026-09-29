@@ -53,17 +53,17 @@ class TestWhatsAppWebhookReceive(IntegrationTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		if not frappe.db.exists("User", _WEBHOOK_USER):
-			frappe.get_doc({
-				"doctype": "User",
-				"email": _WEBHOOK_USER,
-				"first_name": "YRP WA Webhook",
-				"send_welcome_email": 0,
-				"enabled": 1,
-				"user_type": "System User",
-			}).insert(ignore_permissions=True)
-		frappe.db.set_single_value(
-			'YRP WhatsApp Hub Settings', "webhook_user", _WEBHOOK_USER
-		)
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": _WEBHOOK_USER,
+					"first_name": "YRP WA Webhook",
+					"send_welcome_email": 0,
+					"enabled": 1,
+					"user_type": "System User",
+				}
+			).insert(ignore_permissions=True)
+		frappe.db.set_single_value("YRP WhatsApp Hub Settings", "webhook_user", _WEBHOOK_USER)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
@@ -88,10 +88,10 @@ class TestWhatsAppWebhookReceive(IntegrationTestCase):
 	def test_webhook_user_accepted_returns_ok_and_writes_log(self):
 		frappe.set_user(_WEBHOOK_USER)
 		_post(_unique_status_payload())
-		before = frappe.db.count('YRP WhatsApp Webhook Log')
+		before = frappe.db.count("YRP WhatsApp Webhook Log")
 		result = receive()
 		self.assertEqual(result, {"ok": True})
-		after = frappe.db.count('YRP WhatsApp Webhook Log')
+		after = frappe.db.count("YRP WhatsApp Webhook Log")
 		self.assertEqual(after, before + 1, "a webhook-log row must be written")
 
 	# --- resilience ----------------------------------------------------------
@@ -110,13 +110,13 @@ class TestWhatsAppWebhookReceive(IntegrationTestCase):
 		frappe.set_user(_WEBHOOK_USER)
 		garbage = '{"entry": [ this is not valid json'
 		_post(garbage)
-		before = frappe.db.count('YRP WhatsApp Webhook Log')
+		before = frappe.db.count("YRP WhatsApp Webhook Log")
 		result = receive()
 		self.assertEqual(result, {"ok": True})
-		after = frappe.db.count('YRP WhatsApp Webhook Log')
+		after = frappe.db.count("YRP WhatsApp Webhook Log")
 		self.assertEqual(after, before + 1)
 		latest = frappe.get_all(
-			'YRP WhatsApp Webhook Log',
+			"YRP WhatsApp Webhook Log",
 			fields=["payload", "raw"],
 			order_by="creation desc",
 			limit=1,
@@ -132,17 +132,17 @@ class TestWhatsAppWebhookReceivePush(IntegrationTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		if not frappe.db.exists("User", _WEBHOOK_USER):
-			frappe.get_doc({
-				"doctype": "User",
-				"email": _WEBHOOK_USER,
-				"first_name": "YRP WA Webhook",
-				"send_welcome_email": 0,
-				"enabled": 1,
-				"user_type": "System User",
-			}).insert(ignore_permissions=True)
-		frappe.db.set_single_value(
-			'YRP WhatsApp Hub Settings', "webhook_user", _WEBHOOK_USER
-		)
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": _WEBHOOK_USER,
+					"first_name": "YRP WA Webhook",
+					"send_welcome_email": 0,
+					"enabled": 1,
+					"user_type": "System User",
+				}
+			).insert(ignore_permissions=True)
+		frappe.db.set_single_value("YRP WhatsApp Hub Settings", "webhook_user", _WEBHOOK_USER)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
@@ -157,12 +157,15 @@ class TestWhatsAppWebhookReceivePush(IntegrationTestCase):
 	def test_receive_push_upserts_and_returns_name(self):
 		frappe.set_user(_WEBHOOK_USER)
 		_post({"template": {"id": "999", "name": "welcome"}})
-		with patch(
-			"yrp.whatsapp_templates._upsert_local_template",
-			return_value="welcome-en",
-		) as up, patch(
-			"yrp.whatsapp_hub_client._get_account_name",
-			return_value="Test Account",
+		with (
+			patch(
+				"yrp.whatsapp_templates._upsert_local_template",
+				return_value="welcome-en",
+			) as up,
+			patch(
+				"yrp.whatsapp_hub_client._get_account_name",
+				return_value="Test Account",
+			),
 		):
 			result = receive_push()
 		self.assertEqual(result, {"upserted": 1, "name": "welcome-en"})

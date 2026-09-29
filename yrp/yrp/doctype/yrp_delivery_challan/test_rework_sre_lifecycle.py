@@ -28,9 +28,9 @@ from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 
 def _get_rework_sre(rework_wo):
 	sre_name = frappe.db.get_value(
-		'YRP Stock Reservation Entry',
+		"YRP Stock Reservation Entry",
 		{
-			"voucher_type": 'YRP Work Order',
+			"voucher_type": "YRP Work Order",
 			"voucher_no": rework_wo.name,
 			"voucher_detail_no": rework_wo.deliverables[0].name,
 			"docstatus": 1,
@@ -38,7 +38,7 @@ def _get_rework_sre(rework_wo):
 		"name",
 	)
 	assert sre_name, "Rework WO must have a submitted SRE for its first deliverable."
-	return frappe.get_doc('YRP Stock Reservation Entry', sre_name)
+	return frappe.get_doc("YRP Stock Reservation Entry", sre_name)
 
 
 class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
@@ -57,7 +57,7 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 				wo.name,
 				[{"source_key": source["source_key"], "qty": 6}],
 			)
-			rework_wo = frappe.get_doc('YRP Work Order', rework_wo_name)
+			rework_wo = frappe.get_doc("YRP Work Order", rework_wo_name)
 			rework_wo.submit()
 
 		# Step 1 — after rework WO submit, SRE is fully reserved, nothing delivered.
@@ -67,43 +67,49 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 		self.assertEqual(sre.status, "Reserved")
 
 		# Step 2 — DC submit should bump delivered_qty by the dispatched qty.
-		dc = frappe.get_doc({
-			"doctype": 'YRP Delivery Challan',
-			"work_order": rework_wo.name,
-			"from_location": rework_wo.delivery_location,
-			"supplier": rework_wo.supplier,
-			"from_address": rework_wo.delivery_address,
-			"supplier_address": rework_wo.supplier_address,
-			"from_warehouse": delivery_wh,
-			"to_warehouse": supplier_wh,
-			"process_name": rework_wo.process_name,
-			"item": rework_wo.item,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"items": [{
-				"item_variant": item_variant,
-				"qty": 6,
-				"delivered_quantity": 6,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"received_type": rework_rt,
-				"ref_doctype": 'YRP Work Order Deliverables',
-				"ref_docname": rework_wo.deliverables[0].name,
-				"table_index": 0,
-				"row_index": "0",
-			}],
-		})
+		dc = frappe.get_doc(
+			{
+				"doctype": "YRP Delivery Challan",
+				"work_order": rework_wo.name,
+				"from_location": rework_wo.delivery_location,
+				"supplier": rework_wo.supplier,
+				"from_address": rework_wo.delivery_address,
+				"supplier_address": rework_wo.supplier_address,
+				"from_warehouse": delivery_wh,
+				"to_warehouse": supplier_wh,
+				"process_name": rework_wo.process_name,
+				"item": rework_wo.item,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"items": [
+					{
+						"item_variant": item_variant,
+						"qty": 6,
+						"delivered_quantity": 6,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"received_type": rework_rt,
+						"ref_doctype": "YRP Work Order Deliverables",
+						"ref_docname": rework_wo.deliverables[0].name,
+						"table_index": 0,
+						"row_index": "0",
+					}
+				],
+			}
+		)
 		dc.insert(ignore_permissions=True)
 		dc.submit()
 
 		sre.reload()
 		self.assertAlmostEqual(
-			flt(sre.delivered_qty), 6,
+			flt(sre.delivered_qty),
+			6,
 			msg="DC submit must increase SRE.delivered_qty by the dispatched qty.",
 		)
 		self.assertEqual(
-			sre.status, "Delivered",
+			sre.status,
+			"Delivered",
 			msg="SRE should flip to 'Delivered' once delivered_qty == reserved_qty.",
 		)
 
@@ -112,11 +118,13 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 		dc.cancel()
 		sre.reload()
 		self.assertAlmostEqual(
-			flt(sre.delivered_qty), 0,
+			flt(sre.delivered_qty),
+			0,
 			msg="DC cancel must restore SRE.delivered_qty back to 0.",
 		)
 		self.assertEqual(
-			sre.status, "Reserved",
+			sre.status,
+			"Reserved",
 			msg="SRE status must revert to 'Reserved' after DC cancel undoes the dispatch.",
 		)
 
@@ -143,57 +151,64 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 		deliverable = wo.deliverables[0]
 		dim_values = _stock_dimension_values(wo, deliverable)
 		dim_values["received_type"] = rework_rt
-		sre = frappe.get_doc({
-			"doctype": 'YRP Stock Reservation Entry',
-			"item_code": item_variant,
-			"warehouse": delivery_wh,
-			"voucher_type": 'YRP Work Order',
-			"voucher_no": wo.name,
-			"voucher_detail_no": deliverable.name,
-			"stock_uom": uom,
-			"available_qty": 10,
-			"voucher_qty": 6,
-			"reserved_qty": 6,
-			"delivered_qty": 0,
-			**dim_values,
-		})
+		sre = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Reservation Entry",
+				"item_code": item_variant,
+				"warehouse": delivery_wh,
+				"voucher_type": "YRP Work Order",
+				"voucher_no": wo.name,
+				"voucher_detail_no": deliverable.name,
+				"stock_uom": uom,
+				"available_qty": 10,
+				"voucher_qty": 6,
+				"reserved_qty": 6,
+				"delivered_qty": 0,
+				**dim_values,
+			}
+		)
 		sre.insert(ignore_permissions=True)
 		sre.submit()
 		self.assertEqual(sre.status, "Reserved")
 
-		dc = frappe.get_doc({
-			"doctype": 'YRP Delivery Challan',
-			"work_order": wo.name,
-			"from_location": wo.delivery_location,
-			"supplier": wo.supplier,
-			"from_address": wo.delivery_address,
-			"supplier_address": wo.supplier_address,
-			"from_warehouse": delivery_wh,
-			"to_warehouse": supplier_wh,
-			"process_name": wo.process_name,
-			"item": wo.item,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"items": [{
-				"item_variant": item_variant,
-				"qty": 6,
-				"delivered_quantity": 6,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"received_type": rework_rt,
-				"ref_doctype": 'YRP Work Order Deliverables',
-				"ref_docname": deliverable.name,
-				"table_index": 0,
-				"row_index": "0",
-			}],
-		})
+		dc = frappe.get_doc(
+			{
+				"doctype": "YRP Delivery Challan",
+				"work_order": wo.name,
+				"from_location": wo.delivery_location,
+				"supplier": wo.supplier,
+				"from_address": wo.delivery_address,
+				"supplier_address": wo.supplier_address,
+				"from_warehouse": delivery_wh,
+				"to_warehouse": supplier_wh,
+				"process_name": wo.process_name,
+				"item": wo.item,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"items": [
+					{
+						"item_variant": item_variant,
+						"qty": 6,
+						"delivered_quantity": 6,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"received_type": rework_rt,
+						"ref_doctype": "YRP Work Order Deliverables",
+						"ref_docname": deliverable.name,
+						"table_index": 0,
+						"row_index": "0",
+					}
+				],
+			}
+		)
 		dc.insert(ignore_permissions=True)
 		dc.submit()
 
 		sre.reload()
 		self.assertAlmostEqual(
-			flt(sre.delivered_qty), 6,
+			flt(sre.delivered_qty),
+			6,
 			msg="DC submit against a normal WO must update its manually-created SRE.",
 		)
 		self.assertEqual(sre.status, "Delivered")
@@ -201,7 +216,8 @@ class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
 		dc.cancel()
 		sre.reload()
 		self.assertAlmostEqual(
-			flt(sre.delivered_qty), 0,
+			flt(sre.delivered_qty),
+			0,
 			msg="DC cancel against a normal WO must restore its manually-created SRE.",
 		)
 		self.assertEqual(sre.status, "Reserved")

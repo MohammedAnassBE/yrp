@@ -15,16 +15,20 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		super().setUpClass()
 		suffix = frappe.generate_hash(length=8)
 		cls.uom = cls._ensure_uom()
-		cls.item_group = frappe.get_doc(
-			{
-				"doctype": 'Item Group',
-				"item_group_name": f"_Test Reservation Group {suffix}",
-				"is_group": 0,
-			}
-		).insert(ignore_permissions=True).name
+		cls.item_group = (
+			frappe.get_doc(
+				{
+					"doctype": "Item Group",
+					"item_group_name": f"_Test Reservation Group {suffix}",
+					"is_group": 0,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 		item_code = f"_Test Reservation Item {suffix}"
 		item_values = {
-			"doctype": 'Item',
+			"doctype": "Item",
 			"item_code": item_code,
 			"item_name": item_code,
 			"item_group": cls.item_group,
@@ -37,9 +41,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 			and frappe.db.exists("GST HSN Code", "999900")
 		):
 			item_values["gst_hsn_code"] = "999900"
-		item = frappe.get_doc(
-			item_values
-		).insert(ignore_permissions=True)
+		item = frappe.get_doc(item_values).insert(ignore_permissions=True)
 		# Attribute-less source parent/variant pairs are one standalone Item in
 		# the common standard-Item structure.
 		cls.item_variant = item.name
@@ -49,9 +51,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 	def _ensure_uom():
 		name = "_Test Reservation Unit"
 		if not frappe.db.exists("UOM", name):
-			frappe.get_doc(
-				{"doctype": "UOM", "uom_name": name, "enabled": 1}
-			).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "UOM", "uom_name": name, "enabled": 1}).insert(ignore_permissions=True)
 		return name
 
 	@classmethod
@@ -62,9 +62,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 			doctype = dimension["dimension_doctype"]
 			value = None
 			if fieldname == "received_type":
-				value = frappe.db.get_single_value(
-					"YRP Stock Settings", "default_received_type"
-				)
+				value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 			value = value or frappe.db.get_value(doctype, {}, "name")
 			if dimension.get("mandatory") and not value:
 				raise frappe.DoesNotExistError(
@@ -75,16 +73,20 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		return values
 
 	def _warehouse(self, label):
-		return frappe.get_doc(
-			{
-				"doctype": 'Warehouse',
-				"warehouse_name": f"_Test Reservation {label} {frappe.generate_hash(length=8)}",
-			}
-		).insert(ignore_permissions=True).name
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "Warehouse",
+					"warehouse_name": f"_Test Reservation {label} {frappe.generate_hash(length=8)}",
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	def _stock_entry(self, purpose, warehouse, qty, *, posting_time=None):
 		values = {
-			"doctype": 'YRP Stock Entry',
+			"doctype": "YRP Stock Entry",
 			"purpose": purpose,
 			"posting_date": nowdate(),
 			"items": [
@@ -109,9 +111,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		return frappe.get_doc(values)
 
 	def _seed(self, warehouse, qty=50, *, posting_time=None):
-		receipt = self._stock_entry(
-			"Material Receipt", warehouse, qty, posting_time=posting_time
-		)
+		receipt = self._stock_entry("Material Receipt", warehouse, qty, posting_time=posting_time)
 		receipt.insert(ignore_permissions=True)
 		receipt.submit()
 		return receipt
@@ -119,12 +119,12 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 	def _reserve(self, warehouse, qty):
 		sre = frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Reservation Entry',
+				"doctype": "YRP Stock Reservation Entry",
 				"item_code": self.item_variant,
 				"warehouse": warehouse,
 				"reserved_qty": qty,
 				"available_qty": 9999,
-				"voucher_type": 'YRP Stock Update',
+				"voucher_type": "YRP Stock Update",
 				"voucher_no": f"_Test Reservation Owner {frappe.generate_hash(length=8)}",
 				**self.dimensions,
 			}
@@ -148,7 +148,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		self.assertEqual(doc.docstatus, 0)
 		self.assertFalse(
 			frappe.db.exists(
-				'YRP Stock Ledger Entry',
+				"YRP Stock Ledger Entry",
 				{
 					"voucher_type": doc.doctype,
 					"voucher_no": doc.name,
@@ -163,7 +163,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 			warehouse,
 			**self.dimensions,
 		)
-		return frappe.db.get_value('YRP Bin', bin_name, "reserved_qty") or 0
+		return frappe.db.get_value("YRP Bin", bin_name, "reserved_qty") or 0
 
 	def test_bin_reserved_qty_tracks_reservation_submit_and_cancel(self):
 		warehouse = self._warehouse("Visible Bin Balance")
@@ -180,12 +180,8 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		self._seed(warehouse)
 		self._reserve(warehouse, 30)
 
-		self._assert_submit_rejected(
-			self._stock_entry("Material Issue", warehouse, 25)
-		)
-		self.assertAlmostEqual(
-			get_stock_balance(self.item_variant, warehouse, **self.dimensions), 50
-		)
+		self._assert_submit_rejected(self._stock_entry("Material Issue", warehouse, 25))
+		self.assertAlmostEqual(get_stock_balance(self.item_variant, warehouse, **self.dimensions), 50)
 
 	def test_stock_reconciliation_cannot_write_below_reservation(self):
 		warehouse = self._warehouse("Reconciliation")
@@ -193,7 +189,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		self._reserve(warehouse, 30)
 		reconciliation = frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Reconciliation',
+				"doctype": "YRP Stock Reconciliation",
 				"purpose": "Stock Reconciliation",
 				"posting_date": nowdate(),
 				"default_warehouse": warehouse,
@@ -211,9 +207,7 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 		)
 
 		self._assert_submit_rejected(reconciliation)
-		self.assertAlmostEqual(
-			get_stock_balance(self.item_variant, warehouse, **self.dimensions), 50
-		)
+		self.assertAlmostEqual(get_stock_balance(self.item_variant, warehouse, **self.dimensions), 50)
 
 	def test_cancelling_incoming_stock_cannot_strand_reservation(self):
 		warehouse = self._warehouse("Cancel Receipt")
@@ -229,35 +223,25 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 
 		receipt.reload()
 		self.assertEqual(receipt.docstatus, 1)
-		self.assertAlmostEqual(
-			get_stock_balance(self.item_variant, warehouse, **self.dimensions), 50
-		)
+		self.assertAlmostEqual(get_stock_balance(self.item_variant, warehouse, **self.dimensions), 50)
 
 	def test_backdated_issue_cannot_make_future_balance_breach_reservation(self):
 		warehouse = self._warehouse("Backdated")
 		self._seed(warehouse, posting_time="08:00:00")
-		future_issue = self._stock_entry(
-			"Material Issue", warehouse, 15, posting_time="10:00:00"
-		)
+		future_issue = self._stock_entry("Material Issue", warehouse, 15, posting_time="10:00:00")
 		future_issue.insert(ignore_permissions=True)
 		future_issue.submit()
 		self._reserve(warehouse, 30)
 
 		self._assert_submit_rejected(
-			self._stock_entry(
-				"Material Issue", warehouse, 10, posting_time="09:00:00"
-			)
+			self._stock_entry("Material Issue", warehouse, 10, posting_time="09:00:00")
 		)
-		self.assertAlmostEqual(
-			get_stock_balance(self.item_variant, warehouse, **self.dimensions), 35
-		)
+		self.assertAlmostEqual(get_stock_balance(self.item_variant, warehouse, **self.dimensions), 35)
 
 	def test_valuation_only_replay_ignores_current_reservation_at_historical_points(self):
 		warehouse = self._warehouse("Valuation Replay")
 		self._seed(warehouse, qty=50, posting_time="08:00:00")
-		issue = self._stock_entry(
-			"Material Issue", warehouse, 40, posting_time="09:00:00"
-		)
+		issue = self._stock_entry("Material Issue", warehouse, 40, posting_time="09:00:00")
 		issue.insert(ignore_permissions=True)
 		issue.submit()
 		self._seed(warehouse, qty=90, posting_time="10:00:00")
@@ -269,13 +253,11 @@ class TestReservationEnforcementIntegration(FrappeTestCase):
 				"warehouse": warehouse,
 				"posting_date": nowdate(),
 				"posting_time": "08:00:00",
-				"voucher_type": 'YRP Stock Valuation Adjustment',
+				"voucher_type": "YRP Stock Valuation Adjustment",
 				"voucher_no": None,
 				**self.dimensions,
 			}
 		)
 		UpdateEntriesAfter(args).run()
 
-		self.assertAlmostEqual(
-			get_stock_balance(self.item_variant, warehouse, **self.dimensions), 100
-		)
+		self.assertAlmostEqual(get_stock_balance(self.item_variant, warehouse, **self.dimensions), 100)

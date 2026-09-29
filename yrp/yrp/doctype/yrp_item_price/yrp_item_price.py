@@ -1,13 +1,13 @@
-from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
-
 import json
 
 import frappe
 from frappe import _, utils
 from frappe.model.document import Document
 from frappe.utils import cint, get_link_to_form
+
+from yrp.attribute_links import value as _attribute_value
 
 
 class YRPItemPrice(Document):
@@ -24,19 +24,19 @@ class YRPItemPrice(Document):
 		else:
 			filters.append(["supplier", "=", self.supplier])
 
-		workflow_state_field = get_active_workflow_state_field('YRP Item Price')
+		workflow_state_field = get_active_workflow_state_field("YRP Item Price")
 		if workflow_state_field:
 			filters.append([workflow_state_field, "=", "Approved"])
 
 		price_list = frappe.db.get_list(
-			'YRP Item Price',
+			"YRP Item Price",
 			filters=filters,
 			pluck="name",
 			order_by="from_date asc",
 		)
 
 		for price in price_list:
-			doc = frappe.get_doc('YRP Item Price', price)
+			doc = frappe.get_doc("YRP Item Price", price)
 			from_date = utils.get_datetime(self.from_date).date()
 			if doc.from_date == from_date:
 				frappe.throw(
@@ -59,19 +59,29 @@ class YRPItemPrice(Document):
 
 		self.set("approved_by", frappe.session.user)
 
-	def validate_attribute_values(self, qty=0, attribute=None, attribute_value=None, get_lowest_moq_price=False, get_lead_time=False):
-		if self.depends_on_attribute and (attribute is None or self.attribute != attribute or attribute_value is None):
+	def validate_attribute_values(
+		self, qty=0, attribute=None, attribute_value=None, get_lowest_moq_price=False, get_lead_time=False
+	):
+		if self.depends_on_attribute and (
+			attribute is None or self.attribute != attribute or attribute_value is None
+		):
 			return None
 		price_values = [
 			[price.moq, price.price, price.lead_time, _attribute_value(price.attribute_value)]
 			for price in self.item_price_values
 		]
-		return self.get_price_value(price_values, qty, attribute_value, get_lowest_moq_price, get_lead_time=get_lead_time)
+		return self.get_price_value(
+			price_values, qty, attribute_value, get_lowest_moq_price, get_lead_time=get_lead_time
+		)
 
-	def get_price_value(self, item_price_values, qty=0, attribute_value=None, get_lowest_moq_price=False, get_lead_time=False):
+	def get_price_value(
+		self, item_price_values, qty=0, attribute_value=None, get_lowest_moq_price=False, get_lead_time=False
+	):
 		"""Get Item Price Value for the qty and attribute value (MOQ-based pricing)."""
 		attribute_value = _normalize_attribute_value(attribute_value)
-		item_price_values = [p for p in item_price_values if _normalize_attribute_value(p[3]) == attribute_value]
+		item_price_values = [
+			p for p in item_price_values if _normalize_attribute_value(p[3]) == attribute_value
+		]
 		if not item_price_values:
 			return None
 
@@ -118,20 +128,22 @@ def get_active_price(item, supplier=None, raise_error=True):
 		"from_date": ["<=", utils.nowdate()],
 		"docstatus": 1,
 	}
-	workflow_state_field = get_active_workflow_state_field('YRP Item Price')
+	workflow_state_field = get_active_workflow_state_field("YRP Item Price")
 	if workflow_state_field:
 		filters[workflow_state_field] = "Approved"
 	if supplier:
 		filters["supplier"] = supplier
 
-	lst = frappe.db.get_list('YRP Item Price', filters={**filters, "to_date": ["is", "not set"]}) + \
-	      frappe.db.get_list('YRP Item Price', filters={**filters, "to_date": [">=", utils.nowdate()]})
+	lst = frappe.db.get_list(
+		"YRP Item Price", filters={**filters, "to_date": ["is", "not set"]}
+	) + frappe.db.get_list("YRP Item Price", filters={**filters, "to_date": [">=", utils.nowdate()]})
 
 	# Fallback: try without supplier filter
 	if not lst and supplier:
 		del filters["supplier"]
-		lst = frappe.db.get_list('YRP Item Price', filters={**filters, "to_date": ["is", "not set"]}) + \
-		      frappe.db.get_list('YRP Item Price', filters={**filters, "to_date": [">=", utils.nowdate()]})
+		lst = frappe.db.get_list(
+			"YRP Item Price", filters={**filters, "to_date": ["is", "not set"]}
+		) + frappe.db.get_list("YRP Item Price", filters={**filters, "to_date": [">=", utils.nowdate()]})
 
 	if not lst:
 		if raise_error:
@@ -143,7 +155,7 @@ def get_active_price(item, supplier=None, raise_error=True):
 			frappe.throw(_("Multiple Price Lists Found"))
 		return None
 
-	return frappe.get_doc('YRP Item Price', lst[0].name)
+	return frappe.get_doc("YRP Item Price", lst[0].name)
 
 
 def get_all_active_price(item=None, supplier=None):
@@ -155,7 +167,7 @@ def get_all_active_price(item=None, supplier=None):
 		"from_date": ["<=", utils.nowdate()],
 		"docstatus": 1,
 	}
-	workflow_state_field = get_active_workflow_state_field('YRP Item Price')
+	workflow_state_field = get_active_workflow_state_field("YRP Item Price")
 	if workflow_state_field:
 		filters[workflow_state_field] = "Approved"
 	if item:
@@ -163,7 +175,7 @@ def get_all_active_price(item=None, supplier=None):
 	if supplier:
 		filters["supplier"] = supplier
 
-	return frappe.db.get_list('YRP Item Price', filters=filters)
+	return frappe.db.get_list("YRP Item Price", filters=filters)
 
 
 @frappe.whitelist()
@@ -209,14 +221,14 @@ def get_item_variant_price(variant, variant_uom=None):
 	"""Get price for an Item Variant with optional UOM conversion."""
 	from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
-	variant_doc = frappe.get_doc('Item', variant)
+	variant_doc = frappe.get_doc("Item", variant)
 	parent_item = get_parent_item(variant)
 	price_list = get_all_active_price(item=parent_item)
 	rate = None
 	uom = None
 
 	for price in price_list:
-		item_price = frappe.get_doc('YRP Item Price', price.name)
+		item_price = frappe.get_doc("YRP Item Price", price.name)
 		uom = item_price.uom
 		if item_price.depends_on_attribute:
 			attribute_value = next(
@@ -245,7 +257,7 @@ def get_item_variant_price(variant, variant_uom=None):
 		return rate
 
 	# UOM conversion using Item's conversion details
-	item = frappe.get_doc('Item', parent_item)
+	item = frappe.get_doc("Item", parent_item)
 	for row in item.uoms:
 		if row.uom == variant_uom:
 			return rate * row.conversion_factor
@@ -259,11 +271,11 @@ def update_all_expired_item_price():
 		["to_date", "is", "set"],
 		["docstatus", "=", 1],
 	]
-	price_list = frappe.db.get_all('YRP Item Price', filters=filters, pluck="name")
-	workflow_exists = bool(get_active_workflow_state_field('YRP Item Price'))
+	price_list = frappe.db.get_all("YRP Item Price", filters=filters, pluck="name")
+	workflow_exists = bool(get_active_workflow_state_field("YRP Item Price"))
 
 	for price in price_list:
-		doc = frappe.get_doc('YRP Item Price', price)
+		doc = frappe.get_doc("YRP Item Price", price)
 		if workflow_exists:
 			_cancel_item_price_via_workflow(doc)
 		else:
@@ -276,13 +288,15 @@ def update_all_expired_item_price():
 
 def _cancel_item_price_via_workflow(doc):
 	"""Cancel an Item Price through the active workflow."""
-	workflow_name = frappe.db.get_value("Workflow", {"document_type": 'YRP Item Price', "is_active": 1}, "name")
+	workflow_name = frappe.db.get_value(
+		"Workflow", {"document_type": "YRP Item Price", "is_active": 1}, "name"
+	)
 	if not workflow_name:
 		doc.cancel()
 		return
 
 	workflow = frappe.get_doc("Workflow", workflow_name)
-	if not frappe.get_meta('YRP Item Price').get_field(workflow.workflow_state_field):
+	if not frappe.get_meta("YRP Item Price").get_field(workflow.workflow_state_field):
 		doc.cancel()
 		return
 
@@ -298,7 +312,7 @@ def _cancel_item_price_via_workflow(doc):
 	for transition in workflow.transitions:
 		if transition.state == current_state and transition.next_state in cancel_states:
 			doc.set(workflow.workflow_state_field, transition.next_state)
-			next_state = [d for d in workflow.states if d.state == transition.next_state][0]
+			next_state = next(d for d in workflow.states if d.state == transition.next_state)
 			if next_state.update_field:
 				doc.set(next_state.update_field, next_state.update_value)
 			doc.cancel()
@@ -309,15 +323,11 @@ def _cancel_item_price_via_workflow(doc):
 
 
 def get_active_workflow_state_field(doctype):
-	workflow_name = frappe.db.get_value(
-		"Workflow", {"document_type": doctype, "is_active": 1}, "name"
-	)
+	workflow_name = frappe.db.get_value("Workflow", {"document_type": doctype, "is_active": 1}, "name")
 	if not workflow_name:
 		return None
 
-	workflow_state_field = frappe.db.get_value(
-		"Workflow", workflow_name, "workflow_state_field"
-	)
+	workflow_state_field = frappe.db.get_value("Workflow", workflow_name, "workflow_state_field")
 	if workflow_state_field and frappe.get_meta(doctype).get_field(workflow_state_field):
 		return workflow_state_field
 	return None

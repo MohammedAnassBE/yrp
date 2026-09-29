@@ -73,9 +73,7 @@ class TestERPNextStockBoundary(UnitTestCase):
 			dependent_attribute=None,
 			dependent_attribute_mapping=None,
 			item_tuple_attribute=None,
-			attributes=[
-				frappe._dict(attribute="Size", attribute_value=None, mapping="MAP-1")
-			],
+			attributes=[frappe._dict(attribute="Size", attribute_value=None, mapping="MAP-1")],
 		)
 		current = frappe._dict(before.copy())
 		current.name = "ITEM-TEMPLATE"
@@ -100,9 +98,7 @@ class TestERPNextStockBoundary(UnitTestCase):
 			dependent_attribute=None,
 			dependent_attribute_mapping=None,
 			item_tuple_attribute="(('Size', 'S'),)",
-			attributes=[
-				frappe._dict(attribute="Size", attribute_value="S", mapping=None)
-			],
+			attributes=[frappe._dict(attribute="Size", attribute_value="S", mapping=None)],
 		)
 		current = frappe._dict(before.copy())
 		current.name = "ITEM-S"

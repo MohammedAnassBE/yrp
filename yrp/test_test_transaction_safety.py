@@ -32,6 +32,5 @@ class TestTestTransactionSafety(UnitTestCase):
 		self.assertEqual(
 			offenders,
 			[],
-			"Test code must rely on Frappe's rollback, not commit shared site data: "
-			+ ", ".join(offenders),
+			"Test code must rely on Frappe's rollback, not commit shared site data: " + ", ".join(offenders),
 		)

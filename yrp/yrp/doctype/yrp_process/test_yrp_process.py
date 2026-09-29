@@ -10,8 +10,8 @@ IGNORE_TEST_RECORD_DEPENDENCIES = []
 
 def _ensure_item_attribute(name):
 	"""Return an Item Attribute name, creating it if absent (rolled back per test)."""
-	if not frappe.db.exists('Item Attribute', name):
-		frappe.get_doc({"doctype": 'Item Attribute', "attribute_name": name}).insert()
+	if not frappe.db.exists("Item Attribute", name):
+		frappe.get_doc({"doctype": "Item Attribute", "attribute_name": name}).insert()
 	return name
 
 
@@ -20,7 +20,7 @@ class IntegrationTestProcess(IntegrationTestCase):
 		attr = _ensure_item_attribute("_Test PVC Colour")
 		proc = frappe.get_doc(
 			{
-				"doctype": 'YRP Process',
+				"doctype": "YRP Process",
 				"process_name": "_Test PVC Smoke Process",
 				"value_change_attributes": [{"attribute": attr}],
 			}
@@ -30,7 +30,7 @@ class IntegrationTestProcess(IntegrationTestCase):
 		self.assertEqual(proc.value_change_attributes[0].attribute, attr)
 
 		# True round-trip: re-fetch from the DB and confirm the child row persisted.
-		reloaded = frappe.get_doc('YRP Process', proc.name)
+		reloaded = frappe.get_doc("YRP Process", proc.name)
 		self.assertEqual(len(reloaded.value_change_attributes), 1)
 		self.assertEqual(reloaded.value_change_attributes[0].attribute, attr)
 
@@ -38,7 +38,7 @@ class IntegrationTestProcess(IntegrationTestCase):
 		attr = _ensure_item_attribute("_Test PVC Colour")
 		proc = frappe.get_doc(
 			{
-				"doctype": 'YRP Process',
+				"doctype": "YRP Process",
 				"process_name": "_Test PVC Dup Process",
 				"value_change_attributes": [{"attribute": attr}, {"attribute": attr}],
 			}
@@ -50,7 +50,7 @@ class IntegrationTestProcess(IntegrationTestCase):
 		attr = _ensure_item_attribute("_Test PVC Colour")
 		proc = frappe.get_doc(
 			{
-				"doctype": 'YRP Process',
+				"doctype": "YRP Process",
 				"process_name": "_Test PVC Group Process",
 				"is_group": 1,
 				"value_change_attributes": [{"attribute": attr}],

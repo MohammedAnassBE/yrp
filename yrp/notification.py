@@ -28,7 +28,7 @@ def _get_doc_and_supplier(doctype, docname, supplier_key):
 	supplier_name = doc.get(supplier_key)
 	if not supplier_name:
 		frappe.throw(_("{0} {1} has no supplier to notify").format(_(doctype), docname))
-	return doc, frappe.get_doc('Supplier', supplier_name)
+	return doc, frappe.get_doc("Supplier", supplier_name)
 
 
 @frappe.whitelist()
@@ -52,8 +52,12 @@ def _extract_numbers(contact_name, primary_mobile):
 	"""Every distinct contact number, primary first. A single Contact Phone
 	value may itself hold more than one number (comma/semicolon separated
 	dirty data); split those too. Order is preserved, duplicates dropped."""
-	rows = frappe.get_all("Contact Phone", filters={"parent": contact_name},
-		fields=["phone", "is_primary_mobile_no"], order_by="idx")
+	rows = frappe.get_all(
+		"Contact Phone",
+		filters={"parent": contact_name},
+		fields=["phone", "is_primary_mobile_no"],
+		order_by="idx",
+	)
 	seen, ordered = set(), []
 
 	def _add(num):
@@ -77,12 +81,12 @@ def get_sms_context(doctype: str, docname: str, supplier_key: str = "supplier"):
 	and every enabled SMS template for the doctype, rendered for this doc.
 	No event filter — manual sends are per-doctype (spec v1.1)."""
 	frappe.has_permission(doctype, ptype="read", doc=docname, throw=True)
-	doc, supplier = _get_doc_and_supplier(doctype, docname, supplier_key)
+	_doc, supplier = _get_doc_and_supplier(doctype, docname, supplier_key)
 	details = _get_recipient_details(supplier)
 	numbers = _extract_numbers(details["contact"], details["mobile"])
 
 	template_names = frappe.get_all(
-		'YRP Notification Template',
+		"YRP Notification Template",
 		filters={"document_type": doctype, "channel": "SMS", "enabled": 1},
 		pluck="name",
 		order_by="name",
@@ -92,7 +96,7 @@ def get_sms_context(doctype: str, docname: str, supplier_key: str = "supplier"):
 
 	templates = []
 	for name in template_names:
-		template = frappe.get_doc('YRP Notification Template', name)
+		template = frappe.get_doc("YRP Notification Template", name)
 		templates.append({"name": name, "message": template.get_message(docname=docname)})
 
 	return {
@@ -107,8 +111,12 @@ def get_sms_context(doctype: str, docname: str, supplier_key: str = "supplier"):
 
 @frappe.whitelist()
 def send_sms_notification(
-	doctype: str, docname: str, template: str, message: str | None = None,
-	mobile_no: str | None = None, supplier_key: str = "supplier",
+	doctype: str,
+	docname: str,
+	template: str,
+	message: str | None = None,
+	mobile_no: str | None = None,
+	supplier_key: str = "supplier",
 ):
 	"""Send one SMS template to the doc's supplier. A user-edited `message`
 	overrides the rendered template text; the template's SMS Parameter rows
@@ -116,11 +124,11 @@ def send_sms_notification(
 	numbers to send to (falls back to the contact's primary mobile). Every
 	attempt — success or failure — is written to SMS Notification Log."""
 	frappe.has_permission(doctype, ptype="write", doc=docname, throw=True)
-	doc, supplier = _get_doc_and_supplier(doctype, docname, supplier_key)
+	_doc, supplier = _get_doc_and_supplier(doctype, docname, supplier_key)
 	details = _get_recipient_details(supplier)
 	number = (mobile_no or details["mobile"]).strip()
 
-	template_doc = frappe.get_doc('YRP Notification Template', template)
+	template_doc = frappe.get_doc("YRP Notification Template", template)
 	if not template_doc.enabled or template_doc.channel != "SMS" or template_doc.document_type != doctype:
 		frappe.throw(_("{0} is not an enabled SMS template for {1}").format(template, doctype))
 
@@ -133,12 +141,22 @@ def send_sms_notification(
 	]
 
 	from yrp.sms import deliver_sms
+
 	result = deliver_sms(body, number, dynamic_params)
 
 	from yrp.yrp.doctype.yrp_sms_notification_log.yrp_sms_notification_log import create_sms_log
-	create_sms_log(reference_doctype=doctype, reference_name=docname, supplier=supplier.name,
-		contact=details["contact"], mobile_no=number, template=template, message=body,
-		send_path="Legacy", result=result)
+
+	create_sms_log(
+		reference_doctype=doctype,
+		reference_name=docname,
+		supplier=supplier.name,
+		contact=details["contact"],
+		mobile_no=number,
+		template=template,
+		message=body,
+		send_path="Legacy",
+		result=result,
+	)
 
 	if result["ok"]:
 		_log_communication(doctype, docname, body, number)
@@ -179,7 +197,8 @@ def get_flow_sms_context(doctype: str, docname: str, supplier_key: str = "suppli
 	numbers = _extract_numbers(details["contact"], details["mobile"])
 
 	from yrp.yrp.doctype.yrp_sms_settings.yrp_sms_settings import parse_template_variables
-	settings = frappe.get_cached_doc('YRP SMS Settings')
+
+	settings = frappe.get_cached_doc("YRP SMS Settings")
 	if not settings.enabled:
 		frappe.throw(_("YRP SMS Settings is disabled"))
 	rows = settings.get_templates_for_doctype(doctype)
@@ -192,12 +211,14 @@ def get_flow_sms_context(doctype: str, docname: str, supplier_key: str = "suppli
 			{"name": token, "value": _resolve_variable(token, doc, doctype, docname)}
 			for token in parse_template_variables(row.template_body)
 		]
-		templates.append({
-			"name": row.template_name,
-			"template_id": row.template_id,
-			"body": row.template_body,
-			"variables": variables,
-		})
+		templates.append(
+			{
+				"name": row.template_name,
+				"template_id": row.template_id,
+				"body": row.template_body,
+				"variables": variables,
+			}
+		)
 
 	return {
 		"supplier": supplier.name,
@@ -215,6 +236,7 @@ def _doc_field_options(doctype):
 	value in the Send SMS popup. Layout/table fields are excluded; `name` is
 	offered explicitly."""
 	from frappe.model import no_value_fields
+
 	options = [{"value": "name", "label": _("Name (name)")}]
 	for df in frappe.get_meta(doctype).fields:
 		if df.fieldname and df.label and df.fieldtype not in no_value_fields and df.fieldtype != "Table":
@@ -224,8 +246,12 @@ def _doc_field_options(doctype):
 
 @frappe.whitelist()
 def send_flow_sms_notification(
-	doctype: str, docname: str, template_name: str, mobile_no: str | None = None,
-	params=None, supplier_key: str = "supplier",
+	doctype: str,
+	docname: str,
+	template_name: str,
+	mobile_no: str | None = None,
+	params=None,
+	supplier_key: str = "supplier",
 ):
 	"""Send one SMS to the doc's supplier via the MSG91 Flow API, using the
 	template row named `template_name` for this doctype in YRP SMS Settings.
@@ -233,7 +259,7 @@ def send_flow_sms_notification(
 	in the popup. Every attempt is written to SMS Notification Log; a failure is
 	surfaced as a red toast, not a throw, so the Failed row persists for resend."""
 	frappe.has_permission(doctype, ptype="write", doc=docname, throw=True)
-	doc, supplier = _get_doc_and_supplier(doctype, docname, supplier_key)
+	_doc, supplier = _get_doc_and_supplier(doctype, docname, supplier_key)
 	details = _get_recipient_details(supplier)
 	number = (mobile_no or details["mobile"]).strip()
 
@@ -242,13 +268,20 @@ def send_flow_sms_notification(
 	params = params or {}
 
 	from yrp.sms import deliver_flow_sms
-	result = deliver_flow_sms(reference_doctype=doctype, mobile_no=number, params=params,
-		template_name=template_name)
+
+	result = deliver_flow_sms(
+		reference_doctype=doctype, mobile_no=number, params=params, template_name=template_name
+	)
 
 	from yrp.yrp.doctype.yrp_sms_notification_log.yrp_sms_notification_log import create_sms_log
+
 	create_sms_log(
-		reference_doctype=doctype, reference_name=docname, supplier=supplier.name,
-		contact=details["contact"], mobile_no=number, send_path="Flow",
+		reference_doctype=doctype,
+		reference_name=docname,
+		supplier=supplier.name,
+		contact=details["contact"],
+		mobile_no=number,
+		send_path="Flow",
 		template_name=result.get("template_name") or template_name,
 		template_id=result.get("template_id"),
 		message=frappe.as_json(params) if params else "",
@@ -271,41 +304,56 @@ def send_flow_sms_notification(
 
 def _log_communication(doctype, docname, message, number):
 	from frappe.core.doctype.communication.email import _make as make_communication
-	make_communication(doctype=doctype, name=docname, content=message, subject="SMS",
-		sender="", recipients=number, communication_medium="SMS", send_email=False,
-		communication_type="Automated Message")
+
+	make_communication(
+		doctype=doctype,
+		name=docname,
+		content=message,
+		subject="SMS",
+		sender="",
+		recipients=number,
+		communication_medium="SMS",
+		send_email=False,
+		communication_type="Automated Message",
+	)
 
 
 @frappe.whitelist()
 def resend_sms_notification_log(log_name):
 	"""Re-send a previously logged SMS to the same number with the same
 	message, updating that same log row in place."""
-	log = frappe.get_doc('YRP SMS Notification Log', log_name)
+	log = frappe.get_doc("YRP SMS Notification Log", log_name)
 	# Guard the deleted-reference case: without this, an Administrator resend
 	# would SEND the SMS and then roll back the status update when
 	# _log_communication hits a dangling dynamic link (Communication.insert
 	# has no ignore_links). Block before any send.
 	if not frappe.db.exists(log.reference_doctype, log.reference_name):
-		frappe.throw(_("Cannot resend: {0} {1} no longer exists").format(
-			log.reference_doctype, log.reference_name))
+		frappe.throw(
+			_("Cannot resend: {0} {1} no longer exists").format(log.reference_doctype, log.reference_name)
+		)
 	frappe.has_permission(log.reference_doctype, ptype="write", doc=log.reference_name, throw=True)
 
 	is_flow = log.send_path == "Flow"
 	if is_flow:
 		from yrp.sms import deliver_flow_sms
+
 		params = frappe.parse_json(log.message) if log.message else {}
 		result = deliver_flow_sms(
-			reference_doctype=log.reference_doctype, mobile_no=log.mobile_no, params=params,
-			template_name=log.template_name)
+			reference_doctype=log.reference_doctype,
+			mobile_no=log.mobile_no,
+			params=params,
+			template_name=log.template_name,
+		)
 	else:
 		dynamic_params = []
 		if log.template:
-			template_doc = frappe.get_doc('YRP Notification Template', log.template)
+			template_doc = frappe.get_doc("YRP Notification Template", log.template)
 			dynamic_params = [
 				{"parameter": p.parameter, "value": p.value, "header": p.header}
 				for p in (template_doc.parameters or [])
 			]
 		from yrp.sms import deliver_sms
+
 		result = deliver_sms(log.message, log.mobile_no, dynamic_params)
 
 	log.status = "Sent" if result["ok"] else "Failed"

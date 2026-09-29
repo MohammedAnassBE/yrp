@@ -1,11 +1,12 @@
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 import json
 from collections import defaultdict
 
 import frappe
 from frappe import _
 from frappe.utils import add_days, flt, money_in_words, nowdate, today
+
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 
 
 def _call_super(instance, method_name, *args, **kwargs):
@@ -24,7 +25,8 @@ def get_item_group_index(items, item_details):
 		item_details_attr.sort()
 		if not (
 			len(item_attr) == len(item_details_attr)
-			and len(item_attr) == sum([1 for i, j in zip(item_attr, item_details_attr) if i == j])
+			and len(item_attr)
+			== sum([1 for i, j in zip(item_attr, item_details_attr, strict=False) if i == j])
 		):
 			continue
 		if not item.get("primary_attribute") == item_details.get("primary_attribute"):
@@ -71,7 +73,7 @@ class YRPPurchaseOrderMixin:
 
 		self.set_onload(
 			"item_details",
-			group_items_for_ui(self.get("items") or [], 'Purchase Order'),
+			group_items_for_ui(self.get("items") or [], "Purchase Order"),
 		)
 
 	def before_validate(self):
@@ -98,14 +100,9 @@ class YRPPurchaseOrderMixin:
 		# price-list model. YRP-managed orders intentionally use YRP Item Price
 		# instead, so preserve those authoritative row values across the native
 		# validation pass while still retaining all standard link/UOM/date checks.
-		pricing = [
-			(flt(row.rate), flt(row.discount_percentage), row.tax)
-			for row in self.get("items") or []
-		]
+		pricing = [(flt(row.rate), flt(row.discount_percentage), row.tax) for row in self.get("items") or []]
 		_call_super(self, "validate")
-		for row, (rate, discount_percentage, tax) in zip(
-			self.get("items") or [], pricing, strict=False
-		):
+		for row, (rate, discount_percentage, tax) in zip(self.get("items") or [], pricing, strict=False):
 			row.rate = rate
 			row.discount_percentage = discount_percentage
 			row.tax = tax
@@ -177,7 +174,7 @@ class YRPPurchaseOrderMixin:
 			return
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
-		rows = ungroup_items_from_ui(self.item_details, 'Purchase Order')
+		rows = ungroup_items_from_ui(self.item_details, "Purchase Order")
 		self.set("items", [])
 		for row in rows:
 			self.append("items", row)
@@ -187,11 +184,7 @@ class YRPPurchaseOrderMixin:
 			return
 		self.set(
 			"items",
-			[
-				row
-				for row in self.get("items") or []
-				if row.item_code or flt(row.qty) or row.uom
-			],
+			[row for row in self.get("items") or [] if row.item_code or flt(row.qty) or row.uom],
 		)
 
 	def set_missing_values(self, for_validate=False):
@@ -221,10 +214,14 @@ class YRPPurchaseOrderMixin:
 			self.shipping_address,
 		)
 
-		if not self.supplier or not self.contact_person or not _is_party_link(
-			"Contact",
-			self.contact_person,
-			self.supplier,
+		if (
+			not self.supplier
+			or not self.contact_person
+			or not _is_party_link(
+				"Contact",
+				self.contact_person,
+				self.supplier,
+			)
 		):
 			self.contact_person = None
 			self.contact_display = None
@@ -239,16 +236,16 @@ class YRPPurchaseOrderMixin:
 		if not self.default_delivery_location:
 			return
 		is_company_location = frappe.db.get_value(
-			'Supplier',
+			"Supplier",
 			self.default_delivery_location,
 			"is_company_location",
 		)
 		expected = 0 if self.deliver_to_supplier else 1
 		if int(is_company_location or 0) != expected:
-			destination_type = _("an external supplier") if self.deliver_to_supplier else _("a company location")
-			frappe.throw(
-				_("Default Delivery Location must be {0}.").format(destination_type)
+			destination_type = (
+				_("an external supplier") if self.deliver_to_supplier else _("a company location")
 			)
+			frappe.throw(_("Default Delivery Location must be {0}.").format(destination_type))
 
 	def set_default_terms(self):
 		# Prefill Terms and Condition once, on creation, only when empty — so the
@@ -276,7 +273,7 @@ class YRPPurchaseOrderMixin:
 			self.calculate_row_amount(row)
 
 	def is_price_validation_enabled(self):
-		return bool(attribute_db.get_single_value('YRP Settings', "enable_price_validation"))
+		return bool(attribute_db.get_single_value("YRP Settings", "enable_price_validation"))
 
 	def apply_item_prices(self, strict=False, warn_on_missing=False):
 		if not self.supplier or not self.get("items"):
@@ -313,9 +310,7 @@ class YRPPurchaseOrderMixin:
 			if flt(row.rate) < 0:
 				frappe.throw(_("Row {0}: Rate cannot be negative.").format(row.idx))
 			if flt(row.discount_percentage) < 0 or flt(row.discount_percentage) > 100:
-				frappe.throw(
-					_("Row {0}: Discount Percentage must be between 0 and 100.").format(row.idx)
-				)
+				frappe.throw(_("Row {0}: Discount Percentage must be between 0 and 100.").format(row.idx))
 
 	def initialize_pending_quantities(self, force=False):
 		for row in self.get("items") or []:
@@ -382,7 +377,8 @@ class YRPPurchaseOrderMixin:
 		elif not cancel and self.docstatus != 2:
 			self.yrp_fulfillment_status = self.get_fulfillment_status()
 			self.per_received = (
-				100 * sum(flt(row.received_qty) for row in self.get("items") or [])
+				100
+				* sum(flt(row.received_qty) for row in self.get("items") or [])
 				/ max(sum(flt(row.qty) for row in self.get("items") or []), 1)
 			)
 			self.status = "Completed" if self.yrp_fulfillment_status == "Received" else "To Receive"
@@ -403,8 +399,7 @@ class YRPPurchaseOrderMixin:
 		pending_qty = sum(flt(row.pending_quantity) for row in self.get("items") or [])
 
 		if self.get("items") and all(
-			flt(row.cancelled_quantity) >= flt(row.qty) - 0.0001
-			for row in self.get("items") or []
+			flt(row.cancelled_quantity) >= flt(row.qty) - 0.0001 for row in self.get("items") or []
 		):
 			return "Cancelled"
 		if cancelled_qty > 0:
@@ -431,7 +426,7 @@ def _is_party_link(reference_doctype, reference_name, supplier):
 			{
 				"parenttype": reference_doctype,
 				"parent": reference_name,
-				"link_doctype": 'Supplier',
+				"link_doctype": "Supplier",
 				"link_name": supplier,
 			},
 		)
@@ -486,9 +481,7 @@ def validate_price_details(rows, supplier=None, strict=True):
 			if price is None:
 				if strict:
 					frappe.throw(
-						_("No matching price slab for {0} at quantity {1}.").format(
-							parent_item, flt(qty)
-						)
+						_("No matching price slab for {0} at quantity {1}.").format(parent_item, flt(qty))
 					)
 				warnings.append(
 					_(
@@ -512,9 +505,7 @@ def _apply_attribute_price(item_price, rows, strict=True):
 			rows_by_value[attribute_value].append(row)
 		elif strict:
 			frappe.throw(
-				_("Item Variant {0} does not have attribute {1}.").format(
-					row.item_code, item_price.attribute
-				)
+				_("Item Variant {0} does not have attribute {1}.").format(row.item_code, item_price.attribute)
 			)
 		else:
 			warnings.append(
@@ -558,7 +549,7 @@ def _get_parent_item(item_variant):
 
 
 def _get_variant_attribute_value(item_variant, attribute):
-	variant = frappe.get_doc('Item', item_variant)
+	variant = frappe.get_doc("Item", item_variant)
 	for row in variant.get("attributes") or []:
 		if row.attribute == attribute:
 			return _attribute_value(row.attribute_value)
@@ -573,7 +564,7 @@ def set_open_status(purchase_order, open_status):
 	if not open_status:
 		frappe.throw(_("Invalid open status {0}.").format(requested_open_status))
 
-	doc = frappe.get_doc('Purchase Order', purchase_order)
+	doc = frappe.get_doc("Purchase Order", purchase_order)
 	if not doc.is_yrp_managed:
 		frappe.throw(_("Purchase Order {0} is not YRP managed.").format(purchase_order))
 	if doc.docstatus != 1:
@@ -586,7 +577,7 @@ def set_open_status(purchase_order, open_status):
 
 @frappe.whitelist()
 def refresh_status(purchase_order):
-	doc = frappe.get_doc('Purchase Order', purchase_order)
+	doc = frappe.get_doc("Purchase Order", purchase_order)
 	doc.check_permission("write")
 	if not doc.is_yrp_managed:
 		frappe.throw(_("Purchase Order {0} is not YRP managed.").format(purchase_order))
@@ -607,7 +598,7 @@ def reopen_purchase_order(purchase_order):
 
 @frappe.whitelist()
 def close_or_open_purchase_orders(names, close):
-	if not frappe.has_permission('Purchase Order', "write"):
+	if not frappe.has_permission("Purchase Order", "write"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 	if isinstance(names, str):
@@ -624,7 +615,7 @@ def close_or_open_purchase_orders(names, close):
 
 def close_received_po():
 	purchase_orders = frappe.get_all(
-		'Purchase Order',
+		"Purchase Order",
 		filters=[
 			["is_yrp_managed", "=", 1],
 			["yrp_fulfillment_status", "=", "Received"],
@@ -635,7 +626,7 @@ def close_received_po():
 		pluck="name",
 	)
 	for name in purchase_orders:
-		doc = frappe.get_doc('Purchase Order', name)
+		doc = frappe.get_doc("Purchase Order", name)
 		doc.set_open_status(close=True)
 		_update_status_fields(doc)
 

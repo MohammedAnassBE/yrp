@@ -27,7 +27,9 @@ def execute():
 		LIMIT 10
 	""")
 	if conflicts:
-		frappe.throw("Conflicting dependent attribute values on Items: " + ", ".join(row[0] for row in conflicts))
+		frappe.throw(
+			"Conflicting dependent attribute values on Items: " + ", ".join(row[0] for row in conflicts)
+		)
 
 	# Missing historical attribute rows remain blank; do not guess from names.
 	# SQL updates only this derived field and preserves modified/modified_by.

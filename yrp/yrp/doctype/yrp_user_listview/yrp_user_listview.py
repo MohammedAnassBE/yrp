@@ -16,13 +16,11 @@ class YRPUserListview(Document):
 def get_user_listview(doctype_name):
 	"""Current user's saved columns for `doctype_name` (ordered by idx), or None."""
 	user = frappe.session.user
-	name = frappe.db.get_value(
-		'YRP User Listview', {"user": user, "doctype_name": doctype_name}, "name"
-	)
+	name = frappe.db.get_value("YRP User Listview", {"user": user, "doctype_name": doctype_name}, "name")
 	if not name:
 		return None
 	return frappe.get_all(
-		'YRP User Listview Field',
+		"YRP User Listview Field",
 		filters={"parent": name},
 		fields=["fieldname", "fieldtype", "label", "enabled"],
 		order_by="idx asc",
@@ -45,13 +43,11 @@ def save_user_listview(doctype_name, columns):
 	labels = {df.fieldname: (df.label or df.fieldname) for df in meta.fields}
 	types = {df.fieldname: df.fieldtype for df in meta.fields}
 
-	name = frappe.db.get_value(
-		'YRP User Listview', {"user": user, "doctype_name": doctype_name}, "name"
-	)
+	name = frappe.db.get_value("YRP User Listview", {"user": user, "doctype_name": doctype_name}, "name")
 	if name:
-		doc = frappe.get_doc('YRP User Listview', name)
+		doc = frappe.get_doc("YRP User Listview", name)
 	else:
-		doc = frappe.new_doc('YRP User Listview')
+		doc = frappe.new_doc("YRP User Listview")
 		doc.user = user
 		doc.doctype_name = doctype_name
 
@@ -77,11 +73,9 @@ def save_user_listview(doctype_name, columns):
 def reset_user_listview(doctype_name):
 	"""Delete the current user's saved columns for `doctype_name` (revert to default)."""
 	user = frappe.session.user
-	name = frappe.db.get_value(
-		'YRP User Listview', {"user": user, "doctype_name": doctype_name}, "name"
-	)
+	name = frappe.db.get_value("YRP User Listview", {"user": user, "doctype_name": doctype_name}, "name")
 	if name:
-		frappe.delete_doc('YRP User Listview', name, ignore_permissions=True, force=True)
+		frappe.delete_doc("YRP User Listview", name, ignore_permissions=True, force=True)
 	return "ok"
 
 

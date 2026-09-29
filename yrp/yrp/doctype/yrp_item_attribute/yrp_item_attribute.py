@@ -7,5 +7,4 @@ legacy standalone attribute-value model.
 
 from erpnext.stock.doctype.item_attribute.item_attribute import ItemAttribute
 
-
 YRPItemAttribute = ItemAttribute

@@ -136,7 +136,7 @@ function get_printer() {
             printers_list.add(p);
         }
     });
-    
+
     let selectedRes = $(`.printers-radio:checked`).data('response');
 
     if (frappe.yrp.attribute_value(printers_list.size) == 0) {
@@ -144,7 +144,6 @@ function get_printer() {
         return null;
     }
     else if (frappe.yrp.attribute_value(printers_list.size) > 1) {
-        console.log(printers_list)
         frappe.throw("Select only one printer");
         return null;
     }
@@ -167,11 +166,10 @@ function print_labels(frm, printer, res) {
         callback: function (r) {
             if (r.message) {
                 let config = qz.configs.create(printer);
-                qz.print(config, [r.message]).then(() => {
-                    frappe.show_alert({ message: __("Printed successfully"), indicator: 'green' });
-                }).catch((err) => {
-                    console.error(err);
-                    frappe.msgprint(__("Printing failed: {0}", [err]));
+				qz.print(config, [r.message]).then(() => {
+					frappe.show_alert({ message: __("Printed successfully"), indicator: 'green' });
+				}).catch((err) => {
+					frappe.msgprint(__("Printing failed: {0}", [err]));
                 });
             }
         }

@@ -20,9 +20,11 @@ class YRPStockReservationEntry(Document):
 			frappe.throw(_("Reserved Qty must be > 0"))
 		# closed_qty + delivered_qty must never exceed reserved_qty.
 		if flt(self.delivered_qty) + flt(self.closed_qty) > flt(self.reserved_qty) + 1e-9:
-			frappe.throw(_(
-				"delivered_qty ({0}) + closed_qty ({1}) cannot exceed reserved_qty ({2})."
-			).format(self.delivered_qty, self.closed_qty, self.reserved_qty))
+			frappe.throw(
+				_("delivered_qty ({0}) + closed_qty ({1}) cannot exceed reserved_qty ({2}).").format(
+					self.delivered_qty, self.closed_qty, self.reserved_qty
+				)
+			)
 		self.set_status()
 
 	def before_submit(self):
@@ -34,23 +36,19 @@ class YRPStockReservationEntry(Document):
 		from active SREs (excluding self), and throw if reserved_qty exceeds
 		the difference.
 		"""
-		from yrp.stock.utils import get_or_make_bin, get_sre_reserved_qty
 		from yrp.stock.dimensions import get_stock_dimensions
+		from yrp.stock.utils import get_or_make_bin, get_sre_reserved_qty
 
-		dim_filters = {
-			d["fieldname"]: self.get(d["fieldname"]) for d in get_stock_dimensions()
-		}
+		dim_filters = {d["fieldname"]: self.get(d["fieldname"]) for d in get_stock_dimensions()}
 		bin_name = get_or_make_bin(self.item_code, self.warehouse, **dim_filters)
 		# Lock the Bin row for the duration of this transaction so concurrent
 		# SRE submits serialize on the same bucket.
-		frappe.db.sql(
-			"SELECT name FROM `tabYRP Bin` WHERE name=%s FOR UPDATE", bin_name
-		)
-		actual = flt(frappe.db.get_value('YRP Bin', bin_name, "actual_qty"))
+		frappe.db.sql("SELECT name FROM `tabYRP Bin` WHERE name=%s FOR UPDATE", bin_name)
+		actual = flt(frappe.db.get_value("YRP Bin", bin_name, "actual_qty"))
 		other_reserved = get_sre_reserved_qty(
 			item_code=self.item_code,
 			warehouse=self.warehouse,
-			exclude_voucher_type='YRP Stock Reservation Entry',
+			exclude_voucher_type="YRP Stock Reservation Entry",
 			exclude_voucher_name=self.name,
 			for_update=True,
 			**dim_filters,
@@ -61,8 +59,7 @@ class YRPStockReservationEntry(Document):
 		if self.reserved_qty > available:
 			frappe.throw(
 				_(
-					"Reserved Qty {0} exceeds live available {1} "
-					"(actual {2} − reserved by others {3})."
+					"Reserved Qty {0} exceeds live available {1} (actual {2} − reserved by others {3})."
 				).format(self.reserved_qty, available, actual, other_reserved)
 			)
 
@@ -75,7 +72,7 @@ class YRPStockReservationEntry(Document):
 		self.update_reserved_stock_in_bin()
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ('YRP Stock Ledger Entry', 'YRP Repost Item Valuation')
+		self.ignore_linked_doctypes = ("YRP Stock Ledger Entry", "YRP Repost Item Valuation")
 
 	def on_cancel(self):
 		self.db_set("status", "Cancelled")
@@ -87,15 +84,14 @@ class YRPStockReservationEntry(Document):
 		from yrp.stock.utils import get_or_make_bin
 
 		dimension_values = {
-			dimension["fieldname"]: self.get(dimension["fieldname"])
-			for dimension in get_stock_dimensions()
+			dimension["fieldname"]: self.get(dimension["fieldname"]) for dimension in get_stock_dimensions()
 		}
 		bin_name = get_or_make_bin(
 			self.item_code,
 			self.warehouse,
 			**dimension_values,
 		)
-		frappe.get_doc('YRP Bin', bin_name).update_reserved_stock()
+		frappe.get_doc("YRP Bin", bin_name).update_reserved_stock()
 
 	def set_status(self):
 		if self.docstatus == 0:

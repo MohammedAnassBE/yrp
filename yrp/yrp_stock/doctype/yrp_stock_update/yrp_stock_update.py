@@ -8,8 +8,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 MAX_RATE_LOOKUP_VALUES = 200
 MAX_RATE_LOOKUP_ATTRIBUTES = 50
@@ -19,15 +19,15 @@ class YRPStockUpdate(Document):
 	def onload(self):
 		from yrp.stock.save_stock_items import group_items_for_ui
 
-		grouped = group_items_for_ui(self.get("stock_update_details") or [], 'YRP Stock Update')
+		grouped = group_items_for_ui(self.get("stock_update_details") or [], "YRP Stock Update")
 		self.set_onload("item_details", grouped)
 
 	def before_validate(self):
-		from yrp.stock.save_stock_items import ungroup_items_from_ui
 		from yrp.stock.dimensions import apply_dimension_defaults
+		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
 		if self.get("item_details") and self._action != "submit":
-			rows = ungroup_items_from_ui(self.item_details, 'YRP Stock Update')
+			rows = ungroup_items_from_ui(self.item_details, "YRP Stock Update")
 			self.set("stock_update_details", [])
 			for r in rows:
 				self.append("stock_update_details", r)
@@ -37,23 +37,21 @@ class YRPStockUpdate(Document):
 	def set_rate_from_last_sle(self):
 		"""Auto-fill rate from last uncancelled SLE for each item, scoped
 		to (warehouse, valuation_dims) bucket (Gap #17)."""
-		from yrp.stock.utils import get_last_sle_rate
 		from yrp.stock.dimensions import get_dimension_fieldnames
+		from yrp.stock.utils import get_last_sle_rate
 
 		dim_fields = get_dimension_fieldnames()
 		for row in self.stock_update_details:
 			dim_filters = {fn: row.get(fn) for fn in dim_fields}
-			rate, _matched = get_last_sle_rate(
-				row.item_variant, warehouse=self.warehouse, **dim_filters
-			)
+			rate, _matched = get_last_sle_rate(row.item_variant, warehouse=self.warehouse, **dim_filters)
 			row.rate = flt(rate)
 
 	def validate(self):
 		if not self.stock_update_details:
 			frappe.throw(_("At least one item is required"))
+		from yrp.stock.dimensions import get_stock_dimensions
 		from yrp.stock.uom import apply_item_uom
 		from yrp.stock.utils import get_stock_balance
-		from yrp.stock.dimensions import get_stock_dimensions
 
 		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
 		for row in self.stock_update_details:
@@ -74,7 +72,7 @@ class YRPStockUpdate(Document):
 				available = get_available_stock(
 					row.item_variant,
 					self.warehouse,
-					exclude_voucher_type='YRP Stock Update',
+					exclude_voucher_type="YRP Stock Update",
 					exclude_voucher_name=self.name,
 					**dim_filters,
 				)
@@ -82,10 +80,7 @@ class YRPStockUpdate(Document):
 
 				parent_item = get_parent_item(row.item_variant)
 				item_allows_neg = bool(
-					parent_item
-					and frappe.get_cached_value(
-						'Item', parent_item, "allow_negative_stock"
-					)
+					parent_item and frappe.get_cached_value("Item", parent_item, "allow_negative_stock")
 				)
 				reserved = actual - available
 				if not item_allows_neg and row.stock_qty > actual:
@@ -136,13 +131,15 @@ class YRPStockUpdate(Document):
 
 	def on_submit(self):
 		from yrp.stock.stock_ledger import make_sl_entries
+
 		make_sl_entries(self._build_sl_entries())
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ('YRP Stock Ledger Entry', 'YRP Repost Item Valuation')
+		self.ignore_linked_doctypes = ("YRP Stock Ledger Entry", "YRP Repost Item Valuation")
 
 	def on_cancel(self):
 		from yrp.stock.stock_ledger import make_sl_entries
+
 		make_sl_entries(self._build_sl_entries(cancel=True), cancel=True)
 
 	def _build_sl_entries(self, cancel=False):
@@ -176,7 +173,7 @@ class YRPStockUpdate(Document):
 				"item": row.item_variant,
 				"warehouse": self.warehouse,
 				"uom": row.uom,
-				"voucher_type": 'YRP Stock Update',
+				"voucher_type": "YRP Stock Update",
 				"voucher_no": self.name,
 				"voucher_detail_no": row.name,
 				"posting_date": self.posting_date,
@@ -213,13 +210,13 @@ def get_stock_update_rates(
 	from yrp.stock.utils import get_last_sle_rate
 	from yrp.yrp.doctype.yrp_item.yrp_item import get_variant
 
-	frappe.has_permission('YRP Stock Update', "create", throw=True)
+	frappe.has_permission("YRP Stock Update", "create", throw=True)
 	if not isinstance(item, str) or not item or len(item) > 140:
 		frappe.throw(_("Select an Item before fetching its valuation rate."))
 	if not isinstance(warehouse, str) or not warehouse or len(warehouse) > 140:
 		frappe.throw(_("Set Warehouse before fetching an item's valuation rate."))
-	frappe.has_permission('Item', "read", doc=item, throw=True)
-	frappe.has_permission('Warehouse', "read", doc=warehouse, throw=True)
+	frappe.has_permission("Item", "read", doc=item, throw=True)
+	frappe.has_permission("Warehouse", "read", doc=warehouse, throw=True)
 
 	attributes = _parse_json_value(attributes, {})
 	value_keys = _parse_json_value(value_keys, ["default"])
@@ -228,49 +225,29 @@ def get_stock_update_rates(
 		frappe.throw(_("Invalid Stock Update item details."))
 	if not isinstance(value_keys, list):
 		frappe.throw(_("Invalid Stock Update value list."))
-	if (
-		len(attributes) > MAX_RATE_LOOKUP_ATTRIBUTES
-		or len(dimensions) > MAX_RATE_LOOKUP_ATTRIBUTES
-	):
+	if len(attributes) > MAX_RATE_LOOKUP_ATTRIBUTES or len(dimensions) > MAX_RATE_LOOKUP_ATTRIBUTES:
 		frappe.throw(_("Too many Item Attributes were supplied."))
 	if len(value_keys) > MAX_RATE_LOOKUP_VALUES:
 		frappe.throw(
-			_("A maximum of {0} valuation rates can be fetched at once.").format(
-				MAX_RATE_LOOKUP_VALUES
-			)
+			_("A maximum of {0} valuation rates can be fetched at once.").format(MAX_RATE_LOOKUP_VALUES)
 		)
 	if any(
-		not isinstance(value_key, str | int | float) or len(str(value_key)) > 140
-		for value_key in value_keys
+		not isinstance(value_key, str | int | float) or len(str(value_key)) > 140 for value_key in value_keys
 	):
 		frappe.throw(_("Invalid Stock Update attribute value."))
-	if primary_attribute and (
-		not isinstance(primary_attribute, str) or len(primary_attribute) > 140
-	):
+	if primary_attribute and (not isinstance(primary_attribute, str) or len(primary_attribute) > 140):
 		frappe.throw(_("Invalid Stock Update primary attribute."))
 	if any(
 		not isinstance(attribute, str)
 		or len(attribute) > 140
-		or (
-			value not in (None, "")
-			and (
-				not isinstance(value, str | int | float)
-				or len(str(value)) > 140
-			)
-		)
+		or (value not in (None, "") and (not isinstance(value, str | int | float) or len(str(value)) > 140))
 		for attribute, value in attributes.items()
 	):
 		frappe.throw(_("Invalid Stock Update Item Attributes."))
 	if any(
 		not isinstance(fieldname, str)
 		or len(fieldname) > 140
-		or (
-			value not in (None, "")
-			and (
-				not isinstance(value, str | int | float)
-				or len(str(value)) > 140
-			)
-		)
+		or (value not in (None, "") and (not isinstance(value, str | int | float) or len(str(value)) > 140))
 		for fieldname, value in dimensions.items()
 	):
 		frappe.throw(_("Invalid Stock Update dimensions."))
@@ -282,9 +259,7 @@ def get_stock_update_rates(
 		if dimensions.get(fieldname) not in (None, "")
 	}
 	base_attributes = {
-		str(attribute): value
-		for attribute, value in attributes.items()
-		if value not in (None, "")
+		str(attribute): value for attribute, value in attributes.items() if value not in (None, "")
 	}
 	rates = {}
 	for value_key in value_keys:

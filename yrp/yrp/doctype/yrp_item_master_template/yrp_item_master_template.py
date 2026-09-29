@@ -4,12 +4,12 @@ Shares the same attribute/mapping/dependent-attribute structure as Item,
 so users can create multiple Items from the same template without
 re-configuring attributes each time.
 """
-from yrp.attribute_links import value as _attribute_value
 
 import frappe
-from yrp.attribute_values import get_mapping_document
 from frappe.model.document import Document
 
+from yrp.attribute_links import value as _attribute_value
+from yrp.attribute_values import get_mapping_document
 from yrp.yrp.doctype.yrp_item.yrp_item import _create_dependent_attribute_mapping
 from yrp.yrp.doctype.yrp_item_dependent_attribute_mapping.yrp_item_dependent_attribute_mapping import (
 	get_dependent_attribute_details,
@@ -17,7 +17,6 @@ from yrp.yrp.doctype.yrp_item_dependent_attribute_mapping.yrp_item_dependent_att
 
 
 class YRPItemMasterTemplate(Document):
-
 	def onload(self):
 		"""Load attribute list and dependent attribute details into __onload."""
 		self._load_attribute_list()
@@ -27,7 +26,7 @@ class YRPItemMasterTemplate(Document):
 		"""Load each attribute's mapping values into __onload.attr_list."""
 		attribute_list = []
 		for attribute in self.attributes:
-			attribute_doc = frappe.get_doc('Item Attribute', attribute.attribute)
+			attribute_doc = frappe.get_doc("Item Attribute", attribute.attribute)
 			if attribute_doc.numeric_values:
 				continue
 
@@ -36,13 +35,15 @@ class YRPItemMasterTemplate(Document):
 				mapping_doc = get_mapping_document(attribute.mapping)
 				mapped_values = mapping_doc.values
 
-			attribute_list.append({
-				"name": attribute.name,
-				"attr_name": attribute.attribute,
-				"attr_values_link": attribute.mapping,
-				"attr_values": mapped_values,
-				"doctype": 'YRP Item Item Attribute Mapping',
-			})
+			attribute_list.append(
+				{
+					"name": attribute.name,
+					"attr_name": attribute.attribute,
+					"attr_values_link": attribute.mapping,
+					"attr_values": mapped_values,
+					"doctype": "YRP Item Item Attribute Mapping",
+				}
+			)
 
 		self.set_onload("attr_list", attribute_list)
 
@@ -62,7 +63,7 @@ class YRPItemMasterTemplate(Document):
 
 	def _validate_default_uom(self):
 		"""Ensure default UOM is not a secondary-only UOM."""
-		secondary_only = frappe.get_value('UOM', self.default_unit_of_measure, "secondary_only")
+		secondary_only = frappe.get_value("UOM", self.default_unit_of_measure, "secondary_only")
 		if secondary_only:
 			frappe.throw(f"{self.default_unit_of_measure} can only be used as Secondary UOM")
 
@@ -87,7 +88,9 @@ class YRPItemMasterTemplate(Document):
 				attribute.mapping = copy.name
 
 		if self.dependent_attribute and self.dependent_attribute_mapping:
-			original = frappe.get_doc('YRP Item Dependent Attribute Mapping', self.dependent_attribute_mapping)
+			original = frappe.get_doc(
+				"YRP Item Dependent Attribute Mapping", self.dependent_attribute_mapping
+			)
 			copy = frappe.copy_doc(original)
 			copy.save()
 			self.dependent_attribute_mapping = copy.name
@@ -100,10 +103,10 @@ class YRPItemMasterTemplate(Document):
 			# Guard with falsiness, not `is None`: the /web SPA's addChildRow()
 			# initialises new attribute rows with mapping="" (empty string, not
 			# None), which `is None` lets through — the empty mapping then reaches
-		# validate()/get_doc("YRP Item Item Attribute Mapping", "") and raises
+			# validate()/get_doc("YRP Item Item Attribute Mapping", "") and raises
 			# DoesNotExistError. `not attribute.mapping` auto-creates for "" too.
 			if not attribute.mapping:
-				mapping = frappe.new_doc('YRP Item Item Attribute Mapping')
+				mapping = frappe.new_doc("YRP Item Item Attribute Mapping")
 				mapping.attribute_name = attribute.attribute
 				mapping.save()
 				attribute.mapping = mapping.name
@@ -112,7 +115,7 @@ class YRPItemMasterTemplate(Document):
 		"""Validate dependent attribute setup."""
 		if not self.dependent_attribute:
 			if self.dependent_attribute_mapping:
-				frappe.delete_doc('YRP Item Dependent Attribute Mapping', self.dependent_attribute_mapping)
+				frappe.delete_doc("YRP Item Dependent Attribute Mapping", self.dependent_attribute_mapping)
 				self.dependent_attribute_mapping = None
 			return
 
@@ -144,9 +147,9 @@ class YRPItemMasterTemplate(Document):
 @frappe.whitelist()
 def create_item_from_template(template_name, item_name, item_group):
 	"""Create a new Item from a template, copying all attributes and mappings."""
-	template = frappe.get_doc('YRP Item Master Template', template_name)
+	template = frappe.get_doc("YRP Item Master Template", template_name)
 
-	item = frappe.new_doc('Item')
+	item = frappe.new_doc("Item")
 	item.item_code = item_name
 	item.item_name = item_name
 	item.item_group = item_group
@@ -158,22 +161,31 @@ def create_item_from_template(template_name, item_name, item_group):
 	item.has_variants = bool(template.attributes)
 
 	for row in template.uom_conversion_details:
-		item.append("uoms", {
-			"uom": row.uom,
-			"conversion_factor": row.conversion_factor,
-		})
+		item.append(
+			"uoms",
+			{
+				"uom": row.uom,
+				"conversion_factor": row.conversion_factor,
+			},
+		)
 
 	for row in template.attributes:
-		item.append("attributes", {
-			"attribute": row.attribute,
-			"mapping": row.mapping,
-		})
+		item.append(
+			"attributes",
+			{
+				"attribute": row.attribute,
+				"mapping": row.mapping,
+			},
+		)
 
 	for row in template.additional_parameters:
-		item.append("additional_parameters", {
-			"additional_parameter_key": row.additional_parameter_key,
-			"additional_parameter_value": row.additional_parameter_value,
-		})
+		item.append(
+			"additional_parameters",
+			{
+				"additional_parameter_key": row.additional_parameter_key,
+				"additional_parameter_value": row.additional_parameter_value,
+			},
+		)
 
 	item.insert()
 	return item.name

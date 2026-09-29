@@ -14,15 +14,15 @@ class YRPStockReconciliation(Document):
 	def onload(self):
 		from yrp.stock.save_stock_items import group_items_for_ui
 
-		grouped = group_items_for_ui(self.get("items") or [], 'YRP Stock Reconciliation')
+		grouped = group_items_for_ui(self.get("items") or [], "YRP Stock Reconciliation")
 		self.set_onload("item_details", grouped)
 
 	def before_validate(self):
-		from yrp.stock.save_stock_items import ungroup_items_from_ui
 		from yrp.stock.dimensions import apply_dimension_defaults
+		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
 		if self.get("item_details") and self._action != "submit":
-			rows = ungroup_items_from_ui(self.item_details, 'YRP Stock Reconciliation')
+			rows = ungroup_items_from_ui(self.item_details, "YRP Stock Reconciliation")
 			self.set("items", [])
 			for r in rows:
 				# Reconciliation rows need a warehouse — auto-fill from header
@@ -58,8 +58,8 @@ class YRPStockReconciliation(Document):
 		exists in the bucket, fall back to last SLE of the item across
 		any warehouse. If still nothing and allow_zero_valuation_rate is
 		not checked, throw."""
-		from yrp.stock.utils import get_last_sle_rate
 		from yrp.stock.dimensions import get_dimension_fieldnames
+		from yrp.stock.utils import get_last_sle_rate
 
 		dim_fields = get_dimension_fieldnames()
 		for row in self.items:
@@ -67,15 +67,14 @@ class YRPStockReconciliation(Document):
 				continue
 			warehouse = row.warehouse or self.default_warehouse
 			dim_filters = {fn: row.get(fn) for fn in dim_fields}
-			last_rate, _matched = get_last_sle_rate(
-				row.item, warehouse=warehouse, **dim_filters
-			)
+			last_rate, _matched = get_last_sle_rate(row.item, warehouse=warehouse, **dim_filters)
 			if flt(last_rate) > 0:
 				row.rate = flt(last_rate)
 			elif not row.allow_zero_valuation_rate:
 				frappe.throw(
-					_("Row {0}: Rate is mandatory for {1}. "
-					  "Check 'Allow Zero Valuation Rate' if you want to proceed with zero rate."
+					_(
+						"Row {0}: Rate is mandatory for {1}. "
+						"Check 'Allow Zero Valuation Rate' if you want to proceed with zero rate."
 					).format(row.idx, row.item)
 				)
 
@@ -84,8 +83,10 @@ class YRPStockReconciliation(Document):
 			filters = {"item": row.item, "warehouse": row.warehouse, "is_cancelled": 0}
 			for fn in dim_fields:
 				filters[fn] = row.get(fn)
-			if frappe.db.exists('YRP Stock Ledger Entry', filters):
-				frappe.throw(_("Row {0}: prior Stock Ledger Entry exists; cannot post Opening Stock").format(row.idx))
+			if frappe.db.exists("YRP Stock Ledger Entry", filters):
+				frappe.throw(
+					_("Row {0}: prior Stock Ledger Entry exists; cannot post Opening Stock").format(row.idx)
+				)
 
 	def _build_sl_entries(self, cancel=False):
 		"""Build SLE dicts for submit or cancel — single source of truth.
@@ -119,7 +120,7 @@ class YRPStockReconciliation(Document):
 				"item": row.item,
 				"warehouse": row.warehouse,
 				"uom": row.uom,
-				"voucher_type": 'YRP Stock Reconciliation',
+				"voucher_type": "YRP Stock Reconciliation",
 				"voucher_no": self.name,
 				"voucher_detail_no": row.name,
 				"posting_date": self.posting_date,
@@ -140,7 +141,7 @@ class YRPStockReconciliation(Document):
 		make_sl_entries(self._build_sl_entries())
 
 	def before_cancel(self):
-		self.ignore_linked_doctypes = ('YRP Stock Ledger Entry', 'YRP Repost Item Valuation')
+		self.ignore_linked_doctypes = ("YRP Stock Ledger Entry", "YRP Repost Item Valuation")
 
 	def on_cancel(self):
 		from yrp.stock.stock_ledger import make_sl_entries

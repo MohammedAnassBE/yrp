@@ -8,7 +8,6 @@ The grouping contract is:
 `group_items_for_ui`  : flat child rows  → nested grouped JSON (for onload)
 `ungroup_items_from_ui`: nested grouped JSON → flat child rows (for before_validate)
 """
-from yrp.attribute_links import value as _attribute_value
 
 import json
 from itertools import groupby
@@ -16,6 +15,7 @@ from itertools import groupby
 import frappe
 from frappe import _
 
+from yrp.attribute_links import value as _attribute_value
 from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 
 # ---------------------------------------------------------------------------
@@ -28,98 +28,150 @@ from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 #   entry_fields: fields stored once per logical item row in the Vue editor
 # ---------------------------------------------------------------------------
 PARENT_CHILD_MAP = {
-	'YRP Stock Entry': {
+	"YRP Stock Entry": {
 		"child_table_field": "items",
-		"child_doctype": 'YRP Stock Entry Detail',
+		"child_doctype": "YRP Stock Entry Detail",
 		"item_field": "item",
 		"qty_field": "qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
-	'YRP Stock Update': {
+	"YRP Stock Update": {
 		"child_table_field": "stock_update_details",
-		"child_doctype": 'YRP Stock Update Detail',
+		"child_doctype": "YRP Stock Update Detail",
 		"item_field": "item_variant",
 		"qty_field": "update_diff_qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
-	'YRP Stock Reconciliation': {
+	"YRP Stock Reconciliation": {
 		"child_table_field": "items",
-		"child_doctype": 'YRP Stock Reconciliation Item',
+		"child_doctype": "YRP Stock Reconciliation Item",
 		"item_field": "item",
 		"qty_field": "qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
-	'YRP Work Order Deliverables': {
+	"YRP Work Order Deliverables": {
 		"child_table_field": "deliverables",
-		"child_doctype": 'YRP Work Order Deliverables',
+		"child_doctype": "YRP Work Order Deliverables",
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": ["pending_quantity", "stock_update", "valuation_rate"],
 		"entry_fields": [
-			"comments", "secondary_qty", "secondary_uom", "cancelled_quantity",
-			"additional_parameters", "set_combination", "grn_detail_no",
-			"is_calculated", "source_grn", "source_grn_item",
+			"comments",
+			"secondary_qty",
+			"secondary_uom",
+			"cancelled_quantity",
+			"additional_parameters",
+			"set_combination",
+			"grn_detail_no",
+			"is_calculated",
+			"source_grn",
+			"source_grn_item",
 		],
 	},
-	'YRP Work Order Receivables': {
+	"YRP Work Order Receivables": {
 		"child_table_field": "receivables",
-		"child_doctype": 'YRP Work Order Receivables',
+		"child_doctype": "YRP Work Order Receivables",
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": ["cost", "pending_quantity", "total_cost"],
 		"entry_fields": [
-			"comments", "secondary_qty", "secondary_uom", "process_cost",
-			"additional_parameters", "set_combination",
+			"comments",
+			"secondary_qty",
+			"secondary_uom",
+			"process_cost",
+			"additional_parameters",
+			"set_combination",
 		],
 	},
-	'YRP Delivery Challan': {
+	"YRP Delivery Challan": {
 		"child_table_field": "items",
-		"child_doctype": 'YRP Delivery Challan Item',
+		"child_doctype": "YRP Delivery Challan Item",
 		"item_field": "item_variant",
 		"qty_field": "qty",
 		"value_fields": [
-			"rate", "valuation_rate", "pending_quantity", "delivered_quantity",
-			"received_quantity", "stock_qty", "amount", "ref_doctype", "ref_docname",
-			"secondary_qty", "secondary_uom",
+			"rate",
+			"valuation_rate",
+			"pending_quantity",
+			"delivered_quantity",
+			"received_quantity",
+			"stock_qty",
+			"amount",
+			"ref_doctype",
+			"ref_docname",
+			"secondary_qty",
+			"secondary_uom",
 		],
 		"entry_fields": [
-			"stock_uom", "conversion_factor", "table_index", "row_index",
-			"set_combination", "comments",
-		],
-	},
-	'YRP Goods Received Note': {
-		"child_table_field": "items",
-		"child_doctype": 'YRP Goods Received Note Item',
-		"item_field": "item_variant",
-		"qty_field": "quantity",
-		"value_fields": [
-			"rate", "pending_quantity", "max_receivable_quantity", "stock_qty", "amount",
-			"ref_doctype", "ref_docname", "delivery_challan_item",
-			"secondary_qty", "secondary_uom",
-		],
-		"entry_fields": [
-			"stock_uom", "conversion_factor", "ref_doctype", "ref_docname",
-			"delivery_challan_item", "table_index", "row_index", "set_combination",
+			"stock_uom",
+			"conversion_factor",
+			"table_index",
+			"row_index",
+			"set_combination",
 			"comments",
 		],
 	},
-	'Purchase Order': {
+	"YRP Goods Received Note": {
 		"child_table_field": "items",
-		"child_doctype": 'Purchase Order Item',
+		"child_doctype": "YRP Goods Received Note Item",
+		"item_field": "item_variant",
+		"qty_field": "quantity",
+		"value_fields": [
+			"rate",
+			"pending_quantity",
+			"max_receivable_quantity",
+			"stock_qty",
+			"amount",
+			"ref_doctype",
+			"ref_docname",
+			"delivery_challan_item",
+			"secondary_qty",
+			"secondary_uom",
+		],
+		"entry_fields": [
+			"stock_uom",
+			"conversion_factor",
+			"ref_doctype",
+			"ref_docname",
+			"delivery_challan_item",
+			"table_index",
+			"row_index",
+			"set_combination",
+			"comments",
+		],
+	},
+	"Purchase Order": {
+		"child_table_field": "items",
+		"child_doctype": "Purchase Order Item",
 		"item_field": "item_code",
 		"qty_field": "qty",
 		"value_fields": [
-			"rate", "pending_quantity", "received_qty", "cancelled_quantity",
-			"stock_qty", "amount", "discount_amount", "tax_amount", "total_amount",
-			"secondary_qty", "secondary_uom",
+			"rate",
+			"pending_quantity",
+			"received_qty",
+			"cancelled_quantity",
+			"stock_qty",
+			"amount",
+			"discount_amount",
+			"tax_amount",
+			"total_amount",
+			"secondary_qty",
+			"secondary_uom",
 		],
 		"entry_fields": [
-			"stock_uom", "conversion_factor", "delivery_location", "schedule_date",
-			"expected_delivery_date", "additional_parameters", "tax",
-			"discount_percentage", "table_index", "row_index", "set_combination",
+			"stock_uom",
+			"conversion_factor",
+			"delivery_location",
+			"schedule_date",
+			"expected_delivery_date",
+			"additional_parameters",
+			"tax",
+			"discount_percentage",
+			"table_index",
+			"row_index",
+			"set_combination",
 			"comments",
 		],
 	},
@@ -210,6 +262,7 @@ def _copy_supported_fields(source, fieldnames, child_doctype=None):
 # Group: child rows → grouped JSON for the Vue editor
 # ====================================================================
 
+
 def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	"""Convert flat child rows into the nested grouped structure the Vue editor expects.
 
@@ -270,11 +323,7 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		rows.append(d)
 
 	dim_fields = get_dimension_fieldnames()
-	dimension_fields = [
-		fieldname
-		for fieldname in dim_fields
-		if _child_has_field(child_doctype, fieldname)
-	]
+	dimension_fields = [fieldname for fieldname in dim_fields if _child_has_field(child_doctype, fieldname)]
 
 	def _row_group_key(row):
 		value = row.get("row_index")
@@ -316,12 +365,13 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	def _get_attr_details(parent_item):
 		if parent_item not in _attr_cache:
 			from yrp.yrp.doctype.yrp_item.yrp_item import get_attribute_details
+
 			_attr_cache[parent_item] = get_attribute_details(parent_item)
 		return _attr_cache[parent_item]
 
 	def _variant_attrs(variant_doc, attr_names):
 		out = {}
-		for row in (variant_doc.attributes or []):
+		for row in variant_doc.attributes or []:
 			if row.attribute in attr_names:
 				out[row.attribute] = _attribute_value(row.attribute_value)
 		return out
@@ -343,23 +393,19 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		if not parent_item:
 			continue
 		attr_details = _get_attr_details(parent_item)
-		first_variant_doc = frappe.get_doc('Item', first[item_field])
+		first_variant_doc = frappe.get_doc("Item", first[item_field])
 
 		# Non-primary attributes for this item entry
 		all_attrs = list(attr_details.get("attributes") or [])
 		if attr_details.get("primary_attribute"):
-			all_attrs_with_primary = all_attrs + [attr_details["primary_attribute"]]
+			all_attrs_with_primary = [*all_attrs, attr_details["primary_attribute"]]
 		else:
 			all_attrs_with_primary = all_attrs
 
 		first_variant_attrs = _variant_attrs(first_variant_doc, all_attrs_with_primary)
 
 		# Collect dimension values from the first row
-		dimensions = {
-			fn: first.get(fn)
-			for fn in dim_fields
-			if _child_has_field(child_doctype, fn)
-		}
+		dimensions = {fn: first.get(fn) for fn in dim_fields if _child_has_field(child_doctype, fn)}
 
 		# Build the item entry
 		item_entry = {
@@ -381,7 +427,7 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 				item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
 			# Fill actual values from variants (multiple rows share same row_index)
 			for variant_row in variants:
-				variant_doc = frappe.get_doc('Item', variant_row[item_field])
+				variant_doc = frappe.get_doc("Item", variant_row[item_field])
 				v_attrs = _variant_attrs(variant_doc, [primary])
 				pv = v_attrs.get(primary, "")
 				if pv and pv in item_entry["values"]:
@@ -396,14 +442,16 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		# Find or create a matching attribute-group
 		grp_index = _get_item_group_index(item_details, attr_details)
 		if grp_index == -1:
-			item_details.append({
-				"attributes": attr_details.get("attributes") or [],
-				"primary_attribute": attr_details.get("primary_attribute") or "",
-				"dependent_attribute": attr_details.get("dependent_attribute") or "",
-				"dependent_attribute_details": attr_details.get("dependent_attribute_details") or {},
-				"primary_attribute_values": attr_details.get("primary_attribute_values") or [],
-				"items": [item_entry],
-			})
+			item_details.append(
+				{
+					"attributes": attr_details.get("attributes") or [],
+					"primary_attribute": attr_details.get("primary_attribute") or "",
+					"dependent_attribute": attr_details.get("dependent_attribute") or "",
+					"dependent_attribute_details": attr_details.get("dependent_attribute_details") or {},
+					"primary_attribute_values": attr_details.get("primary_attribute_values") or [],
+					"items": [item_entry],
+				}
+			)
 		else:
 			item_details[grp_index]["items"].append(item_entry)
 
@@ -417,7 +465,9 @@ def _get_item_group_index(item_details, attr_details):
 			continue
 		if grp.get("primary_attribute", "") != (attr_details.get("primary_attribute") or ""):
 			continue
-		if sorted(grp.get("primary_attribute_values") or []) != sorted(attr_details.get("primary_attribute_values") or []):
+		if sorted(grp.get("primary_attribute_values") or []) != sorted(
+			attr_details.get("primary_attribute_values") or []
+		):
 			continue
 		return i
 	return -1
@@ -436,6 +486,7 @@ def group_correction_items_for_ui(child_rows, parent_doctype):
 	  ]
 	"""
 	from collections import OrderedDict
+
 	buckets = OrderedDict()
 	for r in child_rows or []:
 		d = dict(r) if isinstance(r, dict) else r.as_dict()
@@ -445,17 +496,20 @@ def group_correction_items_for_ui(child_rows, parent_doctype):
 		buckets.setdefault(key, []).append(d)
 	out = []
 	for name, rows in buckets.items():
-		out.append({
-			"work_order_correction": name,
-			"title": _("Correction {0}").format(name),
-			"item_details": group_items_for_ui(rows, parent_doctype),
-		})
+		out.append(
+			{
+				"work_order_correction": name,
+				"title": _("Correction {0}").format(name),
+				"item_details": group_items_for_ui(rows, parent_doctype),
+			}
+		)
 	return out
 
 
 # ====================================================================
 # Ungroup: grouped JSON → flat rows for self.set("items", ...)
 # ====================================================================
+
 
 def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, config=None):
 	"""Flatten the editor's grouped JSON into rows for the parent's child table.
@@ -503,9 +557,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, conf
 
 			values_dict = entry.get("values") or {}
 			has_primary = (
-				entry.get("primary_attribute")
-				and "default" not in values_dict
-				and len(values_dict) > 0
+				entry.get("primary_attribute") and "default" not in values_dict and len(values_dict) > 0
 			)
 
 			if has_primary:
@@ -536,7 +588,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, conf
 				# Skip zero-qty items — except for Stock Reconciliation where
 				# qty=0 is valid (make_qty_zero or manual zero entry), or when
 				# the caller opts into keep_zero (DC draft saves).
-				if not qty and parent_doctype != 'YRP Stock Reconciliation' and not keep_zero:
+				if not qty and parent_doctype != "YRP Stock Reconciliation" and not keep_zero:
 					row_index += 1
 					continue
 				variant_name = _resolve_or_create_variant(parent_item, base_attrs)

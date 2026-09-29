@@ -56,12 +56,6 @@ frappe.ui.form.on('YRP Item BOM Attribute Mapping', {
 		}
 	},
 
-	before_save: function(frm) {
-		if(frm.bomEditor) {
-			console.log(frm.bomEditor);
-		}
-	},
-
 	get_combination: function(frm) {
 		let attributes = get_attributes(frm);
 		if (attributes) {

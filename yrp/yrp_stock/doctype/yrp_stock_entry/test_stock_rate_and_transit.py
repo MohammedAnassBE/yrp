@@ -34,15 +34,19 @@ def _physical_stock_item():
 
 
 def _warehouse(warehouse_name):
-	name = frappe.db.get_value('Warehouse', {"warehouse_name": warehouse_name}, "name")
+	name = frappe.db.get_value("Warehouse", {"warehouse_name": warehouse_name}, "name")
 	if not name:
-		name = frappe.get_doc(
-			{
-				"doctype": 'Warehouse',
-				"warehouse_name": warehouse_name,
-				"company": frappe.db.get_value('Company', {}, "name"),
-			}
-		).insert(ignore_permissions=True).name
+		name = (
+			frappe.get_doc(
+				{
+					"doctype": "Warehouse",
+					"warehouse_name": warehouse_name,
+					"company": frappe.db.get_value("Company", {}, "name"),
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 	return name
 
 
@@ -51,9 +55,7 @@ def _dimension_values():
 	for dimension in get_stock_dimensions():
 		value = None
 		if dimension["fieldname"] == "received_type":
-			value = frappe.db.get_single_value(
-				'YRP Stock Settings', "default_received_type"
-			)
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 		value = value or frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
 		if dimension.get("mandatory") and not value:
 			frappe.throw(f"A {dimension['label']} value is required for stock transit tests.")
@@ -65,37 +67,41 @@ def _dimension_values():
 ITEM_VARIANT = _physical_stock_item()
 WH_FROM = _warehouse("_Test Transit Source")
 WH_TO = _warehouse("_Test Transit Target")
-UOM = frappe.db.get_value('Item', get_parent_item(ITEM_VARIANT), "stock_uom") or "Piece"
+UOM = frappe.db.get_value("Item", get_parent_item(ITEM_VARIANT), "stock_uom") or "Piece"
 DIMENSIONS = _dimension_values()
 
 
 def _ensure_transit_warehouse():
-	tw = frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
-	if not tw or not frappe.db.exists('Warehouse', tw):
+	tw = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
+	if not tw or not frappe.db.exists("Warehouse", tw):
 		tw = _warehouse("_Test Transit Warehouse")
-		frappe.db.set_single_value('YRP Stock Settings', "transit_warehouse", tw)
-	
-	return frappe.db.get_single_value('YRP Stock Settings', "transit_warehouse")
+		frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", tw)
+
+	return frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
 
 
 def _seed_stock(warehouse, qty=100, rate=10):
 	"""Material Receipt to seed opening stock."""
-	se = frappe.get_doc({
-		"doctype": 'YRP Stock Entry',
-		"purpose": "Material Receipt",
-		"to_warehouse": warehouse,
-		"posting_date": frappe.utils.today(),
-		"posting_time": frappe.utils.nowtime(),
-		"items": [{
-			"item": ITEM_VARIANT,
-			"qty": qty,
-			"rate": rate,
-			"uom": UOM,
-			"row_index": 0,
-			"table_index": 0,
-			**DIMENSIONS,
-		}],
-	})
+	se = frappe.get_doc(
+		{
+			"doctype": "YRP Stock Entry",
+			"purpose": "Material Receipt",
+			"to_warehouse": warehouse,
+			"posting_date": frappe.utils.today(),
+			"posting_time": frappe.utils.nowtime(),
+			"items": [
+				{
+					"item": ITEM_VARIANT,
+					"qty": qty,
+					"rate": rate,
+					"uom": UOM,
+					"row_index": 0,
+					"table_index": 0,
+					**DIMENSIONS,
+				}
+			],
+		}
+	)
 	se.insert(ignore_permissions=True)
 	se.submit()
 
@@ -103,45 +109,53 @@ def _seed_stock(warehouse, qty=100, rate=10):
 
 
 def _make_se(purpose, from_wh=None, to_wh=None, qty=10, rate=5, skip_transit=0):
-	return frappe.get_doc({
-		"doctype": 'YRP Stock Entry',
-		"purpose": purpose,
-		"from_warehouse": from_wh,
-		"to_warehouse": to_wh,
-		"skip_transit": skip_transit,
-		"posting_date": frappe.utils.today(),
-		"posting_time": frappe.utils.nowtime(),
-		"items": [{
-			"item": ITEM_VARIANT,
-			"qty": qty,
-			"rate": rate,
-			"uom": UOM,
-			"row_index": 0,
-			"table_index": 0,
-			**DIMENSIONS,
-		}],
-	})
+	return frappe.get_doc(
+		{
+			"doctype": "YRP Stock Entry",
+			"purpose": purpose,
+			"from_warehouse": from_wh,
+			"to_warehouse": to_wh,
+			"skip_transit": skip_transit,
+			"posting_date": frappe.utils.today(),
+			"posting_time": frappe.utils.nowtime(),
+			"items": [
+				{
+					"item": ITEM_VARIANT,
+					"qty": qty,
+					"rate": rate,
+					"uom": UOM,
+					"row_index": 0,
+					"table_index": 0,
+					**DIMENSIONS,
+				}
+			],
+		}
+	)
 
 
 def _make_reconciliation(warehouse, qty=50, rate=100, allow_zero=0):
-	sr = frappe.get_doc({
-		"doctype": 'YRP Stock Reconciliation',
-		"purpose": 'Stock Reconciliation',
-		"default_warehouse": warehouse,
-		"posting_date": frappe.utils.today(),
-		"posting_time": frappe.utils.nowtime(),
-		"items": [{
-			"item": ITEM_VARIANT,
-			"qty": qty,
-			"rate": rate,
-			"uom": UOM,
-			"warehouse": warehouse,
-			"allow_zero_valuation_rate": allow_zero,
-			"row_index": 0,
-			"table_index": 0,
-			**DIMENSIONS,
-		}],
-	})
+	sr = frappe.get_doc(
+		{
+			"doctype": "YRP Stock Reconciliation",
+			"purpose": "Stock Reconciliation",
+			"default_warehouse": warehouse,
+			"posting_date": frappe.utils.today(),
+			"posting_time": frappe.utils.nowtime(),
+			"items": [
+				{
+					"item": ITEM_VARIANT,
+					"qty": qty,
+					"rate": rate,
+					"uom": UOM,
+					"warehouse": warehouse,
+					"allow_zero_valuation_rate": allow_zero,
+					"row_index": 0,
+					"table_index": 0,
+					**DIMENSIONS,
+				}
+			],
+		}
+	)
 	sr.insert(ignore_permissions=True)
 	sr.submit()
 
@@ -150,7 +164,7 @@ def _make_reconciliation(warehouse, qty=50, rate=100, allow_zero=0):
 
 def _get_sles(voucher_no, cancelled=0):
 	return frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={"voucher_no": voucher_no, "is_cancelled": cancelled},
 		fields=["warehouse", "qty", "item", "valuation_rate", "rate", "voucher_type"],
 		order_by="creation asc",
@@ -196,8 +210,7 @@ class TestRateAutoFetch(FrappeTestCase):
 		se.set_rate_from_last_sle()
 
 		# valuation_rate from the reconciliation should be picked up
-		self.assertGreater(flt(se.items[0].rate), 0,
-			"Rate should be fetched from the reconciliation SLE")
+		self.assertGreater(flt(se.items[0].rate), 0, "Rate should be fetched from the reconciliation SLE")
 
 	# ---------------------------------------------------------------
 	# 3. Rate is 0 when no SLE exists (no error for Stock Entry)
@@ -218,7 +231,6 @@ class TestRateAutoFetch(FrappeTestCase):
 				"UPDATE `tabYRP Stock Ledger Entry` SET is_cancelled=0 WHERE item=%s",
 				ITEM_VARIANT,
 			)
-		
 
 
 class TestSkipTransit(FrappeTestCase):
@@ -240,7 +252,6 @@ class TestSkipTransit(FrappeTestCase):
 		se = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, skip_transit=1)
 		se.insert(ignore_permissions=True)
 		se.submit()
-	
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 2)
@@ -259,7 +270,6 @@ class TestSkipTransit(FrappeTestCase):
 		se = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, skip_transit=0)
 		se.insert(ignore_permissions=True)
 		se.submit()
-	
 
 		sles = _get_sles(se.name)
 		self.assertEqual(len(sles), 2)
@@ -292,7 +302,6 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		send = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=20)
 		send.insert(ignore_permissions=True)
 		send.submit()
-	
 
 		receive = make_stock_in_entry(send.name)
 
@@ -312,7 +321,6 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		send = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=30)
 		send.insert(ignore_permissions=True)
 		send.submit()
-	
 
 		# per_transferred should be 0 initially
 		send.reload()
@@ -322,7 +330,6 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		receive = make_stock_in_entry(send.name)
 		receive.insert(ignore_permissions=True)
 		receive.submit()
-	
 
 		# per_transferred on source should be 100
 		send.reload()
@@ -342,18 +349,16 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		send = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=15)
 		send.insert(ignore_permissions=True)
 		send.submit()
-	
 
 		receive = make_stock_in_entry(send.name)
 		receive.insert(ignore_permissions=True)
-	
 
 		receive.reload()
 		for row in receive.items:
-			self.assertEqual(row.against_stock_entry, send.name,
-				"against_stock_entry should point to source Send entry")
-			self.assertTrue(row.ste_detail,
-				"ste_detail should be set to source row name")
+			self.assertEqual(
+				row.against_stock_entry, send.name, "against_stock_entry should point to source Send entry"
+			)
+			self.assertTrue(row.ste_detail, "ste_detail should be set to source row name")
 
 	# ---------------------------------------------------------------
 	# 9. Partial receive — per_transferred reflects partial qty
@@ -366,14 +371,12 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		send = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=40)
 		send.insert(ignore_permissions=True)
 		send.submit()
-	
 
 		# Create receive but reduce qty to half
 		receive = make_stock_in_entry(send.name)
 		receive.items[0].qty = 20
 		receive.insert(ignore_permissions=True)
 		receive.submit()
-	
 
 		send.reload()
 		self.assertEqual(flt(send.per_transferred), 50)
@@ -390,19 +393,16 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		send = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=25)
 		send.insert(ignore_permissions=True)
 		send.submit()
-	
 
 		receive = make_stock_in_entry(send.name)
 		receive.insert(ignore_permissions=True)
 		receive.submit()
-	
 
 		send.reload()
 		self.assertEqual(flt(send.per_transferred), 100)
 
 		# Cancel the receive
 		receive.cancel()
-	
 
 		send.reload()
 		self.assertEqual(flt(send.per_transferred), 0)
@@ -414,17 +414,16 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 	def test_skip_transit_no_receive_needed(self):
 		"""With skip_transit=1, stock goes directly to target.
 		make_stock_in_entry should not be called (no transit to end)."""
-		se = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO,
-			qty=10, skip_transit=1)
+		se = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=10, skip_transit=1)
 		se.insert(ignore_permissions=True)
 		se.submit()
-	
 
 		# SLEs should show direct transfer (no transit warehouse)
 		sles = _get_sles(se.name)
 		warehouses = [s["warehouse"] for s in sles]
-		self.assertNotIn(self.transit_wh, warehouses,
-			"Transit warehouse should not appear when skip_transit=1")
+		self.assertNotIn(
+			self.transit_wh, warehouses, "Transit warehouse should not appear when skip_transit=1"
+		)
 
 	# ---------------------------------------------------------------
 	# 12. Receive SLE correctness — transit out, target in
@@ -437,12 +436,10 @@ class TestSendReceiveTransitFlow(FrappeTestCase):
 		send = _make_se("Send to Warehouse", from_wh=WH_FROM, to_wh=WH_TO, qty=10)
 		send.insert(ignore_permissions=True)
 		send.submit()
-	
 
 		receive = make_stock_in_entry(send.name)
 		receive.insert(ignore_permissions=True)
 		receive.submit()
-	
 
 		sles = _get_sles(receive.name)
 		self.assertEqual(len(sles), 2)
@@ -469,58 +466,64 @@ class TestReconciliationRate(FrappeTestCase):
 	def test_reconciliation_rate_auto_filled_from_sle(self):
 		"""If user creates reconciliation without rate, it should be
 		auto-filled from the last uncancelled SLE."""
-		sr = frappe.get_doc({
-			"doctype": 'YRP Stock Reconciliation',
-			"purpose": 'Stock Reconciliation',
-			"default_warehouse": WH_FROM,
-			"posting_date": frappe.utils.today(),
-			"posting_time": frappe.utils.nowtime(),
-			"items": [{
-				"item": ITEM_VARIANT,
-				"qty": 80,
-				"rate": 0,
-				"uom": UOM,
-				"warehouse": WH_FROM,
-				"row_index": 0,
-				"table_index": 0,
-				**DIMENSIONS,
-			}],
-		})
+		sr = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Reconciliation",
+				"purpose": "Stock Reconciliation",
+				"default_warehouse": WH_FROM,
+				"posting_date": frappe.utils.today(),
+				"posting_time": frappe.utils.nowtime(),
+				"items": [
+					{
+						"item": ITEM_VARIANT,
+						"qty": 80,
+						"rate": 0,
+						"uom": UOM,
+						"warehouse": WH_FROM,
+						"row_index": 0,
+						"table_index": 0,
+						**DIMENSIONS,
+					}
+				],
+			}
+		)
 		sr.insert(ignore_permissions=True)
-	
 
 		sr.reload()
-		self.assertGreater(flt(sr.items[0].rate), 0,
-			"Rate should be auto-fetched from last SLE when user enters 0")
+		self.assertGreater(
+			flt(sr.items[0].rate), 0, "Rate should be auto-fetched from last SLE when user enters 0"
+		)
 
 	# ---------------------------------------------------------------
 	# 14. Reconciliation keeps user-entered rate (doesn't overwrite)
 	# ---------------------------------------------------------------
 	def test_reconciliation_keeps_user_rate(self):
 		"""If user enters a rate, it should NOT be overwritten by SLE rate."""
-		sr = frappe.get_doc({
-			"doctype": 'YRP Stock Reconciliation',
-			"purpose": 'Stock Reconciliation',
-			"default_warehouse": WH_FROM,
-			"posting_date": frappe.utils.today(),
-			"posting_time": frappe.utils.nowtime(),
-			"items": [{
-				"item": ITEM_VARIANT,
-				"qty": 80,
-				"rate": 999,
-				"uom": UOM,
-				"warehouse": WH_FROM,
-				"row_index": 0,
-				"table_index": 0,
-				**DIMENSIONS,
-			}],
-		})
+		sr = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Reconciliation",
+				"purpose": "Stock Reconciliation",
+				"default_warehouse": WH_FROM,
+				"posting_date": frappe.utils.today(),
+				"posting_time": frappe.utils.nowtime(),
+				"items": [
+					{
+						"item": ITEM_VARIANT,
+						"qty": 80,
+						"rate": 999,
+						"uom": UOM,
+						"warehouse": WH_FROM,
+						"row_index": 0,
+						"table_index": 0,
+						**DIMENSIONS,
+					}
+				],
+			}
+		)
 		sr.insert(ignore_permissions=True)
-	
 
 		sr.reload()
-		self.assertEqual(flt(sr.items[0].rate), 999,
-			"User-entered rate should not be overwritten")
+		self.assertEqual(flt(sr.items[0].rate), 999, "User-entered rate should not be overwritten")
 
 	# ---------------------------------------------------------------
 	# 15. Reconciliation throws if no SLE and allow_zero not checked
@@ -528,30 +531,34 @@ class TestReconciliationRate(FrappeTestCase):
 	def test_reconciliation_throws_when_no_sle_and_no_allow_zero(self):
 		"""New item with no SLE and no rate → should throw error
 		unless allow_zero_valuation_rate is checked."""
-		sr = frappe.get_doc({
-			"doctype": 'YRP Stock Reconciliation',
-			"purpose": 'Stock Reconciliation',
-			"default_warehouse": WH_FROM,
-			"posting_date": frappe.utils.today(),
-			"posting_time": frappe.utils.nowtime(),
-			"items": [{
-				"item": ITEM_VARIANT,
-				"qty": 10,
-				"rate": 0,
-				"uom": UOM,
-				"warehouse": WH_FROM,
-				"allow_zero_valuation_rate": 0,
-				"row_index": 0,
-				"table_index": 0,
-				**DIMENSIONS,
-			}],
-		})
+		sr = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Reconciliation",
+				"purpose": "Stock Reconciliation",
+				"default_warehouse": WH_FROM,
+				"posting_date": frappe.utils.today(),
+				"posting_time": frappe.utils.nowtime(),
+				"items": [
+					{
+						"item": ITEM_VARIANT,
+						"qty": 10,
+						"rate": 0,
+						"uom": UOM,
+						"warehouse": WH_FROM,
+						"allow_zero_valuation_rate": 0,
+						"row_index": 0,
+						"table_index": 0,
+						**DIMENSIONS,
+					}
+				],
+			}
+		)
 		# Clear all SLEs for this item so no rate can be found
 		frappe.db.sql(
 			"UPDATE `tabYRP Stock Ledger Entry` SET is_cancelled=1 WHERE item=%s",
 			ITEM_VARIANT,
 		)
-	
+
 		try:
 			self.assertRaises(frappe.ValidationError, sr.insert, ignore_permissions=True)
 		finally:
@@ -560,7 +567,6 @@ class TestReconciliationRate(FrappeTestCase):
 				"UPDATE `tabYRP Stock Ledger Entry` SET is_cancelled=0 WHERE item=%s AND voucher_type!='YRP Stock Reconciliation'",
 				ITEM_VARIANT,
 			)
-		
 
 	# ---------------------------------------------------------------
 	# 16. Reconciliation allows zero rate when allow_zero is checked
@@ -568,37 +574,40 @@ class TestReconciliationRate(FrappeTestCase):
 	def test_reconciliation_allows_zero_rate_with_flag(self):
 		"""No SLE for item but allow_zero_valuation_rate checked
 		should NOT throw — rate stays 0."""
-		sr = frappe.get_doc({
-			"doctype": 'YRP Stock Reconciliation',
-			"purpose": 'Stock Reconciliation',
-			"default_warehouse": WH_FROM,
-			"posting_date": frappe.utils.today(),
-			"posting_time": frappe.utils.nowtime(),
-			"items": [{
-				"item": ITEM_VARIANT,
-				"qty": 10,
-				"rate": 0,
-				"uom": UOM,
-				"warehouse": WH_FROM,
-				"allow_zero_valuation_rate": 1,
-				"row_index": 0,
-				"table_index": 0,
-				**DIMENSIONS,
-			}],
-		})
+		sr = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Reconciliation",
+				"purpose": "Stock Reconciliation",
+				"default_warehouse": WH_FROM,
+				"posting_date": frappe.utils.today(),
+				"posting_time": frappe.utils.nowtime(),
+				"items": [
+					{
+						"item": ITEM_VARIANT,
+						"qty": 10,
+						"rate": 0,
+						"uom": UOM,
+						"warehouse": WH_FROM,
+						"allow_zero_valuation_rate": 1,
+						"row_index": 0,
+						"table_index": 0,
+						**DIMENSIONS,
+					}
+				],
+			}
+		)
 		# Clear all SLEs for this item so no rate can be found
 		frappe.db.sql(
 			"UPDATE `tabYRP Stock Ledger Entry` SET is_cancelled=1 WHERE item=%s",
 			ITEM_VARIANT,
 		)
-	
+
 		try:
 			sr.insert(ignore_permissions=True)
-		
+
 			self.assertEqual(flt(sr.items[0].rate), 0)
 		finally:
 			frappe.db.sql(
 				"UPDATE `tabYRP Stock Ledger Entry` SET is_cancelled=0 WHERE item=%s AND voucher_type!='YRP Stock Reconciliation'",
 				ITEM_VARIANT,
 			)
-		

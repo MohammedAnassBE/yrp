@@ -5,7 +5,13 @@ frappe.ui.form.on('Item', {
 	refresh: function(frm) {
 		if (!frm.doc.__islocal) {
 			frm.page.add_menu_item(__('Rename'), function() {
-				rename_item_name(frm).then(() => console.log("Rename done")).catch((err) => console.log(err));
+				rename_item_name(frm).catch((error) => {
+					frappe.msgprint({
+						title: __("Rename failed"),
+						message: error.message || error,
+						indicator: "red",
+					});
+				});
 			});
 		}
 	}

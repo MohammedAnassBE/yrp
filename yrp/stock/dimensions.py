@@ -25,30 +25,31 @@ def assert_safe_fieldname(fn):
 	if not isinstance(fn, str) or not _FIELDNAME_RE.match(fn):
 		frappe.throw(f"Invalid stock-dimension fieldname: {fn!r}")
 
+
 # DocTypes that receive dimension Link fields for ALL dimensions
 STOCK_DOCTYPES = [
-	'YRP Stock Ledger Entry',
-	'YRP Bin',
-	'YRP Stock Entry Detail',
-	'YRP Stock Update Detail',
-	'YRP Stock Reconciliation Item',
-	'Purchase Order Item',
-	'YRP Stock Reservation Entry',
-	'YRP Repost Item Valuation',
-	'YRP Work Order Deliverables',
-	'YRP Work Order Receivables',
-	'YRP Delivery Challan Item',
-	'YRP Goods Received Note Item',
-	'YRP Inspection Entry Item',
+	"YRP Stock Ledger Entry",
+	"YRP Bin",
+	"YRP Stock Entry Detail",
+	"YRP Stock Update Detail",
+	"YRP Stock Reconciliation Item",
+	"Purchase Order Item",
+	"YRP Stock Reservation Entry",
+	"YRP Repost Item Valuation",
+	"YRP Work Order Deliverables",
+	"YRP Work Order Receivables",
+	"YRP Delivery Challan Item",
+	"YRP Goods Received Note Item",
+	"YRP Inspection Entry Item",
 ]
 
 # DocTypes that receive dimension Link fields ONLY for the production group dimension
 OPERATIONAL_DOCTYPES = [
-	'YRP Work Order',
-	'Purchase Order',
-	'YRP Delivery Challan',
-	'YRP Goods Received Note',
-	'YRP Process Cost',
+	"YRP Work Order",
+	"Purchase Order",
+	"YRP Delivery Challan",
+	"YRP Goods Received Note",
+	"YRP Process Cost",
 ]
 
 # These child tables belong to operational documents that already carry the
@@ -56,15 +57,15 @@ OPERATIONAL_DOCTYPES = [
 # field for traceability/back-compat, but it must not block save when the
 # header controls the production group.
 OPERATIONAL_CHILD_DOCTYPES = {
-	'YRP Delivery Challan Item',
-	'YRP Goods Received Note Item',
+	"YRP Delivery Challan Item",
+	"YRP Goods Received Note Item",
 }
 
 # Planning rows may carry the complete stock-dimension context without posting
 # stock themselves. Their dimensions are optional so existing/planned orders
 # are not forced to choose a stock-quality bucket before receipt.
 OPTIONAL_DIMENSION_DOCTYPES = {
-	'Purchase Order Item',
+	"Purchase Order Item",
 }
 
 
@@ -73,13 +74,20 @@ def get_stock_dimensions():
 	dims = frappe.cache().get_value(CACHE_KEY)
 	if dims is None:
 		dims = frappe.get_all(
-			'YRP Stock Dimension',
+			"YRP Stock Dimension",
 			filters={
-				"parent": 'YRP Stock Settings',
-				"parenttype": 'YRP Stock Settings',
+				"parent": "YRP Stock Settings",
+				"parenttype": "YRP Stock Settings",
 				"parentfield": "stock_dimensions",
 			},
-			fields=["dimension_doctype", "fieldname", "label", "mandatory", "in_valuation", "is_production_group"],
+			fields=[
+				"dimension_doctype",
+				"fieldname",
+				"label",
+				"mandatory",
+				"in_valuation",
+				"is_production_group",
+			],
 			order_by="idx asc",
 		)
 		frappe.cache().set_value(CACHE_KEY, dims)
@@ -145,15 +153,14 @@ def apply_dimension_defaults(rows):
 	if not rows:
 		return
 	dim_fieldnames = [
-		d["fieldname"] for d in get_stock_dimensions()
-		if d["fieldname"] in DIMENSION_DEFAULT_SETTINGS_FIELD
+		d["fieldname"] for d in get_stock_dimensions() if d["fieldname"] in DIMENSION_DEFAULT_SETTINGS_FIELD
 	]
 	if not dim_fieldnames:
 		return
 	defaults = {}
 	for fn in dim_fieldnames:
 		settings_field = DIMENSION_DEFAULT_SETTINGS_FIELD[fn]
-		val = frappe.db.get_single_value('YRP Stock Settings', settings_field)
+		val = frappe.db.get_single_value("YRP Stock Settings", settings_field)
 		if val:
 			defaults[fn] = val
 	if not defaults:
@@ -215,7 +222,7 @@ def create_dimension_fields():
 					continue
 				doc_field_def = field_def.copy()
 				doc_field_def["insert_after"] = _get_insert_after(dim, dt)
-				if dt == 'Purchase Order':
+				if dt == "Purchase Order":
 					# A Purchase Order can procure the same Item for multiple
 					# production groups. Its header dimension is retained only as
 					# legacy storage; new planning happens on Purchase Order Item,
@@ -269,9 +276,7 @@ def _ensure_bin_unique_constraint(dimensions):
 		assert_safe_fieldname(col)
 
 	# Drop old index if column set changed (idempotent rebuild)
-	existing = frappe.db.sql(
-		"SHOW INDEX FROM `tabYRP Bin` WHERE Key_name = %s", index_name, as_dict=True
-	)
+	existing = frappe.db.sql("SHOW INDEX FROM `tabYRP Bin` WHERE Key_name = %s", index_name, as_dict=True)
 	col_list = ", ".join(f"`{c}`" for c in columns)
 	if existing:
 		existing_cols = sorted(r["Column_name"] for r in existing)
@@ -283,23 +288,21 @@ def _ensure_bin_unique_constraint(dimensions):
 		else:
 			return  # already correct
 	else:
-		frappe.db.sql_ddl(
-			f"ALTER TABLE `tabYRP Bin` ADD UNIQUE INDEX `{index_name}` ({col_list})"
-		)
+		frappe.db.sql_ddl(f"ALTER TABLE `tabYRP Bin` ADD UNIQUE INDEX `{index_name}` ({col_list})")
 
 
 def _get_insert_after(dim, doctype=None):
 	"""Return a real, stable item/header anchor for each generated field."""
 	anchors = {
-		'YRP Bin': "item_code",
-		'YRP Stock Update Detail': "item_variant",
-		'Purchase Order Item': "item_code",
-		'YRP Stock Reservation Entry': "item_code",
-		'YRP Work Order Deliverables': "item_variant",
-		'YRP Work Order Receivables': "item_variant",
-		'YRP Delivery Challan Item': "item_variant",
-		'YRP Goods Received Note Item': "item_variant",
-		'YRP Inspection Entry Item': "item_variant",
-		'Purchase Order': "schedule_date",
+		"YRP Bin": "item_code",
+		"YRP Stock Update Detail": "item_variant",
+		"Purchase Order Item": "item_code",
+		"YRP Stock Reservation Entry": "item_code",
+		"YRP Work Order Deliverables": "item_variant",
+		"YRP Work Order Receivables": "item_variant",
+		"YRP Delivery Challan Item": "item_variant",
+		"YRP Goods Received Note Item": "item_variant",
+		"YRP Inspection Entry Item": "item_variant",
+		"Purchase Order": "schedule_date",
 	}
 	return anchors.get(doctype, "item")

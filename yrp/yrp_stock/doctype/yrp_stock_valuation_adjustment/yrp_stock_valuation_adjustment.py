@@ -8,7 +8,6 @@ are never rewritten by this module.
 """
 
 from __future__ import annotations
-from yrp import attribute_links as attribute_db
 
 import hashlib
 import json
@@ -20,8 +19,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_to_date, cint, flt, getdate, now_datetime, nowdate
 
+from yrp import attribute_links as attribute_db
 from yrp.stock.dimensions import get_dimension_fieldnames, get_valuation_dimensions
-
 
 VALUE_TOLERANCE = 0.00001
 CONSERVATION_TOLERANCE = 0.01
@@ -42,9 +41,7 @@ class YRPStockValuationAdjustment(Document):
 	def validate(self):
 		if not self.get("source_allocations"):
 			frappe.throw(_("At least one source allocation is required."))
-		self.total_source_difference = flt(
-			sum(flt(row.difference) for row in self.source_allocations), 6
-		)
+		self.total_source_difference = flt(sum(flt(row.difference) for row in self.source_allocations), 6)
 		if abs(self.total_source_difference) <= VALUE_TOLERANCE:
 			frappe.throw(_("The stock valuation difference is zero."))
 		if not self.idempotency_key:
@@ -81,12 +78,12 @@ def _hash_key(*parts):
 
 def is_stock_adjustment_enabled():
 	"""Return the YRP Settings gate for creating new valuation adjustments."""
-	field = frappe.get_meta('YRP Settings').get_field("apply_stock_adjustment")
+	field = frappe.get_meta("YRP Settings").get_field("apply_stock_adjustment")
 	if not field:
 		# Preserve existing behavior during a rolling deploy until the DocType is
 		# synchronized and the new checkbox is available on the site.
 		return True
-	value = attribute_db.get_single_value('YRP Settings', "apply_stock_adjustment")
+	value = attribute_db.get_single_value("YRP Settings", "apply_stock_adjustment")
 	return bool(cint(value))
 
 
@@ -108,19 +105,13 @@ def create_adjustment(
 	allocations are discarded; when every row is zero no document is created.
 	"""
 	all_rows = [frappe._dict(row) for row in (allocations or [])]
-	rows = [
-		row
-		for row in all_rows
-		if abs(flt(row.get("difference"))) > VALUE_TOLERANCE
-	]
+	rows = [row for row in all_rows if abs(flt(row.get("difference"))) > VALUE_TOLERANCE]
 	if not rows:
 		# A zero-value revision still participates in source serialization. For
 		# example, a corrected PI at the original rate must not submit while the
 		# cancelled PI's signed reversal is still pending. It creates no SVA, but
 		# it must wait for every earlier revision owning the same receipt SLE.
-		target_sles = sorted(
-			{row.get("target_sle") for row in all_rows if row.get("target_sle")}
-		)
+		target_sles = sorted({row.get("target_sle") for row in all_rows if row.get("target_sle")})
 		if target_sles:
 			_lock_target_sles(target_sles)
 			_lock_adjustment_creation()
@@ -137,7 +128,7 @@ def create_adjustment(
 		reversal_of,
 	)
 	existing = frappe.db.get_value(
-		'YRP Stock Valuation Adjustment', {"idempotency_key": idempotency_key}, "name"
+		"YRP Stock Valuation Adjustment", {"idempotency_key": idempotency_key}, "name"
 	)
 	if existing:
 		return existing
@@ -176,15 +167,13 @@ def create_adjustment(
 	# in that period still has an unfinished propagation job.
 	target_dates = []
 	for target_sle in target_sles:
-		target_dates.append(
-			getdate(_validate_target_sle(target_sle, for_update=True).posting_date)
-		)
+		target_dates.append(getdate(_validate_target_sle(target_sle, for_update=True).posting_date))
 	requested_date = getdate(effective_date) if effective_date else getdate(nowdate())
 	effective_date = min([requested_date, *target_dates])
 
 	doc = frappe.get_doc(
 		{
-			"doctype": 'YRP Stock Valuation Adjustment',
+			"doctype": "YRP Stock Valuation Adjustment",
 			"adjustment_type": adjustment_type,
 			"source_doctype": source_doctype,
 			"source_name": source_name,
@@ -224,7 +213,7 @@ def create_adjustment(
 	doc.submit()
 	for target_sle in target_sles:
 		frappe.db.set_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			target_sle,
 			"valuation_is_stale",
 			1,
@@ -253,9 +242,7 @@ def _lock_adjustment_creation():
 	)
 
 
-def _validate_no_conflicting_adjustments(
-	target_sles, exclude_adjustments=None, idempotency_key=None
-):
+def _validate_no_conflicting_adjustments(target_sles, exclude_adjustments=None, idempotency_key=None):
 	if not target_sles:
 		return
 	excluded = tuple(name for name in (exclude_adjustments or []) if name)
@@ -302,20 +289,18 @@ def create_purchase_invoice_adjustment(invoice):
 		_normal_json,
 	)
 
-	grn_names = list(
-		dict.fromkeys(row.grn for row in (invoice.get("grn") or []) if row.grn)
-	)
+	grn_names = list(dict.fromkeys(row.grn for row in (invoice.get("grn") or []) if row.grn))
 	if not grn_names:
 		return None
 
 	work_orders = {}
 	candidates = []
 	for grn_name in grn_names:
-		grn = frappe.get_doc('YRP Goods Received Note', grn_name)
+		grn = frappe.get_doc("YRP Goods Received Note", grn_name)
 		work_order = None
-		if grn.against == 'YRP Work Order':
+		if grn.against == "YRP Work Order":
 			work_order = work_orders.setdefault(
-				grn.against_id, frappe.get_doc('YRP Work Order', grn.against_id)
+				grn.against_id, frappe.get_doc("YRP Work Order", grn.against_id)
 			)
 		for grn_item in grn.get("items") or []:
 			quantity = flt(grn_item.quantity)
@@ -342,13 +327,9 @@ def create_purchase_invoice_adjustment(invoice):
 				# submittable; without a receipt there is no stock value to revise.
 				# Work-Order GRNs must always have their receipt because their
 				# process-cost difference has to propagate through downstream stock.
-				if grn.against == 'Purchase Order':
+				if grn.against == "Purchase Order":
 					return None
-				frappe.throw(
-					_("No active receipt SLE was found for GRN row {0}.").format(
-						grn_item.name
-					)
-				)
+				frappe.throw(_("No active receipt SLE was found for GRN row {0}.").format(grn_item.name))
 			candidates.append(
 				frappe._dict(
 					grn=grn.name,
@@ -379,16 +360,12 @@ def create_purchase_invoice_adjustment(invoice):
 		]
 		if not matching:
 			frappe.throw(
-				_("Purchase Invoice row {0} cannot be mapped to a selected GRN row.").format(
-					invoice_item.idx
-				)
+				_("Purchase Invoice row {0} cannot be mapped to a selected GRN row.").format(invoice_item.idx)
 			)
 
 		source_rate = invoice_item.get("source_rate")
 		if source_rate is None or source_rate == "":
-			distinct_rates = {
-				round(flt(row.billing_rate), 6) for row in matching
-			}
+			distinct_rates = {round(flt(row.billing_rate), 6) for row in matching}
 			if len(distinct_rates) != 1:
 				frappe.throw(
 					_(
@@ -397,11 +374,7 @@ def create_purchase_invoice_adjustment(invoice):
 				)
 			source_rate = distinct_rates.pop()
 		source_rate = flt(source_rate, 6)
-		matching = [
-			row
-			for row in matching
-			if abs(flt(row.billing_rate) - source_rate) <= VALUE_TOLERANCE
-		]
+		matching = [row for row in matching if abs(flt(row.billing_rate) - source_rate) <= VALUE_TOLERANCE]
 		remaining = requested
 		for candidate in matching:
 			if remaining <= VALUE_TOLERANCE:
@@ -422,10 +395,7 @@ def create_purchase_invoice_adjustment(invoice):
 					"difference": flt(difference, 6),
 					"allocation_weight": take,
 					"stock_dimensions": frappe.as_json(
-						{
-							fieldname: target.get(fieldname)
-							for fieldname in get_dimension_fieldnames()
-						}
+						{fieldname: target.get(fieldname) for fieldname in get_dimension_fieldnames()}
 					),
 				}
 			)
@@ -482,7 +452,7 @@ def create_reversal(source_doctype, source_name, source_event="cancel"):
 	"""Create a signed reversal for active adjustments owned by a voucher."""
 	validate_reversal_allowed(source_doctype, source_name)
 	adjustments = frappe.get_all(
-		'YRP Stock Valuation Adjustment',
+		"YRP Stock Valuation Adjustment",
 		filters={
 			"source_doctype": source_doctype,
 			"source_name": source_name,
@@ -495,8 +465,8 @@ def create_reversal(source_doctype, source_name, source_event="cancel"):
 	created = []
 	for adjustment in adjustments:
 		rows = frappe.get_all(
-			'YRP Stock Valuation Adjustment Source',
-			filters={"parent": adjustment.name, "parenttype": 'YRP Stock Valuation Adjustment'},
+			"YRP Stock Valuation Adjustment Source",
+			filters={"parent": adjustment.name, "parenttype": "YRP Stock Valuation Adjustment"},
 			fields=[
 				"source_row",
 				"source_grn",
@@ -558,7 +528,7 @@ def create_reversal(source_doctype, source_name, source_event="cancel"):
 def enqueue_adjustment(adjustment, retry=False):
 	"""Queue a restart-safe worker only after the caller's transaction commits."""
 	row = frappe.db.get_value(
-		'YRP Stock Valuation Adjustment',
+		"YRP Stock Valuation Adjustment",
 		adjustment,
 		["status", "completed_entries", "retry_count"],
 		as_dict=True,
@@ -591,7 +561,7 @@ def process_adjustment(adjustment):
 			# A duplicate original job must advance the negative child, never
 			# regress the already-applied positive adjustment to Queued/Completed.
 			for reversal in frappe.get_all(
-				'YRP Stock Valuation Adjustment',
+				"YRP Stock Valuation Adjustment",
 				filters={
 					"reversal_of": doc.name,
 					"docstatus": 1,
@@ -603,7 +573,7 @@ def process_adjustment(adjustment):
 			return
 		if doc.reversal_of:
 			original = frappe.db.get_value(
-				'YRP Stock Valuation Adjustment',
+				"YRP Stock Valuation Adjustment",
 				doc.reversal_of,
 				["status", "retry_count"],
 				as_dict=True,
@@ -679,8 +649,8 @@ def _lock_adjustment(adjustment):
 
 def _build_initial_entries(doc):
 	rows = frappe.get_all(
-		'YRP Stock Valuation Adjustment Source',
-		filters={"parent": doc.name, "parenttype": 'YRP Stock Valuation Adjustment'},
+		"YRP Stock Valuation Adjustment Source",
+		filters={"parent": doc.name, "parenttype": "YRP Stock Valuation Adjustment"},
 		fields=["name", "source_sle", "target_sle", "difference"],
 		order_by="idx asc",
 	)
@@ -718,7 +688,7 @@ def _validate_target_sle(target_sle, *, for_update=False):
 		row = frappe._dict(rows[0]) if rows else None
 	else:
 		row = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			target_sle,
 			[
 				"name",
@@ -754,12 +724,10 @@ def _queue_propagation_entry(
 	if abs(difference) <= VALUE_TOLERANCE:
 		return None
 	if parent_entry and _target_in_ancestry(parent_entry, target_sle):
-		frappe.throw(
-			_("Valuation lineage cycle detected at receipt SLE {0}.").format(target_sle)
-		)
+		frappe.throw(_("Valuation lineage cycle detected at receipt SLE {0}.").format(target_sle))
 	key = _hash_key(adjustment, idempotency_seed, target_sle)
 	target = frappe.db.get_value(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		target_sle,
 		["item", "warehouse", *get_dimension_fieldnames()],
 		as_dict=True,
@@ -781,19 +749,13 @@ def _queue_propagation_entry(
 			(target_sle,),
 			as_dict=True,
 		)
-		if (
-			not locked_target
-			or locked_target[0].is_cancelled
-			or flt(locked_target[0].qty) <= 0
-		):
+		if not locked_target or locked_target[0].is_cancelled or flt(locked_target[0].qty) <= 0:
 			frappe.throw(
-				_("Downstream receipt Stock Ledger Entry {0} is no longer active.").format(
-					target_sle
-				)
+				_("Downstream receipt Stock Ledger Entry {0} is no longer active.").format(target_sle)
 			)
 	doc = frappe.get_doc(
 		{
-			"doctype": 'YRP Stock Valuation Propagation Entry',
+			"doctype": "YRP Stock Valuation Propagation Entry",
 			"adjustment": adjustment,
 			"parent_entry": parent_entry,
 			"entry_type": entry_type,
@@ -831,7 +793,7 @@ def _queue_propagation_entry(
 		# created. Repeating that write while holding the parent would invert the
 		# target-before-parent order used by reversal creation.
 		frappe.db.set_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			target_sle,
 			"valuation_is_stale",
 			1,
@@ -846,7 +808,7 @@ def _target_in_ancestry(parent_entry, target_sle):
 	while current and current not in visited:
 		visited.add(current)
 		row = frappe.db.get_value(
-			'YRP Stock Valuation Propagation Entry',
+			"YRP Stock Valuation Propagation Entry",
 			current,
 			["target_sle", "parent_entry"],
 			as_dict=True,
@@ -867,7 +829,7 @@ def _apply_chunk(adjustment):
 
 	while processed < chunk_size and time.monotonic() - started < soft_seconds:
 		name = frappe.db.get_value(
-			'YRP Stock Valuation Propagation Entry',
+			"YRP Stock Valuation Propagation Entry",
 			{"adjustment": adjustment, "status": ["in", ["Pending", "Failed"]]},
 			"name",
 			order_by="creation asc, name asc",
@@ -880,7 +842,7 @@ def _apply_chunk(adjustment):
 		frappe.db.commit()
 
 	pending = frappe.db.count(
-		'YRP Stock Valuation Propagation Entry',
+		"YRP Stock Valuation Propagation Entry",
 		{"adjustment": adjustment, "status": ["in", ["Pending", "Failed"]]},
 	)
 	if pending:
@@ -897,17 +859,13 @@ def _apply_propagation_entry(entry_name):
 	# All valuation reads must start after the bucket mutex is acquired; otherwise
 	# a worker that waited here could replay an overlay from its older RR snapshot.
 	routing = frappe.db.get_value(
-		'YRP Stock Valuation Propagation Entry', entry_name, ["target_sle"], as_dict=True
+		"YRP Stock Valuation Propagation Entry", entry_name, ["target_sle"], as_dict=True
 	)
 	if not routing:
 		return
 	target_hint = _get_sle(routing.target_sle)
 	if not target_hint:
-		frappe.throw(
-			_("Affected receipt Stock Ledger Entry {0} does not exist.").format(
-				routing.target_sle
-			)
-		)
+		frappe.throw(_("Affected receipt Stock Ledger Entry {0} does not exist.").format(routing.target_sle))
 	frappe.db.commit()
 
 	from yrp.yrp_stock.doctype.yrp_stock_valuation_closing.yrp_stock_valuation_closing import (
@@ -924,23 +882,13 @@ def _apply_propagation_entry(entry_name):
 		as_dict=True,
 	)
 	if not targets:
-		frappe.throw(
-			_("Affected receipt Stock Ledger Entry {0} does not exist.").format(
-				routing.target_sle
-			)
-		)
+		frappe.throw(_("Affected receipt Stock Ledger Entry {0} does not exist.").format(routing.target_sle))
 	target = frappe._dict(targets[0])
 	if target.is_cancelled or flt(target.qty) <= 0:
-		frappe.throw(
-			_("Stock Ledger Entry {0} is not an active incoming receipt.").format(
-				target.name
-			)
-		)
+		frappe.throw(_("Stock Ledger Entry {0} is not an active incoming receipt.").format(target.name))
 	from yrp.stock.stock_ledger import validate_stock_valuation_period
 
-	validate_stock_valuation_period(
-		target.posting_date, target.voucher_type, target.voucher_no
-	)
+	validate_stock_valuation_period(target.posting_date, target.voucher_type, target.voucher_no)
 	entries = frappe.db.sql(
 		"""
 		SELECT *
@@ -957,7 +905,7 @@ def _apply_propagation_entry(entry_name):
 	if entry.status not in {"Pending", "Failed"}:
 		return
 	frappe.db.set_value(
-		'YRP Stock Valuation Propagation Entry',
+		"YRP Stock Valuation Propagation Entry",
 		entry.name,
 		"status",
 		"Applying",
@@ -969,12 +917,12 @@ def _apply_propagation_entry(entry_name):
 	new_overlay = flt(target.valuation_adjustment_value) + flt(entry.difference)
 	if flt(target.qty) * flt(target.rate) + new_overlay < -VALUE_TOLERANCE:
 		frappe.throw(
-			_(
-				"Adjustment {0} would make receipt SLE {1} carry a negative value."
-			).format(entry.adjustment, target.name)
+			_("Adjustment {0} would make receipt SLE {1} carry a negative value.").format(
+				entry.adjustment, target.name
+			)
 		)
 	frappe.db.set_value(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		target.name,
 		{
 			"valuation_adjustment_value": flt(new_overlay, 6),
@@ -1001,7 +949,7 @@ def _apply_propagation_entry(entry_name):
 
 	remaining = flt(entry.difference) - propagated - terminal
 	frappe.db.set_value(
-		'YRP Stock Valuation Propagation Entry',
+		"YRP Stock Valuation Propagation Entry",
 		entry.name,
 		{
 			"status": "Applied",
@@ -1034,27 +982,22 @@ def _get_sle(name):
 		"paired_stock_ledger_entry",
 		*get_dimension_fieldnames(),
 	]
-	return frappe._dict(frappe.db.get_value('YRP Stock Ledger Entry', name, fields, as_dict=True))
+	return frappe._dict(frappe.db.get_value("YRP Stock Ledger Entry", name, fields, as_dict=True))
 
 
 def _update_receipt_current_value(target):
 	"""Expose the effective receipt value without overwriting submitted rate."""
-	if target.voucher_type != 'YRP Goods Received Note' or not target.voucher_detail_no:
+	if target.voucher_type != "YRP Goods Received Note" or not target.voucher_detail_no:
 		return
-	meta = frappe.get_meta('YRP Goods Received Note Item')
-	if not (
-		meta.get_field("current_valuation_rate")
-		and meta.get_field("current_valuation_value")
-	):
+	meta = frappe.get_meta("YRP Goods Received Note Item")
+	if not (meta.get_field("current_valuation_rate") and meta.get_field("current_valuation_value")):
 		return
 	qty = flt(target.qty)
 	current_value = qty * flt(target.rate) + flt(
-		frappe.db.get_value(
-			'YRP Stock Ledger Entry', target.name, "valuation_adjustment_value"
-		)
+		frappe.db.get_value("YRP Stock Ledger Entry", target.name, "valuation_adjustment_value")
 	)
 	frappe.db.set_value(
-		'YRP Goods Received Note Item',
+		"YRP Goods Received Note Item",
 		target.voucher_detail_no,
 		{
 			"current_valuation_rate": current_value / qty if qty else 0,
@@ -1084,7 +1027,7 @@ def _lock_valuation_bucket(target):
 
 def _get_outgoing_snapshot(target):
 	rows = frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={**_bucket_filters(target), "qty": ["<", 0]},
 		fields=["name", "stock_value_difference"],
 		order_by="posting_datetime asc, creation asc, name asc",
@@ -1095,7 +1038,7 @@ def _get_outgoing_snapshot(target):
 def _get_bucket_stock_value(target):
 	return flt(
 		frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			_bucket_filters(target),
 			"stock_value",
 			order_by="posting_datetime desc, creation desc, name desc",
@@ -1127,7 +1070,7 @@ def _replay_target_bucket(target):
 
 def _propagate_outgoing_difference(entry, outgoing_sle, difference):
 	links = frappe.get_all(
-		'YRP Stock Valuation Production Link',
+		"YRP Stock Valuation Production Link",
 		filters={"consumption_sle": outgoing_sle, "active": 1},
 		fields=["name", "output_receipt_sle", "allocation_weight"],
 		order_by="creation asc, name asc",
@@ -1136,9 +1079,7 @@ def _propagate_outgoing_difference(entry, outgoing_sle, difference):
 		weights = sum(max(flt(link.allocation_weight), 0) for link in links)
 		if weights <= 0:
 			frappe.throw(
-				_("Production links for consumption SLE {0} have no allocation weight.").format(
-					outgoing_sle
-				)
+				_("Production links for consumption SLE {0} have no allocation weight.").format(outgoing_sle)
 			)
 		assigned = 0.0
 		for index, link in enumerate(links):
@@ -1159,12 +1100,10 @@ def _propagate_outgoing_difference(entry, outgoing_sle, difference):
 			)
 		return {"propagated": flt(difference), "terminal": 0.0}
 
-	paired = frappe.db.get_value(
-		'YRP Stock Ledger Entry', outgoing_sle, "paired_stock_ledger_entry"
-	)
+	paired = frappe.db.get_value("YRP Stock Ledger Entry", outgoing_sle, "paired_stock_ledger_entry")
 	if paired:
 		paired_row = frappe.db.get_value(
-			'YRP Stock Ledger Entry', paired, ["qty", "is_cancelled"], as_dict=True
+			"YRP Stock Ledger Entry", paired, ["qty", "is_cancelled"], as_dict=True
 		)
 		if paired_row and not paired_row.is_cancelled and flt(paired_row.qty) > 0:
 			_queue_propagation_entry(
@@ -1190,17 +1129,17 @@ def _propagate_outgoing_difference(entry, outgoing_sle, difference):
 
 def _requires_persisted_lineage(outgoing_sle):
 	row = frappe.db.get_value(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		outgoing_sle,
 		["voucher_type", "voucher_no"],
 		as_dict=True,
 	)
 	if not row:
 		return False
-	if row.voucher_type in {'YRP Delivery Challan', 'YRP Goods Received Note', 'YRP Work Order'}:
+	if row.voucher_type in {"YRP Delivery Challan", "YRP Goods Received Note", "YRP Work Order"}:
 		return True
-	if row.voucher_type == 'YRP Stock Entry':
-		purpose = frappe.db.get_value('YRP Stock Entry', row.voucher_no, "purpose")
+	if row.voucher_type == "YRP Stock Entry":
+		purpose = frappe.db.get_value("YRP Stock Entry", row.voucher_no, "purpose")
 		return purpose in {
 			"Send to Warehouse",
 			"Receive at Warehouse",
@@ -1211,9 +1150,9 @@ def _requires_persisted_lineage(outgoing_sle):
 
 
 def _refresh_progress(adjustment, status=None):
-	total = frappe.db.count('YRP Stock Valuation Propagation Entry', {"adjustment": adjustment})
+	total = frappe.db.count("YRP Stock Valuation Propagation Entry", {"adjustment": adjustment})
 	completed = frappe.db.count(
-		'YRP Stock Valuation Propagation Entry',
+		"YRP Stock Valuation Propagation Entry",
 		{"adjustment": adjustment, "status": ["in", ["Applied", "Terminal"]]},
 	)
 	progress = (completed * 100 / total) if total else 0
@@ -1229,9 +1168,7 @@ def _refresh_progress(adjustment, status=None):
 
 
 def _complete_adjustment(adjustment):
-	reversal_of = frappe.db.get_value(
-		'YRP Stock Valuation Adjustment', adjustment, "reversal_of"
-	)
+	reversal_of = frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "reversal_of")
 	stale_owners = [adjustment, reversal_of] if reversal_of else [adjustment]
 	stale_targets, locked_entries = _lock_stale_targets(stale_owners)
 	# Target locks prevent a new owner/reversal from slipping in. All following
@@ -1239,9 +1176,7 @@ def _complete_adjustment(adjustment):
 	# hide work that committed while we waited for those targets.
 	doc = _lock_adjustment(adjustment)
 	current_entries = [row for row in locked_entries if row.adjustment == adjustment]
-	if not current_entries or any(
-		row.status not in {"Applied", "Terminal"} for row in current_entries
-	):
+	if not current_entries or any(row.status not in {"Applied", "Terminal"} for row in current_entries):
 		# A duplicate worker reached completion from an older candidate snapshot
 		# while another entry was still advancing. The locked current rows are the
 		# authority; leave the parent active and schedule the next safe delivery.
@@ -1253,9 +1188,7 @@ def _complete_adjustment(adjustment):
 	unexplained = flt(doc.total_source_difference) - stock_difference - terminal_difference
 	if abs(unexplained) > CONSERVATION_TOLERANCE:
 		frappe.throw(
-			_(
-				"Valuation conservation failed for {0}: source {1}, stock {2}, terminal {3}."
-			).format(
+			_("Valuation conservation failed for {0}: source {1}, stock {2}, terminal {3}.").format(
 				doc.name,
 				flt(doc.total_source_difference, 6),
 				stock_difference,
@@ -1290,7 +1223,7 @@ def _complete_adjustment(adjustment):
 	)
 	if doc.reversal_of:
 		frappe.db.set_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			doc.reversal_of,
 			"status",
 			"Reversed",
@@ -1314,7 +1247,7 @@ def _lock_stale_targets(adjustments):
 	for attempt in range(5):
 		targets = set(
 			frappe.get_all(
-				'YRP Stock Valuation Propagation Entry',
+				"YRP Stock Valuation Propagation Entry",
 				filters={"adjustment": ["in", adjustments]},
 				pluck="target_sle",
 				distinct=True,
@@ -1323,7 +1256,7 @@ def _lock_stale_targets(adjustments):
 		if not targets:
 			return [], []
 		rows = frappe.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"name": ["in", targets]},
 			fields=["name", "item", "warehouse", *dimension_fields],
 		)
@@ -1376,7 +1309,7 @@ def _clear_stale_flags(adjustments, targets):
 		)
 		if not other_active:
 			frappe.db.set_value(
-				'YRP Stock Ledger Entry',
+				"YRP Stock Ledger Entry",
 				target_sle,
 				"valuation_is_stale",
 				0,
@@ -1385,18 +1318,14 @@ def _clear_stale_flags(adjustments, targets):
 
 
 def _set_adjustment_values(name, **values):
-	frappe.db.set_value(
-		'YRP Stock Valuation Adjustment', name, values, update_modified=False
-	)
+	frappe.db.set_value("YRP Stock Valuation Adjustment", name, values, update_modified=False)
 
 
 def _mark_failed(adjustment, phase, error_log):
-	if not frappe.db.exists('YRP Stock Valuation Adjustment', adjustment):
+	if not frappe.db.exists("YRP Stock Valuation Adjustment", adjustment):
 		return
 	status = "Calculation Failed" if phase == "Calculation" else "Apply Failed"
-	retry_count = cint(
-		frappe.db.get_value('YRP Stock Valuation Adjustment', adjustment, "retry_count")
-	) + 1
+	retry_count = cint(frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "retry_count")) + 1
 	_set_adjustment_values(
 		adjustment,
 		status=status,
@@ -1413,7 +1342,7 @@ def _mark_failed(adjustment, phase, error_log):
 
 @frappe.whitelist()
 def retry_adjustment(adjustment):
-	doc = frappe.get_doc('YRP Stock Valuation Adjustment', adjustment)
+	doc = frappe.get_doc("YRP Stock Valuation Adjustment", adjustment)
 	doc.check_permission("read")
 	if doc.status not in {"Calculation Failed", "Apply Failed", "Queued", "Applying"}:
 		frappe.throw(_("Only a queued, applying, or failed adjustment can be retried."))
@@ -1431,7 +1360,7 @@ def recover_stalled_adjustments():
 	"""Scheduler safety net for lost RQ jobs and dead workers."""
 	stale_before = add_to_date(now_datetime(), minutes=-15)
 	rows = frappe.get_all(
-		'YRP Stock Valuation Adjustment',
+		"YRP Stock Valuation Adjustment",
 		filters={
 			"docstatus": 1,
 			"status": ["in", ACTIVE_STATUSES],
@@ -1441,9 +1370,10 @@ def recover_stalled_adjustments():
 		limit=100,
 	)
 	for row in rows:
-		if row.status in {"Calculation Failed", "Apply Failed"} and cint(
-			row.retry_count
-		) >= MAX_AUTOMATIC_RETRIES:
+		if (
+			row.status in {"Calculation Failed", "Apply Failed"}
+			and cint(row.retry_count) >= MAX_AUTOMATIC_RETRIES
+		):
 			continue
 		last_seen = row.last_heartbeat or row.queued_at
 		if row.status == "Queued" or not last_seen or last_seen < stale_before:
@@ -1494,11 +1424,11 @@ def register_production_links(source_doctype, source_name, links):
 			row.output_receipt_sle,
 		)
 		existing = frappe.db.get_value(
-			'YRP Stock Valuation Production Link', {"idempotency_key": key}, "name"
+			"YRP Stock Valuation Production Link", {"idempotency_key": key}, "name"
 		)
 		if existing:
 			frappe.db.set_value(
-				'YRP Stock Valuation Production Link',
+				"YRP Stock Valuation Production Link",
 				existing,
 				{
 					"input_quantity": flt(row.input_quantity),
@@ -1511,7 +1441,7 @@ def register_production_links(source_doctype, source_name, links):
 			continue
 		doc = frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Valuation Production Link',
+				"doctype": "YRP Stock Valuation Production Link",
 				"consumption_sle": row.consumption_sle,
 				"output_receipt_sle": row.output_receipt_sle,
 				"source_doctype": source_doctype,
@@ -1542,7 +1472,7 @@ def register_production_links(source_doctype, source_name, links):
 			if not existing:
 				raise
 			frappe.db.set_value(
-				'YRP Stock Valuation Production Link',
+				"YRP Stock Valuation Production Link",
 				existing[0],
 				{
 					"input_quantity": flt(row.input_quantity),
@@ -1559,7 +1489,7 @@ def register_production_links(source_doctype, source_name, links):
 
 def deactivate_production_links(source_doctype, source_name):
 	frappe.db.set_value(
-		'YRP Stock Valuation Production Link',
+		"YRP Stock Valuation Production Link",
 		{"source_doctype": source_doctype, "source_name": source_name, "active": 1},
 		"active",
 		0,
@@ -1569,7 +1499,7 @@ def deactivate_production_links(source_doctype, source_name):
 
 def find_receipt_sle(voucher_type, voucher_no, voucher_detail_no):
 	return frappe.db.get_value(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		{
 			"voucher_type": voucher_type,
 			"voucher_no": voucher_no,

@@ -10,20 +10,21 @@ from frappe.utils import add_days, nowdate
 
 from yrp.yrp.doctype.yrp_item.yrp_item import ensure_global_attribute_values
 
-
 EXTRA_TEST_RECORD_DEPENDENCIES = []
 IGNORE_TEST_RECORD_DEPENDENCIES = []
 
 
 def create_item_attribute(attribute_name):
 	"""Create an Item Attribute if it doesn't exist."""
-	if frappe.db.exists('Item Attribute', attribute_name):
-		return frappe.get_doc('Item Attribute', attribute_name)
+	if frappe.db.exists("Item Attribute", attribute_name):
+		return frappe.get_doc("Item Attribute", attribute_name)
 
-	doc = frappe.get_doc({
-		"doctype": 'Item Attribute',
-		"attribute_name": attribute_name,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "Item Attribute",
+			"attribute_name": attribute_name,
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	return doc
 
@@ -50,21 +51,23 @@ def setup_test_attributes():
 
 def make_test_yrp_settings(colour_as_grid=True):
 	"""Build the Production Order settings fixture without touching the singleton."""
-	return frappe.get_doc({
-		"doctype": 'YRP Settings',
-		"production_order_attributes": [
-			{
-				"attribute": "Colour",
-				"is_grid_attribute": 1 if colour_as_grid else 0,
-			},
-			{
-				"attribute": "Size",
-				"is_grid_attribute": 0,
-			},
-		],
-		"po_dependent_attribute": None,
-		"po_dependent_attribute_value": None,
-	})
+	return frappe.get_doc(
+		{
+			"doctype": "YRP Settings",
+			"production_order_attributes": [
+				{
+					"attribute": "Colour",
+					"is_grid_attribute": 1 if colour_as_grid else 0,
+				},
+				{
+					"attribute": "Size",
+					"is_grid_attribute": 0,
+				},
+			],
+			"po_dependent_attribute": None,
+			"po_dependent_attribute_value": None,
+		}
+	)
 
 
 def create_test_item(item_name="Test PO Item", attributes=None, primary_attribute=None):
@@ -73,18 +76,20 @@ def create_test_item(item_name="Test PO Item", attributes=None, primary_attribut
 		attributes = ["Colour", "Size"]
 
 	# Check if UOM exists
-	if not frappe.db.exists('UOM', "Nos"):
-		frappe.get_doc({"doctype": 'UOM', "uom_name": "Nos"}).insert(ignore_permissions=True)
+	if not frappe.db.exists("UOM", "Nos"):
+		frappe.get_doc({"doctype": "UOM", "uom_name": "Nos"}).insert(ignore_permissions=True)
 
 	# Check if Item Group exists
-	if not frappe.db.exists('Item Group', "Test Group"):
-		frappe.get_doc({
-			"doctype": 'Item Group',
-			"item_group_name": "Test Group",
-		}).insert(ignore_permissions=True)
+	if not frappe.db.exists("Item Group", "Test Group"):
+		frappe.get_doc(
+			{
+				"doctype": "Item Group",
+				"item_group_name": "Test Group",
+			}
+		).insert(ignore_permissions=True)
 
 	values = {
-		"doctype": 'Item',
+		"doctype": "Item",
 		"item_code": item_name,
 		"item_name": item_name,
 		"item_group": "Test Group",
@@ -93,10 +98,7 @@ def create_test_item(item_name="Test PO Item", attributes=None, primary_attribut
 		"primary_attribute": primary_attribute or (attributes[0] if attributes else None),
 		"attributes": [{"attribute": attr} for attr in attributes],
 	}
-	if (
-		frappe.get_meta("Item").has_field("gst_hsn_code")
-		and frappe.db.exists("GST HSN Code", "999900")
-	):
+	if frappe.get_meta("Item").has_field("gst_hsn_code") and frappe.db.exists("GST HSN Code", "999900"):
 		values["gst_hsn_code"] = "999900"
 	doc = frappe.get_doc(values)
 	doc.insert(ignore_permissions=True)
@@ -104,7 +106,7 @@ def create_test_item(item_name="Test PO Item", attributes=None, primary_attribut
 	# Add attribute values to mappings
 	for attr_row in doc.attributes:
 		if attr_row.mapping:
-			mapping = frappe.get_doc('YRP Item Item Attribute Mapping', attr_row.mapping)
+			mapping = frappe.get_doc("YRP Item Item Attribute Mapping", attr_row.mapping)
 			if attr_row.attribute == "Colour":
 				for val in ["Red", "Blue", "Green"]:
 					mapping.append("values", {"attribute_value": val})
@@ -120,13 +122,15 @@ def create_production_term(term_name="Test Term", submit=True):
 	"""Create a Production Term with a detail row."""
 	term_name = f"_Test {term_name} {frappe.generate_hash(length=8)}"
 
-	doc = frappe.get_doc({
-		"doctype": 'YRP Production Term',
-		"term_name": term_name,
-		"production_term_details": [
-			{"term": "Test term detail"},
-		],
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Production Term",
+			"term_name": term_name,
+			"production_term_details": [
+				{"term": "Test term detail"},
+			],
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	if submit:
 		doc.submit()
@@ -147,7 +151,7 @@ def create_production_order(
 	delivery_date = delivery_date or add_days(today, 7)
 	dont_deliver_after = dont_deliver_after or add_days(today, 14)
 
-	doc = frappe.new_doc('YRP Production Order')
+	doc = frappe.new_doc("YRP Production Order")
 	doc.naming_series = "PPO-"
 	doc.delivery_date = delivery_date
 	doc.dont_deliver_after = dont_deliver_after
@@ -190,7 +194,7 @@ class TestProductionOrder(IntegrationTestCase):
 		cls._get_cached_doc = frappe.get_cached_doc
 
 		def get_cached_doc(doctype, *args, **kwargs):
-			if doctype == 'YRP Settings':
+			if doctype == "YRP Settings":
 				return cls.yrp_settings
 			return cls._get_cached_doc(doctype, *args, **kwargs)
 
@@ -314,22 +318,28 @@ class TestProductionOrder(IntegrationTestCase):
 	def test_cancel_with_linked_references_throws(self):
 		"""Cannot cancel if production_ordered_details have reference_name."""
 		doc = create_production_order()
-		doc.append("production_ordered_details", {
-			"reference_doctype": "YRP Production Order",
-			"reference_name": doc.name,
-			"quantity": 10,
-		})
+		doc.append(
+			"production_ordered_details",
+			{
+				"reference_doctype": "YRP Production Order",
+				"reference_name": doc.name,
+				"quantity": 10,
+			},
+		)
 		doc.save()
 		self.assertRaises(frappe.ValidationError, doc.cancel)
 
 	def test_cancel_with_empty_reference_name_allows(self):
 		"""Can cancel if production_ordered_details exist but reference_name is empty."""
 		doc = create_production_order()
-		doc.append("production_ordered_details", {
-			"reference_doctype": "",
-			"reference_name": "",
-			"quantity": 10,
-		})
+		doc.append(
+			"production_ordered_details",
+			{
+				"reference_doctype": "",
+				"reference_name": "",
+				"quantity": 10,
+			},
+		)
 		doc.save()
 		doc.cancel()
 		doc.reload()
@@ -356,13 +366,15 @@ class TestProductionOrder(IntegrationTestCase):
 
 	def test_item_details_json_creates_order_details(self):
 		"""Saving with item_details JSON populates production_order_details child table."""
-		item_details = [{
-			"item": self.test_item.name,
-			"entries": [
-				{"attributes": {"Colour": "Red", "Size": "M"}, "qty": 10},
-				{"attributes": {"Colour": "Blue", "Size": "L"}, "qty": 20},
-			],
-		}]
+		item_details = [
+			{
+				"item": self.test_item.name,
+				"entries": [
+					{"attributes": {"Colour": "Red", "Size": "M"}, "qty": 10},
+					{"attributes": {"Colour": "Blue", "Size": "L"}, "qty": 20},
+				],
+			}
+		]
 
 		doc = create_production_order(
 			item_details=item_details,
@@ -375,13 +387,15 @@ class TestProductionOrder(IntegrationTestCase):
 
 	def test_item_details_skips_zero_qty_entries(self):
 		"""Entries with qty <= 0 are skipped."""
-		item_details = [{
-			"item": self.test_item.name,
-			"entries": [
-				{"attributes": {"Colour": "Red", "Size": "S"}, "qty": 5},
-				{"attributes": {"Colour": "Blue", "Size": "M"}, "qty": 0},
-			],
-		}]
+		item_details = [
+			{
+				"item": self.test_item.name,
+				"entries": [
+					{"attributes": {"Colour": "Red", "Size": "S"}, "qty": 5},
+					{"attributes": {"Colour": "Blue", "Size": "M"}, "qty": 0},
+				],
+			}
+		]
 
 		doc = create_production_order(
 			item_details=item_details,
@@ -392,12 +406,14 @@ class TestProductionOrder(IntegrationTestCase):
 
 	def test_item_details_creates_variants(self):
 		"""Saving with item_details creates Item Variants for each entry."""
-		item_details = [{
-			"item": self.test_item.name,
-			"entries": [
-				{"attributes": {"Colour": "Green", "Size": "L"}, "qty": 15},
-			],
-		}]
+		item_details = [
+			{
+				"item": self.test_item.name,
+				"entries": [
+					{"attributes": {"Colour": "Green", "Size": "L"}, "qty": 15},
+				],
+			}
+		]
 
 		doc = create_production_order(
 			item_details=item_details,
@@ -405,16 +421,18 @@ class TestProductionOrder(IntegrationTestCase):
 		)
 		row = doc.production_order_details[0]
 		self.assertTrue(row.item_variant)
-		self.assertTrue(frappe.db.exists('Item', row.item_variant))
+		self.assertTrue(frappe.db.exists("Item", row.item_variant))
 
 	def test_item_details_stores_attributes_json(self):
 		"""Each production_order_detail row stores attributes as JSON."""
-		item_details = [{
-			"item": self.test_item.name,
-			"entries": [
-				{"attributes": {"Colour": "Red", "Size": "S"}, "qty": 8},
-			],
-		}]
+		item_details = [
+			{
+				"item": self.test_item.name,
+				"entries": [
+					{"attributes": {"Colour": "Red", "Size": "S"}, "qty": 8},
+				],
+			}
+		]
 
 		doc = create_production_order(
 			item_details=item_details,
@@ -480,22 +498,24 @@ class TestProductionOrder(IntegrationTestCase):
 		from yrp.yrp.doctype.yrp_production_order.yrp_production_order import get_item_production_attributes
 
 		# Create item with non-configured attribute
-		other_attr = create_item_attribute("Weight")
-		item = frappe.get_doc({
-			"doctype": 'Item',
-			"item_code": "No Match Item",
-			"item_name": "No Match Item",
-			"item_group": "Test Group",
-			"stock_uom": "Nos",
-			"has_variants": 1,
-			"attributes": [{"attribute": "Weight"}],
-			**(
-				{"gst_hsn_code": "999900"}
-				if frappe.get_meta("Item").has_field("gst_hsn_code")
-				and frappe.db.exists("GST HSN Code", "999900")
-				else {}
-			),
-		})
+		create_item_attribute("Weight")
+		item = frappe.get_doc(
+			{
+				"doctype": "Item",
+				"item_code": "No Match Item",
+				"item_name": "No Match Item",
+				"item_group": "Test Group",
+				"stock_uom": "Nos",
+				"has_variants": 1,
+				"attributes": [{"attribute": "Weight"}],
+				**(
+					{"gst_hsn_code": "999900"}
+					if frappe.get_meta("Item").has_field("gst_hsn_code")
+					and frappe.db.exists("GST HSN Code", "999900")
+					else {}
+				),
+			}
+		)
 		item.insert(ignore_permissions=True)
 
 		self.assertRaises(frappe.ValidationError, get_item_production_attributes, item.name)
@@ -508,14 +528,16 @@ class TestProductionOrder(IntegrationTestCase):
 		"""Order summary groups quantities by item and primary attribute value."""
 		from yrp.yrp.doctype.yrp_production_order.yrp_production_order import get_order_summary
 
-		item_details = [{
-			"item": self.test_item.name,
-			"entries": [
-				{"attributes": {"Colour": "Red", "Size": "S"}, "qty": 10},
-				{"attributes": {"Colour": "Red", "Size": "M"}, "qty": 20},
-				{"attributes": {"Colour": "Blue", "Size": "S"}, "qty": 5},
-			],
-		}]
+		item_details = [
+			{
+				"item": self.test_item.name,
+				"entries": [
+					{"attributes": {"Colour": "Red", "Size": "S"}, "qty": 10},
+					{"attributes": {"Colour": "Red", "Size": "M"}, "qty": 20},
+					{"attributes": {"Colour": "Blue", "Size": "S"}, "qty": 5},
+				],
+			}
+		]
 
 		doc = create_production_order(item_details=item_details)
 		summary = get_order_summary(doc.name)
@@ -542,13 +564,15 @@ class TestProductionOrder(IntegrationTestCase):
 		"""Items saved via JSON can be fetched back into grouped format."""
 		from yrp.yrp.doctype.yrp_production_order.yrp_production_order import fetch_production_order_items
 
-		item_details = [{
-			"item": self.test_item.name,
-			"entries": [
-				{"attributes": {"Colour": "Red", "Size": "M"}, "qty": 7},
-				{"attributes": {"Colour": "Blue", "Size": "L"}, "qty": 3},
-			],
-		}]
+		item_details = [
+			{
+				"item": self.test_item.name,
+				"entries": [
+					{"attributes": {"Colour": "Red", "Size": "M"}, "qty": 7},
+					{"attributes": {"Colour": "Blue", "Size": "L"}, "qty": 3},
+				],
+			}
+		]
 
 		doc = create_production_order(
 			item_details=item_details,

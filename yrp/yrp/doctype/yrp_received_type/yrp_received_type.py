@@ -15,19 +15,17 @@ class YRPReceivedType(Document):
 		if not self.is_default:
 			return
 		others = frappe.get_all(
-			'YRP Received Type',
+			"YRP Received Type",
 			filters={"is_default": 1, "name": ("!=", self.name)},
 			pluck="name",
 		)
 		for other in others:
-			frappe.db.set_value('YRP Received Type', other, "is_default", 0)
+			frappe.db.set_value("YRP Received Type", other, "is_default", 0)
 
 	def on_trash(self):
-		settings = frappe.get_single('YRP Stock Settings')
+		settings = frappe.get_single("YRP Stock Settings")
 		if settings.get("default_received_type") == self.name:
-			frappe.throw(
-				f"Cannot delete '{self.name}' — it is set as the default in YRP Stock Settings."
-			)
+			frappe.throw(f"Cannot delete '{self.name}' — it is set as the default in YRP Stock Settings.")
 		if settings.get("default_rejected_received_type") == self.name:
 			frappe.throw(
 				f"Cannot delete '{self.name}' — it is set as the default rejected type in YRP Stock Settings."

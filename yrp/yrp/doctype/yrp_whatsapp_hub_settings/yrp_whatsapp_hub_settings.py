@@ -53,7 +53,7 @@ class YRPWhatsAppHubSettings(Document):
 	def get_supplier_key(self, doctype):
 		"""The allowlist row's supplier_key for `doctype`, or the "supplier"
 		default when the row has none configured (or the doctype isn't listed)."""
-		for row in (self.enabled_doctypes or []):
+		for row in self.enabled_doctypes or []:
 			if row.reference_doctype == doctype:
 				return row.supplier_key or "supplier"
 		return "supplier"
@@ -62,21 +62,27 @@ class YRPWhatsAppHubSettings(Document):
 		self._sync_local_whatsapp_accounts()
 
 	def _sync_local_whatsapp_accounts(self):
-		for row in (self.get("accounts") or []):
+		for row in self.get("accounts") or []:
 			name = (row.account_name or "").strip()
 			if not name:
 				continue
 			is_default = 1 if row.get("is_default") else 0
-			if frappe.db.exists('YRP WhatsApp Account', name):
-				frappe.db.set_value('YRP WhatsApp Account', name, {
-					"is_default": is_default,
-				})
+			if frappe.db.exists("YRP WhatsApp Account", name):
+				frappe.db.set_value(
+					"YRP WhatsApp Account",
+					name,
+					{
+						"is_default": is_default,
+					},
+				)
 			else:
-				frappe.get_doc({
-					"doctype": 'YRP WhatsApp Account',
-					"account_name": name,
-					"is_default": is_default,
-				}).insert(ignore_permissions=True, ignore_mandatory=True)
+				frappe.get_doc(
+					{
+						"doctype": "YRP WhatsApp Account",
+						"account_name": name,
+						"is_default": is_default,
+					}
+				).insert(ignore_permissions=True, ignore_mandatory=True)
 
 
 def parse_whatsapp_variables(text):
@@ -90,5 +96,6 @@ def parse_whatsapp_variables(text):
 			seen.add(n)
 			ordered.append(n)
 	return ordered
+
 
 WhatsAppHubSettings = YRPWhatsAppHubSettings

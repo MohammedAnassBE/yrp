@@ -27,8 +27,7 @@ class YRPExcelStickerPrint(Document):
 			frappe.throw("Excel file is empty")
 
 		headers = [
-			str(h).strip().lower().replace(' ', '_') if h else f'column_{i}'
-			for i, h in enumerate(data[0])
+			str(h).strip().lower().replace(" ", "_") if h else f"column_{i}" for i, h in enumerate(data[0])
 		]
 		rows = []
 		for row_data in data[1:]:
@@ -43,13 +42,14 @@ class YRPExcelStickerPrint(Document):
 		self.serialized_data = json.dumps(rows)
 		self.db_set("serialized_data", self.serialized_data)
 
+
 @frappe.whitelist()
 def get_raw_code(doc_name):
-	doc = frappe.get_doc('YRP Excel Sticker Print', doc_name)
+	doc = frappe.get_doc("YRP Excel Sticker Print", doc_name)
 	if not doc.serialized_data:
 		frappe.throw("No data found. Please ensure the document is submitted.")
 
-	print_format_doc = frappe.get_doc('YRP ZPL Raw Print Format', doc.print_format)
+	print_format_doc = frappe.get_doc("YRP ZPL Raw Print Format", doc.print_format)
 	raw_code = None
 	for p in print_format_doc.zpl_raw_print_format_details:
 		if p.printer_type == "300dpi":
@@ -73,8 +73,8 @@ def get_raw_code(doc_name):
 	# and made Labelary reject an otherwise tiny ZPL template with HTTP 413.
 	context.update(
 		{
-			'print_quantity': 1,
-			'dpi': 300,
+			"print_quantity": 1,
+			"dpi": 300,
 		}
 	)
 
@@ -85,13 +85,14 @@ def get_raw_code(doc_name):
 		"width": print_format_doc.width,
 	}
 
+
 @frappe.whitelist()
 def get_print_format(doc_name, printer_res="200dpi"):
-	doc = frappe.get_doc('YRP Excel Sticker Print', doc_name)
+	doc = frappe.get_doc("YRP Excel Sticker Print", doc_name)
 	if not doc.serialized_data:
 		frappe.throw("No data found to print. Please ensure the document is submitted.")
 
-	print_format_doc = frappe.get_doc('YRP ZPL Raw Print Format', doc.print_format)
+	print_format_doc = frappe.get_doc("YRP ZPL Raw Print Format", doc.print_format)
 
 	raw_code = None
 	for p in print_format_doc.zpl_raw_print_format_details:
@@ -109,21 +110,20 @@ def get_print_format(doc_name, printer_res="200dpi"):
 	data = json.loads(doc.serialized_data)
 
 	templates = ""
-	dpi_value = 203 if '200' in printer_res else 300
+	dpi_value = 203 if "200" in printer_res else 300
 	labels_per_row = print_format_doc.labels_per_row or 1
 
 	for row in data:
-		qty = row.get('print_quantity') or 0
+		qty = row.get("print_quantity") or 0
 		if qty > 0:
-			row['print_quantity'] = math.ceil(qty / labels_per_row)
+			row["print_quantity"] = math.ceil(qty / labels_per_row)
 			templates += get_template(row, raw_code, dpi_value=dpi_value)
 
 	return templates
 
+
 def get_template(row, raw_code, dpi_value=203):
-	context = {
-		'dpi': dpi_value
-	}
+	context = {"dpi": dpi_value}
 	context.update(row)
 
 	template = frappe.render_template(raw_code, context)
