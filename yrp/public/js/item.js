@@ -17,6 +17,14 @@ frappe.ui.form.on("Item", {
 			});
 		}
 		frm.set_query("stock_uom", () => ({ filters: { secondary_only: 0 } }));
+		frm.set_query("yrp_product", () => ({
+			filters: {
+				disabled: 0,
+				...(frm.doc.yrp_item_master_template
+					? { item_template: frm.doc.yrp_item_master_template }
+					: {}),
+			},
+		}));
 	},
 
 	refresh(frm) {

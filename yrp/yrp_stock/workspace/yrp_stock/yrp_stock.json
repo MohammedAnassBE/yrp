@@ -1,0 +1,49 @@
+{
+ "doctype": "Workspace",
+ "name": "YRP Stock",
+ "title": "YRP Stock",
+ "label": "YRP Stock",
+ "app": "yrp",
+ "module": "YRP Stock",
+ "public": 1,
+ "is_hidden": 0,
+ "icon": "stock",
+ "type": "Workspace",
+ "content": "[{\"id\":\"yrp_stock_card\",\"type\":\"card\",\"data\":{\"card_name\":\"YRP Stock\",\"col\":12}}]",
+ "links": [
+  {
+   "type": "Card Break",
+   "label": "YRP Stock"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Entry",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Entry"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Reconciliation",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Reconciliation"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Bin",
+   "link_type": "DocType",
+   "link_to": "YRP Bin"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Ledger Entry",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Ledger Entry"
+  },
+  {
+   "type": "Link",
+   "label": "YRP Stock Settings",
+   "link_type": "DocType",
+   "link_to": "YRP Stock Settings"
+  }
+ ]
+}

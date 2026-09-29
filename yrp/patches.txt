@@ -25,3 +25,9 @@ yrp.patches.backfill_item_dependent_attribute_value
 yrp.patches.link_item_attribute_mapping_values
 
 yrp.patches.link_remaining_attribute_values
+
+yrp.patches.backfill_retailer_sales_partner
+yrp.patches.separate_template_product_attribute_mappings
+yrp.patches.refresh_delivery_progress_default_uom
+yrp.patches.remove_partner_provisioning
+yrp.patches.rename_partner_workspace

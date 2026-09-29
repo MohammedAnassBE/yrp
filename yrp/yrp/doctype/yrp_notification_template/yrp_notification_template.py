@@ -184,9 +184,8 @@ def get_context(doctype, docname):
 
 def add_whatsapp_communication_medium():
 	"""Append 'WhatsApp' to Communication.communication_medium options so the
-	best-effort timeline Communication validates. Idempotent; wired to
-	after_install + after_migrate. A property setter is allowed (it does not
-	edit core)."""
+	best-effort timeline Communication validates. Kept for explicit repair;
+	normal installation and migration use the exported Property Setter fixture."""
 	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
 	field = frappe.get_meta("Communication").get_field("communication_medium")

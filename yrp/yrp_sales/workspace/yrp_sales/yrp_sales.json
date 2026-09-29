@@ -1,0 +1,4 @@
+{
+ "app":"yrp","doctype":"Workspace","name":"YRP Sales","title":"YRP Sales","label":"YRP Sales","module":"YRP Sales","icon":"sell","type":"Workspace","public":1,"standard":1,"is_hidden":0,
+ "links":[{"type":"Card Break","label":"Sales and Retail"},{"type":"Link","label":"YRP Product","link_type":"DocType","link_to":"YRP Product"},{"type":"Link","label":"YRP Retail Order","link_type":"DocType","link_to":"YRP Retail Order"},{"type":"Link","label":"YRP Retail Order Summary","link_type":"DocType","link_to":"YRP Retail Order Summary"},{"type":"Card Break","label":"Reports"},{"type":"Link","label":"YRP Retail Demand","link_type":"Report","link_to":"YRP Retail Demand"},{"type":"Link","label":"YRP Sales Order Fulfilment","link_type":"Report","link_to":"YRP Sales Order Fulfilment"}]
+}

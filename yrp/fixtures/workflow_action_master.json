@@ -2,24 +2,28 @@
  {
   "docstatus": 0,
   "doctype": "Workflow Action Master",
+  "modified": "2026-09-22 17:28:39.282282",
   "name": "Submit",
   "workflow_action_name": "Submit"
  },
  {
   "docstatus": 0,
   "doctype": "Workflow Action Master",
+  "modified": "2026-09-22 17:28:39.286911",
   "name": "Approve",
   "workflow_action_name": "Approve"
  },
  {
   "docstatus": 0,
   "doctype": "Workflow Action Master",
+  "modified": "2026-09-22 17:28:39.291355",
   "name": "Reject",
   "workflow_action_name": "Reject"
  },
  {
   "docstatus": 0,
   "doctype": "Workflow Action Master",
+  "modified": "2026-09-22 17:28:39.295564",
   "name": "Expired",
   "workflow_action_name": "Expired"
  }

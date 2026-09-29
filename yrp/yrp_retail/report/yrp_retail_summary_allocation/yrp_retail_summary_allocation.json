@@ -1,0 +1,24 @@
+{
+ "doctype": "Report",
+ "name": "YRP Retail Summary Allocation",
+ "ref_doctype": "YRP Retail Order Summary",
+ "module": "YRP Retail",
+ "report_type": "Script Report",
+ "is_standard": "Yes",
+ "add_total_row": 0,
+ "disabled": 0,
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "YRP Partner Manager"
+  },
+  {
+   "role": "YRP Retail User"
+  },
+  {
+   "role": "YRP Partner"
+  }
+ ]
+}

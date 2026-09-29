@@ -1,0 +1,13 @@
+{
+ "app": "yrp",
+ "doctype": "Desktop Icon",
+ "label": "YRP",
+ "name": "YRP",
+ "icon_type": "App",
+ "link_type": "External",
+ "link": "/app/home",
+ "parent_icon": null,
+ "standard": 1,
+ "hidden": 0,
+ "idx": 100
+}
