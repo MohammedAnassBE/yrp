@@ -337,6 +337,13 @@ def create_purchase_invoice_adjustment(invoice):
 				billing_rate = _get_po_material_rate(grn, grn_item)
 			target_sle = find_receipt_sle(grn.doctype, grn.name, grn_item.name)
 			if not target_sle:
+				# Legacy Purchase-Order GRNs could be invoiced in production_api
+				# without creating an MRP receipt SLE. Keep those invoices
+				# submittable; without a receipt there is no stock value to revise.
+				# Work-Order GRNs must always have their receipt because their
+				# process-cost difference has to propagate through downstream stock.
+				if grn.against == 'Purchase Order':
+					return None
 				frappe.throw(
 					_("No active receipt SLE was found for GRN row {0}.").format(
 						grn_item.name

@@ -83,6 +83,24 @@ class TestBillTracking(FrappeTestCase):
 		for value in ("HO", "Post", "Email", 'Warehouse', "Others"):
 			_received_via(value)
 
+	def test_00_erp_purchase_invoice_is_a_standard_link(self):
+		field = frappe.get_meta('YRP Bill Tracking', cached=False).get_field(
+			"erp_purchase_invoice"
+		)
+		self.assertEqual(
+			(field.fieldtype, field.options, field.read_only, field.no_copy),
+			("Link", 'Purchase Invoice', 1, 1),
+		)
+		self.assertFalse(
+			frappe.db.exists(
+				"Custom Field",
+				{
+					"dt": 'YRP Bill Tracking',
+					"fieldname": "erp_purchase_invoice",
+				},
+			)
+		)
+
 	# ---------- Lifecycle ----------
 
 	def test_01_submit_appends_open_history(self):

@@ -19,26 +19,25 @@ frappe.ui.form.on("YRP Bill Tracking", {
 			}
 			frm.page.btn_secondary.hide();
 
-			if (!frm.doc.purchase_invoice) {
+			if (!frm.doc.purchase_invoice && !frm.doc.erp_purchase_invoice) {
 				if (frappe.user.has_role("HR User") || frappe.user.has_role("System Manager")) {
 					frm.add_custom_button(__("Cancel"), () => show_cancel_dialog(frm));
 				}
 				if (frappe.user.has_role("Accounts Manager") || frappe.user.has_role("Accounts User")) {
-					frm.add_custom_button(__("Create Purchase Invoice"), () => {
-						const pi = frappe.model.get_new_doc("YRP Purchase Invoice");
+					frm.add_custom_button(__("Create ERP Purchase Invoice"), () => {
+						const pi = frappe.model.get_new_doc("Purchase Invoice");
 						pi.supplier = frm.doc.supplier;
-						pi.billing_supplier = frm.doc.supplier;
 						pi.bill_date = frm.doc.bill_date;
 						pi.bill_no = frm.doc.bill_no;
-						pi.bill_tracking = frm.doc.name;
+						pi.vendor_bill_tracking = frm.doc.name;
 						frappe.set_route("Form", pi.doctype, pi.name);
 					});
 				}
 			}
 
-			if (frm.doc.purchase_invoice) {
-				frm.add_custom_button(__("Show Purchase Invoice"), () => {
-					frappe.set_route("Form", "YRP Purchase Invoice", frm.doc.purchase_invoice);
+			if (frm.doc.erp_purchase_invoice) {
+				frm.add_custom_button(__("Show ERP Purchase Invoice"), () => {
+					frappe.set_route("Form", "Purchase Invoice", frm.doc.erp_purchase_invoice);
 				});
 			}
 
@@ -74,6 +73,7 @@ function setup_delivery_person_suggestion(frm) {
 
 function clear_carryover_fields(frm) {
 	frm.set_value("purchase_invoice", null);
+	frm.set_value("erp_purchase_invoice", null);
 	frm.set_value("form_status", null);
 	frm.set_value("assigned_to", null);
 	frm.set_value("bill_tracking_history", []);

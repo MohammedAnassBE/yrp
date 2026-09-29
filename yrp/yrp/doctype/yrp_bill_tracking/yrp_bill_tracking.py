@@ -227,3 +227,14 @@ def check_for_can_show_receive_btn(name):
 
 
 BillTracking = YRPBillTracking
+
+
+def remove_legacy_erp_purchase_invoice_custom_field():
+	"""Remove the former Essdee custom-field metadata without dropping its data column."""
+	filters = {
+		"dt": 'YRP Bill Tracking',
+		"fieldname": "erp_purchase_invoice",
+	}
+	if frappe.db.exists("Custom Field", filters):
+		frappe.db.delete("Custom Field", filters)
+		frappe.clear_cache(doctype='YRP Bill Tracking')

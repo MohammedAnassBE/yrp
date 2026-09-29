@@ -459,6 +459,34 @@ class TestPurchaseInvoice(FrappeTestCase):
 			28,
 		)
 
+	def test_legacy_purchase_order_invoice_does_not_require_receipt_sle(self):
+		po = _purchase_order(
+			qty=2,
+			warehouse=_warehouse(
+				f"_Test_PI_Legacy_No_SLE_WH_{frappe.generate_hash(length=6)}"
+			),
+		)
+		grn = _purchase_order_grn(po, qty=2)
+		grn.submit()
+		invoice = _purchase_invoice('Purchase Order', po.supplier, grn)
+
+		from yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment import (
+			create_purchase_invoice_adjustment,
+		)
+
+		with patch(
+			"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment.find_receipt_sle",
+			return_value=None,
+		):
+			self.assertIsNone(create_purchase_invoice_adjustment(invoice))
+
+		self.assertFalse(
+			frappe.db.exists(
+				'YRP Stock Valuation Adjustment',
+				{"source_doctype": invoice.doctype, "source_name": invoice.name},
+			)
+		)
+
 	def test_grn_can_cancel_after_pi_valuation_reversal_completes(self):
 		po = _purchase_order(
 			qty=4,

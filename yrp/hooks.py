@@ -221,6 +221,7 @@ doc_events = {
 after_migrate = [
 	"yrp.stock.dimensions.create_dimension_fields",
 	"yrp.patches.add_sle_composite_index.execute",
+	"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.remove_legacy_erp_purchase_invoice_custom_field",
 	"yrp.yrp.doctype.yrp_item.yrp_item.ensure_variant_tuple_unique_index",
 	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium",
 ]
