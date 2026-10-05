@@ -89,8 +89,16 @@ fixtures = [
 		"YRP-Customer-Report-YRP Sales Order Fulfilment", "a07c31b3ba", "e3d4c742f2",
 	]]]},
 	{"dt": "Workflow", "filters": [["name", "in", ["Item Price Workflow", "Process Cost Workflow"]]]},
-	{"dt": "Workflow State", "filters": [["name", "in", ["Draft", "Approval Pending", "Approved", "Rejected", "Expired"]]]},
-	{"dt": "Workflow Action Master", "filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired"]]]},
+	{
+		"dt": "Workflow State",
+		"filters": [["name", "in", ["Draft", "Approval Pending", "Approved", "Rejected", "Expired"]]],
+		"prefix": "00",
+	},
+	{
+		"dt": "Workflow Action Master",
+		"filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired"]]],
+		"prefix": "01",
+	},
 	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},
 ]
 
