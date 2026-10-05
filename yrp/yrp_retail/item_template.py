@@ -15,14 +15,17 @@ def rows_of(rows):
 		for row in rows]
 
 
-def apply_template(item, method=None):
-	"""Apply the linked Product's commercial policy, or the direct Template's."""
+def apply_template(item, method=None, source=None):
+	"""Apply the linked Product's commercial policy, or the direct Template's.
+
+	`source` is an already loaded Product (or Template) from a sync job.
+	"""
 	old = item.get_doc_before_save()
 	if old and old.get('yrp_item_master_template') and not item.get('yrp_item_master_template'):
 		frappe.throw(_('An Item managed by a YRP Item Master Template cannot remove its template link.'))
 	product_name = item.get('yrp_product')
 	if product_name:
-		product = frappe.get_doc('YRP Product', product_name, for_update=True)
+		product = source if source and source.doctype == 'YRP Product' else frappe.get_doc('YRP Product', product_name, for_update=True)
 		if not old or old.get('yrp_product') != product_name:
 			product.check_permission('read')
 			if product.disabled:
@@ -38,7 +41,7 @@ def apply_template(item, method=None):
 			frappe.throw(_('Configure Free Item on a YRP Item Master Template.'))
 		return
 	if not _source:
-		_source = frappe.get_doc('YRP Item Master Template', item.yrp_item_master_template, for_update=True)
+		_source = source or frappe.get_doc('YRP Item Master Template', item.yrp_item_master_template, for_update=True)
 		if not old or old.get('yrp_item_master_template') != item.yrp_item_master_template:
 			_source.check_permission('read')
 	item.yrp_is_free_item = _source.is_free_item
@@ -60,38 +63,98 @@ def validate_template(template):
 		frappe.throw(_('Company defaults may only occur once per Company.'))
 
 
+ITEM_TABLES = ('taxes', 'item_defaults', 'yrp_categories')
+SOURCE_TABLES = ('taxes', 'item_defaults', 'categories')
+SYNCED_FIELDS = ('yrp_item_master_template', 'yrp_is_free_item', 'yrp_item_type', 'gst_hsn_code')
+
+
+def get_synced_snapshot(item):
+	"""Item values owned by the Template or Product policy."""
+	return ([item.get(field) for field in SYNCED_FIELDS],
+		[rows_of(item.get(table)) for table in ITEM_TABLES])
+
+
+def enqueue_item_sync(job, doc):
+	"""After commit, queue one deduplicated job per Product or Template.
+
+	A running job already loaded older values, so alternate between the base and
+	follow-up ids: the next save always lands on a job that has not started.
+	"""
+	from rq.job import JobStatus
+	from frappe.utils.background_jobs import get_job_status
+
+	base_id = f'yrp-{doc.doctype.lower().replace(" ", "-")}-item-sync::{doc.name}'
+	name = doc.name
+
+	def enqueue():
+		is_running = get_job_status(base_id) == JobStatus.STARTED
+		job_id = f'{base_id}::followup' if is_running and get_job_status(f'{base_id}::followup') != JobStatus.STARTED else base_id
+		frappe.enqueue(
+			f'yrp.yrp_retail.item_template.{job}', queue='long', timeout=1800,
+			job_id=job_id, deduplicate=True, name=name,
+		)
+
+	frappe.db.after_commit.add(enqueue)
+
+
 def sync_items(template):
-	"""Synchronize direct Template Items; Product Items have their own snapshot."""
+	"""Queue direct Template Item sync when the Template policy changed."""
 	old = template.get_doc_before_save()
-	if old and (old.is_free_item == template.is_free_item and old.item_type == template.item_type
-		and all(rows_of(old.get(field)) == rows_of(template.get(field))
-			for field in ('taxes','item_defaults','categories'))):
+	if not old or (old.is_free_item == template.is_free_item and old.item_type == template.item_type
+		and all(rows_of(old.get(field)) == rows_of(template.get(field)) for field in SOURCE_TABLES)):
 		return
-	# Post-model patches run before Custom Field fixtures are imported on a fresh
-	# site. The new Product column may not exist yet during owner repair.
-	with_product = frappe.db.has_column('Item', 'yrp_product')
-	fields = ['name', 'yrp_product'] if with_product else ['name']
-	for row in frappe.db.get_values('Item', filters={'yrp_item_master_template':template.name}, fieldname=fields, as_dict=True, for_update=True, order_by='name'):
-		if with_product and row.yrp_product:
-			continue
-		item = frappe.get_doc('Item', row.name, for_update=True)
-		apply_template(item)
-		item.save(ignore_permissions=True)
+	enqueue_item_sync('sync_template_items_job', template)
 
 
 def sync_product_items(product):
-	"""Update linked Item masters through validation in the Product transaction."""
+	"""Queue linked Item sync when the Product policy changed."""
 	if not frappe.db.has_column('Item', 'yrp_product'):
 		return
 	old = product.get_doc_before_save()
-	if old and all(rows_of(old.get(field)) == rows_of(product.get(field))
-			for field in ('taxes', 'item_defaults', 'categories')) and all(
-			old.get(field) == product.get(field)
-			for field in ('gst_hsn_code', 'is_free_item', 'item_type')):
+	if not old or all(rows_of(old.get(field)) == rows_of(product.get(field)) for field in SOURCE_TABLES) and all(
+			old.get(field) == product.get(field) for field in ('gst_hsn_code', 'is_free_item', 'item_type')):
 		return
-	for name in frappe.db.get_values('Item', filters={'yrp_product': product.name}, fieldname='name', pluck=True, for_update=True, order_by='name'):
-		item = frappe.get_doc('Item', name, for_update=True)
-		apply_template(item)
+	enqueue_item_sync('sync_product_items_job', product)
+
+
+def sync_template_items_job(name):
+	"""Background: sync direct Template Items, skipping Product-owned ones."""
+	template = frappe.get_doc('YRP Item Master Template', name, for_update=True)
+	with_product = frappe.db.has_column('Item', 'yrp_product')
+	rows = frappe.db.get_values('Item', filters={'yrp_item_master_template': name},
+		fieldname=['name', 'yrp_product'] if with_product else ['name'], as_dict=True, order_by='name')
+	sync_item_names(template, [row.name for row in rows if not (with_product and row.yrp_product)])
+
+
+def sync_product_items_job(name):
+	"""Background: sync every Item linked to the Product."""
+	product = frappe.get_doc('YRP Product', name, for_update=True)
+	sync_item_names(product, frappe.db.get_all('Item', filters={'yrp_product': name}, pluck='name', order_by='name'))
+
+
+def sync_item_names(source, item_names):
+	"""Apply source to each Item; log and continue past failures, then raise."""
+	failed = []
+	for item_name in item_names:
+		savepoint = 'yrp_item_sync'
+		frappe.db.savepoint(savepoint)
+		try:
+			sync_item(source, item_name)
+		except Exception:
+			frappe.db.rollback(save_point=savepoint)
+			failed.append(item_name)
+			frappe.log_error(title=f'YRP item sync failed: {source.doctype} {source.name} / Item {item_name}')
+	if failed:
+		frappe.db.commit()  # raising rolls back the job, so keep the good items first
+		frappe.throw(_('Item sync for {0} failed for: {1}').format(source.name, ', '.join(failed)))
+
+
+def sync_item(source, item_name):
+	"""Save the Item only when its owned values differ from the source."""
+	item = frappe.get_doc('Item', item_name, for_update=True)
+	before = get_synced_snapshot(item)
+	apply_template(item, source=source)
+	if get_synced_snapshot(item) != before:
 		item.save(ignore_permissions=True)
 
 

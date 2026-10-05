@@ -1,10 +1,16 @@
 """Native template inheritance with fictional company accounts and tax mappings."""
 import frappe
+from unittest.mock import patch
+from yrp.yrp_retail.item_template import sync_product_items_job, sync_template_items_job
 from yrp.yrp.doctype.yrp_item_master_template.test_yrp_item_master_template import TestCreateItemFromTemplate
 from yrp.yrp.doctype.yrp_item_master_template.yrp_item_master_template import create_item_from_template
 
 
 class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
+	def setUp(self):
+		super().setUp()
+		self.addCleanup(frappe.db.after_commit.reset)
+
 	def create_item(self):
 		return frappe.get_doc('Item', create_item_from_template(self.template.name, self.item_name, self.group.name, self.hsn.name))
 
@@ -19,6 +25,7 @@ class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
 		self.assertEqual(item.yrp_is_free_item, 1)
 		self.template.is_free_item = 0
 		self.template.save()
+		sync_template_items_job(self.template.name)
 		item.reload()
 		self.assertEqual(item.yrp_is_free_item, 0)
 		item.yrp_item_master_template = None
@@ -53,12 +60,14 @@ class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
 		self.template.set('taxes',[])
 		self.template.item_defaults[0].expense_account = None
 		self.template.save()
+		sync_template_items_job(self.template.name)
 		item.reload()
 		self.assertFalse(item.taxes)
 		self.assertFalse(item.item_defaults[0].expense_account)
 		self.assertEqual(item.item_defaults[0].income_account,income)
 		self.template.set('item_defaults',[])
 		self.template.save()
+		sync_template_items_job(self.template.name)
 		item.reload()
 		self.assertFalse(item.item_defaults)
 
@@ -110,3 +119,102 @@ class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
 		frappe.db.set_value('Item',source.name,'yrp_item_master_template',other_template.name)
 		with self.assertRaises(frappe.ValidationError):
 			guard_policy_merge(source, old=source.name, new=target_name, merge=True)
+
+	def make_product(self):
+		from yrp.yrp_retail.doctype.yrp_product.yrp_product import get_template_defaults
+		return frappe.get_doc(dict(doctype='YRP Product', product_name='Test Product '+frappe.generate_hash(length=8),
+			item_template=self.template.name, gst_hsn_code=self.hsn.name, **get_template_defaults(self.template.name))).insert()
+
+	def make_product_item(self, product):
+		item = frappe.get_doc('Item', create_item_from_template(
+			self.template.name, 'Test Product Item '+frappe.generate_hash(length=10), self.group.name, self.hsn.name))
+		item.yrp_product = product.name
+		item.save()
+		return item
+
+	def test_product_change_enqueues_one_deduplicated_job(self):
+		product = self.make_product()
+		with patch('frappe.enqueue') as enqueue:
+			product.is_free_item = 1
+			product.save()
+			enqueue.assert_not_called()
+			frappe.db.after_commit.run()
+		enqueue.assert_called_once()
+		args, kwargs = enqueue.call_args
+		self.assertEqual(args[0], 'yrp.yrp_retail.item_template.sync_product_items_job')
+		self.assertEqual(kwargs['job_id'], f'yrp-yrp-product-item-sync::{product.name}')
+		self.assertTrue(kwargs['deduplicate'])
+		self.assertEqual(kwargs['queue'], 'long')
+		self.assertEqual(kwargs['name'], product.name)
+
+	def enqueued_job_id(self, product, statuses):
+		from rq.job import JobStatus
+		base = f'yrp-yrp-product-item-sync::{product.name}'
+		lookup = lambda job_id: {base: statuses[0], base + '::followup': statuses[1]}[job_id]
+		with patch('frappe.enqueue') as enqueue, patch('frappe.utils.background_jobs.get_job_status', side_effect=lookup):
+			product.is_free_item = 0 if product.is_free_item else 1
+			product.save()
+			frappe.db.after_commit.run()
+		self.assertTrue(enqueue.call_args.kwargs['deduplicate'])
+		return enqueue.call_args.kwargs['job_id'].removeprefix(base)
+
+	def test_job_ids_alternate_while_a_job_is_running(self):
+		from rq.job import JobStatus
+		product = self.make_product()
+		self.assertEqual(self.enqueued_job_id(product, (None, None)), '')
+		self.assertEqual(self.enqueued_job_id(product, (JobStatus.QUEUED, None)), '')
+		self.assertEqual(self.enqueued_job_id(product, (JobStatus.STARTED, None)), '::followup')
+		self.assertEqual(self.enqueued_job_id(product, (JobStatus.QUEUED, JobStatus.STARTED)), '')
+
+	def test_unchanged_product_save_enqueues_nothing(self):
+		product = self.make_product()
+		with patch('frappe.enqueue') as enqueue:
+			product.save()
+			frappe.db.after_commit.run()
+		enqueue.assert_not_called()
+
+	def test_template_change_enqueues_deduplicated_job(self):
+		with patch('frappe.enqueue') as enqueue:
+			self.template.is_free_item = 1
+			self.template.save()
+			frappe.db.after_commit.run()
+			enqueue.assert_called_once()
+			self.assertEqual(enqueue.call_args.kwargs['job_id'], f'yrp-yrp-item-master-template-item-sync::{self.template.name}')
+			enqueue.reset_mock()
+			self.template.save()
+			frappe.db.after_commit.run()
+			enqueue.assert_not_called()
+
+	def test_product_job_syncs_items_and_skips_those_in_sync(self):
+		product = self.make_product()
+		item = self.make_product_item(product)
+		product.is_free_item = 1
+		product.save()
+		self.assertEqual(frappe.db.get_value('Item', item.name, 'yrp_is_free_item'), 0)
+		sync_product_items_job(product.name)
+		self.assertEqual(frappe.db.get_value('Item', item.name, 'yrp_is_free_item'), 1)
+		with patch('frappe.model.document.Document.save') as save:
+			sync_product_items_job(product.name)
+		save.assert_not_called()
+
+	def test_job_logs_failed_item_continues_and_raises(self):
+		product = self.make_product()
+		bad = self.make_product_item(product)
+		good = self.make_product_item(product)
+		product.is_free_item = 1
+		product.save()
+		real = frappe.get_doc
+
+		def fail_for_bad(doctype, name=None, *args, **kwargs):
+			if doctype == 'Item' and name == bad.name:
+				raise frappe.ValidationError('boom')
+			return real(doctype, name, *args, **kwargs)
+
+		with patch('frappe.get_doc', side_effect=fail_for_bad), patch('frappe.log_error') as log_error, \
+				patch.object(frappe.db, 'commit'):
+			with self.assertRaises(frappe.ValidationError):
+				sync_product_items_job(product.name)
+		log_error.assert_called_once()
+		self.assertIn(bad.name, log_error.call_args.kwargs['title'])
+		self.assertEqual(frappe.db.get_value('Item', good.name, 'yrp_is_free_item'), 1)
+		self.assertEqual(frappe.db.get_value('Item', bad.name, 'yrp_is_free_item'), 0)

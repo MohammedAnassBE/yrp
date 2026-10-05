@@ -1,5 +1,6 @@
 """Synthetic products and taxonomy; each test rolls its records back."""
 import frappe
+from yrp.yrp_retail.item_template import sync_product_items_job
 from yrp.yrp_retail.test_category import TestItemCategory
 from yrp.yrp_retail.doctype.yrp_product.yrp_product import get_template_defaults
 
@@ -70,6 +71,7 @@ class TestYRPProduct(TestItemCategory):
 
         product.is_free_item=1
         product.save()
+        sync_product_items_job(product.name)
         item.reload()
         self.assertEqual(item.yrp_is_free_item,1)
 

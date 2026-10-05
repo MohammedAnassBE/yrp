@@ -6,6 +6,7 @@ existing customer, company, price, account, or transactional business data is us
 
 import frappe
 
+from yrp.yrp_retail.item_template import sync_template_items_job
 from yrp.yrp.doctype.yrp_item_master_template.test_yrp_item_master_template import TestCreateItemFromTemplate
 from yrp.yrp.doctype.yrp_item_master_template.yrp_item_master_template import create_item_from_template
 
@@ -62,6 +63,7 @@ class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 		self.template.reload()
 		self.template.is_free_item = 1
 		self.template.save()
+		sync_template_items_job(self.template.name)
 		self.assertEqual(frappe.db.get_value("Item", item.name, "yrp_is_free_item"), 1)
 
 	def test_native_buying_list_cannot_bypass_selling_policy(self):
@@ -116,6 +118,7 @@ class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 				self.assertEqual(doc.grand_total, 0)
 		self.template.is_free_item = 0
 		self.template.save()
+		sync_template_items_job(self.template.name)
 		for doctype in ("Sales Order", "Delivery Note", "Sales Invoice"):
 			with self.subTest(doctype=doctype, policy="paid"):
 				doc = document(doctype)
