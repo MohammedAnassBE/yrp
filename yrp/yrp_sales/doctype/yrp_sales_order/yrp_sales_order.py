@@ -63,6 +63,15 @@ class YRPSalesOrder(Document):
 		self.db_set("status", self.get_status(), update_modified=False)
 		sales_sources.refresh_progress(self, "on_submit")
 
+	def before_cancel(self):
+		notes = frappe.db.sql_list(
+			"""select distinct dni.parent from `tabYRP Delivery Note Item` dni
+			join `tabYRP Delivery Note` dn on dn.name = dni.parent
+			where dni.sales_order = %s and dn.docstatus < 2 order by dni.parent for update""",
+			self.name,
+		)
+		require(not notes, _("Cancel or delete Delivery Notes {0} first.").format(", ".join(notes)))
+
 	def on_cancel(self):
 		self.db_set("status", "Cancelled", update_modified=False)
 		sales_sources.refresh_progress(self, "on_cancel")

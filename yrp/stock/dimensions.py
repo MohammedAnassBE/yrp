@@ -40,6 +40,7 @@ STOCK_DOCTYPES = [
 	'YRP Delivery Challan Item',
 	'YRP Goods Received Note Item',
 	'YRP Inspection Entry Item',
+	'YRP Delivery Note Item',
 ]
 
 # DocTypes that receive dimension Link fields ONLY for the production group dimension
@@ -300,6 +301,7 @@ def _get_insert_after(dim, doctype=None):
 		'YRP Delivery Challan Item': "item_variant",
 		'YRP Goods Received Note Item': "item_variant",
 		'YRP Inspection Entry Item': "item_variant",
+		'YRP Delivery Note Item': "item_code",
 		'Purchase Order': "schedule_date",
 	}
 	return anchors.get(doctype, "item")
