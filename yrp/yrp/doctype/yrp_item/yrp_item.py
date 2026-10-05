@@ -181,6 +181,30 @@ class YRPItemMixin:
 			frappe.throw(_("Cannot delete Item {0} because YRP stock balances exist.").format(self.name))
 		return _call_super(self, "on_trash")
 
+	def after_rename(self, old, new, merge=False):
+		_call_super(self, "after_rename", old, new, merge)
+		if not self.has_variants or self.variant_of:
+			return
+
+		variants = frappe.get_all("Item", filters={"variant_of": new}, pluck="name")
+		if not variants:
+			return
+
+		batch_size = 50
+		for start in range(0, len(variants), batch_size):
+			frappe.enqueue(
+				"yrp.yrp.doctype.yrp_item.yrp_item.update_variants",
+				queue="long",
+				variants=variants[start : start + batch_size],
+				enqueue_after_commit=True,
+			)
+		frappe.enqueue(
+			"frappe.utils.global_search.rebuild_for_doctype",
+			doctype="Item",
+			queue="long",
+			enqueue_after_commit=True,
+		)
+
 	def update_variants(self):
 		"""Propagate template fields without overwriting YRP variant identity.
 
@@ -343,7 +367,14 @@ class YRPItemMixin:
 			"item_hash_value",
 			"item_tuple_attribute",
 		)
-		changed = [field for field in restricted if before.get(field) != self.get(field)]
+		changed = [
+			field
+			for field in restricted
+			if before.get(field) != self.get(field)
+			and not (
+				field == "item_hash_value" and not before.get(field) and self.get(field)
+			)
+		]
 		before_attrs = [
 			(r.attribute, _attribute_value(r.attribute_value), r.get("mapping"))
 			for r in before.get("attributes") or []
@@ -897,9 +928,35 @@ def rename_item(docname, name, brand=None):
 	return doc.name
 
 
+def rename_variant(variant, *, rebuild_search=True):
+	"""Rename a standard Item variant from its template and YRP display attributes."""
+	doc = frappe.get_doc("Item", variant)
+	if not doc.variant_of:
+		frappe.throw(_("Item {0} is not a variant").format(variant))
+	doc.check_permission("write")
+	template = frappe.get_cached_doc("Item", doc.variant_of)
+	new_name = _variant_code(template, doc.get("attributes") or [])
+	if new_name == doc.name:
+		return doc.name
+	return frappe.rename_doc(
+		"Item",
+		doc.name,
+		new_name,
+		force=True,
+		rebuild_search=rebuild_search,
+	)
+
+
 def update_variants(variants):
-	"""Physical Item codes are stable and never regenerated from abbreviations."""
-	return [row.get("name") if isinstance(row, dict) else row for row in variants or []]
+	"""Rename Item variants in a background-job batch after their template is renamed."""
+	renamed = []
+	for row in variants or []:
+		if isinstance(row, dict):
+			variant = row.get("name") or row.get("item_code")
+		else:
+			variant = row
+		renamed.append(rename_variant(variant, rebuild_search=False))
+	return renamed
 
 
 def ensure_variant_tuple_unique_index():
