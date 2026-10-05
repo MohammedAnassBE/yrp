@@ -64,16 +64,35 @@ def _allocations(source, exclude=None):
 	"""Current locking read, including drafts; sum in Python to retain row locks."""
 	spec = SOURCES[source.doctype]
 	rows = frappe.db.sql(
-		f"""select soi.`{spec['row']}` as source_row, soi.qty, so.name
+		f"""select soi.`{spec['row']}` as source_row, soi.qty, soi.name
 		from `tabSales Order Item` soi join `tabSales Order` so on so.name=soi.parent
 		where so.docstatus < 2 and so.`{spec['header']}`=%s
 		and (%s is null or so.name != %s) order by so.name, soi.name for update""",
 		(source.name, exclude, exclude), as_dict=True,
 	)
+	quantities = _net_order_quantities(rows)
 	allocated = defaultdict(float)
 	for row in rows:
-		allocated[row.source_row] += finite_number(row.qty, "Allocated quantity")
+		allocated[row.source_row] += quantities[row.name]
 	return allocated
+
+
+def _net_order_quantities(rows):
+	"""Keep original Order quantities while releasing approved cancelled demand.
+
+	An optional sales app supplies cancellation totals in the Order row's UOM.
+	The callback receives the complete batch, avoiding a query for every Item.
+	Without the app, native Sales Order quantities are unchanged.
+	"""
+	quantities = {row.name: finite_number(row.qty, "Sales Order quantity") for row in rows}
+	for method in frappe.get_hooks("yrp_sales_order_cancelled_quantities"):
+		cancelled = frappe.get_attr(method)(rows)
+		require(set(cancelled) <= set(quantities), "Cancelled quantities refer to unknown Sales Order rows.")
+		for name, value in cancelled.items():
+			value = finite_number(value, "Cancelled quantity")
+			require(0 <= value <= quantities[name], "Cancelled quantity exceeds the Sales Order quantity.")
+			quantities[name] -= value
+	return quantities
 
 
 def _factor(source, row, summary_factors=None):
@@ -119,6 +138,7 @@ def validate_sales_order(doc, method=None):
 	by_name = {row.name: row for row in source.items}
 	allocated = _allocations(source, exclude=doc.name)
 	requested = defaultdict(float)
+	quantities = _net_order_quantities(doc.items)
 	require(doc.items, "A retail-linked Sales Order requires items.")
 	for row in doc.items:
 		require(not row.get(other_field), "Sales Order row references the wrong retail source type.")
@@ -130,9 +150,10 @@ def validate_sales_order(doc, method=None):
 		require(math.isclose(factor, _factor(source, original, summary_factors), rel_tol=1e-12, abs_tol=1e-9), "Sales Order conversion factor must match its source.")
 		qty = finite_number(row.qty, "Sales Order quantity")
 		require(qty > 0, "Retail-linked Sales Order quantities must be positive.")
-		requested[reference] += qty
+		requested[reference] += quantities[row.name]
 	for reference, qty in requested.items():
-		_check_quantity(qty, by_name[reference].get(spec["capacity"]), allocated[reference])
+		if qty:
+			_check_quantity(qty, by_name[reference].get(spec["capacity"]), allocated[reference])
 
 
 def refresh_progress(doc, method=None):
