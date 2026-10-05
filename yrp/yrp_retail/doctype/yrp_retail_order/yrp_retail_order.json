@@ -19,7 +19,8 @@
   "summary",
   "notes",
   "ordered_qty",
-  "per_ordered"
+  "per_ordered",
+  "amended_from"
  ],
  "fields": [
   {
@@ -46,7 +47,8 @@
    "label": "Sales Person",
    "options": "Sales Person",
    "read_only": 1,
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "customer",
@@ -55,7 +57,8 @@
    "label": "Customer",
    "options": "Customer",
    "read_only": 1,
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "retailer",
@@ -90,7 +93,8 @@
    "fieldtype": "Link",
    "label": "Summary",
    "options": "YRP Retail Order Summary",
-   "read_only": 1
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "notes",
@@ -112,13 +116,23 @@
    "label": "Ordered %",
    "precision": "2",
    "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "YRP Retail Order",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-21 22:26:42.234769",
+ "modified": "2026-10-05 18:03:37.503795",
  "modified_by": "Administrator",
  "module": "YRP Retail",
  "name": "YRP Retail Order",

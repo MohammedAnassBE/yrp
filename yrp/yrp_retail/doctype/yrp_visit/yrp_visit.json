@@ -29,7 +29,8 @@
    "in_list_view": 1,
    "label": "Sales Person",
    "options": "Sales Person",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "default": "Now",
@@ -52,14 +53,16 @@
    "fieldtype": "Link",
    "label": "Customer",
    "mandatory_depends_on": "eval:doc.visit_type=='Primary'",
-   "options": "Customer"
+   "options": "Customer",
+   "search_index": 1
   },
   {
    "fieldname": "retailer",
    "fieldtype": "Link",
    "label": "Retailer",
    "mandatory_depends_on": "eval:doc.visit_type=='Secondary'",
-   "options": "YRP Retailer"
+   "options": "YRP Retailer",
+   "search_index": 1
   },
   {
    "fieldname": "location",
@@ -69,17 +72,17 @@
   },
   {
    "default": "0",
+   "description": "Updated automatically from the linked Retail Order, including cancelled orders.",
    "fieldname": "has_order",
    "fieldtype": "Check",
    "label": "Has Order",
-   "read_only": 1,
-   "description": "Updated automatically from the linked Retail Order, including cancelled orders."
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-21 20:26:18.706820",
+ "modified": "2026-10-05 18:03:37.113442",
  "modified_by": "Administrator",
  "module": "YRP Retail",
  "name": "YRP Visit",

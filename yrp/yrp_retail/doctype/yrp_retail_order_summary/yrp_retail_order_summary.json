@@ -29,7 +29,8 @@
    "in_list_view": 1,
    "label": "Customer",
    "options": "Customer",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "sales_person",
@@ -37,16 +38,17 @@
    "in_list_view": 1,
    "label": "Sales Person",
    "options": "Sales Person",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
+   "default": "Secondary",
    "fieldname": "order_type",
    "fieldtype": "Select",
    "label": "Order Type",
    "options": "Secondary",
-   "reqd": 1,
-   "default": "Secondary",
-   "read_only": 1
+   "read_only": 1,
+   "reqd": 1
   },
   {
    "fieldname": "from_date",
@@ -120,7 +122,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-21 22:26:43.013628",
+ "modified": "2026-10-05 18:03:37.867493",
  "modified_by": "Administrator",
  "module": "YRP Retail",
  "name": "YRP Retail Order Summary",

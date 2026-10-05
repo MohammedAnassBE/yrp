@@ -31,9 +31,9 @@
   {
    "fieldname": "shop_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Shop Name",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
    "fieldname": "primary_address",
@@ -47,7 +47,8 @@
    "in_list_view": 1,
    "label": "Customer",
    "options": "Customer",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "default": "0",
@@ -84,20 +85,20 @@
    "reqd": 1
   },
   {
-   "fieldname": "sales_partner",
-   "label": "Sales Partner",
-   "fieldtype": "Link",
-   "options": "Sales Partner",
-   "read_only": 1,
-   "in_list_view": 1,
+   "description": "Inherited from the Customer. Change the Customer assignment to update this value.",
    "fetch_from": "customer.default_sales_partner",
-   "description": "Inherited from the Customer. Change the Customer assignment to update this value."
+   "fieldname": "sales_partner",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sales Partner",
+   "options": "Sales Partner",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-21 20:09:39.593912",
+ "modified": "2026-10-05 18:03:38.109765",
  "modified_by": "Administrator",
  "module": "YRP Retail",
  "name": "YRP Retailer",
