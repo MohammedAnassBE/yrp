@@ -45,7 +45,7 @@ class YRPRetailOrderSummary(Document):
 			orders.append(order)
 		requested = aggregate_orders(orders)
 		factors = order_conversion_factors(orders)
-		sales_item_meta = frappe.get_meta("Sales Order Item")
+		sales_item_meta = frappe.get_meta("YRP Sales Order Item")
 		stock_precision = get_field_precision(sales_item_meta.get_field("stock_qty"))
 		quantity_precision = get_field_precision(sales_item_meta.get_field("qty"))
 		stock = {}

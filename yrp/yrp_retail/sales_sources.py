@@ -1,8 +1,7 @@
-"""Capacity accounting between retail requests and native ERPNext Sales Orders.
+"""Capacity accounting between retail requests and YRP Sales Orders.
 
 Draft and submitted Sales Orders reserve capacity; cancellation/deletion release
-it. Quantities remain in each source row's UOM. No prices, stock, GL entries or
-native sales permissions are overridden here.
+it. Quantities remain in each source row's UOM.
 """
 from collections import defaultdict
 import math
@@ -17,11 +16,11 @@ from yrp.yrp_retail.source_quantities import summary_conversion_factors, validat
 
 SOURCES = {
 	"YRP Retail Order": {
-		"header": "yrp_retail_order", "row": "yrp_retail_order_item",
+		"header": "retail_order", "row": "retail_order_item",
 		"child": "YRP Retail Order Item", "capacity": "qty",
 	},
 	"YRP Retail Order Summary": {
-		"header": "yrp_retail_order_summary", "row": "yrp_retail_summary_item",
+		"header": "retail_order_summary", "row": "retail_summary_item",
 		"child": "YRP Retail Order Summary Item", "capacity": "company_qty",
 	},
 }
@@ -65,7 +64,7 @@ def _allocations(source, exclude=None):
 	spec = SOURCES[source.doctype]
 	rows = frappe.db.sql(
 		f"""select soi.`{spec['row']}` as source_row, soi.qty, so.name
-		from `tabSales Order Item` soi join `tabSales Order` so on so.name=soi.parent
+		from `tabYRP Sales Order Item` soi join `tabYRP Sales Order` so on so.name=soi.parent
 		where so.docstatus < 2 and so.`{spec['header']}`=%s
 		and (%s is null or so.name != %s) order by so.name, soi.name for update""",
 		(source.name, exclude, exclude), as_dict=True,
@@ -174,7 +173,7 @@ def protect_retail_source(doc, method=None):
 	doc.per_ordered = total / capacity * 100 if capacity > 0 else 0
 	if doc.is_new():
 		return
-	used = frappe.db.sql(f"select name from `tabSales Order` where `{spec['header']}`=%s and docstatus<2 limit 1 for update", doc.name)
+	used = frappe.db.sql(f"select name from `tabYRP Sales Order` where `{spec['header']}`=%s and docstatus<2 limit 1 for update", doc.name)
 	if not used:
 		return
 	if method in ("before_cancel", "on_cancel", "before_discard", "on_trash"):
@@ -202,13 +201,12 @@ def make_sales_order(source_doctype, source_name, company, delivery_date, items=
 
 
 def _make_sales_order(source_doctype, source_name, company, delivery_date, items=None, selling_price_list=None):
-	"""Insert one draft native Sales Order, optionally selecting source rows/qty.
+	"""Insert one draft YRP Sales Order, optionally selecting source rows/qty.
 
 	`items` is a JSON/list of {source_row: source-child-name, qty: positive-number}.
-	Omitting it selects each row's remaining capacity. Native ERPNext determines
-	prices, taxes, accounts, stock UOM and defaults, then validates the draft.
+	Omitting it selects each row's remaining capacity.
 	"""
-	frappe.has_permission("Sales Order", ptype="create", throw=True)
+	frappe.has_permission("YRP Sales Order", ptype="create", throw=True)
 	require(company and delivery_date, "Company and Delivery Date are required.")
 	require(getdate(delivery_date) >= getdate(today()), "Delivery Date cannot be in the past.")
 	source = _source(source_doctype, source_name, check_permission=True)
@@ -225,14 +223,13 @@ def _make_sales_order(source_doctype, source_name, company, delivery_date, items
 		require(isinstance(selected, list), "Selected items must be a list.")
 	require(selected, "There is no remaining quantity to order.")
 	seen = set()
-	doc = frappe.new_doc("Sales Order")
-	doc.update({"company": company, "customer": source.customer, "transaction_date": today(), "delivery_date": delivery_date, spec["header"]: source.name})
-	# new_doc may inherit currency/rates from a different default Company.
-	# Let native Customer/Company defaults resolve them for this explicit Company.
-	for field in ("currency", "conversion_rate", "price_list_currency", "plc_conversion_rate"):
-		doc.set(field, None)
-	if selling_price_list:
-		doc.selling_price_list = selling_price_list
+	doc = frappe.new_doc("YRP Sales Order")
+	doc.update({
+		"company": company, "customer": source.customer, "transaction_date": today(),
+		"delivery_date": delivery_date, "order_type": source.order_type,
+		"sales_person": source.sales_person, "selling_price_list": selling_price_list,
+		spec["header"]: source.name,
+	})
 	for selection in selected:
 		require(isinstance(selection, dict) and set(selection) == {"source_row", "qty"}, "Selected items require only source_row and qty.")
 		reference = selection["source_row"]
@@ -240,7 +237,6 @@ def _make_sales_order(source_doctype, source_name, company, delivery_date, items
 		seen.add(reference)
 		row = by_name[reference]
 		qty = _check_quantity(selection["qty"], row.get(spec["capacity"]), allocated[reference])
-		doc.append("items", {"item_code": row.item_code, "uom": row.uom, "qty": qty, "delivery_date": delivery_date, "conversion_factor": _factor(source, row, summary_factors), spec["row"]: reference})
-	doc.set_missing_values()
+		doc.append("items", {"item_code": row.item_code, "uom": row.uom, "qty": qty, "conversion_factor": _factor(source, row, summary_factors), spec["row"]: reference})
 	doc.insert()
 	return doc.as_dict()

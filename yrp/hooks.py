@@ -293,13 +293,7 @@ doc_events = {
 	"Price List": {"before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": "yrp.yrp_retail.pricing.validate_price_list"},
 	"Sales Order": {
 		"before_validate": "yrp.yrp_partner.sales_roles.prepare_sales_order",
-		"validate": ["yrp.yrp_retail.pricing.validate_sales_document", "yrp.yrp_retail.sales_sources.validate_sales_order"],
-		"on_update": "yrp.yrp_retail.sales_sources.refresh_progress",
-		"before_update_after_submit": "yrp.yrp_retail.sales_sources.validate_sales_order",
-		"on_update_after_submit": "yrp.yrp_retail.sales_sources.refresh_progress",
-		"on_submit": "yrp.yrp_retail.sales_sources.refresh_progress",
-		"on_cancel": "yrp.yrp_retail.sales_sources.refresh_progress",
-		"on_trash": "yrp.yrp_retail.sales_sources.refresh_progress",
+		"validate": "yrp.yrp_retail.pricing.validate_sales_document",
 	},
 	"Packing Slip": {
 		"before_validate": "yrp.yrp_retail.packing.prepare_packing_slip",

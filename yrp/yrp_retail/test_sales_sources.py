@@ -64,7 +64,7 @@ class TestSalesSources(TestRetailFlow):
 		selection = [{"source_row": doc.items[0].name, "qty": qty}] if qty is not None else None
 		result = sales_sources.make_sales_order(doctype, source, self.company.name,
 			add_days(today(), 7), items=selection, selling_price_list=self.price_list.name)
-		return frappe.get_doc("Sales Order", result["name"])
+		return frappe.get_doc("YRP Sales Order", result["name"])
 
 	def source_progress(self):
 		return frappe.get_doc("YRP Retail Order", self.primary)
@@ -97,7 +97,7 @@ class TestSalesSources(TestRetailFlow):
 		self.set_pack_conversion(6)
 		with self.assertRaisesRegex(frappe.ValidationError, "differs from the current Item conversion"):
 			self.make_so(source=summary, doctype="YRP Retail Order Summary")
-		self.assertEqual(frappe.db.count("Sales Order", {"yrp_retail_order_summary": summary}), 0)
+		self.assertEqual(frappe.db.count("YRP Sales Order", {"retail_order_summary": summary}), 0)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", summary, "ordered_qty"), 0)
 		self.assertEqual(frappe.get_doc("YRP Retail Order", secondary).items[0].conversion_factor, 12)
 
@@ -137,12 +137,12 @@ class TestSalesSources(TestRetailFlow):
 		self.assertEqual((order.items[0].qty, order.items[0].uom, order.items[0].stock_qty),
 			(9.5, self.uom.name, 114))
 
-	def test_summary_rejects_remainder_lost_by_native_sales_order_precision(self):
+	def test_summary_rejects_remainder_lost_by_sales_order_precision(self):
 		self.set_pack_conversion(3)
 		frappe.set_user(self.user.name)
 		secondary = self.order(1)
 		api.update_customer_stock(self.customer.name, self.item.name, 6)
-		meta = frappe.get_meta("Sales Order Item")
+		meta = frappe.get_meta("YRP Sales Order Item")
 		# Scope the native field precision to this test, without changing the
 		# site's settings. 2/3 becomes 0.667, which is 2.001 whole-piece units.
 		with patch.object(meta.get_field("qty"), "precision", "3"), \
@@ -158,7 +158,7 @@ class TestSalesSources(TestRetailFlow):
 		frappe.set_user(self.user.name)
 		secondary = self.order(1)
 		api.update_customer_stock(self.customer.name, self.item.name, 6)
-		meta = frappe.get_meta("Sales Order Item")
+		meta = frappe.get_meta("YRP Sales Order Item")
 		with patch.object(meta.get_field("qty"), "precision", "3"), \
 			patch.object(meta.get_field("stock_qty"), "precision", "3"):
 			for allocation, error in ((0.9996, "too small"), (0.9994, "stock quantity changes")):
@@ -174,7 +174,7 @@ class TestSalesSources(TestRetailFlow):
 		frappe.db.set_value("UOM", self.piece_uom, "must_be_whole_number", 0)
 		frappe.set_user(self.user.name)
 		secondary = self.order(1)
-		meta = frappe.get_meta("Sales Order Item")
+		meta = frappe.get_meta("YRP Sales Order Item")
 		with patch.object(meta.get_field("qty"), "precision", "3"), \
 			patch.object(meta.get_field("stock_qty"), "precision", "3"):
 			# 0.9999 rounds to 1, exceeding source capacity, even though both
@@ -188,7 +188,7 @@ class TestSalesSources(TestRetailFlow):
 		first = self.make_so(qty=4)
 		self.assertEqual(first.docstatus, 0)
 		self.assertEqual(first.items[0].rate, 20)
-		self.assertEqual(first.yrp_retail_order, self.primary)
+		self.assertEqual(first.retail_order, self.primary)
 		source = self.source_progress()
 		self.assertEqual(source.items[0].ordered_qty, 4)
 		self.assertEqual(source.ordered_qty, 4)
@@ -222,7 +222,7 @@ class TestSalesSources(TestRetailFlow):
 
 	def test_source_row_item_uom_and_header_tampering_rejected(self):
 		order = self.make_so(qty=2)
-		for field, value in (("yrp_retail_order_item", None), ("yrp_retail_summary_item", "forged"), ("conversion_factor", 2), ("qty", -1)):
+		for field, value in (("retail_order_item", None), ("retail_summary_item", "forged"), ("conversion_factor", 2), ("qty", -1)):
 			order.reload()
 			order.items[0].set(field, value)
 			with self.subTest(field=field), self.assertRaises(frappe.ValidationError):
@@ -232,7 +232,7 @@ class TestSalesSources(TestRetailFlow):
 		with self.assertRaises(frappe.ValidationError):
 			sales_sources.validate_sales_order(order)
 		order.reload()
-		order.yrp_retail_order = None
+		order.retail_order = None
 		with self.assertRaises(frappe.ValidationError):
 			sales_sources.validate_sales_order(order)
 
@@ -246,7 +246,7 @@ class TestSalesSources(TestRetailFlow):
 		frappe.set_user(self.user.name)
 		api.update_retail_order(self.primary, self.items(11))
 
-	def test_partner_has_no_native_sales_order_write_bypass(self):
+	def test_partner_cannot_create_sales_orders(self):
 		frappe.set_user(self.user.name)
 		with self.assertRaises(frappe.PermissionError):
 			sales_sources.make_sales_order("YRP Retail Order", self.primary, self.company.name,
@@ -267,7 +267,7 @@ class TestSalesSources(TestRetailFlow):
 		frappe.set_user("Administrator")
 		order = self.make_so(source=summary, doctype="YRP Retail Order Summary")
 		self.assertEqual(order.items[0].qty, 7)
-		self.assertTrue(order.items[0].yrp_retail_summary_item)
+		self.assertTrue(order.items[0].retail_summary_item)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", summary, "ordered_qty"), 7)
 		with self.assertRaises(frappe.ValidationError):
 			frappe.get_doc("YRP Retail Order Summary", summary).cancel()
@@ -301,64 +301,16 @@ class TestSalesSources(TestRetailFlow):
 		original = Document.insert
 		def fail_after_insert(doc, *args, **kwargs):
 			result = original(doc, *args, **kwargs)
-			if doc.doctype == "Sales Order":
-				raise RuntimeError("Synthetic failure after native insert")
+			if doc.doctype == "YRP Sales Order":
+				raise RuntimeError("Synthetic failure after insert")
 			return result
 		with patch.object(Document, "insert", new=fail_after_insert), self.assertRaises(RuntimeError):
 			self.make_so(qty=4)
-		self.assertEqual(frappe.db.count("Sales Order", {"yrp_retail_order": self.primary}), 0)
+		self.assertEqual(frappe.db.count("YRP Sales Order", {"retail_order": self.primary}), 0)
 		self.assertEqual(self.source_progress().ordered_qty, 0)
 
-	def test_native_update_items_on_submitted_order_preserves_source_capacity(self):
-		from erpnext.controllers.accounts_controller import update_child_qty_rate
 
-		order = self.make_so(qty=6)
-		order.submit()
-		self.make_so(qty=4)
-		self.assertEqual(self.source_progress().ordered_qty, 10)
-		row = order.items[0]
-
-		def update_qty(qty):
-			payload = [{"docname": row.name, "item_code": row.item_code,
-				"qty": qty, "rate": row.rate, "uom": row.uom,
-				"conversion_factor": row.conversion_factor,
-				"delivery_date": row.delivery_date, "description": row.description}]
-			update_child_qty_rate("Sales Order", frappe.as_json(payload), order.name)
-
-		# Native Update Items writes the child before saving its parent. Mimic
-		# HTTP failure rollback when catching the expected error in this test.
-		point = "source_update_items_" + frappe.generate_hash(length=10)
-		frappe.db.savepoint(point)
-		try:
-			with self.assertRaisesRegex(frappe.ValidationError, "remaining retail source quantity"):
-				update_qty(7)
-		finally:
-			frappe.db.rollback(save_point=point)
-		order.reload()
-		self.assertEqual(order.items[0].qty, 6)
-		self.assertEqual(self.source_progress().ordered_qty, 10)
-
-		update_qty(5)
-		order.reload()
-		self.assertEqual(order.docstatus, 1)
-		self.assertEqual(order.items[0].qty, 5)
-		self.assertEqual(order.items[0].yrp_retail_order_item, row.yrp_retail_order_item)
-		source = self.source_progress()
-		self.assertEqual(source.items[0].ordered_qty, 9)
-		self.assertEqual(source.ordered_qty, 9)
-		self.assertEqual(source.per_ordered, 90)
-
-	def test_default_company_currency_does_not_leak_into_selected_company(self):
-		from unittest.mock import patch
-		original = frappe.new_doc
-		def inherited_defaults(doctype, *args, **kwargs):
-			doc = original(doctype, *args, **kwargs)
-			if doctype == "Sales Order":
-				doc.update({"currency": "USD", "conversion_rate": 0.5,
-					"price_list_currency": "USD", "plc_conversion_rate": 0.5})
-			return doc
-		with patch.object(frappe, "new_doc", side_effect=inherited_defaults):
-			order = self.make_so()
-		self.assertEqual(order.currency, self.company.default_currency)
-		self.assertEqual(order.conversion_rate, 1)
-		self.assertEqual(order.items[0].rate, 20)
+# setUp ends as Administrator, so the inherited retail-flow tests (run in test_retail_flow) must not rerun here.
+for _name in dir(TestRetailFlow):
+	if _name.startswith("test_") and _name not in TestSalesSources.__dict__:
+		setattr(TestSalesSources, _name, None)
