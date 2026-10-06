@@ -13,6 +13,9 @@ from yrp.yrp_retail.logic import require
 DELIVERY_NOTE = "YRP Delivery Note"
 DELIVERY_NOTE_ITEM = "YRP Delivery Note Item"
 STOCK_ENTRY = "YRP Stock Entry"
+PREVIEW_FIELDS = ("total", "discount_amount", "net_total", "total_taxes_and_charges", "grand_total", "rounded_total",
+	"currency")
+PREVIEW_TAX_FIELDS = ("description", "account_head", "rate", "tax_amount")
 
 
 @frappe.whitelist()
@@ -22,8 +25,17 @@ def make_sales_invoice(delivery_note, items=None):
 	``items`` maps Delivery Note row names to quantities; by default every row's unbilled quantity is billed.
 	"""
 	frappe.has_permission("Sales Invoice", "create", throw=True)
+	frappe.get_doc(DELIVERY_NOTE, delivery_note).check_permission("read")
+	invoice = get_sales_invoice(delivery_note, items)
+	invoice.insert()
+	return invoice
+
+
+def get_sales_invoice(delivery_note, items=None):
+	"""Unsaved Sales Invoice for a submitted Delivery Note; callers check permissions.
+
+	Apps adjust it through `yrp_sales_invoice_mappers` hooks, called as `handler(invoice, note)`."""
 	note = frappe.get_doc(DELIVERY_NOTE, delivery_note)
-	note.check_permission("read")
 	require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(note.name))
 	requested = get_requested_qty(note, items)
 	invoice = frappe.new_doc("Sales Invoice")
@@ -35,6 +47,8 @@ def make_sales_invoice(delivery_note, items=None):
 		"ignore_pricing_rule": 1,
 		"update_stock": 0,
 		"yrp_delivery_note": note.name,
+		"shipping_address_name": note.shipping_address_name,
+		"transporter": note.transporter,
 	})
 	for row in note.items:
 		if flt(requested.get(row.name), row.precision("qty")) > 0:
@@ -47,9 +61,41 @@ def make_sales_invoice(delivery_note, items=None):
 				"yrp_delivery_note_item": row.name,
 			})
 	require(invoice.items, _("Nothing is pending billing on Delivery Note {0}.").format(note.name))
+	for handler in frappe.get_hooks("yrp_sales_invoice_mappers"):
+		frappe.get_attr(handler)(invoice, note)
 	invoice.set_missing_values()
-	invoice.insert()
 	return invoice
+
+
+def preview_sales_invoice(delivery_note):
+	"""Totals and taxes the next Sales Invoice would carry; nothing is kept. Callers check permissions."""
+	savepoint = "preview_sales_invoice_" + frappe.generate_hash(length=10)
+	frappe.db.savepoint(savepoint)
+	try:
+		invoice = get_sales_invoice(delivery_note)
+		invoice.flags.ignore_permissions = True
+		invoice.insert()
+		return {
+			**{fieldname: invoice.get(fieldname) for fieldname in PREVIEW_FIELDS},
+			"taxes": [{fieldname: tax.get(fieldname) for fieldname in PREVIEW_TAX_FIELDS} for tax in invoice.taxes],
+		}
+	finally:
+		frappe.db.rollback(save_point=savepoint)
+
+
+def get_invoice_status(delivery_note):
+	"""Draft while any live Sales Invoice of the note is a draft, Submitted when all are, else empty."""
+	docstatuses = set(frappe.get_all("Sales Invoice",
+		filters={"yrp_delivery_note": delivery_note, "docstatus": ["<", 2]}, pluck="docstatus"))
+	if 0 in docstatuses:
+		return "Draft"
+	return "Submitted" if docstatuses else ""
+
+
+def refresh_delivery_note_billing(doc, method=None):
+	"""Keep the Delivery Note's invoice status in step when a draft invoice is made or deleted."""
+	if doc.get("yrp_delivery_note") and frappe.db.exists(DELIVERY_NOTE, doc.yrp_delivery_note):
+		frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note).update_billing()
 
 
 def get_requested_qty(note, items):
@@ -125,8 +171,8 @@ def validate_billing_capacity(invoice, delivery_note, sources, requested):
 def lock_delivery_note(name):
 	"""Lock the Delivery Note header; its invoices, Packing Slips and deliveries serialize here."""
 	rows = frappe.db.sql(
-		"""select name, docstatus, customer, company, per_delivered, delivered_at from `tabYRP Delivery Note`
-		where name = %s for update""", name, as_dict=True)
+		"""select name, docstatus, customer, company, per_delivered, delivered_at, packing_status
+		from `tabYRP Delivery Note` where name = %s for update""", name, as_dict=True)
 	require(rows, _("Delivery Note {0} does not exist.").format(name))
 	return rows[0]
 

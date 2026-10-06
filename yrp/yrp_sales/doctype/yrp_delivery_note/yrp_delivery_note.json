@@ -19,8 +19,11 @@
   "status",
   "per_billed",
   "per_delivered",
+  "invoice_status",
   "per_packed",
   "delivered_at",
+  "delivery_remarks",
+  "cancel_reason",
   "section_break_pricing",
   "selling_price_list",
   "currency",
@@ -37,6 +40,12 @@
   "column_break_delivery",
   "transporter",
   "remarks",
+  "section_break_packing",
+  "packing_status",
+  "packing_initiated_at",
+  "column_break_packing",
+  "packing_completed_at",
+  "packing_completed_by",
   "amended_from"
  ],
  "fields": [
@@ -240,13 +249,82 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "invoice_status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Invoice Status",
+   "no_copy": 1,
+   "options": "\nDraft\nSubmitted",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "delivery_remarks",
+   "fieldtype": "Small Text",
+   "label": "Delivery Remarks",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "cancel_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancellation Reason",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_packing",
+   "fieldtype": "Section Break",
+   "label": "Packing"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "packing_status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Packing Status",
+   "no_copy": 1,
+   "options": "\nPacking Initiated\nPacking Completed",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "packing_initiated_at",
+   "fieldtype": "Datetime",
+   "label": "Packing Initiated At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_packing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "packing_completed_at",
+   "fieldtype": "Datetime",
+   "label": "Packing Completed At",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "packing_completed_by",
+   "fieldtype": "Data",
+   "label": "Packing Completed By",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-06 17:23:31.719816",
+ "modified": "2026-10-06 18:16:07.233008",
  "modified_by": "Administrator",
  "module": "YRP Sales",
  "name": "YRP Delivery Note",
@@ -327,6 +405,30 @@
    "read": 1,
    "report": 1,
    "role": "Accounts User"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Billing User",
+   "share": 1,
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

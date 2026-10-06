@@ -381,6 +381,8 @@ doc_events = {
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
 		"on_submit": "yrp.yrp_sales.invoicing.issue_delivery_note_stock",
 		"on_cancel": "yrp.yrp_sales.invoicing.reverse_delivery_note_stock",
+		"after_insert": "yrp.yrp_sales.invoicing.refresh_delivery_note_billing",
+		"after_delete": "yrp.yrp_sales.invoicing.refresh_delivery_note_billing",
 	},
 	"User": {
 		"on_update": "yrp.yrp_partner.sync.sync_user_memberships",

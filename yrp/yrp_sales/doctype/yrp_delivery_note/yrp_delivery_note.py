@@ -8,20 +8,27 @@ import frappe
 from frappe import _
 from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
-from frappe.utils import flt, now_datetime
+from frappe.utils import cstr, flt, get_datetime, now_datetime
 
 from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldnames, get_mandatory_dimensions
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
 from yrp.yrp_retail.pricing import check_rate
 from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import get_conversion_factor, get_price_list_rate
-from yrp.yrp_sales.invoicing import get_delivery_note_rows, get_invoiced_qty, lock_delivery_note
+from yrp.yrp_sales.invoicing import (
+	get_delivery_note_rows,
+	get_invoice_status,
+	get_invoiced_qty,
+	lock_delivery_note,
+)
 
 RESERVATION = "YRP Stock Reservation Entry"
 PACKING_SLIP = "YRP Packing Slip"
 INACTIVE_RESERVATION_STATUSES = ["Delivered", "Closed", "Cancelled"]
+PACKING_INITIATED = "Packing Initiated"
+PACKING_COMPLETED = "Packing Completed"
 # Header values a caller may set when creating a note; custom fields are also accepted.
-HEADER_FIELDS = ("posting_date", "posting_time", "shipping_address_name", "transporter", "remarks")
+HEADER_FIELDS = ("posting_date", "posting_time", "shipping_address_name", "transporter", "remarks", "amended_from")
 
 
 class YRPDeliveryNote(Document):
@@ -170,12 +177,65 @@ class YRPDeliveryNote(Document):
 		close_voucher_reservations(self.doctype, self.name)
 
 	def update_billing(self):
-		"""Recompute billed quantities from submitted Sales Invoices."""
+		"""Recompute billed quantities from submitted Sales Invoices and the invoice status from all live ones."""
 		billed = get_invoiced_qty(self.name, submitted_only=True)
 		for row in self.items:
 			row.db_set("billed_qty", flt(billed.get(row.name), row.precision("billed_qty")), update_modified=False)
 		self.per_billed = get_percent(self.items, "billed_qty", self.precision("per_billed"))
-		self.db_set({"per_billed": self.per_billed, "status": self.get_status()}, update_modified=False)
+		self.db_set({"per_billed": self.per_billed, "status": self.get_status(),
+			"invoice_status": get_invoice_status(self.name)}, update_modified=False)
+
+	def initiate_packing(self):
+		"""Start packing a submitted note that is not invoiced or delivered; callers check permissions."""
+		header = lock_delivery_note(self.name)
+		require(header.docstatus == 1, _("Delivery Note {0} must be submitted.").format(self.name))
+		require(not header.delivered_at, _("Delivery Note {0} is already delivered.").format(self.name))
+		require(not header.packing_status, _("Packing has already started on Delivery Note {0}.").format(self.name))
+		require(not get_invoice_status(self.name), _("Delivery Note {0} is already invoiced.").format(self.name))
+		self.db_set({"packing_status": PACKING_INITIATED, "packing_initiated_at": now_datetime()})
+
+	def complete_packing(self, completed_by):
+		"""Finish packing that was initiated, recording who packed; callers check permissions."""
+		require(cstr(completed_by).strip(), _("Packing completed by is required."))
+		header = lock_delivery_note(self.name)
+		require(header.docstatus == 1 and header.packing_status == PACKING_INITIATED,
+			_("Packing has not been initiated on Delivery Note {0}.").format(self.name))
+		self.db_set({"packing_status": PACKING_COMPLETED, "packing_completed_at": now_datetime(),
+			"packing_completed_by": cstr(completed_by).strip()})
+
+	def cancel_with_reason(self, reason):
+		"""Cancel the note and its undelivered Packing Slips, keeping the reason; callers check permissions."""
+		require(cstr(reason).strip(), _("Cancellation reason is required."))
+		self.cancel_packing_slips()
+		self.cancel_reason = cstr(reason).strip()
+		self.flags.ignore_permissions = True
+		self.cancel()
+
+	def cancel_packing_slips(self):
+		for name in frappe.get_all(PACKING_SLIP, filters={"delivery_note": self.name, "docstatus": 1},
+				pluck="name", order_by="name"):
+			slip = frappe.get_doc(PACKING_SLIP, name)
+			slip.flags.ignore_permissions = True
+			slip.cancel()
+
+	def update_rates(self, rates):
+		"""Re-price rows of a submitted note that has no live Sales Invoice; callers check permissions."""
+		header = lock_delivery_note(self.name)
+		require(header.docstatus == 1, _("Delivery Note {0} must be submitted.").format(self.name))
+		require(not get_invoice_status(self.name),
+			_("Rates of Delivery Note {0} cannot change after it is invoiced.").format(self.name))
+		rows = {row.name: row for row in self.items}
+		unknown = set(rates) - set(rows)
+		require(not unknown, _("Rows {0} do not belong to Delivery Note {1}.").format(", ".join(sorted(unknown)), self.name))
+		free = set(frappe.get_all("Item", filters={"name": ["in", [row.item_code for row in self.items]],
+			"yrp_is_free_item": 1}, pluck="name"))
+		for name, rate in rates.items():
+			row = rows[name]
+			check_rate(rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
+			row.rate = flt(rate, row.precision("rate"))
+			row.amount = flt(row.rate * flt(row.qty), row.precision("amount"))
+			row.db_set({"rate": row.rate, "amount": row.amount}, update_modified=False)
+		self.db_set("total", sum(flt(row.amount) for row in self.items))
 
 	def update_packing(self):
 		"""Recompute packed quantities from submitted Packing Slips."""
@@ -231,9 +291,14 @@ class YRPDeliveryNote(Document):
 			).format(row.idx, self.name, flt(qty, precision), flt(row.billed_qty, precision)))
 
 	@frappe.whitelist()
-	def mark_delivered(self):
-		"""Deliver every row: through all Packing Slips when there are any, otherwise this note itself."""
+	def mark_delivered(self, delivered_at=None, remarks=None):
 		self.check_permission("write")
+		self.deliver(delivered_at, remarks)
+
+	def deliver(self, delivered_at=None, remarks=None):
+		"""Deliver every row: through all Packing Slips when there are any, otherwise this note itself.
+
+		`delivered_at` defaults to now; callers check permissions."""
 		rows = self.lock_for_delivery()
 		require(not self.delivered_at, _("Delivery Note {0} is already delivered.").format(self.name))
 		slips = frappe.db.sql(
@@ -244,7 +309,9 @@ class YRPDeliveryNote(Document):
 		if slips:
 			self.validate_packing_coverage(rows)
 		self.validate_billed_qty(rows, {row.name: row.qty for row in rows.values()})
-		delivered_at = now_datetime()
+		delivered_at = get_datetime(delivered_at) if delivered_at else now_datetime()
+		if cstr(remarks).strip():
+			self.db_set("delivery_remarks", cstr(remarks).strip(), update_modified=False)
 		for slip in slips:
 			if not slip.delivered_at:
 				frappe.get_doc(PACKING_SLIP, slip.name).set_delivered(delivered_at)
@@ -477,6 +544,29 @@ def create_delivery_note(customer, sales_orders=None, items=None, warehouse=None
 		note.insert()
 		if submit:
 			note.submit()
+	except Exception:
+		frappe.db.rollback(save_point=savepoint)
+		raise
+	return note
+
+
+def amend_delivery_note(name, customer, sales_orders=None, items=None, warehouse=None, header=None,
+		selling_price_list=None, company=None):
+	"""Cancel a submitted note and its Packing Slips, then create and submit its amendment, in one savepoint.
+
+	The amendment gets the same rows as `create_delivery_note` would; any failure leaves the original.
+	Callers check permissions."""
+	savepoint = "amend_delivery_note_" + frappe.generate_hash(length=10)
+	frappe.db.savepoint(savepoint)
+	try:
+		original = frappe.get_doc("YRP Delivery Note", name)
+		require(original.docstatus == 1, _("Delivery Note {0} must be submitted.").format(name))
+		require(original.customer == customer, _("Delivery Note {0} belongs to another Customer.").format(name))
+		original.cancel_packing_slips()
+		original.flags.ignore_permissions = True
+		original.cancel()
+		note = create_delivery_note(customer, sales_orders, items, warehouse, {**(header or {}), "amended_from": name},
+			selling_price_list, company)
 	except Exception:
 		frappe.db.rollback(save_point=savepoint)
 		raise
