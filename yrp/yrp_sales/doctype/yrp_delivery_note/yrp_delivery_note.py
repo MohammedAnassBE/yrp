@@ -105,6 +105,8 @@ class YRPDeliveryNote(Document):
 		row.amount = qty * flt(row.rate)
 		row.warehouse = row.warehouse or self.set_warehouse
 		require(row.warehouse, _("{0}: Warehouse is required.").format(label))
+		require(frappe.get_cached_value("Warehouse", row.warehouse, "company") == self.company,
+			_("{0}: Warehouse {1} belongs to another Company.").format(label, row.warehouse))
 
 	def validate_allocation(self, sources):
 		"""Keep this and other non-cancelled Delivery Notes within each Sales Order row."""

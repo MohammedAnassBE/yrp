@@ -272,3 +272,14 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		self.assertFalse(frappe.db.exists("YRP Stock Reservation Entry", {"voucher_type": "YRP Delivery Note",
 			"item_code": self.item}))
 		self.assertEqual(self.get_reserved_qty(), 0)
+
+	def test_warehouse_of_another_company_is_rejected(self):
+		company = frappe.db.get_value("Company", {"name": ["!=", self.company]}, "name")
+		if not company:
+			self.skipTest("Needs a second Company")
+		self.warehouse = frappe.get_doc({"doctype": "Warehouse", "warehouse_name": self.label("Other"),
+			"company": company}).insert().name
+		self.receive(10)
+		with self.assertRaisesRegex(frappe.ValidationError, "belongs to another Company"):
+			create_delivery_note(self.customer, [self.make_order(qty=2).name], warehouse=self.warehouse)
+		self.assertFalse(frappe.db.exists("YRP Delivery Note", {"customer": self.customer}))
