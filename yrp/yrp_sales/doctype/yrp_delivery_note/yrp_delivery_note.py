@@ -1,22 +1,27 @@
 # Copyright (c) 2026, Mohammed Anas and contributors
 # For license information, please see license.txt
 
+import math
 from collections import defaultdict
 
 import frappe
 from frappe import _
+from frappe.contacts.doctype.address.address import get_address_display
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
 
-from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldnames
+from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldnames, get_mandatory_dimensions
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
 from yrp.yrp_retail.pricing import check_rate
+from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import get_conversion_factor, get_price_list_rate
 from yrp.yrp_sales.invoicing import get_delivery_note_rows, get_invoiced_qty, lock_delivery_note
 
 RESERVATION = "YRP Stock Reservation Entry"
 PACKING_SLIP = "YRP Packing Slip"
 INACTIVE_RESERVATION_STATUSES = ["Delivered", "Closed", "Cancelled"]
+# Header values a caller may set when creating a note; custom fields are also accepted.
+HEADER_FIELDS = ("posting_date", "posting_time", "shipping_address_name", "transporter", "remarks")
 
 
 class YRPDeliveryNote(Document):
@@ -32,16 +37,26 @@ class YRPDeliveryNote(Document):
 		apply_dimension_defaults(self.items)
 		sources = self.get_source_rows()
 		for row in self.items:
-			self.set_row_values(row, sources[row.so_detail])
+			if row.so_detail:
+				self.set_row_values(row, sources[row.so_detail])
+			else:
+				self.set_additional_row_values(row)
 		self.validate_allocation(sources)
 		self.validate_rates()
 		self.total_qty = sum(flt(row.qty) for row in self.items)
 		self.total = sum(flt(row.amount) for row in self.items)
 		self.status = self.get_status()
+		self.set_shipping_address()
+
+	def before_update_after_submit(self):
+		self.set_shipping_address()
+
+	def set_shipping_address(self):
+		self.shipping_address = get_address_display(self.shipping_address_name) if self.shipping_address_name else None
 
 	def get_source_rows(self):
 		"""Lock linked Sales Orders and return their item rows by name."""
-		orders = lock_sales_orders({row.sales_order for row in self.items})
+		orders = lock_sales_orders({row.sales_order for row in self.items if row.sales_order})
 		for order in orders.values():
 			require(order.docstatus == 1, _("Sales Order {0} must be submitted.").format(order.name))
 			require(order.customer == self.customer, _("Sales Order {0} belongs to another Customer.").format(order.name))
@@ -49,6 +64,10 @@ class YRPDeliveryNote(Document):
 		details = sorted({row.so_detail for row in self.items if row.so_detail})
 		sources = {row.name: row for row in get_sales_order_rows(details)}
 		for row in self.items:
+			if not row.so_detail:
+				require(not row.sales_order, _("Row {0}: Select the Sales Order Item of Sales Order {1}.").format(
+					row.idx, row.sales_order))
+				continue
 			source = sources.get(row.so_detail)
 			require(source and source.parent == row.sales_order,
 				_("Row {0}: Sales Order Item does not belong to Sales Order {1}.").format(row.idx, row.sales_order))
@@ -60,13 +79,29 @@ class YRPDeliveryNote(Document):
 		require(row.uom == source.uom, _("{0}: UOM must match its Sales Order row.").format(label))
 		require(not row.conversion_factor or flt(row.conversion_factor) == flt(source.conversion_factor),
 			_("{0}: Conversion Factor must match its Sales Order row.").format(label))
+		row.item_name = source.item_name
+		row.conversion_factor = flt(source.conversion_factor)
+		row.stock_uom = source.stock_uom
+		self.set_quantities(row)
+
+	def set_additional_row_values(self, row):
+		"""A row with no Sales Order: an enabled sales Item priced from this note's Price List."""
+		item = frappe.get_cached_doc("Item", row.item_code)
+		require(not item.disabled and not item.has_variants and item.is_sales_item,
+			_("Row {0}: Items must be enabled, concrete sales Items.").format(row.idx))
+		row.item_name = item.item_name
+		row.stock_uom = item.stock_uom
+		row.conversion_factor = get_conversion_factor(item, row.uom)
+		if not row.rate and self.selling_price_list:
+			row.rate = get_price_list_rate(self.selling_price_list, row.item_code, row.uom)
+		self.set_quantities(row)
+
+	def set_quantities(self, row):
+		label = _("Row {0}").format(row.idx)
 		qty = validate_uom_quantity(row.qty, row.uom, _("{0} Quantity").format(label), row.precision("qty"))
 		require(qty > 0, _("{0}: Quantity must be greater than zero.").format(label))
 		row.qty = qty
-		row.item_name = source.item_name
-		row.conversion_factor = flt(source.conversion_factor)
 		row.stock_qty = qty * row.conversion_factor
-		row.stock_uom = source.stock_uom
 		row.amount = qty * flt(row.rate)
 		row.warehouse = row.warehouse or self.set_warehouse
 		require(row.warehouse, _("{0}: Warehouse is required.").format(label))
@@ -75,7 +110,10 @@ class YRPDeliveryNote(Document):
 		"""Keep this and other non-cancelled Delivery Notes within each Sales Order row."""
 		requested = defaultdict(float)
 		for row in self.items:
-			requested[row.so_detail] += flt(row.stock_qty)
+			if row.so_detail:
+				requested[row.so_detail] += flt(row.stock_qty)
+		if not requested:
+			return
 		others = get_allocated_qty(list(requested), exclude=self.name)
 		precision = self.items[0].precision("stock_qty")
 		for detail, qty in requested.items():
@@ -158,7 +196,7 @@ class YRPDeliveryNote(Document):
 				"select max(delivered_at) from `tabYRP Packing Slip` where delivery_note = %s and docstatus = 1",
 				self.name)[0][0]
 		self.db_set(values, update_modified=False)
-		for order in sorted({row.sales_order for row in self.items}):
+		for order in sorted({row.sales_order for row in self.items if row.sales_order}):
 			frappe.get_doc("YRP Sales Order", order).update_delivered_qty()
 
 	def get_delivered_qty(self):
@@ -350,40 +388,163 @@ def get_allocated_qty(so_details, exclude=None):
 	))
 
 
-@frappe.whitelist()
-def make_delivery_note(customer, sales_orders):
-	"""Return an unsaved Delivery Note for the pending quantity of submitted Sales Orders."""
-	frappe.has_permission("YRP Delivery Note", "create", throw=True)
-	names = sorted(set(frappe.parse_json(sales_orders) if isinstance(sales_orders, str) else sales_orders))
-	require(names, "Select at least one Sales Order.")
-	orders = [frappe.get_doc("YRP Sales Order", name) for name in names]
-	for order in orders:
-		order.check_permission("read")
-		require(order.docstatus == 1, _("Sales Order {0} must be submitted.").format(order.name))
-		require(order.customer == customer, _("Sales Order {0} belongs to another Customer.").format(order.name))
-	require(len({order.company for order in orders}) == 1, "Sales Orders must belong to one Company.")
-	allocated = get_allocated_qty([row.name for order in orders for row in order.items])
+def get_pending_rows(customer=None, sales_orders=None, item_codes=None):
+	"""Submitted Sales Order rows with stock quantity not yet on a non-cancelled Delivery Note."""
+	conditions = ["so.docstatus = 1"]
+	values = {}
+	for column, key, value in (("so.customer", "customer", customer), ("so.name", "orders", sales_orders),
+			("soi.item_code", "items", item_codes)):
+		if value is None:
+			continue
+		conditions.append(f"{column} {'=' if key == 'customer' else 'in'} %({key})s")
+		values[key] = value if key == "customer" else tuple(value) or ("",)
+	rows = frappe.db.sql(
+		f"""select so.name as sales_order, soi.name as so_detail, soi.idx, soi.item_code, soi.uom,
+			soi.conversion_factor, soi.qty, soi.stock_qty,
+			(select ifnull(sum(dni.stock_qty), 0) from `tabYRP Delivery Note Item` dni
+				join `tabYRP Delivery Note` dn on dn.name = dni.parent
+				where dni.so_detail = soi.name and dn.docstatus < 2) as allocated
+		from `tabYRP Sales Order Item` soi join `tabYRP Sales Order` so on so.name = soi.parent
+		where soi.parenttype = 'YRP Sales Order' and {" and ".join(conditions)}
+		order by so.transaction_date, so.name, soi.idx""",
+		values, as_dict=True,
+	)
+	precision = frappe.get_precision("YRP Sales Order Item", "stock_qty")
+	pending_rows = []
+	for row in rows:
+		row.pending = flt(flt(row.stock_qty) - flt(row.allocated), precision)
+		if row.pending > 0:
+			row.pending_qty = row.pending / flt(row.conversion_factor)
+			pending_rows.append(row)
+	return pending_rows
+
+
+def get_delivery_note(customer, sales_orders=None, items=None, warehouse=None, selling_price_list=None, company=None):
+	"""Unsaved Delivery Note from submitted Sales Orders; callers check permissions.
+
+	`items` lists `{so_detail, qty}` rows to deliver (qty in the order row's UOM) and
+	`{item_code, uom, qty}` rows with no Sales Order; leave it out for every pending row.
+	`warehouse` overrides every row warehouse and `selling_price_list` re-prices every row.
+	"""
+	orders = get_source_orders(customer, sales_orders)
+	companies = {order.company for order in orders} | ({company} if company else set())
+	require(companies, "Select at least one Sales Order.")
+	require(len(companies) == 1, "Sales Orders must belong to one Company.")
 	warehouses = {order.set_warehouse for order in orders}
 	note = frappe.new_doc("YRP Delivery Note")
 	note.update({
 		"customer": customer,
-		"company": orders[0].company,
-		"selling_price_list": orders[0].selling_price_list,
-		"currency": orders[0].currency,
-		"set_warehouse": warehouses.pop() if len(warehouses) == 1 else None,
+		"company": companies.pop(),
+		"set_warehouse": warehouse or (warehouses.pop() if len(warehouses) == 1 else None),
+		**get_pricing(orders, selling_price_list),
 	})
-	for order in orders:
-		for row in order.items:
-			append_pending_row(note, order, row, flt(row.stock_qty) - flt(allocated.get(row.name)))
+	rows = frappe.parse_json(items) if isinstance(items, str) else items
+	if rows is None:
+		append_pending_rows(note, orders)
+	else:
+		append_selected_rows(note, orders, rows)
 	require(note.items, "Nothing is pending delivery on the selected Sales Orders.")
+	for row in note.items:
+		if warehouse:
+			row.warehouse = warehouse
+		if selling_price_list and row.so_detail:
+			row.rate = get_price_list_rate(selling_price_list, row.item_code, row.uom)
 	apply_dimension_defaults(note.items)
 	return note
 
 
-def append_pending_row(note, order, row, pending):
+@frappe.whitelist()
+def make_delivery_note(customer, sales_orders, items=None, warehouse=None, selling_price_list=None):
+	"""Return an unsaved Delivery Note for the pending quantity of submitted Sales Orders."""
+	frappe.has_permission("YRP Delivery Note", "create", throw=True)
+	for name in sorted(set(frappe.parse_json(sales_orders) if isinstance(sales_orders, str) else sales_orders)):
+		frappe.get_doc("YRP Sales Order", name).check_permission("read")
+	return get_delivery_note(customer, sales_orders, items, warehouse, selling_price_list)
+
+
+def create_delivery_note(customer, sales_orders=None, items=None, warehouse=None, header=None,
+		selling_price_list=None, company=None, submit=True):
+	"""Build, reserve stock and optionally submit in one savepoint; any failure leaves nothing behind."""
+	savepoint = "create_delivery_note_" + frappe.generate_hash(length=10)
+	frappe.db.savepoint(savepoint)
+	try:
+		note = get_delivery_note(customer, sales_orders, items, warehouse, selling_price_list, company)
+		note.update(get_input_values(note.meta, header or {}, HEADER_FIELDS))
+		allocate_dimensions(note)
+		note.flags.ignore_permissions = True
+		note.insert()
+		if submit:
+			note.submit()
+	except Exception:
+		frappe.db.rollback(save_point=savepoint)
+		raise
+	return note
+
+
+def get_source_orders(customer, sales_orders):
+	names = sorted(set(frappe.parse_json(sales_orders) if isinstance(sales_orders, str) else sales_orders or []))
+	orders = [frappe.get_doc("YRP Sales Order", name) for name in names]
+	for order in orders:
+		require(order.docstatus == 1, _("Sales Order {0} must be submitted.").format(order.name))
+		require(order.customer == customer, _("Sales Order {0} belongs to another Customer.").format(order.name))
+	return orders
+
+
+def get_pricing(orders, selling_price_list):
+	if selling_price_list:
+		return {"selling_price_list": selling_price_list,
+			"currency": frappe.db.get_value("Price List", selling_price_list, "currency")}
+	pricing = {(order.selling_price_list, order.currency) for order in orders}
+	require(len(pricing) <= 1, "Sales Orders must share one Price List.")
+	price_list, currency = pricing.pop() if pricing else (None, None)
+	return {"selling_price_list": price_list, "currency": currency}
+
+
+def get_input_values(meta, values, allowed=()):
+	"""Caller values for the listed fields and for custom fields only."""
+	return {key: value for key, value in values.items()
+		if key in allowed or (meta.get_field(key) and meta.get_field(key).get("is_custom_field"))}
+
+
+def append_pending_rows(note, orders):
+	allocated = get_allocated_qty([row.name for order in orders for row in order.items])
+	for order in orders:
+		for row in order.items:
+			append_pending_row(note, order, row, flt(row.stock_qty) - flt(allocated.get(row.name)))
+
+
+def append_selected_rows(note, orders, rows):
+	"""Listed order rows within their pending quantity, plus rows with no Sales Order."""
+	sources = {row.name: (order, row) for order in orders for row in order.items}
+	allocated = get_allocated_qty(list(sources))
+	requested = defaultdict(float)
+	item_meta = frappe.get_meta("YRP Delivery Note Item")
+	for values in rows:
+		extra = get_input_values(item_meta, values)
+		if not values.get("so_detail"):
+			note.append("items", {**extra, "item_code": values.get("item_code"), "uom": values.get("uom"),
+				"qty": flt(values.get("qty"))})
+			continue
+		require(values["so_detail"] in sources,
+			_("Sales Order Item {0} is not on the selected Sales Orders.").format(values["so_detail"]))
+		order, source = sources[values["so_detail"]]
+		qty = flt(values.get("qty"))
+		requested[source.name] += qty * flt(source.conversion_factor)
+		pending = flt(source.stock_qty) - flt(allocated.get(source.name))
+		precision = source.precision("stock_qty")
+		require(qty > 0, _("Row {0} of Sales Order {1}: Quantity must be greater than zero.").format(
+			source.idx, order.name))
+		require(flt(requested[source.name], precision) <= flt(pending, precision),
+			_("Row {0} of Sales Order {1}: {2} exceeds pending {3}.").format(
+				source.idx, order.name, qty, flt(pending / flt(source.conversion_factor), precision)))
+		append_pending_row(note, order, source, qty * flt(source.conversion_factor), extra)
+
+
+def append_pending_row(note, order, row, pending, extra=None):
 	if flt(pending, row.precision("stock_qty")) <= 0:
 		return
 	note.append("items", {
+		**(extra or {}),
 		"item_code": row.item_code,
 		"item_name": row.item_name,
 		"qty": flt(pending / flt(row.conversion_factor), row.precision("qty")),
@@ -396,3 +557,55 @@ def append_pending_row(note, order, row, pending):
 		"sales_order": order.name,
 		"so_detail": row.name,
 	})
+
+
+def allocate_dimensions(note):
+	"""Give rows without stock dimensions the warehouse buckets that hold free stock, oldest first.
+
+	A row larger than one bucket is split; a shortage fails before any reservation is made."""
+	fieldnames = [dimension["fieldname"] for dimension in get_mandatory_dimensions()]
+	if not fieldnames:
+		return
+	buckets = {}
+	rows = []
+	for row in note.items:
+		if all(row.get(fieldname) for fieldname in fieldnames):
+			rows.append(row)
+			continue
+		key = (row.item_code, row.warehouse or note.set_warehouse)
+		if key not in buckets:
+			buckets[key] = get_free_buckets(*key)
+		rows.extend(split_row(row, buckets[key], key[1]))
+	note.set("items", rows)
+
+
+def get_free_buckets(item_code, warehouse):
+	fieldnames = get_dimension_fieldnames()
+	columns = ", ".join(f"`{fieldname}`" for fieldname in fieldnames)
+	return frappe.db.sql(
+		f"""select {columns}, actual_qty - reserved_qty as free_qty from `tabYRP Bin`
+		where item_code = %s and warehouse = %s and actual_qty - reserved_qty > 0 order by creation, name""",
+		(item_code, warehouse), as_dict=True,
+	)
+
+
+def split_row(row, buckets, warehouse):
+	"""Row copies, one per bucket used; the UOM's whole-number rule decides how much a bucket can give."""
+	factor = flt(row.conversion_factor) or get_conversion_factor(frappe.get_cached_doc("Item", row.item_code), row.uom)
+	whole = frappe.db.get_value("UOM", row.uom, "must_be_whole_number")
+	remaining = flt(row.qty)
+	values = row.as_dict(no_default_fields=True)
+	rows = []
+	for bucket in buckets:
+		available = flt(bucket.free_qty) / factor
+		take = min(remaining, math.floor(available + 1e-9) if whole else available)
+		if take <= 0:
+			continue
+		bucket.free_qty = flt(bucket.free_qty) - take * factor
+		remaining -= take
+		dimensions = {fieldname: bucket[fieldname] for fieldname in get_dimension_fieldnames()}
+		rows.append({**values, **dimensions, "qty": take, "stock_qty": take * factor, "warehouse": warehouse})
+		if remaining <= 1e-9:
+			return rows
+	frappe.throw(_("Row {0}: {1} needs {2} {3} in {4}, but only {5} is free.").format(
+		row.idx, row.item_code, flt(row.qty), row.uom, warehouse, flt(row.qty) - remaining))

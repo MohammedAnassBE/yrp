@@ -31,6 +31,12 @@
   "total_qty",
   "column_break_total",
   "total",
+  "section_break_delivery",
+  "shipping_address_name",
+  "shipping_address",
+  "column_break_delivery",
+  "transporter",
+  "remarks",
   "amended_from"
  ],
  "fields": [
@@ -198,18 +204,63 @@
    "label": "Delivered At",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "section_break_delivery",
+   "fieldtype": "Section Break",
+   "label": "Delivery"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "shipping_address_name",
+   "fieldtype": "Link",
+   "label": "Shipping Address",
+   "options": "Address"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "shipping_address",
+   "fieldtype": "Small Text",
+   "label": "Shipping Address Details",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_delivery",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "transporter",
+   "fieldtype": "Link",
+   "label": "Transporter",
+   "options": "Supplier"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-06 10:55:38.750935",
+ "modified": "2026-10-06 17:23:31.719816",
  "modified_by": "Administrator",
  "module": "YRP Sales",
  "name": "YRP Delivery Note",
  "owner": "Administrator",
  "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "AI Bot",
+   "select": 1
+  },
   {
    "amend": 1,
    "cancel": 1,

@@ -9,7 +9,12 @@ from frappe.utils import nowdate
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_or_make_bin
-from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import make_delivery_note
+from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import (
+	create_delivery_note,
+	get_delivery_note,
+	get_pending_rows,
+	make_delivery_note,
+)
 
 
 class TestYRPDeliveryNote(unittest.TestCase):
@@ -194,3 +199,76 @@ class TestYRPDeliveryNote(unittest.TestCase):
 			self.assertTrue(frappe.has_permission("YRP Delivery Note", "read", user=user), role)
 			for ptype in ("create", "write", "delete", "submit", "cancel"):
 				self.assertFalse(frappe.has_permission("YRP Delivery Note", ptype, user=user), (role, ptype))
+
+	def make_price_list(self, rate=None):
+		name = frappe.get_doc({"doctype": "Price List", "price_list_name": self.label("Prices"), "selling": 1,
+			"currency": frappe.db.get_value("Company", self.company, "default_currency")}).insert().name
+		if rate:
+			frappe.get_doc({"doctype": "Item Price", "price_list": name, "item_code": self.item, "uom": self.uom,
+				"price_list_rate": rate}).insert()
+		return name
+
+	def test_selected_rows_take_listed_quantities_only(self):
+		first, second = self.make_order(qty=6), self.make_order(qty=4)
+		note = get_delivery_note(self.customer, [first.name, second.name],
+			items=[{"so_detail": first.items[0].name, "qty": 2}])
+		self.assertEqual([(row.so_detail, row.qty) for row in note.items], [(first.items[0].name, 2)])
+		with self.assertRaisesRegex(frappe.ValidationError, "exceeds pending 6"):
+			get_delivery_note(self.customer, [first.name], items=[{"so_detail": first.items[0].name, "qty": 7}])
+		with self.assertRaisesRegex(frappe.ValidationError, "not on the selected Sales Orders"):
+			get_delivery_note(self.customer, [first.name], items=[{"so_detail": second.items[0].name, "qty": 1}])
+
+	def test_warehouse_overrides_every_row(self):
+		other = frappe.get_doc({"doctype": "Warehouse", "warehouse_name": self.label("Dispatch"),
+			"company": self.company}).insert().name
+		note = get_delivery_note(self.customer, [self.make_order().name], warehouse=other)
+		self.assertEqual((note.set_warehouse, {row.warehouse for row in note.items}), (other, {other}))
+
+	def test_mixed_price_lists_need_a_chosen_list(self):
+		first, second = self.make_order(), self.make_order()
+		frappe.db.set_value("YRP Sales Order", second.name, "selling_price_list", self.make_price_list())
+		with self.assertRaisesRegex(frappe.ValidationError, "share one Price List"):
+			get_delivery_note(self.customer, [first.name, second.name])
+		chosen = self.make_price_list(rate=30)
+		note = get_delivery_note(self.customer, [first.name, second.name], selling_price_list=chosen)
+		self.assertEqual((note.selling_price_list, {row.rate for row in note.items}), (chosen, {30}))
+
+	def test_additional_row_needs_no_sales_order(self):
+		order = self.make_order(qty=2)
+		note = get_delivery_note(self.customer, [order.name], selling_price_list=self.make_price_list(rate=30),
+			items=[{"so_detail": order.items[0].name, "qty": 2}, {"item_code": self.item, "uom": self.uom, "qty": 3}])
+		for row in note.items:
+			row.update(self.dimensions)
+		note.insert()
+		extra = note.items[1]
+		self.assertEqual((extra.sales_order, extra.so_detail, extra.rate, extra.stock_qty), (None, None, 30, 3))
+		self.assertEqual(self.get_reserved_qty(), 5)
+
+	def test_pending_rows_exclude_allocated_quantity(self):
+		order = self.make_order(qty=6)
+		note = self.make_note(order)
+		note.items[0].qty = 4
+		note.insert()
+		rows = get_pending_rows(customer=self.customer)
+		self.assertEqual([(row.so_detail, row.pending) for row in rows], [(order.items[0].name, 2)])
+		note.items[0].qty = 6
+		note.save()
+		self.assertEqual(get_pending_rows(sales_orders=[order.name]), [])
+
+	def test_create_submits_two_orders_with_reservations(self):
+		first, second = self.make_order(qty=4), self.make_order(qty=3)
+		note = create_delivery_note(self.customer, [first.name, second.name],
+			header={"remarks": "Fictional remarks", "status": "Delivered"})
+		self.assertEqual((note.docstatus, note.status, note.remarks), (1, "Submitted", "Fictional remarks"))
+		self.assertEqual({row.lot for row in note.items}, {self.dimensions["lot"]})
+		self.assertEqual(self.get_reserved_qty(), 7)
+		self.assertEqual(len(self.get_reservations(note, "Reserved")), 2)
+
+	def test_create_rolls_back_on_stock_shortage(self):
+		first, second = self.make_order(qty=6), self.make_order(qty=6)
+		with self.assertRaisesRegex(frappe.ValidationError, "only 4"):
+			create_delivery_note(self.customer, [first.name, second.name])
+		self.assertFalse(frappe.db.exists("YRP Delivery Note", {"customer": self.customer}))
+		self.assertFalse(frappe.db.exists("YRP Stock Reservation Entry", {"voucher_type": "YRP Delivery Note",
+			"item_code": self.item}))
+		self.assertEqual(self.get_reserved_qty(), 0)
