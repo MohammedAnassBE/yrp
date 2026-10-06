@@ -50,6 +50,21 @@ def _engine(*, reserved_stock=0, is_cancelled=0, validate_reserved_stock=1):
 
 
 class TestReservationEnforcement(TestCase):
+	def test_outgoing_normalizes_sub_precision_float_residual_to_zero(self):
+		engine = _engine(reserved_stock=0)
+		valuator = Mock()
+		sle = frappe._dict(
+			item="ITEM-1",
+			warehouse="WH-1",
+			qty=-1.191,
+			outgoing_rate=5,
+		)
+
+		result = engine._handle_outgoing(sle, valuator, 1.1909999999999996)
+
+		self.assertEqual(result, 0)
+		valuator.remove_stock.assert_called_once_with(1.191, 5)
+
 	def test_current_bucket_uses_preloaded_reservation_and_blocks_below_floor(self):
 		engine = _engine(reserved_stock=6)
 

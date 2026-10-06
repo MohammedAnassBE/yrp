@@ -322,7 +322,7 @@ def create_purchase_invoice_adjustment(invoice):
 				billing_rate = _get_po_material_rate(grn, grn_item)
 			target_sle = find_receipt_sle(grn.doctype, grn.name, grn_item.name)
 			if not target_sle:
-				# Legacy Purchase-Order GRNs could be invoiced in production_api
+				# Legacy Purchase-Order GRNs could be invoiced in older environments
 				# without creating an MRP receipt SLE. Keep those invoices
 				# submittable; without a receipt there is no stock value to revise.
 				# Work-Order GRNs must always have their receipt because their
@@ -996,6 +996,35 @@ def _update_receipt_current_value(target):
 	current_value = qty * flt(target.rate) + flt(
 		frappe.db.get_value("YRP Stock Ledger Entry", target.name, "valuation_adjustment_value")
 	)
+	grouped_rows = _grouped_grn_receipt_rows(target)
+	if grouped_rows:
+		weights = [
+			flt(row.stock_qty or row.quantity) * flt(row.rate)
+			for row in grouped_rows
+		]
+		if sum(weights) <= 0:
+			weights = [flt(row.stock_qty or row.quantity) for row in grouped_rows]
+		total_weight = sum(weights)
+		assigned = 0.0
+		for index, (row, weight) in enumerate(zip(grouped_rows, weights, strict=True)):
+			row_qty = flt(row.stock_qty or row.quantity)
+			is_last = index == len(grouped_rows) - 1
+			value = (
+				current_value - assigned
+				if is_last
+				else current_value * weight / total_weight
+			)
+			assigned += value
+			frappe.db.set_value(
+				"YRP Goods Received Note Item",
+				row.name,
+				{
+					"current_valuation_rate": value / row_qty if row_qty else 0,
+					"current_valuation_value": value,
+				},
+				update_modified=False,
+			)
+		return
 	frappe.db.set_value(
 		"YRP Goods Received Note Item",
 		target.voucher_detail_no,
@@ -1005,6 +1034,44 @@ def _update_receipt_current_value(target):
 		},
 		update_modified=False,
 	)
+
+
+def _grouped_grn_receipt_rows(target):
+	"""Return every GRN item sharing a mapped physical receipt SLE."""
+	if target.voucher_type != "YRP Goods Received Note":
+		return []
+	parent_field = frappe.get_meta(target.voucher_type).get_field("grn_deliverables")
+	if not parent_field or not parent_field.options:
+		return []
+	child_meta = frappe.get_meta(parent_field.options)
+	if not (
+		child_meta.get_field("goods_received_note_item")
+		and child_meta.get_field("output_receipt_sle")
+	):
+		return []
+	item_names = list(
+		dict.fromkeys(
+			frappe.get_all(
+				parent_field.options,
+				filters={
+					"parent": target.voucher_no,
+					"parenttype": target.voucher_type,
+					"output_receipt_sle": target.name,
+				},
+				order_by="idx asc, name asc",
+				pluck="goods_received_note_item",
+			)
+		)
+	)
+	if len(item_names) <= 1:
+		return []
+	rows = frappe.get_all(
+		"YRP Goods Received Note Item",
+		filters={"name": ["in", item_names]},
+		fields=["name", "stock_qty", "quantity", "rate"],
+	)
+	by_name = {row.name: row for row in rows}
+	return [by_name[name] for name in item_names if name in by_name]
 
 
 def _bucket_filters(target):
@@ -1498,7 +1565,7 @@ def deactivate_production_links(source_doctype, source_name):
 
 
 def find_receipt_sle(voucher_type, voucher_no, voucher_detail_no):
-	return frappe.db.get_value(
+	direct = frappe.db.get_value(
 		"YRP Stock Ledger Entry",
 		{
 			"voucher_type": voucher_type,
@@ -1509,6 +1576,32 @@ def find_receipt_sle(voucher_type, voucher_no, voucher_detail_no):
 		},
 		"name",
 		order_by="creation desc, name desc",
+	)
+	if direct or voucher_type != "YRP Goods Received Note":
+		return direct
+	# A qualified physical cloth GRN can deliberately group several child rows
+	# into one receipt SLE. Custom apps persist that shared identity on their
+	# mapped-input child contract; use it without introducing a hard dependency
+	# on a particular custom child DocType.
+	parent_field = frappe.get_meta(voucher_type).get_field("grn_deliverables")
+	if not parent_field or not parent_field.options:
+		return None
+	child_meta = frappe.get_meta(parent_field.options)
+	if not (
+		child_meta.get_field("goods_received_note_item")
+		and child_meta.get_field("output_receipt_sle")
+	):
+		return None
+	return frappe.db.get_value(
+		parent_field.options,
+		{
+			"parent": voucher_no,
+			"parenttype": voucher_type,
+			"goods_received_note_item": voucher_detail_no,
+			"output_receipt_sle": ["is", "set"],
+		},
+		"output_receipt_sle",
+		order_by="idx asc, name asc",
 	)
 
 

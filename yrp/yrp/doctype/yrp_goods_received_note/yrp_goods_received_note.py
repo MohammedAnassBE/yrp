@@ -1454,6 +1454,13 @@ def _grn_deliverable_dimensions(row):
 
 
 def _grn_receipt_stock_entries(grn, destination, with_result_keys=False):
+	if grn.flags.get("aggregate_physical_receipts"):
+		return [
+			group["entry"]
+			for group in _group_production_grn_receipts(
+				grn, destination, with_result_keys=with_result_keys
+			)
+		]
 	entries = []
 	for row in (grn.get("items") or []) + (grn.get("correction_items") or []):
 		qty = flt(row.stock_qty) or flt(row.quantity)
@@ -1484,6 +1491,58 @@ def _grn_receipt_stock_entries(grn, destination, with_result_keys=False):
 			receipt_entry["_result_key"] = f"grn-output:{row.name}"
 		entries.append(receipt_entry)
 	return entries
+
+
+def _group_production_grn_receipts(grn, destination, with_result_keys=False):
+	"""Group only opt-in physical outputs by their real stock bucket.
+
+	The caller owns qualification. Ordinary PO, garment, rework, return and
+	legacy GRNs continue using one entry per child row through the base branch
+	above.
+	"""
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dimension_fields = get_dimension_fieldnames()
+	groups = {}
+	for row in (grn.get("items") or []) + (grn.get("correction_items") or []):
+		qty = flt(row.stock_qty) or flt(row.quantity)
+		if qty <= 0:
+			continue
+		base = _sle_base(grn, row)
+		key = (
+			base["item"],
+			destination,
+			base["uom"],
+			*(base.get(fieldname) for fieldname in dimension_fields),
+		)
+		group = groups.setdefault(
+			key,
+			{
+				"item_rows": [],
+				"stock_qty": 0.0,
+				"stock_value": 0.0,
+				"entry": {
+					**base,
+					"warehouse": destination,
+					"qty": 0.0,
+					"rate": 0.0,
+				},
+			},
+		)
+		group["item_rows"].append(row.name)
+		group["stock_qty"] += qty
+		group["stock_value"] += qty * flt(row.rate)
+
+	result = []
+	for index, group in enumerate(groups.values(), 1):
+		qty = flt(group["stock_qty"])
+		group["entry"]["qty"] = qty
+		group["entry"]["rate"] = group["stock_value"] / qty if qty else 0
+		group["result_key"] = f"grn-output-group:{index}"
+		if with_result_keys:
+			group["entry"]["_result_key"] = group["result_key"]
+		result.append(group)
+	return result
 
 
 def _group_grn_deliverable_consumption(grn):
@@ -1613,15 +1672,31 @@ def make_production_grn_stock_ledger_entries(grn, destination, cancel=False):
 		{"total_received_quantity": grn.total_received_quantity, "total": grn.total},
 		update_modified=False,
 	)
+	receipt_groups = (
+		_group_production_grn_receipts(grn, destination, with_result_keys=True)
+		if grn.flags.get("aggregate_physical_receipts")
+		else None
+	)
 	receipt_result = make_sl_entries(
-		_grn_receipt_stock_entries(grn, destination, with_result_keys=True),
+		(
+			[group["entry"] for group in receipt_groups]
+			if receipt_groups is not None
+			else _grn_receipt_stock_entries(grn, destination, with_result_keys=True)
+		),
 		return_details=True,
 		force_inline=True,
 	)
-	output_sles = {
-		row.name: (receipt_result["entries"].get(f"grn-output:{row.name}") or {}).get("sle")
-		for row in grn.get("items") or []
-	}
+	if receipt_groups is not None:
+		output_sles = {}
+		for group in receipt_groups:
+			sle = (receipt_result["entries"].get(group["result_key"]) or {}).get("sle")
+			for row_name in group["item_rows"]:
+				output_sles[row_name] = sle
+	else:
+		output_sles = {
+			row.name: (receipt_result["entries"].get(f"grn-output:{row.name}") or {}).get("sle")
+			for row in grn.get("items") or []
+		}
 	production_links = []
 	for row in grn.get("grn_deliverables") or []:
 		output_sle = output_sles.get(row.goods_received_note_item)

@@ -1227,6 +1227,8 @@ class UpdateEntriesAfter:
 		Reservation is enforced centrally after the new bucket balance is known.
 		"""
 		new_qty = current_dim_qty + flt(sle.qty)  # sle.qty is negative
+		if abs(new_qty) < 1e-9:
+			new_qty = 0
 
 		if not self.allow_negative_stock and new_qty < 0:
 			frappe.throw(

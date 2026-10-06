@@ -49,7 +49,7 @@
                                    type="number"
                                    min="0"
                                    step="0.001"
-                                   :max="Number.isFinite(maxQty(row, split, col.key)) ? maxQty(row, split, col.key) : undefined"
+								   :max="allowExcess ? undefined : maxQty(row, split, col.key)"
                                    :value="qty(split.entry, col.key)"
                                    @input="onQtyInput(row, split, col.key, $event)">
                             <span v-else>{{ formatQty(qty(split.entry, col.key)) }}</span>
@@ -95,11 +95,19 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import {
+	buildLogicalReceiptRows,
+	buildReceiptRowKey,
+	removeSplitSources,
+	setSplitQuantity,
+} from './grnReceiptRows.mjs';
 
 const props = defineProps({
     items: { type: Array, default: () => [] },
     edit: { type: Boolean, default: true },
 	returnMode: { type: Boolean, default: false },
+	allowExcess: { type: Boolean, default: false },
+	aggregatePhysicalRows: { type: Boolean, default: false },
 });
 const emit = defineEmits(['itemupdated']);
 
@@ -133,55 +141,9 @@ const dimensionLabels = computed(() => {
     return out;
 });
 
-const logicalRows = computed(() => {
-    const rows = [];
-    const byKey = new Map();
-    for (const group of props.items || []) {
-        for (const entry of group.items || []) {
-            const dimensionsWithoutType = stripReceivedType(entry.dimensions || {});
-            const attributes = entry.attributes || {};
-            const columns = getColumns(group, entry);
-            const setCombination = normalizedSetCombination(entry.set_combination);
-            const key = stableKey({
-                name: entry.name,
-                dimensions: dimensionsWithoutType,
-                attributes,
-                setCombination,
-                columns: columns.map((col) => col.key),
-            });
-            if (!byKey.has(key)) {
-                const row = {
-                    key,
-                    name: entry.name,
-                    dimensions: dimensionsWithoutType,
-                    dimensionFields: Object.keys(dimensionsWithoutType).filter(
-                        (fieldname) => dimensionsWithoutType[fieldname],
-                    ),
-                    attributes,
-                    setCombination,
-                    attributeFields: Object.keys(attributes).filter(
-                        (fieldname) => attributes[fieldname],
-                    ),
-                    columns,
-                    defaultUom: entry.default_uom || '',
-                    splits: [],
-                };
-                byKey.set(key, row);
-                rows.push(row);
-            }
-            const row = byKey.get(key);
-            row.splits.push({
-                key: `${key}::${receivedType(entry)}`,
-                receivedType: receivedType(entry),
-                entry,
-            });
-        }
-    }
-    for (const row of rows) {
-        row.splits.sort((a, b) => (a.receivedType || '').localeCompare(b.receivedType || ''));
-    }
-    return rows;
-});
+const logicalRows = computed(() => buildLogicalReceiptRows(props.items, {
+	aggregatePhysicalRows: props.aggregatePhysicalRows,
+}));
 
 function stripReceivedType(dimensionsIn) {
     const out = {};
@@ -197,18 +159,6 @@ function receivedType(entry) {
     return (entry.dimensions || {}).received_type || '';
 }
 
-function normalizedSetCombination(value) {
-    if (!value) return {};
-    if (typeof value === 'string') {
-        try {
-            return JSON.parse(value);
-        } catch (_error) {
-            return { value };
-        }
-    }
-    return value;
-}
-
 function getColumns(group, entry) {
     const values = entry.values || {};
     const primaryValues = group.primary_attribute_values || [];
@@ -216,24 +166,6 @@ function getColumns(group, entry) {
         return primaryValues.map((value) => ({ key: value, label: value }));
     }
     return [{ key: 'default', label: 'Qty' }];
-}
-
-function stableKey(value) {
-    return JSON.stringify(sortObject(value));
-}
-
-function sortObject(value) {
-    if (Array.isArray(value)) {
-        return value.map((item) => sortObject(item));
-    }
-    if (!value || typeof value !== 'object') {
-        return value;
-    }
-    const out = {};
-    for (const key of Object.keys(value).sort()) {
-        out[key] = sortObject(value[key]);
-    }
-    return out;
 }
 
 function dimensionLabel(fieldname) {
@@ -331,17 +263,11 @@ function maxQty(row, split, key) {
 }
 
 function onQtyInput(row, split, key, event) {
-    const detail = valueDetail(split.entry, key);
-    let nextQty = toNumber(event.target.value);
-    if (nextQty < 0) {
-        nextQty = 0;
-    }
-    const maxValue = maxQty(row, split, key);
-    if (maxValue !== null && nextQty > maxValue) {
-        nextQty = maxValue;
-    }
-    detail.qty = nextQty;
-    event.target.value = nextQty;
+	const nextQty = setSplitQuantity(split, key, event.target.value, {
+		allowExcess: props.allowExcess,
+		maxValue: maxQty(row, split, key),
+	});
+	event.target.value = nextQty;
     emit('itemupdated', true);
 }
 
@@ -382,13 +308,7 @@ function addSplit(row, rt) {
     for (const group of props.items || []) {
         for (const entry of (group.items || [])) {
             const stripped = stripReceivedType(entry.dimensions || {});
-            const dimsWithoutTypeKey = stableKey({
-                name: entry.name,
-                dimensions: stripped,
-                attributes: entry.attributes || {},
-                setCombination: normalizedSetCombination(entry.set_combination),
-                columns: getColumns(group, entry).map((col) => col.key),
-            });
+			const dimsWithoutTypeKey = buildReceiptRowKey(group, entry);
             if (dimsWithoutTypeKey !== row.key) continue;
             const clone = JSON.parse(JSON.stringify(entry));
             clone.dimensions = { ...stripped, received_type: rt };
@@ -406,14 +326,7 @@ function addSplit(row, rt) {
 }
 
 function removeSplit(row, split) {
-    for (const group of props.items || []) {
-        const idx = (group.items || []).indexOf(split.entry);
-        if (idx !== -1) {
-            group.items.splice(idx, 1);
-            emit('itemupdated', true);
-            return;
-        }
-    }
+	if (removeSplitSources(props.items, split)) emit('itemupdated', true);
 }
 
 function formatQty(value) {
