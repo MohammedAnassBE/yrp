@@ -59,6 +59,16 @@ class TestYRPSalesOrder(unittest.TestCase):
 		frappe.db.set_value("Item", self.item.name, "yrp_is_free_item", 1)
 		self.assertEqual(self.make_order(rate=0).items[0].amount, 0)
 
+	def test_rows_need_enabled_concrete_sales_items(self):
+		for field in ("disabled", "has_variants"):
+			with self.subTest(field=field):
+				frappe.db.set_value("Item", self.item.name, {"disabled": 0, "has_variants": 0, "is_sales_item": 1, field: 1})
+				with self.assertRaisesRegex(frappe.ValidationError, "enabled, concrete sales Items"):
+					self.make_order()
+		frappe.db.set_value("Item", self.item.name, {"has_variants": 0, "is_sales_item": 0})
+		with self.assertRaisesRegex(frappe.ValidationError, "enabled, concrete sales Items"):
+			self.make_order()
+
 	def test_submit_and_cancel_status(self):
 		order = self.make_order()
 		order.submit()

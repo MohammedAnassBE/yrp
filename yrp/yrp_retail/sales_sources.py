@@ -59,14 +59,14 @@ def _validate_eligible(source):
 		require(source.order_type == "Secondary", "Only Secondary Retail Order Summaries can create Sales Orders.")
 
 
-def _allocations(source, exclude=None):
+def _allocations(source, exclude=None, lock=True):
 	"""Current locking read, including drafts; sum in Python to retain row locks."""
 	spec = SOURCES[source.doctype]
 	rows = frappe.db.sql(
 		f"""select soi.`{spec['row']}` as source_row, soi.qty, so.name
 		from `tabYRP Sales Order Item` soi join `tabYRP Sales Order` so on so.name=soi.parent
 		where so.docstatus < 2 and so.`{spec['header']}`=%s
-		and (%s is null or so.name != %s) order by so.name, soi.name for update""",
+		and (%s is null or so.name != %s) order by so.name, soi.name{" for update" if lock else ""}""",
 		(source.name, exclude, exclude), as_dict=True,
 	)
 	allocated = defaultdict(float)
@@ -188,28 +188,64 @@ def protect_retail_source(doc, method=None):
 	require(fingerprint(doc) == fingerprint(old), "A retail source used by a Sales Order cannot change its items.")
 
 
+@frappe.whitelist(methods=["GET"])
+def get_sales_order_defaults(source_doctype, source_name):
+	"""Read-only Sales Order values for a retail source; needs read permission on the source."""
+	require(source_doctype in SOURCES, "Unsupported retail source.")
+	frappe.get_doc(source_doctype, source_name).check_permission("read")
+	return get_sales_order_values(source_doctype, source_name)
+
+
+def get_sales_order_values(source_doctype, source_name):
+	"""Header, remaining-capacity rows and visit of an eligible source, without reserving anything."""
+	require(source_doctype in SOURCES, "Unsupported retail source.")
+	source = frappe.get_doc(source_doctype, source_name)
+	_validate_eligible(source)
+	spec = SOURCES[source_doctype]
+	allocated = _allocations(source, lock=False)
+	summary_factors = summary_conversion_factors(source) if source_doctype == "YRP Retail Order Summary" else None
+	items = []
+	for row in source.items:
+		remaining = finite_number(row.get(spec["capacity"]), "Source quantity") - allocated[row.name]
+		if remaining > 0:
+			items.append({
+				"item_code": row.item_code, "uom": row.uom, "qty": remaining,
+				"conversion_factor": _factor(source, row, summary_factors), spec["row"]: row.name,
+			})
+	visit = source.get("visit") and frappe.db.get_value("YRP Visit", source.visit, ["visit_datetime", "location"], as_dict=True)
+	return {
+		"customer": source.customer, "order_type": source.order_type, "sales_person": source.sales_person,
+		"items": items, "visit": {"posting_datetime": visit.visit_datetime, "location": visit.location} if visit else None,
+	}
+
+
 @frappe.whitelist(methods=["POST"])
-def make_sales_order(source_doctype, source_name, company, delivery_date, items=None, selling_price_list=None):
+def make_sales_order(source_doctype, source_name, company, delivery_date=None, items=None, selling_price_list=None):
 	"""Atomically create a draft; even caught direct-call failures roll back."""
+	frappe.has_permission("YRP Sales Order", ptype="create", throw=True)
+	require(source_doctype in SOURCES, "Unsupported retail source.")
+	frappe.get_doc(source_doctype, source_name).check_permission("read")
 	point = "retail_sales_order_" + frappe.generate_hash(length=12)
 	frappe.db.savepoint(point)
 	try:
-		return _make_sales_order(source_doctype, source_name, company, delivery_date, items, selling_price_list)
+		doc = build_sales_order(source_doctype, source_name, company, delivery_date, items, selling_price_list)
+		doc.insert()
+		return doc.as_dict()
 	except Exception:
 		frappe.db.rollback(save_point=point)
 		raise
 
 
-def _make_sales_order(source_doctype, source_name, company, delivery_date, items=None, selling_price_list=None):
-	"""Insert one draft YRP Sales Order, optionally selecting source rows/qty.
+def build_sales_order(source_doctype, source_name, company, delivery_date=None, items=None, selling_price_list=None):
+	"""Unsaved draft YRP Sales Order for a locked source, optionally selecting rows/qty; no permission checks.
 
 	`items` is a JSON/list of {source_row: source-child-name, qty: positive-number}.
 	Omitting it selects each row's remaining capacity.
 	"""
-	frappe.has_permission("YRP Sales Order", ptype="create", throw=True)
-	require(company and delivery_date, "Company and Delivery Date are required.")
-	require(getdate(delivery_date) >= getdate(today()), "Delivery Date cannot be in the past.")
-	source = _source(source_doctype, source_name, check_permission=True)
+	require(company, "Company is required.")
+	if delivery_date:
+		require(getdate(delivery_date) >= getdate(today()), "Delivery Date cannot be in the past.")
+	source = _source(source_doctype, source_name)
 	_validate_eligible(source)
 	summary_factors = summary_conversion_factors(source) if source.doctype == "YRP Retail Order Summary" else None
 	spec = SOURCES[source_doctype]
@@ -238,5 +274,4 @@ def _make_sales_order(source_doctype, source_name, company, delivery_date, items
 		row = by_name[reference]
 		qty = _check_quantity(selection["qty"], row.get(spec["capacity"]), allocated[reference])
 		doc.append("items", {"item_code": row.item_code, "uom": row.uom, "qty": qty, "conversion_factor": _factor(source, row, summary_factors), spec["row"]: reference})
-	doc.insert()
-	return doc.as_dict()
+	return doc

@@ -212,6 +212,26 @@ class TestSalesSources(TestRetailFlow):
 		with self.assertRaises(frappe.ValidationError):
 			first.save()
 
+	def test_defaults_read_remaining_capacity_without_reserving(self):
+		self.make_so(qty=4)
+		values = sales_sources.get_sales_order_defaults("YRP Retail Order", self.primary)
+		self.assertEqual((values["customer"], values["order_type"]), (self.customer.name, "Primary"))
+		self.assertEqual([row["qty"] for row in values["items"]], [6])
+		self.assertEqual(values["items"][0]["retail_order_item"], self.source_progress().items[0].name)
+		self.assertIsNotNone(values["visit"])
+		self.assertEqual(self.source_progress().ordered_qty, 4)
+
+	def test_delivery_date_is_optional(self):
+		result = sales_sources.make_sales_order("YRP Retail Order", self.primary, self.company.name,
+			selling_price_list=self.price_list.name)
+		self.assertIsNone(frappe.db.get_value("YRP Sales Order", result["name"], "delivery_date"))
+
+	def test_discard_frees_capacity_and_cancels_status(self):
+		order = self.make_so(qty=4)
+		order.discard()
+		self.assertEqual(frappe.db.get_value("YRP Sales Order", order.name, "status"), "Cancelled")
+		self.assertEqual(self.source_progress().ordered_qty, 0)
+
 	def test_submit_cancel_releases_capacity(self):
 		order = self.make_so(qty=10)
 		order.submit()

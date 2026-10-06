@@ -28,6 +28,7 @@ class YRPSalesOrder(Document):
 
 	def set_row_values(self, row):
 		item = frappe.get_cached_doc("Item", row.item_code)
+		require(not item.disabled and not item.has_variants and item.is_sales_item, "Order items must be enabled, concrete sales Items.")
 		row.item_name = item.item_name
 		row.stock_uom = item.stock_uom
 		row.conversion_factor = get_conversion_factor(item, row.uom)
@@ -75,6 +76,10 @@ class YRPSalesOrder(Document):
 	def on_cancel(self):
 		self.db_set("status", "Cancelled", update_modified=False)
 		sales_sources.refresh_progress(self, "on_cancel")
+
+	def on_discard(self):
+		self.db_set("status", "Cancelled", update_modified=False)
+		sales_sources.refresh_progress(self, "on_discard")
 
 	def on_trash(self):
 		sales_sources.refresh_progress(self, "on_trash")
