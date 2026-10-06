@@ -3,76 +3,58 @@
  "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "naming_series:",
- "creation": "2026-10-05 18:08:53.334798",
+ "creation": "2026-10-06 10:36:12.266084",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "naming_series",
+  "delivery_note",
   "customer",
-  "customer_name",
-  "company",
-  "column_break_dates",
   "posting_date",
-  "posting_time",
   "column_break_status",
   "status",
-  "per_billed",
-  "per_delivered",
-  "per_packed",
   "delivered_at",
-  "section_break_pricing",
-  "selling_price_list",
-  "currency",
-  "column_break_warehouse",
-  "set_warehouse",
+  "section_break_package",
+  "package_type",
+  "package_count",
+  "gross_weight",
+  "column_break_courier",
+  "courier",
+  "tracking_no",
   "section_break_items",
   "items",
-  "total_qty",
-  "column_break_total",
-  "total",
   "amended_from"
  ],
  "fields": [
   {
-   "default": "YRP-DN-.YYYY.-",
+   "default": "YRP-PS-.YYYY.-",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
    "no_copy": 1,
-   "options": "YRP-DN-.YYYY.-",
+   "options": "YRP-PS-.YYYY.-",
    "print_hide": 1,
    "reqd": 1
   },
   {
-   "fieldname": "customer",
+   "fieldname": "delivery_note",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Customer",
-   "options": "Customer",
+   "label": "Delivery Note",
+   "options": "YRP Delivery Note",
    "reqd": 1,
    "search_index": 1
   },
   {
-   "fetch_from": "customer.customer_name",
-   "fieldname": "customer_name",
-   "fieldtype": "Data",
-   "label": "Customer Name",
-   "read_only": 1
-  },
-  {
-   "fieldname": "company",
+   "fetch_from": "delivery_note.customer",
+   "fieldname": "customer",
    "fieldtype": "Link",
    "in_standard_filter": 1,
-   "label": "Company",
-   "options": "Company",
-   "remember_last_selected_value": 1,
-   "reqd": 1
-  },
-  {
-   "fieldname": "column_break_dates",
-   "fieldtype": "Column Break"
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1
   },
   {
    "default": "Today",
@@ -80,13 +62,6 @@
    "fieldtype": "Date",
    "in_list_view": 1,
    "label": "Posting Date",
-   "reqd": 1
-  },
-  {
-   "default": "Now",
-   "fieldname": "posting_time",
-   "fieldtype": "Time",
-   "label": "Posting Time",
    "reqd": 1
   },
   {
@@ -101,51 +76,53 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Draft\nSubmitted\nInvoiced\nPartially Delivered\nDelivered\nCancelled",
+   "options": "Draft\nPacked\nDelivered\nCancelled",
    "read_only": 1
   },
   {
-   "fieldname": "per_billed",
-   "fieldtype": "Percent",
-   "label": "% Billed",
+   "allow_on_submit": 1,
+   "fieldname": "delivered_at",
+   "fieldtype": "Datetime",
+   "label": "Delivered At",
    "no_copy": 1,
    "read_only": 1
   },
   {
-   "fieldname": "per_delivered",
-   "fieldtype": "Percent",
-   "label": "% Delivered",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "section_break_pricing",
+   "fieldname": "section_break_package",
    "fieldtype": "Section Break",
-   "label": "Pricing and Warehouse"
+   "label": "Package"
   },
   {
-   "fieldname": "selling_price_list",
-   "fieldtype": "Link",
-   "label": "Price List",
-   "options": "Price List"
+   "default": "Box",
+   "fieldname": "package_type",
+   "fieldtype": "Select",
+   "label": "Package Type",
+   "options": "Box\nCover\nCourier\nOther"
   },
   {
-   "fetch_from": "selling_price_list.currency",
-   "fetch_if_empty": 1,
-   "fieldname": "currency",
-   "fieldtype": "Link",
-   "label": "Currency",
-   "options": "Currency"
+   "default": "1",
+   "fieldname": "package_count",
+   "fieldtype": "Int",
+   "label": "Package Count"
   },
   {
-   "fieldname": "column_break_warehouse",
+   "fieldname": "gross_weight",
+   "fieldtype": "Float",
+   "label": "Gross Weight"
+  },
+  {
+   "fieldname": "column_break_courier",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "set_warehouse",
-   "fieldtype": "Link",
-   "label": "Default Warehouse",
-   "options": "Warehouse"
+   "fieldname": "courier",
+   "fieldtype": "Data",
+   "label": "Courier"
+  },
+  {
+   "fieldname": "tracking_no",
+   "fieldtype": "Data",
+   "label": "Tracking No"
   },
   {
    "fieldname": "section_break_items",
@@ -156,47 +133,16 @@
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
-   "options": "YRP Delivery Note Item",
+   "options": "YRP Packing Slip Item",
    "reqd": 1
-  },
-  {
-   "fieldname": "total_qty",
-   "fieldtype": "Float",
-   "label": "Total Quantity",
-   "read_only": 1
-  },
-  {
-   "fieldname": "column_break_total",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "total",
-   "fieldtype": "Currency",
-   "label": "Total",
-   "options": "currency",
-   "read_only": 1
   },
   {
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "label": "Amended From",
    "no_copy": 1,
-   "options": "YRP Delivery Note",
+   "options": "YRP Packing Slip",
    "print_hide": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "per_packed",
-   "fieldtype": "Percent",
-   "label": "% Packed",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "delivered_at",
-   "fieldtype": "Datetime",
-   "label": "Delivered At",
-   "no_copy": 1,
    "read_only": 1
   }
  ],
@@ -204,10 +150,10 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-06 10:55:38.750935",
+ "modified": "2026-10-06 10:55:39.044259",
  "modified_by": "Administrator",
  "module": "YRP Sales",
- "name": "YRP Delivery Note",
+ "name": "YRP Packing Slip",
  "owner": "Administrator",
  "permissions": [
   {
@@ -280,10 +226,10 @@
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
- "search_fields": "customer,customer_name,posting_date",
+ "search_fields": "delivery_note,customer,tracking_no",
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],
- "title_field": "customer_name",
+ "title_field": "delivery_note",
  "track_changes": 1
 }

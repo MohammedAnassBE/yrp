@@ -10,7 +10,9 @@ from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import make_deliv
 from yrp.yrp_sales.invoicing import make_sales_invoice
 
 
-class TestDeliveryNoteInvoicing(unittest.TestCase):
+class DeliveryNoteFixtures(unittest.TestCase):
+	"""Company, item, stock and Delivery Note fixtures shared by YRP Sales tests."""
+
 	def setUp(self):
 		point = "yrp_invoicing_" + frappe.generate_hash(length=10)
 		frappe.db.savepoint(point)
@@ -113,6 +115,8 @@ class TestDeliveryNoteInvoicing(unittest.TestCase):
 		return frappe.db.get_value("YRP Stock Reservation Entry", {"voucher_type": "YRP Delivery Note",
 			"voucher_no": note.name, "docstatus": 1}, ["delivered_qty", "status"])
 
+
+class TestDeliveryNoteInvoicing(DeliveryNoteFixtures):
 	def test_full_invoice_issues_all_stock(self):
 		note = self.make_note(6)
 		self.assertEqual(self.get_bin(), (10, 6))

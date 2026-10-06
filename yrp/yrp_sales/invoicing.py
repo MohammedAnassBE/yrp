@@ -123,9 +123,9 @@ def validate_billing_capacity(invoice, delivery_note, sources, requested):
 
 
 def lock_delivery_note(name):
-	"""Lock the Delivery Note header; every invoice of one note serializes here."""
+	"""Lock the Delivery Note header; its invoices, Packing Slips and deliveries serialize here."""
 	rows = frappe.db.sql(
-		"""select name, docstatus, customer, company, per_delivered from `tabYRP Delivery Note`
+		"""select name, docstatus, customer, company, per_delivered, delivered_at from `tabYRP Delivery Note`
 		where name = %s for update""", name, as_dict=True)
 	require(rows, _("Delivery Note {0} does not exist.").format(name))
 	return rows[0]
@@ -133,7 +133,8 @@ def lock_delivery_note(name):
 
 def get_delivery_note_rows(name):
 	rows = frappe.db.sql(
-		"""select name, idx, item_code, uom, conversion_factor, qty, rate from `tabYRP Delivery Note Item`
+		"""select name, idx, item_code, item_name, uom, conversion_factor, qty, rate, billed_qty
+		from `tabYRP Delivery Note Item`
 		where parent = %s and parenttype = %s order by name for update""", (name, DELIVERY_NOTE), as_dict=True)
 	return {row.name: row for row in rows}
 

@@ -75,3 +75,11 @@ class TestYRPSalesOrder(unittest.TestCase):
 				"transaction_date": today(), "delivery_date": add_days(today(), -1),
 				"items": [{"item_code": self.item.name, "uom": self.uom.name, "qty": 1, "rate": 5}],
 			}).insert()
+
+	def test_read_only_roles_cannot_change(self):
+		for role in ["Stock User", "Stock Manager", "Accounts User"]:
+			user = frappe.get_doc({"doctype": "User", "email": frappe.generate_hash(length=10) + "@example.invalid",
+				"first_name": "Fictional Reader", "send_welcome_email": 0, "roles": [{"role": role}]}).insert().name
+			self.assertTrue(frappe.has_permission("YRP Sales Order", "read", user=user), role)
+			for ptype in ("create", "write", "delete", "submit", "cancel"):
+				self.assertFalse(frappe.has_permission("YRP Sales Order", ptype, user=user), (role, ptype))

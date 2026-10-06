@@ -80,13 +80,13 @@ class YRPSalesOrder(Document):
 		sales_sources.refresh_progress(self, "on_trash")
 
 	def update_delivered_qty(self):
-		"""Recompute delivery caches from submitted YRP Delivery Note rows."""
+		"""Recompute delivery caches from the delivered quantity of submitted YRP Delivery Note rows."""
 		delivered = dict(frappe.db.sql(
-			"""select dni.so_detail, sum(dni.qty) from `tabYRP Delivery Note Item` dni
+			"""select dni.so_detail, sum(dni.delivered_qty) from `tabYRP Delivery Note Item` dni
 			join `tabYRP Delivery Note` dn on dn.name = dni.parent
-			where dn.docstatus = 1 and dni.sales_order = %s group by dni.so_detail""",
+			where dn.docstatus = 1 and dni.sales_order = %s group by dni.so_detail for update""",
 			self.name,
-		)) if frappe.db.table_exists("YRP Delivery Note Item") else {}
+		))
 		ordered, done = 0.0, 0.0
 		for row in self.items:
 			row.delivered_qty = flt(delivered.get(row.name))

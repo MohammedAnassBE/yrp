@@ -6,15 +6,16 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import flt, now_datetime
 
 from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldnames
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
 from yrp.yrp_retail.pricing import check_rate
-from yrp.yrp_sales.invoicing import get_invoiced_qty
+from yrp.yrp_sales.invoicing import get_delivery_note_rows, get_invoiced_qty, lock_delivery_note
 
 RESERVATION = "YRP Stock Reservation Entry"
+PACKING_SLIP = "YRP Packing Slip"
 INACTIVE_RESERVATION_STATUSES = ["Delivered", "Closed", "Cancelled"]
 
 
@@ -116,6 +117,10 @@ class YRPDeliveryNote(Document):
 			pluck="name", order_by="name")
 		require(not invoices, _("Cancel Sales Invoices {0} before cancelling this Delivery Note.").format(
 			", ".join(invoices)))
+		require(not flt(self.per_delivered), _("A delivered Delivery Note cannot be cancelled."))
+		slips = frappe.get_all(PACKING_SLIP, filters={"delivery_note": self.name, "docstatus": 1},
+			pluck="name", order_by="name")
+		require(not slips, _("Cancel Packing Slips {0} before cancelling this Delivery Note.").format(", ".join(slips)))
 
 	def on_cancel(self):
 		close_voucher_reservations(self.doctype, self.name)
@@ -129,10 +134,91 @@ class YRPDeliveryNote(Document):
 		billed = get_invoiced_qty(self.name, submitted_only=True)
 		for row in self.items:
 			row.db_set("billed_qty", flt(billed.get(row.name), row.precision("billed_qty")), update_modified=False)
-		total = sum(flt(row.qty) for row in self.items)
-		covered = sum(min(flt(row.billed_qty), flt(row.qty)) for row in self.items)
-		self.per_billed = flt(covered / total * 100, self.precision("per_billed")) if total else 0
+		self.per_billed = get_percent(self.items, "billed_qty", self.precision("per_billed"))
 		self.db_set({"per_billed": self.per_billed, "status": self.get_status()}, update_modified=False)
+
+	def update_packing(self):
+		"""Recompute packed quantities from submitted Packing Slips."""
+		packed = get_packed_qty(self.name, submitted_only=True)
+		for row in self.items:
+			row.db_set("packed_qty", flt(packed.get(row.name), row.precision("packed_qty")), update_modified=False)
+		self.db_set("per_packed", get_percent(self.items, "packed_qty", self.precision("per_packed")),
+			update_modified=False)
+
+	def update_delivery(self):
+		"""Recompute delivered quantities, then the linked Sales Orders."""
+		delivered = self.get_delivered_qty()
+		for row in self.items:
+			row.db_set("delivered_qty", flt(delivered.get(row.name), row.precision("delivered_qty")),
+				update_modified=False)
+		self.per_delivered = get_percent(self.items, "delivered_qty", self.precision("per_delivered"))
+		values = {"per_delivered": self.per_delivered, "status": self.get_status()}
+		if self.per_delivered >= 100 and not self.delivered_at:
+			values["delivered_at"] = frappe.db.sql(
+				"select max(delivered_at) from `tabYRP Packing Slip` where delivery_note = %s and docstatus = 1",
+				self.name)[0][0]
+		self.db_set(values, update_modified=False)
+		for order in sorted({row.sales_order for row in self.items}):
+			frappe.get_doc("YRP Sales Order", order).update_delivered_qty()
+
+	def get_delivered_qty(self):
+		"""Delivered slips decide; a note without submitted slips is delivered whole by its own delivered_at."""
+		slips = dict(frappe.db.sql(
+			"""select psi.dn_detail, sum(if(ps.delivered_at is null, 0, psi.qty)) from `tabYRP Packing Slip Item` psi
+			join `tabYRP Packing Slip` ps on ps.name = psi.parent
+			where ps.delivery_note = %s and ps.docstatus = 1 group by psi.dn_detail for update""",
+			self.name,
+		))
+		if slips or not self.delivered_at:
+			return slips
+		return {row.name: row.qty for row in self.items}
+
+	def lock_for_delivery(self):
+		"""Lock Sales Orders, then this note; return its current rows."""
+		lock_sales_orders({row.sales_order for row in self.items})
+		header = lock_delivery_note(self.name)
+		require(header.docstatus == 1, _("Delivery Note {0} must be submitted.").format(self.name))
+		self.delivered_at = header.delivered_at
+		return get_delivery_note_rows(self.name)
+
+	def validate_billed_qty(self, rows, delivered):
+		"""Delivered quantity per row may not exceed its invoiced quantity."""
+		precision = frappe.get_precision("YRP Delivery Note Item", "qty")
+		for detail, qty in delivered.items():
+			row = rows[detail]
+			require(flt(qty, precision) <= flt(row.billed_qty, precision), _(
+				"Row {0} of Delivery Note {1}: {2} would be delivered, but only {3} is invoiced."
+			).format(row.idx, self.name, flt(qty, precision), flt(row.billed_qty, precision)))
+
+	@frappe.whitelist()
+	def mark_delivered(self):
+		"""Deliver every row: through all Packing Slips when there are any, otherwise this note itself."""
+		self.check_permission("write")
+		rows = self.lock_for_delivery()
+		require(not self.delivered_at, _("Delivery Note {0} is already delivered.").format(self.name))
+		slips = frappe.db.sql(
+			"""select name, docstatus, delivered_at from `tabYRP Packing Slip`
+			where delivery_note = %s and docstatus < 2 order by name for update""", self.name, as_dict=True)
+		drafts = [slip.name for slip in slips if slip.docstatus == 0]
+		require(not drafts, _("Submit or delete draft Packing Slips {0} first.").format(", ".join(drafts)))
+		if slips:
+			self.validate_packing_coverage(rows)
+		self.validate_billed_qty(rows, {row.name: row.qty for row in rows.values()})
+		delivered_at = now_datetime()
+		for slip in slips:
+			if not slip.delivered_at:
+				frappe.get_doc(PACKING_SLIP, slip.name).set_delivered(delivered_at)
+		if not slips:
+			self.db_set("delivered_at", delivered_at, update_modified=False)
+		self.update_delivery()
+
+	def validate_packing_coverage(self, rows):
+		packed = get_packed_qty(self.name, submitted_only=True)
+		precision = frappe.get_precision("YRP Delivery Note Item", "qty")
+		for row in rows.values():
+			require(flt(packed.get(row.name), precision) == flt(row.qty, precision), _(
+				"Row {0}: Packing Slips cover {1} of {2}. Pack every row before marking the Delivery Note delivered."
+			).format(row.idx, flt(packed.get(row.name), precision), flt(row.qty, precision)))
 
 	def sync_reservations(self):
 		"""Keep one submitted reservation per row, matching its item, warehouse, dimensions and stock quantity."""
@@ -197,6 +283,24 @@ class YRPDeliveryNote(Document):
 		})
 		reservation.insert(ignore_permissions=True)
 		reservation.submit()
+
+
+def get_percent(rows, fieldname, precision):
+	"""Share of row quantity covered by ``fieldname``, capped per row."""
+	total = sum(flt(row.qty) for row in rows)
+	covered = sum(min(flt(row.get(fieldname)), flt(row.qty)) for row in rows)
+	return flt(covered / total * 100, precision) if total else 0
+
+
+def get_packed_qty(delivery_note, exclude=None, submitted_only=False):
+	"""Quantity per Delivery Note row on non-cancelled (or only submitted) Packing Slips, read under lock."""
+	return dict(frappe.db.sql(
+		"""select psi.dn_detail, sum(psi.qty) from `tabYRP Packing Slip Item` psi
+		join `tabYRP Packing Slip` ps on ps.name = psi.parent
+		where ps.delivery_note = %(note)s and ps.docstatus in %(docstatuses)s and ps.name != %(exclude)s
+		group by psi.dn_detail for update""",
+		{"note": delivery_note, "docstatuses": (1,) if submitted_only else (0, 1), "exclude": exclude or ""},
+	))
 
 
 def cancel_reservation(name):

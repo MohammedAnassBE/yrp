@@ -186,3 +186,11 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		frappe.get_doc("YRP Stock Reservation Entry", self.get_reservations(note)[0].name).cancel()
 		with self.assertRaisesRegex(frappe.ValidationError, "no matching stock reservation"):
 			note.submit()
+
+	def test_read_only_roles_cannot_change(self):
+		for role in ["Sales Manager", "Sales User", "Accounts User"]:
+			user = frappe.get_doc({"doctype": "User", "email": frappe.generate_hash(length=10) + "@example.invalid",
+				"first_name": "Fictional Reader", "send_welcome_email": 0, "roles": [{"role": role}]}).insert().name
+			self.assertTrue(frappe.has_permission("YRP Delivery Note", "read", user=user), role)
+			for ptype in ("create", "write", "delete", "submit", "cancel"):
+				self.assertFalse(frappe.has_permission("YRP Delivery Note", ptype, user=user), (role, ptype))

@@ -220,7 +220,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-05 16:58:07.917553",
+ "modified": "2026-10-06 10:55:37.843032",
  "modified_by": "Administrator",
  "module": "YRP Sales",
  "name": "YRP Sales Order",
@@ -270,40 +270,28 @@
    "write": 1
   },
   {
-   "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Stock User",
-   "share": 1,
-   "write": 1
+   "role": "Stock User"
   },
   {
-   "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Stock Manager",
-   "share": 1,
-   "write": 1
+   "role": "Stock Manager"
   },
   {
-   "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Accounts User",
-   "share": 1,
-   "write": 1
+   "role": "Accounts User"
   }
  ],
  "row_format": "Dynamic",
