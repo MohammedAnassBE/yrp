@@ -12,6 +12,7 @@ from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldna
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
 from yrp.yrp_retail.pricing import check_rate
+from yrp.yrp_sales.invoicing import get_invoiced_qty
 
 RESERVATION = "YRP Stock Reservation Entry"
 INACTIVE_RESERVATION_STATUSES = ["Delivered", "Closed", "Cancelled"]
@@ -110,12 +111,28 @@ class YRPDeliveryNote(Document):
 		self.validate_reservations()
 		self.db_set("status", self.get_status(), update_modified=False)
 
+	def before_cancel(self):
+		invoices = frappe.get_all("Sales Invoice", filters={"yrp_delivery_note": self.name, "docstatus": ["<", 2]},
+			pluck="name", order_by="name")
+		require(not invoices, _("Cancel Sales Invoices {0} before cancelling this Delivery Note.").format(
+			", ".join(invoices)))
+
 	def on_cancel(self):
 		close_voucher_reservations(self.doctype, self.name)
 		self.db_set("status", "Cancelled", update_modified=False)
 
 	def on_trash(self):
 		close_voucher_reservations(self.doctype, self.name)
+
+	def update_billing(self):
+		"""Recompute billed quantities from submitted Sales Invoices."""
+		billed = get_invoiced_qty(self.name, submitted_only=True)
+		for row in self.items:
+			row.db_set("billed_qty", flt(billed.get(row.name), row.precision("billed_qty")), update_modified=False)
+		total = sum(flt(row.qty) for row in self.items)
+		covered = sum(min(flt(row.billed_qty), flt(row.qty)) for row in self.items)
+		self.per_billed = flt(covered / total * 100, self.precision("per_billed")) if total else 0
+		self.db_set({"per_billed": self.per_billed, "status": self.get_status()}, update_modified=False)
 
 	def sync_reservations(self):
 		"""Keep one submitted reservation per row, matching its item, warehouse, dimensions and stock quantity."""

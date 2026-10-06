@@ -304,6 +304,35 @@ def close_voucher_reservations(voucher_type, voucher_name):
 		doc.cancel()
 
 
+def consume_voucher_reservation(voucher_type, voucher_no, voucher_detail_no, delta):
+	"""Move ``delta`` stock qty of one voucher row's reservation to delivered; a negative delta restores it.
+
+	The row must have exactly one submitted, unclosed reservation that covers the change.
+	"""
+	names = frappe.get_all('YRP Stock Reservation Entry', filters={
+		"voucher_type": voucher_type,
+		"voucher_no": voucher_no,
+		"voucher_detail_no": voucher_detail_no,
+		"docstatus": 1,
+	}, pluck="name")
+	if len(names) != 1:
+		frappe.throw(_("{0} {1} row {2} must have exactly one stock reservation, found {3}.").format(
+			voucher_type, voucher_no, voucher_detail_no, len(names)))
+	sre = frappe.get_doc('YRP Stock Reservation Entry', names[0], for_update=True)
+	if sre.status == "Closed":
+		frappe.throw(_("Stock Reservation Entry {0} has been closed; cannot update delivered qty.").format(sre.name))
+	precision = sre.precision("delivered_qty")
+	delivered_qty = flt(flt(sre.delivered_qty) + flt(delta), precision)
+	if delivered_qty < 0 or delivered_qty > flt(sre.reserved_qty, precision):
+		frappe.throw(_("Stock Reservation Entry {0} reserves {1} with {2} delivered; cannot apply {3}.").format(
+			sre.name, flt(sre.reserved_qty), flt(sre.delivered_qty), flt(delta)))
+	sre.delivered_qty = delivered_qty
+	sre.set_status()
+	frappe.db.set_value('YRP Stock Reservation Entry', sre.name,
+		{"delivered_qty": delivered_qty, "status": sre.status}, update_modified=False)
+	sre.update_reserved_stock_in_bin()
+
+
 def get_sre_reserved_qty(
 	item_code=None,
 	warehouse=None,

@@ -377,8 +377,10 @@ doc_events = {
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
 	},
 	"Sales Invoice": {
-		"validate": "yrp.yrp_retail.pricing.validate_sales_document",
+		"validate": ["yrp.yrp_retail.pricing.validate_sales_document", "yrp.yrp_sales.invoicing.validate_sales_invoice"],
 		"before_submit": "yrp.erpnext_stock_guard.reject_yrp_stock_items",
+		"on_submit": "yrp.yrp_sales.invoicing.issue_delivery_note_stock",
+		"on_cancel": "yrp.yrp_sales.invoicing.reverse_delivery_note_stock",
 	},
 	"User": {
 		"on_update": "yrp.yrp_partner.sync.sync_user_memberships",
