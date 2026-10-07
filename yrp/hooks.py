@@ -412,7 +412,7 @@ extend_doctype_class = {
 	"Workspace": "yrp.yrp_partner.workspace.PartnerWorkspaceMixin",
 	"YRP Retail Order": "yrp.yrp_retail.pricing.PricingLockMixin",
 	"YRP Retail Order Summary": "yrp.yrp_retail.pricing.PricingLockMixin",
-	"Sales Order": ["yrp.yrp_retail.pricing.RetailSalesPricingMixin", "yrp.yrp_retail.pricing.PricingLockMixin"],
+	"Sales Order": ["yrp.yrp_retail.pricing.RetailSalesPricingMixin", "yrp.yrp_retail.pricing.PricingLockMixin", "yrp.yrp_partner.sales_order.PartnerSalesOrderMixin"],
 	"Delivery Note": ["yrp.yrp_retail.pricing.RetailSalesPricingMixin", "yrp.yrp_retail.packing.PackingTrackingMixin"],
 	"Packing Slip": "yrp.yrp_retail.packing.PackingTrackingMixin",
 	"Sales Invoice": "yrp.yrp_retail.pricing.RetailSalesPricingMixin",
@@ -432,6 +432,7 @@ auth_hooks = ["yrp.yrp_partner.customer_api.guard_request"]
 override_whitelisted_methods = {
 	"erpnext.accounts.doctype.account.account.get_root_company": "yrp.yrp_partner.customer_api.account_root_company",
 	"erpnext.setup.doctype.company.company.get_children": "yrp.yrp_partner.customer_api.company_children",
+	"erpnext.selling.doctype.sales_order.sales_order.get_events": "yrp.yrp_partner.sales_order.get_events",
 	"frappe.desk.query_report.run": "yrp.yrp_partner.customer_reports.run",
 	"frappe.desk.query_report.export_query": "yrp.yrp_partner.customer_reports.export_query",
 }

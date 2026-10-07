@@ -1,4 +1,5 @@
 """Guard native Sales Order processing paths that do not call document.save()."""
+
 import frappe
 from frappe import _
 
@@ -21,7 +22,8 @@ class PartnerSalesOrderMixin:
 	def create_stock_reservation_entries(self, items_details=None, from_voucher_type=None, notify=True):
 		self._check_partner_processing()
 		return super().create_stock_reservation_entries(
-			items_details=items_details, from_voucher_type=from_voucher_type, notify=notify)
+			items_details=items_details, from_voucher_type=from_voucher_type, notify=notify
+		)
 
 	@frappe.whitelist()
 	def cancel_stock_reservation_entries(self, sre_list=None, notify=True):
@@ -32,3 +34,13 @@ class PartnerSalesOrderMixin:
 	def create_delivery_schedule(self, child_row, schedules):
 		self._check_partner_processing()
 		return super().create_delivery_schedule(child_row, schedules)
+
+
+@frappe.whitelist()
+def get_events(start, end, filters=None):
+	"""Native calendar drops permission conditions when filters are empty; partners use YRP Sales Order."""
+	if is_partner():
+		frappe.throw(_("Partner users cannot open the Sales Order calendar."), frappe.PermissionError)
+	from erpnext.selling.doctype.sales_order.sales_order import get_events
+
+	return get_events(start, end, filters)

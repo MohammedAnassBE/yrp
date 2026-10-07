@@ -36,6 +36,7 @@ UNSAFE_RPC = frozenset({
 	"erpnext.accounts.doctype.journal_entry.journal_entry.get_default_bank_cash_account",
 	"erpnext.accounts.doctype.journal_entry.journal_entry.get_average_exchange_rate",
 	"erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool.get_account_balance",
+	"erpnext.accounts.doctype.exchange_rate_revaluation.exchange_rate_revaluation.get_account_details",
 })
 _RAW_LEDGERS = {"Payment Ledger Entry", "Journal Entry", "Payment Entry"}
 _SEARCH_RPC = {"frappe.desk.search.search_link", "frappe.desk.search.search_widget"}
