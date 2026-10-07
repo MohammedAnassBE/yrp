@@ -449,7 +449,7 @@ NON_LISTABLE_FIELDTYPES = (
 	"Button",
 	"Image",
 	"Geolocation",
-	"SD YRP Signature",
+	"Signature",
 )
 
 # Soft-checked vocabularies for the structural knobs. An off-vocabulary value

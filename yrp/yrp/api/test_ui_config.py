@@ -3197,6 +3197,16 @@ class TestUIConfigItem17ListViews(IntegrationTestCase):
 				fragment,
 			)
 
+	def test_signature_fields_are_not_listable_columns(self):
+		meta = frappe._dict(
+			fields=[
+				frappe._dict(fieldname="title", fieldtype="Data", hidden=0),
+				frappe._dict(fieldname="approver_sign", fieldtype="Signature", hidden=0),
+			]
+		)
+		with patch.object(frappe, "get_meta", return_value=meta):
+			self.assertEqual(ui_config._doctype_fieldnames("_Test Signed"), {"title"})
+
 	def test_hidden_and_non_listable_meta_fields_warn_as_columns(self):
 		# Item Production Detail: `version` is a hidden meta field, and
 		# `item_details_tab` is a Tab Break (NON_LISTABLE_FIELDTYPES) — the
