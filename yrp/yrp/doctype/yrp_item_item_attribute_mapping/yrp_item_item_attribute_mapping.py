@@ -17,7 +17,9 @@ from yrp.attribute_values import normalize_mapping
 class YRPItemItemAttributeMapping(Document):
 	def validate(self):
 		from yrp.yrp.doctype.yrp_item.yrp_item import validate_attribute_value
+		from yrp.yrp.doctype.yrp_item_master_template.yrp_item_master_template import validate_mapping_unlocked
 
+		validate_mapping_unlocked(self)
 		if not self.attribute_name:
 			frappe.throw(_("Select an Item Attribute before adding values."))
 		attribute = frappe.get_cached_doc("Item Attribute", self.attribute_name)

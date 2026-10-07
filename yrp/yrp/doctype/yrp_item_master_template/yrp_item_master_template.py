@@ -189,6 +189,22 @@ class YRPItemMasterTemplate(Document):
 			)
 
 
+def validate_mapping_unlocked(mapping):
+	"""A linked template's attribute and dependent mappings are locked with it."""
+	if mapping.is_new():
+		return
+	if mapping.doctype == "YRP Item Dependent Attribute Mapping":
+		templates = frappe.get_all("YRP Item Master Template",
+			filters={"dependent_attribute_mapping": mapping.name}, pluck="name")
+	else:
+		templates = frappe.get_all("YRP Item Item Attribute",
+			filters={"parenttype": "YRP Item Master Template", "mapping": mapping.name}, pluck="parent")
+	for name in templates:
+		if frappe.db.exists("Item", {"yrp_item_master_template": name}):
+			frappe.throw(_("YRP Item Master Template {0} is linked to Items, so its mapping {1} can no longer be edited.")
+				.format(name, mapping.name))
+
+
 @frappe.whitelist(methods=["POST"])
 def create_item_from_template(template_name, item_name, item_group, gst_hsn_code=None):
 	"""Create an Item linked to the template; Item before_validate applies the prefill."""

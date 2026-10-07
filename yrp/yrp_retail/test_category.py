@@ -200,6 +200,17 @@ class TestItemCategory(unittest.TestCase):
 		new_category.save()
 		self.assertEqual([r.name for r in get_template_categories(self.root.name)], [self.category.name])
 
+	def test_item_categories_still_list_under_a_disabled_root(self):
+		from yrp.yrp_retail.category import get_item_categories, get_template_categories
+		self.root.reload()
+		self.root.disabled = 1
+		self.root.save()
+		self.assertEqual([r.name for r in get_item_categories(self.root.name)], [self.category.name])
+		with self.assertRaises(frappe.ValidationError):
+			get_template_categories(self.root.name)
+		with self.assertRaises(frappe.ValidationError):
+			get_item_categories(self.category.name)
+
 	def test_template_assignments_validate_without_blocking_additions(self):
 		template = frappe.get_doc({"doctype": "YRP Item Master Template", "item_type": self.root.name,
 			"categories": [{"category": self.category.name, "value": self.value.name}]})

@@ -104,6 +104,23 @@ class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
 			frappe.get_doc({**price, 'price_list_rate': 25}).insert()
 		self.assertEqual(frappe.get_doc({**price, 'price_list_rate': 0}).insert().price_list_rate, 0)
 
+	def test_linked_template_mappings_are_locked(self):
+		root, category, value = self.classification()
+		item = self.template_item(root, category, value)
+		mapping = frappe.get_doc('YRP Item Item Attribute Mapping', self.template.attributes[0].mapping)
+		mapping.set('values', [])
+		with self.assertRaises(frappe.ValidationError):
+			mapping.save()
+		dependent = frappe.get_doc({'doctype': 'YRP Item Dependent Attribute Mapping', 'item': item.name,
+			'dependent_attribute': self.attribute, 'details': [{'attribute_value': 'S', 'uom': self.uom.name}],
+			'mapping': [{'dependent_attribute_value': 'S', 'depending_attribute': self.attribute}]}).insert()
+		frappe.db.set_value('YRP Item Master Template', self.template.name, 'dependent_attribute_mapping', dependent.name)
+		with self.assertRaises(frappe.ValidationError):
+			dependent.save()
+		item_mapping = frappe.get_doc('YRP Item Item Attribute Mapping', item.attributes[0].mapping)
+		self.assertNotEqual(item_mapping.name, mapping.name)
+		item_mapping.save()
+
 	def test_variant_cannot_link_a_master_template(self):
 		root, category, value = self.classification()
 		variant = self.variant(self.template_item(root, category, value))
