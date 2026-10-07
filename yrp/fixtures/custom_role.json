@@ -103,15 +103,6 @@
    },
    {
     "role": "System Manager"
-   },
-   {
-    "role": "YRP Customer"
-   },
-   {
-    "role": "YRP Sales Partner"
-   },
-   {
-    "role": "YRP Sales Person"
    }
   ]
  },
@@ -202,15 +193,6 @@
    },
    {
     "role": "System Manager"
-   },
-   {
-    "role": "YRP Customer"
-   },
-   {
-    "role": "YRP Sales Partner"
-   },
-   {
-    "role": "YRP Sales Person"
    }
   ]
  }
