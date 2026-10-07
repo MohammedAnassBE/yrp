@@ -662,20 +662,23 @@ def allocate_dimensions(note):
 		if all(row.get(fieldname) for fieldname in fieldnames):
 			rows.append(row)
 			continue
-		key = (row.item_code, row.warehouse or note.set_warehouse)
+		fixed = tuple((fieldname, row.get(fieldname)) for fieldname in fieldnames if row.get(fieldname))
+		key = (row.item_code, row.warehouse or note.set_warehouse, fixed)
 		if key not in buckets:
 			buckets[key] = get_free_buckets(*key)
 		rows.extend(split_row(row, buckets[key], key[1]))
 	note.set("items", rows)
 
 
-def get_free_buckets(item_code, warehouse):
-	fieldnames = get_dimension_fieldnames()
-	columns = ", ".join(f"`{fieldname}`" for fieldname in fieldnames)
+def get_free_buckets(item_code, warehouse, fixed=()):
+	"""Bins with free stock, oldest first, matching the dimension values the row already has."""
+	columns = ", ".join(f"`{fieldname}`" for fieldname in get_dimension_fieldnames())
+	matches = "".join(f" and `{fieldname}` = %s" for fieldname, _value in fixed)
 	return frappe.db.sql(
 		f"""select {columns}, actual_qty - reserved_qty as free_qty from `tabYRP Bin`
-		where item_code = %s and warehouse = %s and actual_qty - reserved_qty > 0 order by creation, name""",
-		(item_code, warehouse), as_dict=True,
+		where item_code = %s and warehouse = %s{matches} and actual_qty - reserved_qty > 0
+		order by creation, name""",
+		(item_code, warehouse, *(value for _fieldname, value in fixed)), as_dict=True,
 	)
 
 
