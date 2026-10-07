@@ -110,12 +110,13 @@ def get_requested_qty(note, items):
 
 
 def get_invoiced_qty(delivery_note, exclude=None, submitted_only=False):
-	"""Quantity per Delivery Note row on non-cancelled (or only submitted) Sales Invoices."""
+	"""Quantity per Delivery Note row on non-cancelled (or only submitted) Sales Invoices, read under lock
+	so a request that waited on the note lock sees invoices committed meanwhile."""
 	return dict(frappe.db.sql(
 		"""select sii.yrp_delivery_note_item, sum(sii.qty) from `tabSales Invoice Item` sii
 		join `tabSales Invoice` si on si.name = sii.parent and sii.parenttype = 'Sales Invoice'
 		where si.yrp_delivery_note = %(note)s and si.docstatus in %(docstatuses)s and si.name != %(exclude)s
-		group by sii.yrp_delivery_note_item""",
+		group by sii.yrp_delivery_note_item for update""",
 		{"note": delivery_note, "docstatuses": (1,) if submitted_only else (0, 1), "exclude": exclude or ""},
 	))
 

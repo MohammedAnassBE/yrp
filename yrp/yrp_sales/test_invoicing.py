@@ -1,5 +1,6 @@
 import secrets
 import unittest
+import unittest.mock
 
 import frappe
 from frappe.utils import getdate, nowdate
@@ -163,6 +164,22 @@ class TestDeliveryNoteInvoicing(DeliveryNoteFixtures):
 		with self.assertRaisesRegex(frappe.ValidationError, "would be invoiced"):
 			self.invoice(note, {row: 2}, submit=False)
 		self.assertEqual(self.invoice(note, submit=False).items[0].qty, 1)
+
+	def test_billed_quantity_is_a_locking_read(self):
+		"""Under REPEATABLE READ a plain read after the note lock still sees the request's old snapshot,
+		so two concurrent drafts could each bill the whole note."""
+		from yrp.yrp_sales.invoicing import get_invoiced_qty
+
+		queries = []
+		sql = frappe.db.sql
+
+		def record(query, *args, **kwargs):
+			queries.append(query)
+			return sql(query, *args, **kwargs)
+
+		with unittest.mock.patch.object(frappe.db, "sql", record):
+			get_invoiced_qty(self.make_note(6).name)
+		self.assertIn("for update", queries[-1])
 
 	def test_repeated_row_is_aggregated(self):
 		note = self.make_note(6)
