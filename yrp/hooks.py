@@ -18,7 +18,7 @@ fixtures = [
 		"39ad8d660e", "39dc4a44d6", "3a04df3936", "4737676028",
 		"47ac8b7005", "4ae40db618", "4d166518ee", "4d16c6e30c",
 		"517e0363fa", "550ef1a6fd", "56af4155c3", "5c60eed9f3",
-		"60ea79155c", "645ca1776a", "69f0eae1cd", "6e0ac67c1b",
+		"60ea79155c", "645ca1776a", "69f0eae1cd", "6e0ac67c1b", "6v6jr3oaap",
 		"714aeb6a41", "74b3a2bc9a", "754ffcf1f9", "77dec3cba5",
 		"7b5a2f7664", "7bf8a5e91e", "7d1cfd227d", "7eee773c65",
 		"8366u3f46b", "836qk8nqn6", "838be05e8a", "838d6vnvq8",
