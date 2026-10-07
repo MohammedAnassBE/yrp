@@ -68,3 +68,10 @@ class TestYRPSettingsRoles(IntegrationTestCase):
 				self.assertRaises(frappe.PermissionError, set_open_status, "_Test Missing PO", "Close")
 			with patch("frappe.get_roles", return_value=["Stock User"]):
 				self.assertRaises(frappe.DoesNotExistError, set_open_status, "_Test Missing PO", "Close")
+
+
+class TestFreshInstallRoleSettings(IntegrationTestCase):
+	def test_fresh_install_seeds_role_settings(self):
+		self.assertIn(
+			"yrp.patches.seed_role_settings.execute", frappe.get_hooks("after_install", app_name="yrp")
+		)

@@ -103,9 +103,11 @@ doctype_js = {
 # ------------
 
 # before_install = "yrp.install.before_install"
-after_install = (
-	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium"
-)
+after_install = [
+	"yrp.yrp.doctype.yrp_notification_template.yrp_notification_template.add_whatsapp_communication_medium",
+	# Patches are marked done on install without running.
+	"yrp.patches.seed_role_settings.execute",
+]
 
 # Uninstallation
 # ------------
