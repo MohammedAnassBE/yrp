@@ -165,6 +165,17 @@ class TestYRPPackingSlip(DeliveryNoteFixtures):
 		self.deliver(second)
 		self.assertEqual(self.get_delivery(note)[:3], ("Partially Delivered", 66.667, [4]))
 
+	def test_delivery_uses_the_saved_slip_not_the_client_copy(self):
+		"""run_doc_method builds the slip from the request; its quantities must not decide delivery."""
+		note = self.make_note(6)
+		self.invoice(note, {note.items[0].name: 1})
+		slip = self.pack(note, 6)
+		sent = frappe.get_doc(slip.as_dict())
+		sent.items[0].qty = 1
+		with self.assertRaisesRegex(frappe.ValidationError, "6.0 would be delivered, but only 1.0 is invoiced"):
+			sent.mark_delivered()
+		self.assertFalse(frappe.db.get_value("YRP Packing Slip", slip.name, "delivered_at"))
+
 	def test_read_only_roles_cannot_change(self):
 		for role in ["Sales Manager", "Sales User", "Accounts User"]:
 			user = frappe.get_doc({"doctype": "User", "email": frappe.generate_hash(length=10) + "@example.invalid",

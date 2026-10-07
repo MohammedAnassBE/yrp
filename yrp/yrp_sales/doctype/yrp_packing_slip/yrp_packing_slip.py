@@ -96,7 +96,9 @@ class YRPPackingSlip(Document):
 
 	@frappe.whitelist()
 	def mark_delivered(self):
-		"""Deliver this slip's rows, within each row's invoiced quantity."""
+		"""Deliver this slip's saved rows, within each row's invoiced quantity."""
+		# run_doc_method builds this document from the request; only the saved slip counts.
+		self.reload()
 		self.check_permission("write")
 		note = frappe.get_doc(DELIVERY_NOTE, self.delivery_note)
 		rows = note.lock_for_delivery()
