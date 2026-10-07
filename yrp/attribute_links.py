@@ -11,18 +11,81 @@ from frappe import _
 
 from yrp.attribute_values import MASTER, ensure_value_master
 
+# Base context links; installed apps add theirs through the
+# ``yrp_attribute_link_context`` hook ({fieldname: DocType}), consulted first.
+BASE_CONTEXT_LINKS = {
+	"production_detail": "YRP Item Production Detail",
+	"item_production_detail": "YRP Item Production Detail",
+}
 
-def fields():
-	cached = getattr(frappe.local, "attribute_link_fields", None)
+
+def field_rules():
+	"""Registered attribute Link fields, {doctype: {fieldname: rule}}, merged from every installed app.
+
+	A rule names where the field's Item Attribute comes from, tried in order:
+	``context`` (fieldnames on the document, its ancestors or linked documents),
+	``settings`` ([Single DocType, fieldname]) and ``attribute`` (a fixed name).
+	"""
+	cached = getattr(frappe.local, "attribute_link_rules", None)
 	if cached is not None:
 		return cached
 	registry = {}
+	for app_registry in _read_app_registries():
+		for doctype, rules in app_registry.items():
+			if not isinstance(rules, dict) or not all(isinstance(rule, dict) for rule in rules.values()):
+				frappe.throw(
+					_("Attribute link registry for {0} must map each field to a rule.").format(doctype)
+				)
+			registry.setdefault(doctype, {}).update(rules)
+	frappe.local.attribute_link_rules = registry
+	return registry
+
+
+def _read_app_registries():
 	for app in frappe.get_installed_apps():
 		path = Path(frappe.get_app_path(app, "attribute_link_fields.json"))
 		if path.exists():
-			registry.update(json.loads(path.read_text()))
-	frappe.local.attribute_link_fields = registry
-	return registry
+			yield json.loads(path.read_text())
+
+
+def fields():
+	cached = getattr(frappe.local, "attribute_link_fields", None)
+	if cached is None:
+		cached = frappe.local.attribute_link_fields = {
+			doctype: list(rules) for doctype, rules in field_rules().items()
+		}
+	return cached
+
+
+def context_links():
+	cached = getattr(frappe.local, "attribute_link_context_links", None)
+	if cached is None:
+		hooked = frappe.get_hooks("yrp_attribute_link_context") or {}
+		cached = {fieldname: doctypes[-1] for fieldname, doctypes in hooked.items()}
+		for fieldname, doctype in BASE_CONTEXT_LINKS.items():
+			cached.setdefault(fieldname, doctype)
+		frappe.local.attribute_link_context_links = cached
+	return cached
+
+
+def get_context_fieldnames():
+	"""Document fields the client must send so the server can resolve every rule."""
+	names = set(context_links())
+	for rules in field_rules().values():
+		for rule in rules.values():
+			names.update(rule.get("context", ()))
+	return ["doctype", "name", *sorted(names)]
+
+
+def clear_cache():
+	for key in (
+		"attribute_link_rules",
+		"attribute_link_fields",
+		"attribute_link_context_links",
+		"attribute_link_context",
+	):
+		if hasattr(frappe.local, key):
+			delattr(frappe.local, key)
 
 
 def value(raw):
@@ -41,7 +104,22 @@ def value(raw):
 
 
 def attribute_for(doc, field, ancestors=()):
-	"""Use the owning document's attribute contract before fixed-domain defaults."""
+	"""The Item Attribute a registered Link field stores, per the field's declared rule."""
+	rule = field_rules().get(doc.get("doctype"), {}).get(field)
+	if not rule:
+		return None
+	if rule.get("context"):
+		context = _context_nodes(doc, ancestors)
+		for fieldname in rule["context"]:
+			for node in context:
+				if node.get(fieldname):
+					return node.get(fieldname)
+	if rule.get("settings"):
+		return _settings_attribute(*rule["settings"])
+	return rule.get("attribute")
+
+
+def _context_nodes(doc, ancestors):
 	context = [doc, *reversed(ancestors)]
 	if not ancestors and doc.get("parent") and doc.get("parenttype"):
 		parent = frappe.db.get_value(doc.get("parenttype"), doc.get("parent"), "*", as_dict=True)
@@ -52,12 +130,7 @@ def attribute_for(doc, field, ancestors=()):
 		related = frappe.local.attribute_link_context = {}
 	seen = set()
 	for node in context:
-		for source, target in (
-			("lot", "SD YRP Lot"),
-			("production_detail", "YRP Item Production Detail"),
-			("item_production_detail", "YRP Item Production Detail"),
-			("cutting_plan", "SD YRP Cutting Plan"),
-		):
+		for source, target in context_links().items():
 			name = node.get(source)
 			key = (target, name)
 			if not name or key in seen:
@@ -67,51 +140,15 @@ def attribute_for(doc, field, ancestors=()):
 				related[key] = frappe.db.get_value(target, name, "*", as_dict=True)
 			if related[key]:
 				context.append(related[key])
-	contract = {
-		"dependent_attribute_value": "dependent_attribute",
-		"po_dependent_attribute_value": "po_dependent_attribute",
-		"major_attribute_value": "set_item_attribute",
-		"major_panel_value": "stiching_attribute",
-		"stiching_attribute_value": "stiching_attribute",
-		"set_item_attribute_value": "set_item_attribute",
-		"packing_attribute_value": "packing_attribute",
-	}.get(field)
-	if field == "attribute_value":
-		dt = doc.get("doctype")
-		contract = {
-			"YRP Item Dependent Attribute Mapping Detail": "dependent_attribute",
-			"SD YRP Cutting Order Colour Value": "packing_attribute",
-			"SD YRP Item Production Detail Packing Attribute Detail": "packing_attribute",
-			"SD YRP Item Production Detail Packing Size Detail": "primary_attribute",
-			"SD YRP Item Production Detail Set Item Combination": "packing_attribute",
-		}.get(dt, "attribute")
-	if contract:
-		for node in context:
-			if node.get(contract):
-				return node.get(contract)
-	if "stage" in field:
-		for node in context:
-			if node.get("dependent_attribute"):
-				return node.get("dependent_attribute")
-		return "Stage"
-	if "colour" in field:
-		if doc.get("doctype") in ("SD YRP Cut Bundle Movement Ledger", "SD YRP Cutting LaySheet Bundle"):
-			for node in context:
-				if node.get("packing_attribute"):
-					return node.get("packing_attribute")
-		return "Colour"
-	if field == "dia" or field.endswith("_dia"):
-		return "Dia"
-	if field in ("size", "size_type_value") or doc.get("doctype") == "SD YRP FG Item Size":
-		for node in context:
-			if node.get("primary_attribute"):
-				return node.get("primary_attribute")
-		return "Size"
-	if field in ("panel", "part"):
-		for node in context:
-			if node.get("stiching_attribute"):
-				return node.get("stiching_attribute")
-	return None
+	return context
+
+
+def _settings_attribute(doctype, fieldname):
+	attribute = frappe.db.get_single_value(doctype, fieldname)
+	if not attribute:
+		label = frappe.get_meta(doctype).get_label(fieldname)
+		frappe.throw(_("Set {0} in {1}").format(_(label), _(doctype)))
+	return attribute
 
 
 def link(raw, attribute=None):
@@ -309,6 +346,7 @@ def boot_session(bootinfo):
 			break
 	bootinfo.yrp_attribute_link_forms = sorted(parents)
 	bootinfo.yrp_attribute_link_fields = registry
+	bootinfo.yrp_attribute_link_context_fields = get_context_fieldnames()
 	bootinfo.yrp_attribute_values = {
 		row.name: [row.attribute_name, row.attribute_value]
 		for row in frappe.get_all(MASTER, fields=["name", "attribute_name", "attribute_value"])
@@ -323,10 +361,9 @@ def backfill(*, dry_run=False):
 			continue
 		meta = frappe.get_meta(doctype)
 		for field in fieldnames:
-			# Field names such as colour, dia, size and stage have a stable
-			# attribute domain. Keep that domain while converting historical
-			# text so equal labels used by another attribute cannot make the
-			# backfill ambiguous.
+			# Keep each field's declared attribute domain while converting
+			# historical text so equal labels used by another attribute cannot
+			# make the backfill ambiguous.
 			attribute = attribute_for(frappe._dict(doctype=doctype), field)
 			if meta.issingle:
 				raw = frappe.db.get_single_value(doctype, field)
