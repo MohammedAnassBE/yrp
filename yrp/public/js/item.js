@@ -17,14 +17,30 @@ frappe.ui.form.on("Item", {
 			});
 		}
 		frm.set_query("stock_uom", () => ({ filters: { secondary_only: 0 } }));
-		frm.set_query("yrp_product", () => ({
-			filters: {
-				disabled: 0,
-				...(frm.doc.yrp_item_master_template
-					? { item_template: frm.doc.yrp_item_master_template }
-					: {}),
-			},
+		frm.set_query("yrp_item_type", () => ({ filters: { node_type: "Item Type", disabled: 0 } }));
+		frm.set_query("category", "yrp_categories", () => ({
+			filters: { parent_yrp_item_category: frm.doc.yrp_item_type, node_type: "Category", disabled: 0 },
 		}));
+		frm.set_query("value", "yrp_categories", (doc, cdt, cdn) => ({
+			filters: { parent_yrp_item_category: locals[cdt][cdn].category, node_type: "Value", disabled: 0 },
+		}));
+	},
+
+	// Choosing an Item Type lists its categories; values are left for the user.
+	async yrp_item_type(frm) {
+		const itemType = frm.doc.yrp_item_type;
+		frm.clear_table("yrp_categories");
+		if (itemType) {
+			const { message: categories } = await frappe.call({
+				method: "yrp.yrp_retail.category.get_template_categories",
+				args: { item_type: itemType },
+			});
+			if (frm.doc.yrp_item_type !== itemType) return;
+			for (const category of categories || []) {
+				frm.add_child("yrp_categories", { category: category.name });
+			}
+		}
+		frm.refresh_field("yrp_categories");
 	},
 
 	refresh(frm) {
@@ -48,5 +64,11 @@ frappe.ui.form.on("Item", {
 				frm.fields_dict.dependent_attribute_details_html.wrapper
 			);
 		}
+	},
+});
+
+frappe.ui.form.on("YRP Item Classification", {
+	category(frm, cdt, cdn) {
+		frappe.model.set_value(cdt, cdn, "value", null);
 	},
 });

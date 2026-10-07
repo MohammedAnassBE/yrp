@@ -9,12 +9,12 @@ values, and native numeric range/increment rules. Business readers use
 `get_mapping_document` or `get_mapping_values` to obtain value text such as
 `Blue`. An empty mapping is valid while its owner is being configured.
 
-**YRP Item Master Template** and **YRP Product** keep separate mapping documents.
-Selecting a template only reads defaults; saving the Product copies the selected
-mapping and its values in the same transaction. New or replaced mapping links
-are copied, private saved links remain stable, and previously shared links are
-separated on the owner's next save. Unsaved/template-reset forms hide mapping
-links until saving creates the private copies.
+Each **YRP Item Master Template** keeps its own mapping documents. Saving a
+template copies a selected mapping and its values in the same transaction. New
+or replaced mapping links are copied, private saved links remain stable, and
+previously shared links are separated on the owner's next save. Unsaved forms
+hide mapping links until saving creates the private copies. An Item created
+from a template clones the template's mappings on insert.
 
 Cleanup runs after an owner save or deletion, once its child rows reflect the
 change. Only removed/replaced mappings and source mappings actually consumed by
@@ -31,7 +31,7 @@ this does not replace concurrency control in independent Item/IPD integrations.
 
 The idempotent post-model-sync patch
 `yrp.patches.separate_template_product_attribute_mappings` repairs existing
-shared Template/Product links through normal document saves under row locks.
+shared Template links through normal document saves under row locks.
 It preserves selected values and makes no further changes after separation.
 It neither purges standalone mappings nor changes the separate
 `YRP Item Dependent Attribute Mapping` lifecycle.

@@ -6,16 +6,18 @@ existing customer, company, price, account, or transactional business data is us
 
 import frappe
 
-from yrp.yrp_retail.item_template import sync_template_items_job
 from yrp.yrp.doctype.yrp_item_master_template.test_yrp_item_master_template import TestCreateItemFromTemplate
 from yrp.yrp.doctype.yrp_item_master_template.yrp_item_master_template import create_item_from_template
 
 
 class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 	def make_item(self, free=False):
-		self.template.is_free_item = int(free)
-		self.template.save()
-		name = create_item_from_template(self.template.name, self.item_name, self.group.name, self.hsn.name)
+		"""A fresh Master Template per Item: a linked template is locked."""
+		template = frappe.get_doc({
+			"doctype": "YRP Item Master Template", "name": "Test Template " + frappe.generate_hash(length=10),
+			"default_unit_of_measure": self.uom.name, "is_free_item": int(free),
+		}).insert()
+		name = create_item_from_template(template.name, "Test Pricing Item " + frappe.generate_hash(length=10), self.group.name, self.hsn.name)
 		item = frappe.get_doc("Item", name)
 		self.assertEqual(bool(item.yrp_is_free_item), free)
 		return item
@@ -52,20 +54,6 @@ class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 		self.assertEqual(self.price(item, price_list, 0).price_list_rate, 0)
 		self.assertEqual(self.price(item, self.make_list(selling=False), 18).price_list_rate, 18)
 
-	def test_native_template_flip_requires_removing_incompatible_prices(self):
-		item = self.make_item()
-		price = self.price(item, self.make_list(), 25)
-		self.template.is_free_item = 1
-		with self.assertRaises(frappe.ValidationError):
-			self.template.save()
-		self.assertEqual(frappe.db.get_value("Item", item.name, "yrp_is_free_item"), 0)
-		price.delete()
-		self.template.reload()
-		self.template.is_free_item = 1
-		self.template.save()
-		sync_template_items_job(self.template.name)
-		self.assertEqual(frappe.db.get_value("Item", item.name, "yrp_is_free_item"), 1)
-
 	def test_native_buying_list_cannot_bypass_selling_policy(self):
 		item = self.make_item()
 		price_list = self.make_list(selling=False)
@@ -75,7 +63,8 @@ class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 			price_list.save()
 
 	def test_native_calculations_for_free_paid_and_discounted_rows(self):
-		item = self.make_item(free=True)
+		free_item = self.make_item(free=True)
+		paid_item = self.make_item()
 		suffix = frappe.generate_hash(length=8)
 		company = frappe.get_doc({
 			"doctype": "Company", "company_name": "Test Pricing Company " + suffix,
@@ -97,7 +86,7 @@ class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 			"territory": territory.name,
 		}).insert()
 
-		def document(doctype, rate=25):
+		def document(doctype, item, rate=25):
 			return frappe.get_doc({
 				"doctype": doctype, "company": company.name, "customer": customer.name,
 				"currency": "INR", "conversion_rate": 1, "plc_conversion_rate": 1,
@@ -111,17 +100,14 @@ class TestRetailPricingIntegration(TestCreateItemFromTemplate):
 
 		for doctype in ("Sales Order", "Delivery Note", "Sales Invoice"):
 			with self.subTest(doctype=doctype, policy="free"):
-				doc = document(doctype)
+				doc = document(doctype, free_item)
 				doc.calculate_taxes_and_totals()
 				self.assertEqual(doc.items[0].rate, 0)
 				self.assertEqual(doc.items[0].net_rate, 0)
 				self.assertEqual(doc.grand_total, 0)
-		self.template.is_free_item = 0
-		self.template.save()
-		sync_template_items_job(self.template.name)
 		for doctype in ("Sales Order", "Delivery Note", "Sales Invoice"):
 			with self.subTest(doctype=doctype, policy="paid"):
-				doc = document(doctype)
+				doc = document(doctype, paid_item)
 				doc.calculate_taxes_and_totals()
 				self.assertGreater(doc.items[0].net_rate, 0)
 				self.assertGreater(doc.grand_total, 0)

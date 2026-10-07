@@ -607,12 +607,12 @@ def _copy_template_fields(template, variant):
 		"allow_negative_stock", "is_purchase_item", "is_sales_item", "purchase_uom",
 		"sales_uom", "weight_per_unit", "weight_uom", "secondary_unit_of_measure",
 		"hsn_code", "gst_hsn_code", "tax_code", "is_exempt", "is_zero_rated",
-		"is_ineligible_for_itc", "po_excess_allowed_percentage",
+		"is_ineligible_for_itc", "po_excess_allowed_percentage", "yrp_item_type", "yrp_is_free_item",
 	)
 	for fieldname in fieldnames:
 		if variant.meta.get_field(fieldname):
 			variant.set(fieldname, template.get(fieldname))
-	for table_field in ("uoms", "item_defaults"):
+	for table_field in ("uoms", "item_defaults", "taxes", "yrp_categories"):
 		if variant.meta.get_field(table_field):
 			variant.set(table_field, [])
 			for row in template.get(table_field) or []:

@@ -13,7 +13,7 @@ from frappe.utils import cstr, flt, get_datetime, now_datetime
 from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldnames, get_mandatory_dimensions
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
-from yrp.yrp_retail.pricing import check_rate
+from yrp.yrp_retail.pricing import check_rate, get_free_items
 from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import get_conversion_factor, get_price_list_rate
 from yrp.yrp_sales.invoicing import (
 	get_delivery_note_rows,
@@ -133,8 +133,7 @@ class YRPDeliveryNote(Document):
 			).format(source.item_code, source.parent, allocated, flt(source.stock_qty, precision)))
 
 	def validate_rates(self):
-		codes = sorted({row.item_code for row in self.items})
-		free = set(frappe.get_all("Item", filters={"name": ["in", codes], "yrp_is_free_item": 1}, pluck="name"))
+		free = get_free_items(row.item_code for row in self.items)
 		for row in self.items:
 			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
 
@@ -227,8 +226,7 @@ class YRPDeliveryNote(Document):
 		rows = {row.name: row for row in self.items}
 		unknown = set(rates) - set(rows)
 		require(not unknown, _("Rows {0} do not belong to Delivery Note {1}.").format(", ".join(sorted(unknown)), self.name))
-		free = set(frappe.get_all("Item", filters={"name": ["in", [row.item_code for row in self.items]],
-			"yrp_is_free_item": 1}, pluck="name"))
+		free = get_free_items(row.item_code for row in self.items)
 		for name, rate in rates.items():
 			row = rows[name]
 			check_rate(rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))

@@ -1,4 +1,4 @@
-"""Private attribute-value snapshots for Item Master Templates and Products.
+"""Private attribute-value snapshots for Item Master Templates.
 
 Only mappings detached or consumed by a successful owner save are candidates
 for cleanup. Native Item, production and other live references keep their maps;

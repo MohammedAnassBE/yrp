@@ -31,3 +31,5 @@ yrp.patches.separate_template_product_attribute_mappings
 yrp.patches.refresh_delivery_progress_default_uom
 yrp.patches.remove_partner_provisioning
 yrp.patches.rename_partner_workspace
+yrp.patches.remove_yrp_product
+yrp.patches.add_classification_variant_fields

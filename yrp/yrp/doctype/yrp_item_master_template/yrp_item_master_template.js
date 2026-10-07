@@ -30,6 +30,10 @@ frappe.ui.form.on('YRP Item Master Template', {
 	},
 
 	refresh: function(frm) {
+		if (frm.doc.__onload?.has_linked_items) {
+			frm.disable_form();
+			frm.set_intro(__('Linked to Items, so this template can no longer be edited.'), 'blue');
+		}
 		// Duplicate/new templates may carry source IDs until normal save clones
 		// them. Hide those links so editing cannot change the source's values.
 		frm.fields_dict.attributes.grid.update_docfield_property('mapping', 'hidden', frm.is_new() ? 1 : 0);

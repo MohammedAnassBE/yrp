@@ -8,7 +8,7 @@ from frappe.utils import flt, getdate
 
 from yrp.yrp_retail import sales_sources
 from yrp.yrp_retail.logic import finite_number, require
-from yrp.yrp_retail.pricing import check_rate
+from yrp.yrp_retail.pricing import check_rate, get_free_items
 
 
 class YRPSalesOrder(Document):
@@ -41,8 +41,7 @@ class YRPSalesOrder(Document):
 		row.warehouse = row.warehouse or self.set_warehouse
 
 	def validate_rates(self):
-		codes = sorted({row.item_code for row in self.items})
-		free = set(frappe.get_all("Item", filters={"name": ["in", codes], "yrp_is_free_item": 1}, pluck="name"))
+		free = get_free_items(row.item_code for row in self.items)
 		for row in self.items:
 			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
 

@@ -288,7 +288,7 @@ doc_events = {
 		"before_validate": ["yrp.yrp_retail.pricing.lock_pricing_policy", "yrp.yrp_retail.item_template.apply_template"],
 		"validate": ["yrp.yrp_retail.category.validate_item_classification", "yrp.yrp_retail.pricing.validate_item_free_flag"],
 	},
-	"YRP Item Master Template": {"before_rename": "yrp.yrp_retail.item_template.guard_policy_merge", "before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": ["yrp.yrp_retail.category.validate_template_classification", "yrp.yrp_retail.pricing.validate_template_free_flag"]},
+	"YRP Item Master Template": {"before_rename": "yrp.yrp_retail.item_template.guard_policy_merge", "before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": "yrp.yrp_retail.category.validate_template_classification"},
 	"Item Price": {"before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": "yrp.yrp_retail.pricing.validate_item_price"},
 	"Price List": {"before_validate": "yrp.yrp_retail.pricing.lock_pricing_policy", "validate": "yrp.yrp_retail.pricing.validate_price_list"},
 	"Sales Order": {

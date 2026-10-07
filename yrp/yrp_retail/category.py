@@ -36,6 +36,9 @@ def root_for(name):
 
 
 def validate_item_classification(doc, method=None):
+	"""Variants copy their template Item's classification, validated there."""
+	if doc.get("variant_of"):
+		return
 	validate_classification(doc, "yrp_item_type", "yrp_categories")
 
 
@@ -79,6 +82,17 @@ def validate_classification(doc, type_field, table_field):
 		if (row.category, row.value) not in old_pairs:
 			require(not root.disabled and not category.disabled and not value.disabled,
 				"Disabled classification nodes cannot receive new assignments.")
+
+
+@frappe.whitelist()
+def get_item_categories(item_type):
+	"""Category controls for an Item, including retained assignments on a disabled root."""
+	frappe.has_permission("Item", "read", throw=True)
+	root = frappe.get_doc(DOCTYPE, item_type)
+	root.check_permission("read")
+	require(root.node_type == "Item Type" and not root.get(PARENT_FIELD), "Select an Item Type root.")
+	return frappe.get_list(DOCTYPE, filters={PARENT_FIELD: item_type, "node_type": "Category", "disabled": 0},
+		fields=["name", "category_name"], order_by="category_name", limit_page_length=0)
 
 
 @frappe.whitelist()

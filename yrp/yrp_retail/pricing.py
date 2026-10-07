@@ -47,17 +47,44 @@ def check_rate(value, is_free, context):
 		frappe.throw(_("{0}: selling rate must be {1}.").format(context, rule))
 
 
+POLICY_FIELDS = ["name", "variant_of", "yrp_item_master_template", "yrp_is_free_item"]
+
+
+def _policy_rows(codes, for_update):
+	if not codes:
+		return []
+	return frappe.db.get_values(
+		"Item", filters={"name": ["in", codes]}, fieldname=POLICY_FIELDS,
+		as_dict=True, for_update=for_update, order_by="name",
+	)
+
+
+def get_item_policies(item_codes, for_update=False):
+	"""Map each Item code to its sales policy; a variant follows its template Item."""
+	codes = sorted({code for code in item_codes if code})
+	items = _policy_rows(codes, for_update)
+	template_codes = sorted({row.variant_of for row in items if row.variant_of})
+	templates = {row.name: row for row in _policy_rows(template_codes, for_update)}
+	policies = {}
+	for row in items:
+		owner = templates[row.variant_of] if row.variant_of else row
+		policies[row.name] = frappe._dict(
+			is_managed=bool(owner.yrp_item_master_template), is_free=bool(owner.yrp_is_free_item),
+		)
+	return policies
+
+
+def get_free_items(item_codes):
+	"""Item codes sold at zero rate, resolved through the template Item."""
+	return {code for code, policy in get_item_policies(item_codes).items() if policy.is_free}
+
+
 def _managed_items(item_codes):
 	lock_pricing_policy()
-	codes = sorted({code for code in item_codes if code})
-	if not codes:
-		return {}
 	return {
-		row.name: bool(row.yrp_is_free_item)
-		for row in _current_rows(
-			"Item", filters={"name": ["in", codes], "yrp_item_master_template": ["is", "set"]},
-			fields=["name", "yrp_is_free_item"],
-		)
+		code: policy.is_free
+		for code, policy in get_item_policies(item_codes, for_update=True).items()
+		if policy.is_managed
 	}
 
 
@@ -126,23 +153,15 @@ def _validate_existing_prices(item_codes, is_free):
 
 
 def validate_item_free_flag(doc, method=None):
-	"""Call after template inheritance; incompatible existing prices block save."""
-	if doc.get("yrp_item_master_template"):
-		_validate_existing_prices([doc.name], bool(doc.get("yrp_is_free_item")))
-
-
-def validate_template_free_flag(doc, method=None):
-	"""Validate direct Template Items; Product-owned rates follow the Product."""
-	if doc.is_new():
+	"""A changed free flag must suit existing prices of the Item and its variants."""
+	old = doc.get_doc_before_save()
+	is_free = bool(doc.get("yrp_is_free_item"))
+	if not doc.get("yrp_item_master_template") or not old or bool(old.get("yrp_is_free_item")) == is_free:
 		return
-	lock_pricing_policy()
-	if frappe.db.has_column('Item', 'yrp_product'):
-		items = [row.name for row in _current_rows(
-			"Item", filters={"yrp_item_master_template": doc.name}, fields=["name", "yrp_product"]
-		) if not row.yrp_product]
-	else:
-		items = _current_rows("Item", filters={"yrp_item_master_template": doc.name}, pluck="name")
-	_validate_existing_prices(items, bool(doc.get("is_free_item")))
+	variants = []
+	if doc.get("has_variants"):
+		variants = _current_rows("Item", filters={"variant_of": doc.name}, pluck="name")
+	_validate_existing_prices([doc.name, *variants], is_free)
 
 
 def validate_price_list(doc, method=None):

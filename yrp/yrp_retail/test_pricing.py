@@ -25,6 +25,11 @@ class TestRetailPricing(unittest.TestCase):
 		self.addCleanup(self.errors.stop)
 		self.addCleanup(self.translate.stop)
 
+	def changed(self, **values):
+		doc = Row(**values)
+		doc.get_doc_before_save = lambda: Row(yrp_is_free_item=0)
+		return doc
+
 	def document(self, doctype="Sales Order", code="MANAGED", rate=10, **kwargs):
 		row = Row(item_code=code, qty=1, **{field: rate for field in pricing.EFFECTIVE_RATES})
 		row.update(kwargs)
@@ -127,12 +132,25 @@ class TestRetailPricing(unittest.TestCase):
 
 	@patch.object(pricing, "_validate_existing_prices")
 	def test_item_flag_validates_existing_prices(self, validate):
-		pricing.validate_item_free_flag(Row(name="A", yrp_item_master_template="T", yrp_is_free_item=1))
+		pricing.validate_item_free_flag(self.changed(name="A", yrp_item_master_template="T", yrp_is_free_item=1))
 		validate.assert_called_once_with(["A"], True)
 
 	@patch.object(pricing, "_validate_existing_prices")
+	def test_unchanged_item_flag_does_not_check_prices(self, validate):
+		doc = Row(name="A", yrp_item_master_template="T", yrp_is_free_item=1)
+		doc.get_doc_before_save = lambda: Row(yrp_is_free_item=1)
+		pricing.validate_item_free_flag(doc)
+		validate.assert_not_called()
+
+	@patch.object(pricing, "_validate_existing_prices")
+	def test_template_item_flag_validates_variant_prices(self, validate):
+		with patch.object(pricing, "_current_rows", return_value=["A-S"]):
+			pricing.validate_item_free_flag(self.changed(name="A", has_variants=1, yrp_item_master_template="T", yrp_is_free_item=1))
+		validate.assert_called_once_with(["A", "A-S"], True)
+
+	@patch.object(pricing, "_validate_existing_prices")
 	def test_unmanaged_item_flag_does_not_check_prices(self, validate):
-		pricing.validate_item_free_flag(Row(name="A", yrp_is_free_item=1))
+		pricing.validate_item_free_flag(self.changed(name="A", yrp_is_free_item=1))
 		validate.assert_not_called()
 
 	def test_existing_prices_respect_selling_master_and_free_flag(self):
@@ -142,20 +160,6 @@ class TestRetailPricing(unittest.TestCase):
 		with patch.object(pricing, "_current_rows", side_effect=[prices, ["Selling"]]):
 			with self.assertRaises(ValueError):
 				pricing._validate_existing_prices(["A"], True)
-
-	def test_template_flag_checks_only_direct_template_items(self):
-		doc = Row(name="T", is_free_item=1, is_new=lambda: False)
-		with patch.object(pricing.frappe, "db", Row(has_column=lambda *_: True)), patch.object(pricing, "_current_rows", return_value=[
-			Row(name="A", yrp_product=None), Row(name="B", yrp_product="Product")
-		]), patch.object(pricing, "_validate_existing_prices") as validate:
-			pricing.validate_template_free_flag(doc)
-			validate.assert_called_once_with(["A"], True)
-
-	def test_template_flag_migration_without_product_column(self):
-		doc = Row(name="T", is_free_item=1, is_new=lambda: False)
-		with patch.object(pricing.frappe, "db", Row(has_column=lambda *_: False)), patch.object(pricing, "_current_rows", return_value=["A"]), patch.object(pricing, "_validate_existing_prices") as validate:
-			pricing.validate_template_free_flag(doc)
-			validate.assert_called_once_with(["A"], True)
 
 	def test_price_list_conversion_rejects_invalid_existing_prices(self):
 		doc = Row(name="Buying", selling=1, is_new=lambda: False)
@@ -176,9 +180,23 @@ class TestRetailPricing(unittest.TestCase):
 		self.assertEqual(doc.get("items")[0].rate, 0)
 
 	def test_managed_item_lookup_is_scoped_and_deduplicated(self):
-		with patch.object(pricing, "_current_rows", return_value=[Row(name="A", yrp_is_free_item=1)]) as query:
+		rows = [Row(name="A", variant_of=None, yrp_item_master_template="T", yrp_is_free_item=1)]
+		with patch.object(pricing, "_policy_rows", side_effect=[rows, []]) as query:
 			self.assertEqual(pricing._managed_items(["A", "A", None]), {"A": True})
-			self.assertEqual(query.call_args.kwargs["filters"], {"name": ["in", ["A"]], "yrp_item_master_template": ["is", "set"]})
+		self.assertEqual(query.call_args_list[0].args, (["A"], True))
+
+	def test_variant_policy_follows_its_template_item(self):
+		items = [
+			Row(name="V", variant_of="T", yrp_item_master_template=None, yrp_is_free_item=0),
+			Row(name="P", variant_of=None, yrp_item_master_template=None, yrp_is_free_item=0),
+		]
+		templates = [Row(name="T", variant_of=None, yrp_item_master_template="M", yrp_is_free_item=1)]
+		with patch.object(pricing, "_policy_rows", side_effect=[items, templates]):
+			policies = pricing.get_item_policies(["V", "P"])
+		self.assertEqual(policies["V"], {"is_managed": True, "is_free": True})
+		self.assertEqual(policies["P"], {"is_managed": False, "is_free": False})
+		with patch.object(pricing, "_policy_rows", side_effect=[items, templates]):
+			self.assertEqual(pricing.get_free_items(["V", "P"]), {"V"})
 
 	def test_policy_reads_request_current_locked_rows(self):
 		db = Mock()
