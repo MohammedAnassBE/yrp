@@ -556,9 +556,14 @@ def _get_variant_attribute_value(item_variant, attribute):
 	return None
 
 
+def get_purchase_order_manager_roles():
+	role = attribute_db.get_single_value("YRP Settings", "purchase_order_manager_role")
+	return {role, "System Manager"} - {None}
+
+
 @frappe.whitelist()
 def set_open_status(purchase_order, open_status):
-	frappe.only_for(("Purchase Manager", "System Manager"))
+	frappe.only_for(get_purchase_order_manager_roles())
 	requested_open_status = open_status
 	open_status = _normalize_open_status(open_status)
 	if not open_status:

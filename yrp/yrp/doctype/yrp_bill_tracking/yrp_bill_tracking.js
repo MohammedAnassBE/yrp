@@ -20,10 +20,13 @@ frappe.ui.form.on("YRP Bill Tracking", {
 			frm.page.btn_secondary.hide();
 
 			if (!frm.doc.purchase_invoice && !frm.doc.erp_purchase_invoice) {
-				if (frappe.user.has_role("HR User") || frappe.user.has_role("System Manager")) {
+				const permissions = await frappe.xcall(
+					"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.get_role_permissions"
+				);
+				if (permissions.can_request_cancel || frappe.user.has_role("System Manager")) {
 					frm.add_custom_button(__("Cancel"), () => show_cancel_dialog(frm));
 				}
-				if (frappe.user.has_role("Accounts Manager") || frappe.user.has_role("Accounts User")) {
+				if (permissions.can_create_invoice) {
 					frm.add_custom_button(__("Create ERP Purchase Invoice"), () => {
 						const pi = frappe.model.get_new_doc("Purchase Invoice");
 						pi.supplier = frm.doc.supplier;

@@ -245,6 +245,18 @@ def check_for_can_show_receive_btn(name):
 	return bool(get_user_departments(department))
 
 
+@frappe.whitelist()
+def get_role_permissions():
+	"""Bill Tracking actions the session user may take, per the YRP Settings roles."""
+	settings = frappe.get_cached_doc("YRP Settings")
+	roles = set(frappe.get_roles())
+	return {
+		"can_request_cancel": settings.bill_tracking_cancel_request_role in roles,
+		"can_approve_cancel": settings.bill_tracking_cancel_approver_role in roles,
+		"can_create_invoice": bool(roles.intersection(row.role for row in settings.bill_tracking_invoice_roles)),
+	}
+
+
 BillTracking = YRPBillTracking
 
 

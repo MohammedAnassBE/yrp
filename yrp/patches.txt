@@ -25,3 +25,4 @@ yrp.patches.backfill_item_dependent_attribute_value
 yrp.patches.link_item_attribute_mapping_values
 
 yrp.patches.link_remaining_attribute_values
+yrp.patches.seed_role_settings

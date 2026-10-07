@@ -24,8 +24,12 @@
   "roles_section",
   "debit_request_role",
   "debit_approval_role",
+  "purchase_order_manager_role",
   "column_break_roles_1",
   "work_order_closing_approver_role",
+  "bill_tracking_cancel_request_role",
+  "bill_tracking_cancel_approver_role",
+  "bill_tracking_invoice_roles",
   "column_break_roles_2",
   "purchase_invoice_approval_initiate_role",
   "purchase_invoice_approval_pending_role",
@@ -153,6 +157,13 @@
    "options": "Role"
   },
   {
+   "default": "Purchase Manager",
+   "fieldname": "purchase_order_manager_role",
+   "fieldtype": "Link",
+   "label": "Purchase Order Manager Role",
+   "options": "Role"
+  },
+  {
    "fieldname": "column_break_roles_1",
    "fieldtype": "Column Break"
   },
@@ -161,6 +172,26 @@
    "fieldtype": "Link",
    "label": "Work Order Closing Approver Role",
    "options": "Role"
+  },
+  {
+   "default": "HR User",
+   "fieldname": "bill_tracking_cancel_request_role",
+   "fieldtype": "Link",
+   "label": "Bill Tracking Cancel Request Role",
+   "options": "Role"
+  },
+  {
+   "default": "HR Manager",
+   "fieldname": "bill_tracking_cancel_approver_role",
+   "fieldtype": "Link",
+   "label": "Bill Tracking Cancel Approver Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "bill_tracking_invoice_roles",
+   "fieldtype": "Table MultiSelect",
+   "label": "Bill Tracking Invoice Roles",
+   "options": "Has Role"
   },
   {
    "fieldname": "column_break_roles_2",
@@ -253,7 +284,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-25 15:12:33.705488",
+ "modified": "2026-10-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Settings",
