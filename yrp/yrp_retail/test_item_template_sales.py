@@ -172,6 +172,15 @@ class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
 			guard_policy_merge(free_variant, old=free_variant.name, new=plain.name, merge=True)
 		guard_policy_merge(plain, old=plain.name, new=other_plain.name, merge=True)
 
+	def test_merge_rejects_items_of_different_master_templates(self):
+		from yrp.yrp_retail.item_template import guard_policy_merge
+		item, other = (frappe.get_doc({'doctype': 'Item', 'item_code': 'Test Managed '+frappe.generate_hash(length=10),
+			'item_group': self.group.name, 'stock_uom': self.uom.name, 'gst_hsn_code': self.hsn.name}).insert() for _ in range(2))
+		frappe.db.set_value('Item', item.name, 'yrp_item_master_template', self.template.name)
+		frappe.db.set_value('Item', other.name, 'yrp_item_master_template', 'ZZ Other Master Template')
+		with self.assertRaises(frappe.ValidationError):
+			guard_policy_merge(item, old=item.name, new=other.name, merge=True)
+
 	def node(self, kind, parent=None):
 		return frappe.get_doc({'doctype':'YRP Item Category','category_name':'Test '+kind+' '+frappe.generate_hash(length=8),
 			'node_type':kind,'is_group':int(kind!='Value'),'parent_yrp_item_category':parent}).insert()

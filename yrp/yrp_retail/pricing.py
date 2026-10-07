@@ -69,7 +69,9 @@ def get_item_policies(item_codes, for_update=False):
 	for row in items:
 		owner = templates[row.variant_of] if row.variant_of else row
 		policies[row.name] = frappe._dict(
-			is_managed=bool(owner.yrp_item_master_template), is_free=bool(owner.yrp_is_free_item),
+			master_template=owner.yrp_item_master_template,
+			is_managed=bool(owner.yrp_item_master_template),
+			is_free=bool(owner.yrp_is_free_item),
 		)
 	return policies
 

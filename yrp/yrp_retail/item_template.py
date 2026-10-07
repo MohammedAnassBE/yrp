@@ -57,7 +57,7 @@ def guard_policy_merge(doc, method=None, old=None, new=None, merge=False, **kwar
 		source, target = old or doc.name, new
 		policies = get_item_policies([source, target], for_update=True)
 		if policies.get(source) != policies.get(target):
-			frappe.throw(_('Items with different sales policies cannot be merged.'))
+			frappe.throw(_('Items with different master templates or sales policies cannot be merged.'))
 
 
 class ItemSalesTemplateMixin:

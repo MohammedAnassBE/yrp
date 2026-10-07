@@ -193,8 +193,8 @@ class TestRetailPricing(unittest.TestCase):
 		templates = [Row(name="T", variant_of=None, yrp_item_master_template="M", yrp_is_free_item=1)]
 		with patch.object(pricing, "_policy_rows", side_effect=[items, templates]):
 			policies = pricing.get_item_policies(["V", "P"])
-		self.assertEqual(policies["V"], {"is_managed": True, "is_free": True})
-		self.assertEqual(policies["P"], {"is_managed": False, "is_free": False})
+		self.assertEqual(policies["V"], {"master_template": "M", "is_managed": True, "is_free": True})
+		self.assertEqual(policies["P"], {"master_template": None, "is_managed": False, "is_free": False})
 		with patch.object(pricing, "_policy_rows", side_effect=[items, templates]):
 			self.assertEqual(pricing.get_free_items(["V", "P"]), {"V"})
 
