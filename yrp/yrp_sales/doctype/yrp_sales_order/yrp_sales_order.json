@@ -220,7 +220,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-07 18:30:15.118465",
+ "modified": "2026-10-08 00:19:11.664618",
  "modified_by": "Administrator",
  "module": "YRP Sales",
  "name": "YRP Sales Order",
@@ -328,6 +328,29 @@
    "report": 1,
    "role": "YRP Sales Person",
    "select": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales User",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Stock User"
   }
  ],
  "row_format": "Dynamic",
