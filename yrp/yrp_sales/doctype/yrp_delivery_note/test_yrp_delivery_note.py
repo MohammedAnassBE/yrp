@@ -7,7 +7,7 @@ import unittest
 import frappe
 from frappe.utils import nowdate
 
-from yrp.stock.dimensions import get_stock_dimensions
+from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 from yrp.stock.utils import get_or_make_bin
 from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import (
 	create_delivery_note,
@@ -283,3 +283,35 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "belongs to another Company"):
 			create_delivery_note(self.customer, [self.make_order(qty=2).name], warehouse=self.warehouse)
 		self.assertFalse(frappe.db.exists("YRP Delivery Note", {"customer": self.customer}))
+
+
+class TestAllocateDimensions(unittest.TestCase):
+	"""allocate_dimensions with mocked bins: rows whose filters overlap share each bin's free stock."""
+
+	def test_overlapping_filters_share_a_bin(self):
+		from unittest.mock import patch
+
+		from yrp.yrp_sales.doctype.yrp_delivery_note import yrp_delivery_note as module
+
+		fieldnames = get_dimension_fieldnames()
+		if len(fieldnames) < 2:
+			self.skipTest("needs two stock dimensions")
+		first, second = fieldnames[:2]
+		bins = [{first: "L1", second: "P", "free_qty": 4}, {first: "L2", second: "P", "free_qty": 4}]
+
+		def free_bins(_query, values, as_dict):
+			fixed = values[2:]
+			return [frappe._dict(row) for row in bins if all(value in row.values() for value in fixed)]
+
+		note = frappe.new_doc("YRP Delivery Note")
+		note.set_warehouse = "Stores"
+		for values in ({second: "P"}, {}):
+			note.append("items", {"item_code": "ZZ Item", "qty": 4, "conversion_factor": 1, "uom": "Nos", **values})
+		with (
+			patch.object(module, "get_mandatory_dimensions", return_value=[{"fieldname": first}, {"fieldname": second}]),
+			patch.object(module, "get_dimension_fieldnames", return_value=[first, second]),
+			patch.object(module.frappe.db, "sql", side_effect=free_bins),
+			patch.object(module.frappe.db, "get_value", return_value=0),
+		):
+			module.allocate_dimensions(note)
+		self.assertEqual(sorted((row.get(first), row.qty) for row in note.items), [("L1", 4), ("L2", 4)])

@@ -656,7 +656,9 @@ def allocate_dimensions(note):
 	fieldnames = [dimension["fieldname"] for dimension in get_mandatory_dimensions()]
 	if not fieldnames:
 		return
+	dimension_fieldnames = get_dimension_fieldnames()
 	buckets = {}
+	bins = {}
 	rows = []
 	for row in note.items:
 		if all(row.get(fieldname) for fieldname in fieldnames):
@@ -665,7 +667,11 @@ def allocate_dimensions(note):
 		fixed = tuple((fieldname, row.get(fieldname)) for fieldname in fieldnames if row.get(fieldname))
 		key = (row.item_code, row.warehouse or note.set_warehouse, fixed)
 		if key not in buckets:
-			buckets[key] = get_free_buckets(*key)
+			# Overlapping filters return the same bin; one shared object keeps one free_qty per bin.
+			buckets[key] = [
+				bins.setdefault((*key[:2], *(bucket[name] for name in dimension_fieldnames)), bucket)
+				for bucket in get_free_buckets(*key)
+			]
 		rows.extend(split_row(row, buckets[key], key[1]))
 	note.set("items", rows)
 
