@@ -30,11 +30,15 @@ class TestReportRows(unittest.TestCase):
             self.assertEqual(row['delivered_qty'],expected)
             self.assertEqual(row['pending_qty'],3-expected)
 
-    def test_hidden_parents_are_not_returned(self):
-        doc=unittest.mock.Mock()
-        doc.has_permission.return_value=False
-        with patch.object(reporting.frappe,'get_list',return_value=[frappe._dict(name='Hidden')]), patch.object(reporting.frappe,'get_doc',return_value=doc):
-            self.assertEqual(list(reporting.documents('Sales Order', [], 'transaction_date')), [])
+    def test_item_rows_are_grouped_under_their_parent(self):
+        rows=[frappe._dict(name='First',docstatus=1,order_date=today(),line_name='a',line_item_code='A',line_qty=1),
+              frappe._dict(name='First',docstatus=1,order_date=today(),line_name='b',line_item_code='B',line_qty=2),
+              frappe._dict(name='Empty',docstatus=1,order_date=today(),line_name=None,line_item_code=None,line_qty=None)]
+        with patch.object(reporting.frappe,'get_list',return_value=rows) as get_list:
+            docs=reporting.documents('YRP Retail Order',[['docstatus','<',2]],'order_date')
+        self.assertEqual(get_list.call_args.kwargs['filters'],[['docstatus','<',2]])
+        self.assertEqual(get_list.call_args.kwargs['limit_page_length'],0)
+        self.assertEqual([(d.name,[i.item_code for i in d.lines]) for d in docs],[('First',['A','B']),('Empty',[])])
 
     def test_report_query_excludes_cancellations_and_defaults_to_submitted(self):
         filters=dict(from_date=today(),to_date=today())
@@ -47,10 +51,8 @@ class TestReportRows(unittest.TestCase):
             self.assertNotIn(['docstatus','=',1],docs.call_args.args[1])
 
     def test_packing_does_not_expose_inaccessible_delivery_note(self):
-        ps=self.doc(delivery_note='Private Delivery')
-        dn=unittest.mock.Mock()
-        dn.has_permission.return_value=False
-        with patch.object(reporting.frappe,'has_permission',return_value=True), patch.object(reporting,'documents',return_value=[ps]), patch.object(reporting.frappe,'get_doc',return_value=dn):
+        ps=self.doc(delivery_note='Private Delivery',lines=[frappe._dict(item_code='Example Item',stock_uom='Box',qty=1)])
+        with patch.object(reporting.frappe,'has_permission',return_value=True), patch.object(reporting,'documents',return_value=[ps]), patch.object(reporting.frappe,'get_list',return_value=[]):
             self.assertEqual(reporting.run('packing',dict(from_date=today(),to_date=today()))[1],[])
 
 class TestReportIntegration(TestSalesSources):

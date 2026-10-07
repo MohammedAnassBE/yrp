@@ -1,7 +1,8 @@
 """Sales/retail detail reports; never total incompatible transaction UOMs.
 
-Use permission-filtered parent queries plus document permission checks. Packing
-also requires access to its Delivery Note. No ledger, pricing or workflow writes.
+Rows come from native permission-filtered `get_list` reads (parent plus item
+fields). Packing also requires read access to its Delivery Note. No ledger,
+pricing or workflow writes.
 """
 import frappe
 from frappe import _
@@ -22,20 +23,37 @@ def column(field, label, fieldtype='Data', options=None):
     return result
 
 
+PARENT_FIELDS = ('customer', 'sales_person', 'order_type', 'retailer', 'status', 'delivery_note',
+                 'from_case_no', 'to_case_no', 'yrp_delivered_at', 'yrp_delivered')
+ITEM_FIELDS = ('item_code', 'uom', 'qty', 'ordered_qty', 'requested_qty', 'customer_stock_qty',
+               'company_qty', 'delivered_qty', 'stock_uom')
+LINE = 'line_'
+
+
 def documents(doctype, filters, date_field):
-    """Page through native permission-filtered records without a silent row cap."""
-    start = 0
-    while True:
-        batch = frappe.get_list(doctype, filters=filters, fields=['name'],
-                               order_by=f'{date_field} asc, name asc',
-                               limit_start=start, limit_page_length=200)
-        for row in batch:
-            doc = frappe.get_doc(doctype, row.name)
-            if doc.has_permission('read'):
-                yield doc
-        if len(batch) < 200:
-            break
-        start += len(batch)
+    """Parents with their item rows from one native permission-filtered get_list, in report order."""
+    meta = frappe.get_meta(doctype)
+    item_meta = frappe.get_meta(meta.get_field('items').options)
+    fields = ['name', 'docstatus', date_field, *(f for f in PARENT_FIELDS if meta.has_field(f))]
+    fields += [f'items.{f} as {LINE}{f}' for f in ('name', *ITEM_FIELDS) if f == 'name' or item_meta.has_field(f)]
+    docs = {}
+    for row in frappe.get_list(doctype, filters=filters, fields=fields, limit_page_length=0,
+                               order_by=f'{date_field} asc, name asc, items.idx asc'):
+        doc = docs.get(row.name)
+        if doc is None:
+            doc = docs[row.name] = frappe._dict({k: v for k, v in row.items() if not k.startswith(LINE)}, lines=[])
+        if row.get(f'{LINE}name'):
+            doc.lines.append(frappe._dict({k[len(LINE):]: v for k, v in row.items() if k.startswith(LINE)}))
+    return list(docs.values())
+
+
+def delivery_notes(names):
+    """Readable, named Delivery Notes; one the user cannot read is simply absent."""
+    if not names or not frappe.has_permission('Delivery Note', 'read'):
+        return {}
+    rows = frappe.get_list('Delivery Note', filters={'name': ['in', sorted(names)]},
+                           fields=['name', 'docstatus', 'customer', 'company'], limit_page_length=0)
+    return {row.name: row for row in rows}
 
 
 def run(kind, filters=None):
@@ -77,15 +95,17 @@ def run(kind, filters=None):
                         column('delivered_at', 'Delivered At', 'Datetime')])
     columns.extend(column(field, label, 'Float') for field, label in quantities)
     result = []
-    for doc in documents(doctype, query, date_field):
+    docs = documents(doctype, query, date_field)
+    notes = delivery_notes({doc.delivery_note for doc in docs if doc.get('delivery_note')})
+    for doc in docs:
         dn = None
         if kind == 'packing':
-            dn = frappe.get_doc('Delivery Note', doc.delivery_note)
-            if not dn.has_permission('read') or dn.docstatus == 2:
+            dn = notes.get(doc.delivery_note)
+            if not dn or dn.docstatus == 2:
                 continue
             if any(f.get(key) and dn.get(key) != f[key] for key in ('customer', 'company')):
                 continue
-        for item in doc.items:
+        for item in doc.lines:
             row = make_row(kind, doc, item, date_field, dn)
             if (not f.item_code or row['item_code'] == f.item_code) and (not f.uom or row['uom'] == f.uom):
                 result.append(row)
