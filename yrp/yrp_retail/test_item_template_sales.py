@@ -146,6 +146,32 @@ class TestTemplateSalesDefaults(TestCreateItemFromTemplate):
 		with self.assertRaises(frappe.ValidationError):
 			guard_policy_merge(self.template, old=self.template.name, new='Another Template', merge=True)
 
+	def test_reset_variant_settings_leave_out_the_master_link(self):
+		settings = frappe.get_doc('Item Variant Settings')
+		settings.set_default_fields()
+		self.assertNotIn('yrp_item_master_template', {row.field_name for row in settings.fields})
+
+	def test_patch_drops_master_links_from_variants_and_settings(self):
+		from yrp.patches import drop_variant_master_template_links
+		variant = self.variant(self.template_item(*self.classification()))
+		frappe.db.set_value('Item', variant.name, 'yrp_item_master_template', self.template.name)
+		settings = frappe.get_single('Item Variant Settings')
+		settings.append('fields', {'field_name': 'yrp_item_master_template'})
+		settings.save()
+		drop_variant_master_template_links.execute()
+		self.assertFalse(frappe.db.get_value('Item', variant.name, 'yrp_item_master_template'))
+		self.assertFalse(frappe.db.exists('Variant Field', {'field_name': 'yrp_item_master_template'}))
+		frappe.get_doc('Item', variant.name).save()
+
+	def test_merge_compares_the_effective_template_policy(self):
+		from yrp.yrp_retail.item_template import guard_policy_merge
+		free_variant = self.variant(self.template_item(*self.classification()))
+		plain, other_plain = (frappe.get_doc({'doctype': 'Item', 'item_code': 'Test Plain '+frappe.generate_hash(length=10),
+			'item_group': self.group.name, 'stock_uom': self.uom.name, 'gst_hsn_code': self.hsn.name}).insert() for _ in range(2))
+		with self.assertRaises(frappe.ValidationError):
+			guard_policy_merge(free_variant, old=free_variant.name, new=plain.name, merge=True)
+		guard_policy_merge(plain, old=plain.name, new=other_plain.name, merge=True)
+
 	def node(self, kind, parent=None):
 		return frappe.get_doc({'doctype':'YRP Item Category','category_name':'Test '+kind+' '+frappe.generate_hash(length=8),
 			'node_type':kind,'is_group':int(kind!='Value'),'parent_yrp_item_category':parent}).insert()

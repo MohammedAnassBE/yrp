@@ -49,15 +49,15 @@ def guard_policy_merge(doc, method=None, old=None, new=None, merge=False, **kwar
 	"""Native merge rewrites links without Item validation; preserve policy identity."""
 	if not merge:
 		return
-	from yrp.yrp_retail.pricing import lock_pricing_policy
+	from yrp.yrp_retail.pricing import get_item_policies, lock_pricing_policy
 	lock_pricing_policy()
 	if doc.doctype == 'YRP Item Master Template':
 		frappe.throw(_('Item Master Template merging requires an explicit inheritance migration.'))
 	if doc.doctype == 'Item':
-		source = frappe.get_doc('Item', old or doc.name, for_update=True)
-		target = frappe.get_doc('Item', new, for_update=True)
-		if source.get('yrp_item_master_template') != target.get('yrp_item_master_template'):
-			frappe.throw(_('Items with different YRP Item Master Templates cannot be merged.'))
+		source, target = old or doc.name, new
+		policies = get_item_policies([source, target], for_update=True)
+		if policies.get(source) != policies.get(target):
+			frappe.throw(_('Items with different sales policies cannot be merged.'))
 
 
 class ItemSalesTemplateMixin:

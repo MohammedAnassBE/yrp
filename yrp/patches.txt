@@ -33,3 +33,4 @@ yrp.patches.remove_partner_provisioning
 yrp.patches.rename_partner_workspace
 yrp.patches.remove_yrp_product
 yrp.patches.add_classification_variant_fields
+yrp.patches.drop_variant_master_template_links
