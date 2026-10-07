@@ -131,6 +131,19 @@ class TestPackingLifecycle(DeliveryNoteFixtures):
 			("Delivered", get_datetime("2026-01-02 10:00:00"), "Left at the dock"),
 		)
 
+	def test_billing_roles_only_read_delivery_notes(self):
+		for role in ("Billing User", "Accounts Manager"):
+			perm = frappe.get_all(
+				"DocPerm",
+				filters={"parent": "YRP Delivery Note", "role": role, "permlevel": 0},
+				fields=["read", "write", "create", "delete", "submit", "cancel", "amend", "share"],
+			)
+			self.assertEqual(
+				perm,
+				[{"read": 1, "write": 0, "create": 0, "delete": 0, "submit": 0, "cancel": 0, "amend": 0, "share": 0}],
+				role,
+			)
+
 
 def remark_invoice(invoice, note):
 	invoice.remarks = f"Fictional mapper for {note.name}"
