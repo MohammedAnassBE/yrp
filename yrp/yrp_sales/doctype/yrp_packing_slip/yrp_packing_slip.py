@@ -13,6 +13,7 @@ from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import get_packed
 from yrp.yrp_sales.invoicing import get_delivery_note_rows, lock_delivery_note
 
 DELIVERY_NOTE = "YRP Delivery Note"
+PACKING_SLIP = "YRP Packing Slip"
 
 
 class YRPPackingSlip(Document):
@@ -33,6 +34,7 @@ class YRPPackingSlip(Document):
 		rows = get_delivery_note_rows(note.name)
 		for row in self.items:
 			self.set_row_values(row, rows.get(row.dn_detail))
+		self.validate_carton_no()
 		self.validate_packing(rows)
 		self.status = self.get_status()
 
@@ -60,6 +62,14 @@ class YRPPackingSlip(Document):
 			require(packed <= flt(source.qty, precision), _(
 				"Row {0} of Delivery Note {1}: {2} would be packed, but only {3} is on the note."
 			).format(source.idx, self.delivery_note, packed, flt(source.qty, precision)))
+
+	def validate_carton_no(self):
+		"""A carton number is used once per Delivery Note among non-cancelled slips."""
+		if not self.carton_no:
+			return
+		require(not frappe.db.exists(PACKING_SLIP, {"delivery_note": self.delivery_note, "carton_no": self.carton_no,
+			"docstatus": ["<", 2], "name": ["!=", self.name or ""]}),
+			_("Carton {0} already exists on Delivery Note {1}.").format(self.carton_no, self.delivery_note))
 
 	def get_status(self):
 		if self.docstatus == 0:
