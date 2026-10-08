@@ -739,7 +739,8 @@ def get_or_create_variant(template, args, dependent_attr=None):
 		return existing
 	variant = create_variant(template, args, dependent_attr=dependent_attr)
 	try:
-		variant.insert()
+		# Variants of an existing template are system records; callers authorize the business document.
+		variant.insert(ignore_permissions=True)
 	except frappe.DuplicateEntryError:
 		existing = get_variant(template, args)
 		if not existing:
