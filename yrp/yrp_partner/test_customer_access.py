@@ -170,7 +170,7 @@ class TestCustomerAccess(unittest.TestCase):
 					foreign.check_permission("read")
 
 	def test_sales_documents_include_each_native_state_and_exclude_other_customers(self):
-		for doctype in ("Sales Order", "Sales Invoice", "Delivery Note"):
+		for doctype in ("YRP Sales Order", "Sales Invoice", "YRP Delivery Note"):
 			with self.subTest(doctype=doctype):
 				own = {self.row(doctype, customer=self.own.name, docstatus=status).name for status in (0, 1, 2)}
 				foreign = self.row(doctype, customer=self.foreign.name, docstatus=1)
@@ -193,9 +193,9 @@ class TestCustomerAccess(unittest.TestCase):
 				self.assertIn(own.name, self.visible(doctype))
 				self.assertNotIn(wrong_type.name, self.visible(doctype))
 		for party in (self.own, self.foreign):
-			delivery = self.row("Delivery Note", customer=party.name)
-			slip = self.row("Packing Slip", delivery_note=delivery.name)
-			self.assertEqual(slip.name in self.visible("Packing Slip"), party.name == self.own.name)
+			delivery = self.row("YRP Delivery Note", customer=party.name)
+			slip = self.row("YRP Packing Slip", delivery_note=delivery.name)
+			self.assertEqual(slip.name in self.visible("YRP Packing Slip"), party.name == self.own.name)
 
 	def test_contacts_and_addresses_require_explicit_authorized_links(self):
 		foreign_contact = self.link(self.user, "Customer", self.foreign.name)
@@ -245,7 +245,7 @@ class TestCustomerAccess(unittest.TestCase):
 		self.user.append("roles", {"role": "YRP Sales Partner"})
 		self.user.save()
 		frappe.set_user(self.user.name)
-		for doctype in ("Sales Order", "Sales Invoice", "Payment Entry", "GL Entry", "Opportunity", "YRP Retail Order"):
+		for doctype in ("YRP Sales Order", "Sales Invoice", "Payment Entry", "GL Entry", "Opportunity", "YRP Retail Order"):
 			with self.subTest(doctype=doctype):
 				for event in ("before_validate", "before_submit", "before_cancel", "on_trash"):
 					with self.assertRaises(frappe.PermissionError):
@@ -283,20 +283,6 @@ class TestCustomerAccess(unittest.TestCase):
 		self.assertEqual(access.customer_links("Activity Log"), ())
 		self.assertEqual(access.customer_links("Comment"), ())
 		self.assertEqual(access.customer_query_condition("Currency", self.user.name), "1=0")
-
-	def test_calendar_uses_customer_scope_even_with_empty_client_filters(self):
-		from frappe.utils import today
-		from yrp.yrp_partner.customer_api import sales_order_events
-		orders = []
-		for party in (self.own, self.foreign):
-			order = self.row("Sales Order", customer=party.name, customer_name=party.customer_name,
-				skip_delivery_note=0)
-			self.row("Sales Order Item", parent=order.name, parenttype="Sales Order", parentfield="items",
-				delivery_date=today())
-			orders.append(order)
-		frappe.set_user(self.user.name)
-		rows = sales_order_events(today(), today(), [])
-		self.assertEqual({row.name for row in rows}, {orders[0].name})
 
 	def test_official_company_addresses_follow_company_access_without_customer_expansion(self):
 		addresses = []

@@ -43,6 +43,25 @@ class TestCustomerReports(unittest.TestCase):
 		self.enterContext(patch.object(frappe, "session", frappe._dict(user="customer@example.invalid")))
 		self.enterContext(patch.object(frappe, "throw", side_effect=frappe.PermissionError))
 		self.enterContext(patch.object(reports, "_", side_effect=lambda text: text))
+		self.roles=self.enterContext(patch.object(frappe,'get_roles',return_value=[]))
+
+	def test_processing_with_additive_accounts_roles_cannot_run_financial_reports(self):
+		self.scoped.return_value=False
+		for role in ('Accounts User','Accounts Manager'):
+			self.roles.return_value=['YRP Partner','Sales User',role]
+			for name in ('General Ledger','Accounts Receivable','Accounts Receivable Summary'):
+				with self.subTest(role=role,name=name):self.assertFalse(_Report(name).is_permitted())
+				with self.assertRaises(frappe.PermissionError):_Report(name).execute_module({})
+			self.assertFalse(_Report('Custom Accounting',ref_doctype='Account').is_permitted())
+			self.assertFalse(_Report('Accounting Customer Report',ref_doctype='Customer',module='Accounts').is_permitted())
+
+	def test_processing_order_packing_reports_and_internal_finance_stay_native(self):
+		self.scoped.return_value=False;self.roles.return_value=['YRP Partner','Sales User','Accounts User']
+		for name,doctype in (('YRP Sales Order Fulfilment','Sales Order'),('YRP Packing and Delivery','Packing Slip')):
+			self.assertEqual(_Report(name,ref_doctype=doctype).is_permitted(),'native permission')
+		for roles in (['Accounts User'],['YRP Partner','Sales User','System Manager']):
+			self.roles.return_value=roles
+			self.assertEqual(_Report().is_permitted(),'native permission')
 
 	def test_blank_selection_is_full_membership_union_and_does_not_mutate_input(self):
 		filters = {"company": "Company", "party": [], "show_remarks": 1, "include_dimensions": 1}

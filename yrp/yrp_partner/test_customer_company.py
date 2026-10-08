@@ -6,10 +6,12 @@ posting transactions or changing site-wide defaults.
 """
 
 import unittest
+from unittest.mock import patch
 
 import frappe
 
 from yrp.yrp_partner import customer_access as access
+from yrp.yrp_partner import sales_roles
 from yrp.yrp_partner import test_customer_access as access_fixtures
 from yrp.yrp_partner.permissions import prevent_partner_write, query_conditions
 from yrp.yrp_partner.sales_roles import allowed_action
@@ -105,7 +107,7 @@ class TestCustomerCompany(unittest.TestCase):
 			customers={self.own.name, self.foreign.name}), {self.companies[0].name})
 
 	def test_no_defaults_means_no_companies_despite_user_defaults_and_transaction_history(self):
-		for doctype in ("Sales Order", "Sales Invoice", "Delivery Note", "Quotation", "GL Entry"):
+		for doctype in ("YRP Sales Order", "Sales Invoice", "YRP Delivery Note", "Quotation", "GL Entry"):
 			self.row(doctype, customer=self.own.name, party_name=self.own.name,
 				quotation_to="Customer", party_type="Customer", party=self.own.name,
 				company=self.companies[0].name, docstatus=1)
@@ -224,7 +226,7 @@ class TestCustomerCompany(unittest.TestCase):
 			# respect the same exact Customer/company authorization boundary.
 			user.append("roles", {"role": "Sales User"})
 			user.save()
-		for doctype in ("Sales Order", "Sales Invoice", "Delivery Note", "Quotation", "Opportunity"):
+		for doctype in ("YRP Sales Order", "Sales Invoice", "YRP Delivery Note", "Quotation", "Opportunity"):
 			documents = []
 			frappe.set_user("Administrator")
 			for customer, company in ((self.own, self.companies[0]), (self.foreign, self.companies[1]),
@@ -248,10 +250,12 @@ class TestCustomerCompany(unittest.TestCase):
 		user = self.make_user("YRP Partner", "YRP Sales Partner")
 		for customer in (self.own, self.foreign):
 			self.link(user, "Sales Partner", customer.default_sales_partner)
-		stored = self.row("Sales Order", customer=self.own.name, company=self.companies[0].name)
-		wrong_stored = self.row("Sales Order", customer=self.own.name, company=self.companies[1].name)
+		stored = self.row("YRP Sales Order", customer=self.own.name, company=self.companies[0].name)
+		wrong_stored = self.row("YRP Sales Order", customer=self.own.name, company=self.companies[1].name)
+		# yrp's own rule; an installed app may register a stricter action extension.
+		self.enterContext(patch.object(sales_roles, "extension_action", return_value=None))
 		frappe.set_user(user.name)
-		valid = frappe.get_doc({"doctype": "Sales Order", "__islocal": 1, "customer": self.own.name,
+		valid = frappe.get_doc({"doctype": "YRP Sales Order", "__islocal": 1, "customer": self.own.name,
 			"company": self.companies[0].name})
 		self.assertTrue(allowed_action(valid, "create"))
 		prevent_partner_write(valid, "before_validate")

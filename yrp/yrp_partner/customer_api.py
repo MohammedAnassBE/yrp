@@ -3,7 +3,7 @@
 Register ``guard_request`` as an ``auth_hooks`` hook, not ``before_request``:
 Frappe authenticates API keys after before_request. This hook inspects the same
 routing map as the dispatcher, without intercepting normal document loads.
-The Sales Order calendar and Company tree use permission-aware replacements;
+The Company tree uses a permission-aware replacement;
 ordinary Desk reads and sales/retail save workflows keep their native paths.
 """
 
@@ -16,7 +16,6 @@ from yrp.yrp_partner.customer_access import (
 	CUSTOMER_DOCTYPES,
 	company_names,
 	customer_links,
-	customer_names,
 	is_customer_report_user,
 )
 
@@ -66,7 +65,7 @@ _CONTROLLER_DOCTYPES = CUSTOMER_DOCTYPES | _RAW_LEDGERS | {
 # These actions still pass the existing native permission and lifecycle checks.
 # No sales/retail save endpoint is blocked by this controller-method boundary.
 _RETAIL_ACTION_METHODS = {"submit", "cancel", "discard", "add_comment"}
-_SALES_ORDER_DRAFT_METHODS = {"apply_shipping_rule", "add_comment"}
+_SALES_ORDER_DRAFT_METHODS = {"add_comment"}
 _COMPANY_ADDRESS_RPC = {
 	"erpnext.setup.doctype.company.company.get_default_company_address",
 	"erpnext.setup.doctype.company.company.get_billing_shipping_address",
@@ -93,7 +92,13 @@ def _document_doctype(value):
 	return value["doctype"]
 
 
-def _guard_controller(doctype, method):
+def is_processing_scoped_user():
+	"""Processing account metadata never confers financial RPC access."""
+	roles=set(frappe.get_roles())
+	return 'YRP Partner' in roles and bool(roles & {'Sales User','Sales Manager'}) and 'System Manager' not in roles
+
+
+def _guard_controller(doctype, method, processing_only=False):
 	if not isinstance(doctype, str) or not doctype:
 		_deny()
 	if doctype not in _CONTROLLER_DOCTYPES and not customer_links(doctype):
@@ -104,10 +109,15 @@ def _guard_controller(doctype, method):
 	# reviewed actions; native per-document/lifecycle checks remain authoritative.
 	roles = set(frappe.get_roles())
 	if "YRP Partner" in roles:
+		if (processing_only and doctype in {'YRP Sales Order','YRP Delivery Note','YRP Packing Slip'}
+			and method in _RETAIL_ACTION_METHODS):
+			# This only reaches the native dispatcher. DocPerm and the current
+			# document lifecycle guards still decide whether the action is valid.
+			return
 		if (SALES_PERSON in roles and doctype in RETAIL_DOCUMENTS
 			and method in _RETAIL_ACTION_METHODS):
 			return
-		if (SALES_PARTNER in roles and doctype == "Sales Order"
+		if (SALES_PARTNER in roles and doctype == "YRP Sales Order"
 			and method in _SALES_ORDER_DRAFT_METHODS):
 			return
 	_deny()
@@ -145,7 +155,7 @@ def _guard_customer_company(command, form):
 			_deny()
 
 
-def _guard_rpc(command, form):
+def _guard_rpc(command, form, processing_only=False):
 	if command in UNSAFE_RPC:
 		_deny()
 	if command in _INDIRECT_RPC and form.get(_INDIRECT_RPC[command]):
@@ -155,13 +165,13 @@ def _guard_rpc(command, form):
 		if (not isinstance(query, str)
 			or query in UNSAFE_RPC | _CUSTOMER_COMPANY_RPC | _COMPANY_ADDRESS_RPC | _CONTROLLER_RPC):
 			_deny()
-	if command in _COMPANY_ADDRESS_RPC:
+	if not processing_only and command in _COMPANY_ADDRESS_RPC:
 		name = form.get("name")
 		if not isinstance(name, str) or name not in company_names():
 			_deny()
 		if not frappe.has_permission("Company", "read", doc=name):
 			_deny()
-	if command in _CUSTOMER_COMPANY_RPC:
+	if not processing_only and command in _CUSTOMER_COMPANY_RPC:
 		_guard_customer_company(command, form)
 	if command in _RAW_READ_RPC and form.get("doctype") in _RAW_LEDGERS:
 		_deny()
@@ -171,12 +181,13 @@ def _guard_rpc(command, form):
 			doctype = _document_doctype(form.get("document"))
 		else:
 			doctype = form.get("dt") or _document_doctype(form.get("docs"))
-		_guard_controller(doctype, form.get("method"))
+		_guard_controller(doctype, form.get("method"), processing_only=processing_only)
 
 
 def guard_request():
 	"""Check authenticated RPC dispatch, including legacy cmd and API v1/v2."""
-	if not is_customer_report_user():
+	processing_only=not is_customer_report_user()
+	if processing_only and not is_processing_scoped_user():
 		return
 	request = getattr(frappe.local, "request", None)
 	if not request or request.method == "OPTIONS":
@@ -184,7 +195,7 @@ def guard_request():
 	form = getattr(frappe.local, "form_dict", None) or {}
 	# application() dispatches a posted cmd before looking at the request URL.
 	if form.get("cmd"):
-		_guard_rpc(form["cmd"], form)
+		_guard_rpc(form["cmd"], form, processing_only=processing_only)
 		return
 	if not request.path.startswith("/api/"):
 		return
@@ -198,7 +209,7 @@ def guard_request():
 		return
 	endpoint = rule.endpoint
 	if rule.rule == "/api/v2/method/run_doc_method":
-		_guard_controller(_document_doctype(form.get("document")), form.get("method"))
+		_guard_controller(_document_doctype(form.get("document")), form.get("method"), processing_only=processing_only)
 	elif endpoint in (v1.handle_rpc_call, v2.handle_rpc_call):
 		command = arguments["method"]
 		if endpoint is v1.handle_rpc_call:
@@ -207,11 +218,11 @@ def guard_request():
 			from frappe.modules.utils import load_doctype_module
 
 			command = load_doctype_module(arguments["doctype"]).__name__ + "." + command
-		_guard_rpc(command, form)
+		_guard_rpc(command, form, processing_only=processing_only)
 	elif endpoint in (v1.execute_doc_method, v2.execute_doc_method) or (
 		endpoint is v1.read_doc and "run_method" in form
 	):
-		_guard_controller(arguments["doctype"], arguments.get("method") or form.get("run_method"))
+		_guard_controller(arguments["doctype"], arguments.get("method") or form.get("run_method"), processing_only=processing_only)
 	elif arguments.get("doctype") in _RAW_LEDGERS and endpoint in (
 		v1.read_doc, v1.document_list, v2.read_doc, v2.document_list, v2.copy_doc, v2.count,
 	):
@@ -256,39 +267,3 @@ def company_children(doctype, parent=None, company=None, is_root=False):
 	parents = {row.parent_company for row in rows}
 	return [frappe._dict(value=row.name, expandable=int(row.name in parents))
 		for row in rows if (row.parent_company not in names if root else row.parent_company == parent)]
-
-
-@frappe.whitelist()
-def sales_order_events(start, end, filters=None):
-	"""Use permission-aware queries even when native calendar filters are empty."""
-	if not is_customer_report_user():
-		from erpnext.selling.doctype.sales_order.sales_order import get_events
-
-		return get_events(start, end, filters)
-	frappe.has_permission("Sales Order", "read", throw=True)
-	allowed = sorted(customer_names())
-	if not allowed:
-		return []
-	if isinstance(filters, str):
-		filters = json.loads(filters)
-	if isinstance(filters, dict):
-		filters = [[field, *value] if isinstance(value, (list, tuple)) else [field, "=", value]
-			for field, value in filters.items()]
-	elif filters is not None and not isinstance(filters, (list, tuple)):
-		_deny()
-	from frappe.utils import getdate
-
-	# Mandatory restrictions are appended; client predicates cannot replace them.
-	filters = list(filters or []) + [
-		["Sales Order", "customer", "in", allowed],
-		["Sales Order", "docstatus", "<", 2],
-		["Sales Order", "skip_delivery_note", "=", 0],
-		["Sales Order Item", "delivery_date", "between", [getdate(start), getdate(end)]],
-	]
-	rows = frappe.get_list("Sales Order", filters=filters, fields=[
-		"name", "customer_name", "status", "delivery_status", "billing_status",
-		"items.delivery_date as delivery_date",
-	], distinct=True, limit_page_length=0)
-	for row in rows:
-		row.update(allDay=0, convertToUserTz=0)
-	return rows

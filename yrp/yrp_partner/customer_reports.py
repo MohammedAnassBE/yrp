@@ -27,17 +27,28 @@ CUSTOMER_REPORTS = {
 	"General Ledger": "GL Entry",
 	"Accounts Receivable": "Sales Invoice",
 	"Accounts Receivable Summary": "Sales Invoice",
-	"YRP Sales Order Fulfilment": "Sales Order",
-	"YRP Packing and Delivery": "Packing Slip",
 	"YRP Retail Demand": "YRP Retail Order",
 	"YRP Retail Summary Allocation": "YRP Retail Order Summary",
 }
 _RETAIL_KINDS = {
-	"YRP Sales Order Fulfilment": "fulfilment",
-	"YRP Packing and Delivery": "packing",
 	"YRP Retail Demand": "demand",
 	"YRP Retail Summary Allocation": "allocation",
 }
+
+_ACCOUNTING_REFERENCES = {
+	'Account','GL Entry','Sales Invoice','Purchase Invoice','Payment Ledger Entry',
+	'Payment Entry','Journal Entry','Bank Transaction','Bank Account','Budget',
+}
+
+
+def _processing_financial_report(report):
+	"""Account metadata for processing must not open raw accounting reports."""
+	if is_customer_report_user():
+		return False
+	from yrp.yrp_partner.customer_api import is_processing_scoped_user
+	return is_processing_scoped_user() and (
+		report.get('module') == 'Accounts' or report.get('ref_doctype') in _ACCOUNTING_REFERENCES
+	)
 
 _GL_FIELDS = frozenset({
 	"posting_date", "account", "debit", "credit", "balance", "voucher_type",
@@ -253,6 +264,8 @@ def _execute(report_name, filters):
 
 class CustomerReportMixin:
 	def is_permitted(self):
+		if _processing_financial_report(self):
+			return False
 		if not is_customer_report_user():
 			return super().is_permitted()
 		_request_options()
@@ -271,11 +284,15 @@ class CustomerReportMixin:
 		return super().is_permitted()
 
 	def execute_script_report(self, filters):
+		if _processing_financial_report(self):
+			_deny()
 		if not is_customer_report_user():
 			return super().execute_script_report(filters)
 		return self.execute_module(filters)
 
 	def execute_module(self, filters):
+		if _processing_financial_report(self):
+			_deny()
 		if not is_customer_report_user():
 			return super().execute_module(filters)
 		if not self.is_permitted():
@@ -285,22 +302,24 @@ class CustomerReportMixin:
 		)))
 
 	def execute_query_report(self, filters):
-		if is_customer_report_user():
+		if is_customer_report_user() or _processing_financial_report(self):
 			_deny()
 		return super().execute_query_report(filters)
 
 	def execute_script(self, filters):
-		if is_customer_report_user():
+		if is_customer_report_user() or _processing_financial_report(self):
 			_deny()
 		return super().execute_script(filters)
 
 	def execute_snapshot_report(self, filters):
-		if is_customer_report_user():
+		if is_customer_report_user() or _processing_financial_report(self):
 			_deny()
 		return super().execute_snapshot_report(filters)
 
 	def get_data(self, filters=None, limit=None, user=None, as_dict=False,
 			ignore_prepared_report=False, are_default_filters=True):
+		if _processing_financial_report(self):
+			_deny()
 		if is_customer_report_user():
 			_request_options(user=user)
 			if not self.is_permitted():
@@ -308,19 +327,19 @@ class CustomerReportMixin:
 		return super().get_data(filters, limit, user, as_dict, ignore_prepared_report, are_default_filters)
 
 	def run_standard_report(self, filters, limit, user):
-		if is_customer_report_user():
+		if is_customer_report_user() or _processing_financial_report(self):
 			_deny()
 		return super().run_standard_report(filters, limit, user)
 
 
 class CustomerPreparedReportMixin:
 	def before_insert(self):
-		if is_customer_report_user():
+		if is_customer_report_user() or _processing_financial_report(frappe.get_doc('Report',self.report_name)):
 			_deny()
 		return super().before_insert()
 
 	def get_prepared_data(self, with_file_name=False):
-		if is_customer_report_user():
+		if is_customer_report_user() or _processing_financial_report(frappe.get_doc('Report',self.report_name)):
 			_deny()
 		return super().get_prepared_data(with_file_name=with_file_name)
 

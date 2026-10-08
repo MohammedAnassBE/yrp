@@ -54,7 +54,7 @@ states. Frappe retains retired columns until normal database maintenance.
 | YRP Retail User | Manage Retailers and Contacts; read Customers. |
 | YRP Partner | Desk access; read related records within ordinary DocType role permissions. |
 | YRP Sales Person | With YRP Partner membership: create/edit own Visits; create/edit assigned Customers' Retailers; create/edit draft Retail Orders/Summaries, submit and cancel their own Orders/Summaries. |
-| YRP Sales Partner | With YRP Partner membership: read their Sales Orders and Packing Slips; create/edit draft Sales Orders for their Customers. No submit, cancel, stock reservation or delivery processing. |
+| YRP Sales Partner | With YRP Partner membership: read their YRP Sales Orders, Delivery Notes and Packing Slips; create/edit draft YRP Sales Orders for their Customers. No submit, cancel or delivery processing unless a registered action extension allows it. |
 | Sales Master Manager | Native ERPNext Sales Person management. |
 | HR Manager | Native Employee management. |
 
@@ -138,10 +138,13 @@ unlinking, disabling a User, or removing the required role invalidates access.
 A Retailer membership alone never grants its Customer's accounts.
 
 Customer access is read-only. Existing Sales Person retail actions and Sales
-Partner draft Sales Order actions remain available under their own assignment
+Partner draft YRP Sales Order actions remain available under their own assignment
 and document-state checks; Customer membership does not expand those actions.
-Sales Orders, Delivery Notes, Packing Slips, Sales Invoices, quotations and the
-customer-facing service/retail documents have native role fixtures. Generic
+YRP Sales Orders, Delivery Notes and Packing Slips carry partner read DocPerms in
+their DocType; a Packing Slip follows its Delivery Note's Customer/company pair.
+ERPNext Sales Orders, Delivery Notes, Packing Slips and Pick Lists grant partners
+nothing. Sales Invoices, quotations and the customer-facing service/retail
+documents have native role fixtures. Generic
 Customer Link/Dynamic Link predicates also constrain additional DocTypes when
 an administrator explicitly grants them. Internal production, banking and
 multi-party accounting vouchers are not exposed simply because they contain a
@@ -149,8 +152,7 @@ Customer field. Native administrator-controlled document sharing remains a
 separate Frappe read grant; financial reports always enforce Customer scope.
 
 Available reports are General Ledger, Accounts Receivable, Accounts Receivable
-Summary, YRP Sales Order Fulfilment, YRP Packing and Delivery, YRP Retail Demand
-and YRP Retail Summary Allocation. Report roles remain native Custom Role
+Summary, YRP Retail Demand and YRP Retail Summary Allocation. Report roles remain native Custom Role
 fixtures, preserving standard staff roles. Customer filtering happens before
 balances, ageing and totals. General Ledger is filtered by `party_type=Customer`
 and authorized party IDs, not by the shared receivable account. CSV/Excel

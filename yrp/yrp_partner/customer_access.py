@@ -130,6 +130,17 @@ def company_names(user=None, customers=None):
 		AND defaults.parent IN %(customers)s""", {"customers": sorted(allowed)}, pluck=True))
 
 
+def warehouse_company_condition(user,table, *, customers=None):
+    """Company-assigned ordinary Warehouse, with exact optional Customer scope."""
+    customers=customers if customers is not None else _customer_references(user)
+    company=f"""{table}.company IN (SELECT warehouse_defaults.company FROM `tabParty Account` warehouse_defaults
+        WHERE warehouse_defaults.parenttype='Customer' AND warehouse_defaults.parentfield='accounts'
+        AND warehouse_defaults.parent IN ({customers}))"""
+    pair=customer_company_condition(f'{table}.customer',f'{table}.company')
+    customer=f"(COALESCE({table}.customer,'')='' OR ({table}.customer IN ({customers}) AND {pair}))"
+    return f'({company} AND {customer})'
+
+
 def document_company_condition(doctype, user, table):
 	"""Keep a record in its Customer/company pair when it has a Company field."""
 	meta = frappe.get_meta(doctype)
@@ -220,16 +231,16 @@ def _customer_query_condition(doctype, user=None, table=None):
 	customers = _customer_references(user)
 	if doctype == "Customer":
 		return f"{table}.name IN ({customers})"
-	if doctype in {"Sales Order", "Sales Invoice", "Delivery Note"}:
+	if doctype in {"YRP Sales Order", "Sales Invoice", "YRP Delivery Note"}:
 		return f"{table}.customer IN ({customers})"
 	if doctype == "Quotation":
 		return f"({table}.quotation_to='Customer' AND {table}.party_name IN ({customers}))"
 	if doctype in {"GL Entry", "Payment Entry"}:
 		return f"({table}.party_type='Customer' AND {table}.party IN ({customers}))"
-	if doctype == "Packing Slip":
+	if doctype == "YRP Packing Slip":
 		return f"""{table}.delivery_note IN (
-			SELECT dn.name FROM `tabDelivery Note` dn
-			WHERE {customer_query_condition('Delivery Note', user, 'dn')})"""
+			SELECT dn.name FROM `tabYRP Delivery Note` dn
+			WHERE {customer_query_condition('YRP Delivery Note', user, 'dn')})"""
 	if doctype in {"YRP Customer Stock", "YRP Retail Order Summary"}:
 		return f"{table}.customer IN ({customers})"
 	if doctype == "YRP Retailer":

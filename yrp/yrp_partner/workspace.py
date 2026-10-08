@@ -33,7 +33,7 @@ def get_partner_links():
 	from yrp.yrp_partner.customer_access import is_customer_report_user
 	if is_customer_report_user():
 		from yrp.yrp_partner.customer_reports import CUSTOMER_REPORTS
-		for doctype in ("Sales Order", "Delivery Note", "Packing Slip", "Sales Invoice", "GL Entry", "Account", "Company"):
+		for doctype in ("YRP Sales Order", "YRP Delivery Note", "YRP Packing Slip", "Sales Invoice", "GL Entry", "Account", "Company"):
 			if frappe.has_permission(doctype, "read") and not any(link.link_to == doctype for link in links):
 				link = frappe._dict(type="Link", label=doctype, link_type="DocType", link_to=doctype, child=0)
 				if doctype == "Account":

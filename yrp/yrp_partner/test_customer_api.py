@@ -245,7 +245,7 @@ class TestCustomerAPI(unittest.TestCase):
 		for role, doctype, method in (
 			("YRP Sales Person", "YRP Retail Order", "submit"),
 			("YRP Sales Person", "YRP Retail Order Summary", "cancel"),
-			("YRP Sales Partner", "Sales Order", "apply_shipping_rule"),
+			("YRP Sales Partner", "YRP Sales Order", "add_comment"),
 		):
 			self.roles.return_value = ["YRP Partner", role]
 			with self.subTest(role=role, method=method):
@@ -259,7 +259,7 @@ class TestCustomerAPI(unittest.TestCase):
 
 	def test_mixed_customer_sales_roles_preserve_reviewed_document_actions(self):
 		for role, doctype, method in (
-			("YRP Sales Partner", "Sales Order", "apply_shipping_rule"),
+			("YRP Sales Partner", "YRP Sales Order", "add_comment"),
 			("YRP Sales Person", "YRP Retail Order", "submit"),
 			("YRP Sales Person", "YRP Retail Order Summary", "cancel"),
 		):
@@ -268,7 +268,8 @@ class TestCustomerAPI(unittest.TestCase):
 				self.request("/api/method/run_doc_method", {"dt": doctype, "method": method}, "POST")
 
 	def test_customer_role_alone_cannot_use_sales_action_exceptions(self):
-		self.assert_denied("/api/method/run_doc_method", {"dt": "Sales Order", "method": "apply_shipping_rule"})
+		self.links.return_value = (("customer", None),)
+		self.assert_denied("/api/method/run_doc_method", {"dt": "YRP Sales Order", "method": "add_comment"})
 		self.assert_denied("/api/method/run_doc_method", {"dt": "YRP Retail Order", "method": "submit"})
 
 	def test_additive_account_read_cannot_open_global_balance_helpers(self):
@@ -294,36 +295,29 @@ class TestCustomerAPI(unittest.TestCase):
 			with self.subTest(document=document):
 				self.assert_denied("/api/v2/method/run_doc_method", {"document": document, "method": "set_advances"})
 
-	def test_calendar_uses_live_customer_union_and_native_permissions_with_empty_filters(self):
-		row = {"name": "SO-A", "delivery_date": "2026-09-24"}
-		with (
-			patch.object(api, "customer_names", return_value={"Customer B", "Customer A"}),
-			patch.object(frappe, "has_permission") as permission,
-			patch.object(frappe, "get_list", return_value=[row]) as query,
-		):
-			result = api.sales_order_events("2026-09-01", "2026-09-30")
-		permission.assert_called_once_with("Sales Order", "read", throw=True)
-		self.assertIn(["Sales Order", "customer", "in", ["Customer A", "Customer B"]], query.call_args.kwargs["filters"])
-		self.assertEqual(query.call_args.args, ("Sales Order",))
-		self.assertEqual(result[0]["allDay"], 0)
+	def test_processing_account_metadata_cannot_open_financial_rpc_routes(self):
+		self.scoped.return_value=False
+		for role in ('Sales User','Sales Manager'):
+			self.roles.return_value=['YRP Partner',role]
+			for command in api.UNSAFE_RPC:
+				for prefix in ('/api/method/','/api/v1/method/','/api/v2/method/'):
+					with self.subTest(role=role,command=command,prefix=prefix):
+						self.assert_denied(prefix+command)
+			self.assert_denied('/api/resource/Account',{'cmd':'erpnext.accounts.utils.get_account_balances'},'POST')
+			self.assert_denied('/api/method/frappe.desk.search.search_link',{'doctype':'Account','query':'erpnext.accounts.utils.get_account_balances'})
 
-	def test_calendar_client_customer_filter_cannot_replace_mandatory_scope(self):
-		filters = {"customer": "Foreign"}
-		with (
-			patch.object(api, "customer_names", return_value={"Customer A"}),
-			patch.object(frappe, "has_permission"),
-			patch.object(frappe, "get_list", return_value=[]) as query,
-		):
-			api.sales_order_events("2026-09-01", "2026-09-30", filters)
-		self.assertEqual(filters, {"customer": "Foreign"})
-		self.assertIn(["customer", "=", "Foreign"], query.call_args.kwargs["filters"])
-		self.assertIn(["Sales Order", "customer", "in", ["Customer A"]], query.call_args.kwargs["filters"])
+	def test_processing_controller_finance_is_denied_and_native_actions_still_validate(self):
+		self.scoped.return_value=False;self.roles.return_value=['YRP Partner','Sales User']
+		for doctype,method in [('Account','get_balance'),('Sales Invoice','set_advances'),('Customer','get_dashboard_info')]:
+			self.assert_denied('/api/method/run_doc_method',{'dt':doctype,'method':method},'POST')
+			self.assert_denied('/api/v2/document/'+doctype+'/LOCAL/method/'+method)
+		for doctype,method in [('YRP Delivery Note','cancel'),('YRP Packing Slip','submit'),('YRP Packing Slip','cancel'),('YRP Sales Order','add_comment')]:
+			self.request('/api/method/run_doc_method',{'dt':doctype,'method':method},'POST')
+		with patch.object(api,'company_names',side_effect=AssertionError('Do not widen financial helpers')):
+			self.request('/api/method/erpnext.accounts.party.get_party_account',{'party_type':'Customer','party':'C','company':'CO'})
 
-	def test_calendar_without_membership_never_runs_data_query(self):
-		with (
-			patch.object(api, "customer_names", return_value=set()),
-			patch.object(frappe, "has_permission"),
-			patch.object(frappe, "get_list") as query,
-		):
-			self.assertEqual(api.sales_order_events("2026-09-01", "2026-09-30"), [])
-		query.assert_not_called()
+	def test_internal_sales_and_system_manager_rpc_paths_remain_native(self):
+		self.scoped.return_value=False
+		for roles in (['Sales User'],['YRP Partner','Sales User','System Manager']):
+			self.roles.return_value=roles
+			self.request('/api/method/erpnext.accounts.utils.get_account_balances')
