@@ -23,12 +23,29 @@ from frappe.utils import cint, flt
 from yrp.yrp_partner.customer_access import company_names, customer_names, is_customer_report_user
 
 
+# Essdee partner portal reports. Each reads through permission-checked lists, so its rows
+# already follow the Customer/company scope. Fusion opens them to YRP Sales Partner only.
+PORTAL_REPORTS = {
+	"Itemwise Pending": "YRP Sales Order",
+	"Customerwise Pending": "YRP Sales Order",
+	"Itemwise Cancelled": "YRP Sales Order",
+	"Itemwise Received": "YRP Sales Order",
+	"Customerwise Received": "YRP Sales Order",
+	"Order Dashboard": "YRP Sales Order",
+	"Datewise Item Packed": "YRP Delivery Note",
+	"Packed Item Detail": "YRP Delivery Note",
+	"Party-wise Total Sales": "Sales Invoice",
+	"Essdee LR Entry Report": "Sales Invoice",
+	"Essdee Party Outstanding": "Sales Invoice",
+}
+PORTAL_REPORT_ROLES = {"YRP Sales Partner"}
 CUSTOMER_REPORTS = {
 	"General Ledger": "GL Entry",
 	"Accounts Receivable": "Sales Invoice",
 	"Accounts Receivable Summary": "Sales Invoice",
 	"YRP Retail Demand": "YRP Retail Order",
 	"YRP Retail Summary Allocation": "YRP Retail Order Summary",
+	**PORTAL_REPORTS,
 }
 _RETAIL_KINDS = {
 	"YRP Retail Demand": "demand",
@@ -157,6 +174,21 @@ def scoped_filters(filters=None, require_company=False):
 	return filters
 
 
+def portal_filters(filters=None):
+	"""Portal reports narrow their own rows; a named Customer or Sales Partner must be the user's."""
+	filters = _parse(filters) if filters else {}
+	if not isinstance(filters, dict) or filters.get("prepared_report_name"):
+		_deny()
+	allowed = set(customer_names())
+	if _selected_names(filters.get("customer")) - allowed:
+		_deny()
+	partner = filters.get("sales_partner")
+	if partner and (not isinstance(partner, str) or not frappe.db.exists(
+			"Customer", {"name": ["in", sorted(allowed)], "default_sales_partner": partner})):
+		_deny()
+	return frappe._dict(filters)
+
+
 def _project(report_name, result):
 	"""Drop internal columns AND undeclared row keys (JSON/export hidden data)."""
 	parts = list(result)
@@ -274,7 +306,8 @@ class CustomerReportMixin:
 				or self.report_type != "Script Report" or self.is_standard != "Yes"
 				or self.get("disabled") or self.get("snapshot_report")
 				or self.get("custom_report") or self.get("is_custom_report")
-				or self.get("custom_columns") or self.get("custom_filters")):
+				or self.get("custom_columns") or self.get("custom_filters")
+				or (self.name in PORTAL_REPORTS and not PORTAL_REPORT_ROLES & set(frappe.get_roles()))):
 			return False
 		# Only this in-memory Report instance changes, never stored settings.
 		self.prepared_report = 0
@@ -297,6 +330,8 @@ class CustomerReportMixin:
 			return super().execute_module(filters)
 		if not self.is_permitted():
 			_deny()
+		if self.name in PORTAL_REPORTS:
+			return super().execute_module(portal_filters(filters))
 		return _project(self.name, _execute(self.name, scoped_filters(
 			filters, require_company=self.name not in _RETAIL_KINDS,
 		)))

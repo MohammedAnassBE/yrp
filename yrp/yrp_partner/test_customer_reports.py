@@ -162,6 +162,7 @@ class TestCustomerReports(unittest.TestCase):
 		self.assertEqual([c["fieldname"] for c in columns], ["party", "range1"])
 
 	def test_only_reviewed_standard_live_reports_are_permitted(self):
+		self.roles.return_value = sorted(reports.PORTAL_REPORT_ROLES)
 		for name in reports.CUSTOMER_REPORTS:
 			with self.subTest(name=name):
 				doc = _Report(name)
@@ -271,3 +272,34 @@ class TestCustomerReports(unittest.TestCase):
 				with self.subTest(filters=filters), self.assertRaises(frappe.PermissionError):
 					reports._receivable_summary(frappe._dict(filters))
 			detail.assert_not_called()
+
+	def test_portal_reports_open_only_to_the_roles_fusion_allows(self):
+		for roles in ([], ["YRP Customer"], ["YRP Sales Person"]):
+			self.roles.return_value = roles
+			for name in reports.PORTAL_REPORTS:
+				with self.subTest(roles=roles, name=name):
+					self.assertFalse(_Report(name).is_permitted())
+		self.roles.return_value = ["YRP Sales Partner"]
+		self.assertEqual(_Report("Itemwise Pending").is_permitted(), "native permission")
+		self.assertFalse(_Report("Order Survey", ref_doctype="YRP Sales Order").is_permitted())
+
+	def test_portal_reports_run_natively_with_only_owned_customer_and_partner(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		self.enterContext(patch.object(frappe, "db", Mock(exists=Mock(return_value=True))))
+		filters = {"customer": "Customer A", "sales_partner": "Partner A", "from_date": "2026-10-01"}
+		self.assertEqual(_Report("Itemwise Received").execute_module(filters), ("native execution", filters))
+		self.assertEqual(_Report("Order Dashboard").execute_module({}), ("native execution", {}))
+		frappe.db.exists.assert_called_once_with(
+			"Customer", {"name": ["in", ["Customer A", "Customer B"]], "default_sales_partner": "Partner A"}
+		)
+
+	def test_portal_reports_reject_foreign_or_malformed_customer_and_partner(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		self.enterContext(patch.object(frappe, "db", Mock(exists=Mock(return_value=False))))
+		for filters in (
+			{"customer": "Foreign"}, {"customer": ["Customer A", "Foreign"]}, {"customer": 1},
+			{"sales_partner": "Foreign Partner"}, {"sales_partner": ["Partner A"]},
+			{"prepared_report_name": "unrestricted-cache"}, '["customer", "Customer A"]',
+		):
+			with self.subTest(filters=filters), self.assertRaises(frappe.PermissionError):
+				_Report("Itemwise Pending").execute_module(filters)

@@ -312,13 +312,14 @@ class TestCustomerAccess(unittest.TestCase):
 
 	def test_sidebar_reports_include_native_routing_metadata(self):
 		from yrp.yrp_partner.workspace import SIDEBAR, add_partner_navigation
-		from yrp.yrp_partner.customer_reports import CUSTOMER_REPORTS
+		from yrp.yrp_partner.customer_reports import CUSTOMER_REPORTS, PORTAL_REPORTS
 		frappe.set_user(self.user.name)
 		boot = frappe._dict(workspace_sidebar_item={SIDEBAR.lower(): {"items": []}})
 		add_partner_navigation(boot)
 		reports = {row.link_to: row for row in boot.workspace_sidebar_item[SIDEBAR.lower()]["items"]
 			if row.link_type == "Report"}
-		self.assertEqual(set(reports), set(CUSTOMER_REPORTS))
+		# Portal reports open to YRP Sales Partner only, never to this YRP Customer.
+		self.assertEqual(set(reports), set(CUSTOMER_REPORTS) - set(PORTAL_REPORTS))
 		for name, link in reports.items():
 			self.assertEqual(link.report["report_type"], "Script Report")
 			self.assertEqual(link.report["ref_doctype"], CUSTOMER_REPORTS[name])

@@ -161,6 +161,11 @@ are omitted. Prepared reports, custom report columns and background exports
 are unavailable to scoped roles because cached staff results can contain other
 Customers. No changes are made to the stored Report's prepared-report setting.
 
+`PORTAL_REPORTS` adds the Essdee partner portal reports (order, packing and
+invoice reports) for YRP Sales Partner only. They run their own `execute`, whose
+reads are permission-checked lists, so rows follow the same Customer/company
+scope; a Customer or Sales Partner filter outside it is refused.
+
 Implementation references: [Frappe permission hooks](https://docs.frappe.io/framework/user/en/python-api/hooks),
 [ERPNext General Ledger](https://docs.frappe.io/erpnext/general-ledger), and
 [Accounts Receivable](https://docs.frappe.io/erpnext/accounts-receivable-and-payable).
