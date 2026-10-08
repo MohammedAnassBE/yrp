@@ -31,6 +31,7 @@ PORTAL_REPORTS = {
 	"Itemwise Cancelled": "YRP Sales Order",
 	"Itemwise Received": "YRP Sales Order",
 	"Customerwise Received": "YRP Sales Order",
+	"Customerwise Cancelled": "YRP Sales Order",
 	"Order Dashboard": "YRP Sales Order",
 	"Datewise Item Packed": "YRP Delivery Note",
 	"Packed Item Detail": "YRP Delivery Note",
