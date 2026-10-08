@@ -23,6 +23,7 @@ def make_sales_invoice(delivery_note, items=None):
 	"""Insert a draft Sales Invoice for a submitted Delivery Note.
 
 	``items`` maps Delivery Note row names to quantities; by default every row's unbilled quantity is billed.
+	A return note is billed with a Credit Note: the same rows with negative quantities.
 	"""
 	frappe.has_permission("Sales Invoice", "create", throw=True)
 	frappe.get_doc(DELIVERY_NOTE, delivery_note).check_permission("read")
@@ -46,15 +47,17 @@ def get_sales_invoice(delivery_note, items=None):
 		"currency": note.currency,
 		"ignore_pricing_rule": 1,
 		"update_stock": 0,
+		"is_return": cint(note.is_return),
 		"yrp_delivery_note": note.name,
 		"shipping_address_name": note.shipping_address_name,
 		"transporter": note.transporter,
 	})
+	sign = get_sign(note)
 	for row in note.items:
 		if flt(requested.get(row.name), row.precision("qty")) > 0:
 			invoice.append("items", {
 				"item_code": row.item_code,
-				"qty": requested[row.name],
+				"qty": sign * requested[row.name],
 				"uom": row.uom,
 				"conversion_factor": row.conversion_factor,
 				"rate": row.rate,
@@ -65,6 +68,11 @@ def get_sales_invoice(delivery_note, items=None):
 		frappe.get_attr(handler)(invoice, note)
 	invoice.set_missing_values()
 	return invoice
+
+
+def get_sign(note):
+	"""Invoice quantities are negative on a return note's Credit Note."""
+	return -1 if cint(note.get("is_return")) else 1
 
 
 def preview_sales_invoice(delivery_note):
@@ -111,9 +119,10 @@ def get_requested_qty(note, items):
 
 def get_invoiced_qty(delivery_note, exclude=None, submitted_only=False):
 	"""Quantity per Delivery Note row on non-cancelled (or only submitted) Sales Invoices, read under lock
-	so a request that waited on the note lock sees invoices committed meanwhile."""
+	so a request that waited on the note lock sees invoices committed meanwhile. Credit Note rows count
+	by size: a return note's invoices all carry negative quantities."""
 	return dict(frappe.db.sql(
-		"""select sii.yrp_delivery_note_item, sum(sii.qty) from `tabSales Invoice Item` sii
+		"""select sii.yrp_delivery_note_item, sum(abs(sii.qty)) from `tabSales Invoice Item` sii
 		join `tabSales Invoice` si on si.name = sii.parent and sii.parenttype = 'Sales Invoice'
 		where si.yrp_delivery_note = %(note)s and si.docstatus in %(docstatuses)s and si.name != %(exclude)s
 		group by sii.yrp_delivery_note_item for update""",
@@ -131,8 +140,10 @@ def validate_sales_invoice(doc, method=None):
 			_("Rows reference a YRP Delivery Note, but the invoice has none."))
 		return
 	require(not cint(doc.update_stock), _("A Sales Invoice for a YRP Delivery Note cannot update stock."))
-	require(not cint(doc.is_return), _("A return cannot reference a YRP Delivery Note."))
 	note = lock_delivery_note(doc.yrp_delivery_note)
+	require(not cint(doc.is_return) or note.is_return, _("A return cannot reference a YRP Delivery Note."))
+	require(cint(doc.is_return) or not note.is_return,
+		_("Delivery Note {0} is a return; bill it with a Credit Note.").format(note.name))
 	require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(note.name))
 	require(note.customer == doc.customer, _("Delivery Note {0} belongs to another Customer.").format(note.name))
 	require(note.company == doc.company, _("Delivery Note {0} belongs to another Company.").format(note.name))
@@ -140,12 +151,12 @@ def validate_sales_invoice(doc, method=None):
 	requested = defaultdict(float)
 	for row in doc.items:
 		source = sources.get(row.yrp_delivery_note_item)
-		validate_invoice_row(row, source, note.name)
-		requested[source.name] += flt(row.qty)
+		validate_invoice_row(row, source, note.name, get_sign(note))
+		requested[source.name] += abs(flt(row.qty))
 	validate_billing_capacity(doc.name, note.name, sources, requested)
 
 
-def validate_invoice_row(row, source, delivery_note):
+def validate_invoice_row(row, source, delivery_note, sign=1):
 	label = _("Row {0}").format(row.idx)
 	require(source, _("{0}: must reference a row of Delivery Note {1}.").format(label, delivery_note))
 	require(row.item_code == source.item_code, _("{0}: Item must match its Delivery Note row.").format(label))
@@ -154,7 +165,10 @@ def validate_invoice_row(row, source, delivery_note):
 		_("{0}: Conversion Factor must match its Delivery Note row.").format(label))
 	require(flt(row.rate, row.precision("rate")) == flt(source.rate, row.precision("rate")),
 		_("{0}: Rate must match its Delivery Note row.").format(label))
-	require(flt(row.qty) > 0, _("{0}: Quantity must be greater than zero.").format(label))
+	if sign > 0:
+		require(flt(row.qty) > 0, _("{0}: Quantity must be greater than zero.").format(label))
+	else:
+		require(flt(row.qty) < 0, _("{0}: A Credit Note quantity must be negative.").format(label))
 
 
 def validate_billing_capacity(invoice, delivery_note, sources, requested):
@@ -172,8 +186,8 @@ def validate_billing_capacity(invoice, delivery_note, sources, requested):
 def lock_delivery_note(name):
 	"""Lock the Delivery Note header; its invoices, Packing Slips and deliveries serialize here."""
 	rows = frappe.db.sql(
-		"""select name, docstatus, customer, company, per_delivered, delivered_at, packing_status
-		from `tabYRP Delivery Note` where name = %s for update""", name, as_dict=True)
+		"""select name, docstatus, customer, company, per_delivered, delivered_at, packing_status, is_return,
+		skip_stock from `tabYRP Delivery Note` where name = %s for update""", name, as_dict=True)
 	require(rows, _("Delivery Note {0} does not exist.").format(name))
 	return rows[0]
 
@@ -191,6 +205,9 @@ def issue_delivery_note_stock(doc, method=None):
 	if not doc.get("yrp_delivery_note"):
 		return
 	note = frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note)
+	if note.skip_stock:
+		note.update_billing()
+		return
 	issues = get_stock_issues(doc, note)
 	lock_stock_buckets(issues)
 	# The ledger floor counts this note's reservation, so consume it before posting.
@@ -211,6 +228,9 @@ def reverse_delivery_note_stock(doc, method=None):
 	note = frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note, for_update=True)
 	require(not flt(note.per_delivered),
 		_("Delivery Note {0} has deliveries, so its invoices cannot be cancelled.").format(note.name))
+	if note.skip_stock:
+		note.update_billing()
+		return
 	for name in reversed((doc.yrp_stock_entries or "").split()):
 		entry = frappe.get_doc(STOCK_ENTRY, name)
 		entry.flags.ignore_permissions = True

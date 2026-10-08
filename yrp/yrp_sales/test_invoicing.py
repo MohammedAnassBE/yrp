@@ -302,3 +302,69 @@ class TestDeliveryNoteInvoicing(DeliveryNoteFixtures):
 		frappe.set_user(user)
 		frappe.get_doc("Sales Invoice", invoice.name).submit()
 		self.assertEqual(self.get_bin(), (4, 0))
+
+
+class TestStocklessNotes(DeliveryNoteFixtures):
+	"""Return notes bill a Credit Note and skip-stock notes bill an invoice, neither moving stock."""
+
+	def make_stockless_note(self, qty=4, **flags):
+		note = frappe.get_doc({"doctype": "YRP Delivery Note", "customer": self.customer, "company": self.company,
+			"selling_price_list": self.price_list, "currency": "USD", "set_warehouse": self.warehouse, **flags,
+			"items": [{"item_code": self.item, "uom": self.uom, "qty": qty, "rate": 25, **self.dimensions}]})
+		note.insert()
+		note.submit()
+		return note
+
+	def test_return_note_bills_a_credit_note_without_stock(self):
+		note = self.make_stockless_note(is_return=1)
+		self.assertEqual((note.skip_stock, self.get_bin(), self.get_reservation(note)), (1, (10, 0), None))
+		credit_note = self.invoice(note)
+		self.assertEqual((credit_note.is_return, credit_note.items[0].qty), (1, -4))
+		self.assertFalse(credit_note.yrp_stock_entries)
+		self.assertEqual(self.get_bin(), (10, 0))
+		self.assertEqual(self.get_billing(note), (100, "Invoiced", [4]))
+		with self.assertRaisesRegex(frappe.ValidationError, "Nothing is pending billing"):
+			make_sales_invoice(note.name)
+		credit_note.cancel()
+		self.assertEqual(self.get_billing(note), (0, "Submitted", [0]))
+
+	def test_return_note_needs_a_credit_note(self):
+		note = self.make_stockless_note(is_return=1)
+		invoice = make_sales_invoice(note.name)
+		invoice.is_return = 0
+		invoice.items[0].qty = 4
+		with self.assertRaisesRegex(frappe.ValidationError, "bill it with a Credit Note"):
+			invoice.insert()
+		ordinary = self.make_note(2)
+		credit_note = make_sales_invoice(ordinary.name)
+		credit_note.is_return = 1
+		credit_note.items[0].qty = -2
+		with self.assertRaisesRegex(frappe.ValidationError, "A return cannot reference"):
+			credit_note.insert()
+
+	def test_credit_note_quantity_must_be_negative_and_within_the_note(self):
+		note = self.make_stockless_note(is_return=1)
+		credit_note = make_sales_invoice(note.name)
+		credit_note.items[0].qty = 4
+		with self.assertRaisesRegex(frappe.ValidationError, "must be negative"):
+			credit_note.insert()
+		credit_note.items[0].qty = -5
+		with self.assertRaisesRegex(frappe.ValidationError, "would be invoiced"):
+			credit_note.insert()
+
+	def test_skip_stock_note_bills_without_reserving_or_issuing(self):
+		note = self.make_stockless_note(qty=20, skip_stock=1)
+		self.assertEqual((note.is_return, self.get_reservation(note)), (0, None))
+		invoice = self.invoice(note)
+		self.assertEqual((invoice.is_return, invoice.items[0].qty, invoice.yrp_stock_entries), (0, 20, None))
+		self.assertEqual((self.get_bin(), self.get_billing(note)), ((10, 0), (100, "Invoiced", [20])))
+
+	def test_skip_stock_note_takes_no_sales_order_rows(self):
+		order = frappe.get_doc({"doctype": "YRP Sales Order", "customer": self.customer, "company": self.company,
+			"selling_price_list": self.price_list, "currency": "USD", "set_warehouse": self.warehouse,
+			"items": [{"item_code": self.item, "uom": self.uom, "qty": 2, "rate": 25}]}).insert()
+		order.submit()
+		note = make_delivery_note(self.customer, [order.name])
+		note.is_return = 1
+		with self.assertRaisesRegex(frappe.ValidationError, "cannot dispatch Sales Order rows"):
+			note.insert()

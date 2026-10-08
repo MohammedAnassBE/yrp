@@ -47,6 +47,7 @@ class YRPDeliveryNote(Document):
 
 	def validate(self):
 		require(self.items, "A Delivery Note requires items.")
+		self.validate_stock_mode()
 		apply_dimension_defaults(self.items)
 		sources = self.get_source_rows()
 		for row in self.items:
@@ -60,6 +61,13 @@ class YRPDeliveryNote(Document):
 		self.total = sum(flt(row.amount) for row in self.items)
 		self.status = self.get_status()
 		self.set_shipping_address()
+
+	def validate_stock_mode(self):
+		"""A return never moves stock; a note that skips stock dispatches no Sales Order rows."""
+		if self.is_return:
+			self.skip_stock = 1
+		require(not self.skip_stock or not any(row.sales_order or row.so_detail for row in self.items),
+			_("A Delivery Note that skips stock cannot dispatch Sales Order rows."))
 
 	def before_update_after_submit(self):
 		self.set_shipping_address()
@@ -158,11 +166,12 @@ class YRPDeliveryNote(Document):
 		return "Submitted"
 
 	def on_update(self):
-		if self.docstatus == 0:
+		if self.docstatus == 0 and not self.skip_stock:
 			self.sync_reservations()
 
 	def on_submit(self):
-		self.validate_reservations()
+		if not self.skip_stock:
+			self.validate_reservations()
 		self.db_set("status", self.get_status(), update_modified=False)
 
 	def before_cancel(self):

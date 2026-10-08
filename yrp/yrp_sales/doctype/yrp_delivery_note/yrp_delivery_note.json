@@ -24,6 +24,8 @@
   "delivered_at",
   "delivery_remarks",
   "cancel_reason",
+  "is_return",
+  "skip_stock",
   "section_break_pricing",
   "selling_price_list",
   "currency",
@@ -318,13 +320,31 @@
    "label": "Packing Completed By",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The customer sends these rows back: billed with a Credit Note, no stock moves.",
+   "fieldname": "is_return",
+   "fieldtype": "Check",
+   "label": "Is Return",
+   "no_copy": 1,
+   "set_only_once": 1
+  },
+  {
+   "default": "0",
+   "description": "No stock is reserved or issued for this note. Set for every return.",
+   "fieldname": "skip_stock",
+   "fieldtype": "Check",
+   "label": "Skip Stock",
+   "no_copy": 1,
+   "set_only_once": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-08 02:00:05.129590",
+ "modified": "2026-10-09 02:38:40.163689",
  "modified_by": "Administrator",
  "module": "YRP Sales",
  "name": "YRP Delivery Note",
@@ -353,6 +373,16 @@
    "share": 1,
    "submit": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "permlevel": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "AI Bot",
+   "select": 1
   },
   {
    "amend": 1,
