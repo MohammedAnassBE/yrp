@@ -14,7 +14,12 @@ from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldna
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
 from yrp.yrp_retail.pricing import check_rate, get_free_items
-from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import get_conversion_factor, get_price_list_rate
+from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import (
+	get_allocated_qty,
+	get_conversion_factor,
+	get_open_stock_qty,
+	get_price_list_rate,
+)
 from yrp.yrp_sales.invoicing import (
 	get_delivery_note_rows,
 	get_invoice_status,
@@ -128,9 +133,10 @@ class YRPDeliveryNote(Document):
 		for detail, qty in requested.items():
 			source = sources[detail]
 			allocated = flt(qty + others.get(detail, 0), precision)
-			require(allocated <= flt(source.stock_qty, precision), _(
-				"Item {0} of Sales Order {1}: {2} would be allocated to Delivery Notes, but only {3} was ordered."
-			).format(source.item_code, source.parent, allocated, flt(source.stock_qty, precision)))
+			open_qty = flt(get_open_stock_qty(source), precision)
+			require(allocated <= open_qty, _(
+				"Item {0} of Sales Order {1}: {2} would be allocated to Delivery Notes, but only {3} was ordered and not cancelled."
+			).format(source.item_code, source.parent, allocated, open_qty))
 
 	def validate_rates(self):
 		free = get_free_items(row.item_code for row in self.items)
@@ -435,28 +441,15 @@ def get_sales_order_rows(names):
 		return []
 	return frappe.db.sql(
 		"""select name, parent, item_code, item_name, uom, conversion_factor, stock_qty, stock_uom,
-			rate, warehouse
+			cancelled_qty, rate, warehouse
 		from `tabYRP Sales Order Item` where name in %(names)s and parenttype = 'YRP Sales Order'
 		order by name for update""",
 		{"names": names}, as_dict=True,
 	)
 
 
-def get_allocated_qty(so_details, exclude=None):
-	"""Stock quantity on non-cancelled Delivery Notes per Sales Order row, read under lock."""
-	if not so_details:
-		return {}
-	return dict(frappe.db.sql(
-		"""select dni.so_detail, sum(dni.stock_qty) from `tabYRP Delivery Note Item` dni
-		join `tabYRP Delivery Note` dn on dn.name = dni.parent
-		where dni.so_detail in %(details)s and dn.docstatus < 2 and dn.name != %(exclude)s
-		group by dni.so_detail for update""",
-		{"details": list(so_details), "exclude": exclude or ""},
-	))
-
-
 def get_pending_rows(customer=None, sales_orders=None, item_codes=None):
-	"""Submitted Sales Order rows with stock quantity not yet on a non-cancelled Delivery Note."""
+	"""Submitted Sales Order rows with stock quantity neither cancelled nor on a non-cancelled Delivery Note."""
 	conditions = ["so.docstatus = 1"]
 	values = {}
 	for column, key, value in (("so.customer", "customer", customer), ("so.name", "orders", sales_orders),
@@ -467,7 +460,7 @@ def get_pending_rows(customer=None, sales_orders=None, item_codes=None):
 		values[key] = value if key == "customer" else tuple(value) or ("",)
 	rows = frappe.db.sql(
 		f"""select so.name as sales_order, soi.name as so_detail, soi.idx, soi.item_code, soi.uom,
-			soi.conversion_factor, soi.qty, soi.stock_qty,
+			soi.conversion_factor, soi.qty, soi.stock_qty, soi.cancelled_qty,
 			(select ifnull(sum(dni.stock_qty), 0) from `tabYRP Delivery Note Item` dni
 				join `tabYRP Delivery Note` dn on dn.name = dni.parent
 				where dni.so_detail = soi.name and dn.docstatus < 2) as allocated
@@ -479,7 +472,7 @@ def get_pending_rows(customer=None, sales_orders=None, item_codes=None):
 	precision = frappe.get_precision("YRP Sales Order Item", "stock_qty")
 	pending_rows = []
 	for row in rows:
-		row.pending = flt(flt(row.stock_qty) - flt(row.allocated), precision)
+		row.pending = flt(get_open_stock_qty(row) - flt(row.allocated), precision)
 		if row.pending > 0:
 			row.pending_qty = row.pending / flt(row.conversion_factor)
 			pending_rows.append(row)
@@ -600,7 +593,7 @@ def append_pending_rows(note, orders):
 	allocated = get_allocated_qty([row.name for order in orders for row in order.items])
 	for order in orders:
 		for row in order.items:
-			append_pending_row(note, order, row, flt(row.stock_qty) - flt(allocated.get(row.name)))
+			append_pending_row(note, order, row, get_open_stock_qty(row) - flt(allocated.get(row.name)))
 
 
 def append_selected_rows(note, orders, rows):
@@ -620,7 +613,7 @@ def append_selected_rows(note, orders, rows):
 		order, source = sources[values["so_detail"]]
 		qty = flt(values.get("qty"))
 		requested[source.name] += qty * flt(source.conversion_factor)
-		pending = flt(source.stock_qty) - flt(allocated.get(source.name))
+		pending = get_open_stock_qty(source) - flt(allocated.get(source.name))
 		precision = source.precision("stock_qty")
 		require(qty > 0, _("Row {0} of Sales Order {1}: Quantity must be greater than zero.").format(
 			source.idx, order.name))

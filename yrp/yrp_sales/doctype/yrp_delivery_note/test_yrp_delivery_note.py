@@ -255,6 +255,44 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		note.save()
 		self.assertEqual(get_pending_rows(sales_orders=[order.name]), [])
 
+	def test_cancelled_quantity_is_neither_pending_nor_allocatable(self):
+		order = self.make_order(qty=6)
+		note = self.make_note(order)
+		note.items[0].qty = 4
+		note.insert()
+		with self.assertRaisesRegex(frappe.ValidationError, "exceeds pending 2"):
+			order.cancel_qty({order.items[0].name: 3})
+		order.cancel_qty({order.items[0].name: 1.5})
+		self.assertEqual(frappe.db.get_value("YRP Sales Order Item", order.items[0].name, "cancelled_qty"), 1.5)
+		self.assertEqual([row.pending for row in get_pending_rows(sales_orders=[order.name])], [0.5])
+		note.items[0].qty = 5
+		with self.assertRaisesRegex(frappe.ValidationError, "only 4.5 was ordered and not cancelled"):
+			note.save()
+		order.cancel_qty({order.items[0].name: 0.5})
+		self.assertEqual(get_pending_rows(sales_orders=[order.name]), [])
+		with self.assertRaisesRegex(frappe.ValidationError, "Nothing is pending"):
+			get_delivery_note(self.customer, [order.name])
+
+	def test_fully_cancelled_order_is_closed(self):
+		order = self.make_order(qty=6)
+		modified = order.modified
+		order.cancel_qty({order.items[0].name: 6})
+		order.reload()
+		self.assertEqual((order.status, order.per_delivered), ("Closed", 100))
+		self.assertNotEqual(order.modified, modified)
+
+	def test_cancel_needs_a_submitted_order_and_a_positive_quantity(self):
+		order = self.make_order(qty=6)
+		with self.assertRaisesRegex(frappe.ValidationError, "greater than zero"):
+			order.cancel_qty({order.items[0].name: 0})
+		with self.assertRaisesRegex(frappe.ValidationError, "is not on Sales Order"):
+			order.cancel_qty({"missing-row": 1})
+		draft = frappe.get_doc({"doctype": "YRP Sales Order", "customer": self.customer, "company": self.company,
+			"set_warehouse": self.warehouse, "items": [{"item_code": self.item, "uom": self.uom, "qty": 2,
+			"rate": 25}]}).insert()
+		with self.assertRaisesRegex(frappe.ValidationError, "Only submitted Sales Orders"):
+			draft.cancel_qty({draft.items[0].name: 1})
+
 	def test_create_submits_two_orders_with_reservations(self):
 		first, second = self.make_order(qty=4), self.make_order(qty=3)
 		note = create_delivery_note(self.customer, [first.name, second.name],

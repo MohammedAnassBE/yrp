@@ -51,7 +51,7 @@ class YRPSalesOrder(Document):
 		if self.docstatus == 2:
 			return "Cancelled"
 		if flt(self.per_delivered) >= 100:
-			return "Delivered"
+			return "Closed" if any(flt(row.get("cancelled_qty")) for row in self.items) else "Delivered"
 		if flt(self.per_delivered) > 0:
 			return "Partially Delivered"
 		return "To Deliver"
@@ -83,8 +83,10 @@ class YRPSalesOrder(Document):
 	def on_trash(self):
 		sales_sources.refresh_progress(self, "on_trash")
 
-	def update_delivered_qty(self):
-		"""Recompute delivery caches from the delivered quantity of submitted YRP Delivery Note rows."""
+	def update_delivered_qty(self, update_modified=False):
+		"""Recompute delivery caches from the delivered quantity of submitted YRP Delivery Note rows.
+
+		Cancelled quantity is no longer due: an order whose rest is cancelled is fully delivered."""
 		delivered = dict(frappe.db.sql(
 			"""select dni.so_detail, sum(dni.delivered_qty) from `tabYRP Delivery Note Item` dni
 			join `tabYRP Delivery Note` dn on dn.name = dni.parent
@@ -95,10 +97,52 @@ class YRPSalesOrder(Document):
 		for row in self.items:
 			row.delivered_qty = flt(delivered.get(row.name))
 			row.db_set("delivered_qty", row.delivered_qty, update_modified=False)
-			ordered += flt(row.qty)
-			done += min(row.delivered_qty, flt(row.qty))
-		self.per_delivered = done / ordered * 100 if ordered else 0
-		self.db_set({"per_delivered": self.per_delivered, "status": self.get_status()}, update_modified=False)
+			due = flt(row.qty) - flt(row.cancelled_qty)
+			ordered += due
+			done += min(row.delivered_qty, due)
+		self.per_delivered = done / ordered * 100 if ordered > 0 else (100 if self.items else 0)
+		self.db_set({"per_delivered": self.per_delivered, "status": self.get_status()}, update_modified=update_modified)
+
+	def cancel_qty(self, quantities):
+		"""Cancel open quantity per row, `{so_detail: qty}` in the row UOM; callers check permissions.
+
+		Only quantity on no non-cancelled Delivery Note can be cancelled. Rows are read under lock."""
+		require(self.docstatus == 1, "Only submitted Sales Orders can cancel quantities.")
+		frappe.db.sql("select name from `tabYRP Sales Order` where name = %s for update", self.name)
+		self.load_from_db()
+		rows = {row.name: row for row in self.items}
+		allocated = get_allocated_qty(list(quantities))
+		for name, qty in quantities.items():
+			require(name in rows, _("Sales Order Item {0} is not on Sales Order {1}.").format(name, self.name))
+			row = rows[name]
+			qty = finite_number(qty, "Cancelled quantity")
+			require(qty > 0, _("Row {0} of Sales Order {1}: Quantity must be greater than zero.").format(row.idx, self.name))
+			pending = get_open_stock_qty(row) - flt(allocated.get(name))
+			precision = row.precision("stock_qty")
+			require(flt(qty * flt(row.conversion_factor), precision) <= flt(pending, precision),
+				_("Row {0} of Sales Order {1}: {2} exceeds pending {3}.").format(
+					row.idx, self.name, qty, flt(pending / flt(row.conversion_factor), precision)))
+			row.cancelled_qty = flt(row.cancelled_qty) + qty
+			row.db_set("cancelled_qty", row.cancelled_qty, update_modified=False)
+		self.update_delivered_qty(update_modified=True)
+
+
+def get_open_stock_qty(row):
+	"""Stock quantity of an order row that is not cancelled."""
+	return flt(row.stock_qty) - flt(row.get("cancelled_qty")) * flt(row.conversion_factor)
+
+
+def get_allocated_qty(so_details, exclude=None):
+	"""Stock quantity on non-cancelled Delivery Notes per Sales Order row, read under lock."""
+	if not so_details:
+		return {}
+	return dict(frappe.db.sql(
+		"""select dni.so_detail, sum(dni.stock_qty) from `tabYRP Delivery Note Item` dni
+		join `tabYRP Delivery Note` dn on dn.name = dni.parent
+		where dni.so_detail in %(details)s and dn.docstatus < 2 and dn.name != %(exclude)s
+		group by dni.so_detail for update""",
+		{"details": list(so_details), "exclude": exclude or ""},
+	))
 
 
 def get_conversion_factor(item, uom):
