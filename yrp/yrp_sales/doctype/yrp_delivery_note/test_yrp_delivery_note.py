@@ -3,6 +3,7 @@
 
 import secrets
 import unittest
+from unittest.mock import patch
 
 import frappe
 from frappe.utils import nowdate
@@ -280,6 +281,25 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		order.reload()
 		self.assertEqual((order.status, order.per_delivered), ("Closed", 100))
 		self.assertNotEqual(order.modified, modified)
+
+	def test_cancelled_quantity_is_written_only_by_cancel_qty(self):
+		order = frappe.get_doc({"doctype": "YRP Sales Order", "customer": self.customer, "company": self.company,
+			"set_warehouse": self.warehouse, "items": [{"item_code": self.item, "uom": self.uom, "qty": 6,
+			"rate": 25, "cancelled_qty": -6}]}).insert()
+		order.submit()
+		self.assertEqual(frappe.db.get_value("YRP Sales Order Item", order.items[0].name, "cancelled_qty"), 0)
+		self.assertEqual([row.pending for row in get_pending_rows(sales_orders=[order.name])], [6])
+		order.items[0].cancelled_qty = 6
+		with self.assertRaises(frappe.UpdateAfterSubmitError):
+			order.save()
+
+	def test_cancel_reads_the_rows_it_changes_under_lock(self):
+		order = self.make_order(qty=6)
+		with patch.object(frappe.db, "sql", wraps=frappe.db.sql) as sql:
+			order.cancel_qty({order.items[0].name: 1})
+		locked = [str(call.args[0]) for call in sql.call_args_list if "FOR UPDATE" in str(call.args[0]).upper()]
+		self.assertTrue(any("tabYRP Sales Order Item" in query for query in locked))
+		self.assertEqual(order.items[0].cancelled_qty, 1)
 
 	def test_cancel_needs_a_submitted_order_and_a_positive_quantity(self):
 		order = self.make_order(qty=6)

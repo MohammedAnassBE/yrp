@@ -39,6 +39,7 @@ class YRPSalesOrder(Document):
 			row.rate = get_price_list_rate(self.selling_price_list, row.item_code, row.uom)
 		row.amount = qty * flt(row.rate)
 		row.warehouse = row.warehouse or self.set_warehouse
+		row.cancelled_qty = 0  # Saves run on drafts only; cancel_qty alone cancels, after submit.
 
 	def validate_rates(self):
 		free = get_free_items(row.item_code for row in self.items)
@@ -107,9 +108,10 @@ class YRPSalesOrder(Document):
 		"""Cancel open quantity per row, `{so_detail: qty}` in the row UOM; callers check permissions.
 
 		Only quantity on no non-cancelled Delivery Note can be cancelled. Rows are read under lock."""
-		require(self.docstatus == 1, "Only submitted Sales Orders can cancel quantities.")
-		frappe.db.sql("select name from `tabYRP Sales Order` where name = %s for update", self.name)
+		self.flags.for_update = True
 		self.load_from_db()
+		self.flags.for_update = False
+		require(self.docstatus == 1, "Only submitted Sales Orders can cancel quantities.")
 		rows = {row.name: row for row in self.items}
 		allocated = get_allocated_qty(list(quantities))
 		for name, qty in quantities.items():
