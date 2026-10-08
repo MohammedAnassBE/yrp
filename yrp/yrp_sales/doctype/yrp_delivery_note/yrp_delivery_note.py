@@ -33,7 +33,8 @@ INACTIVE_RESERVATION_STATUSES = ["Delivered", "Closed", "Cancelled"]
 PACKING_INITIATED = "Packing Initiated"
 PACKING_COMPLETED = "Packing Completed"
 # Header values a caller may set when creating a note; custom fields are also accepted.
-HEADER_FIELDS = ("posting_date", "posting_time", "shipping_address_name", "transporter", "remarks", "amended_from")
+HEADER_FIELDS = ("naming_series", "posting_date", "posting_time", "shipping_address_name", "transporter", "remarks",
+	"amended_from")
 
 
 class YRPDeliveryNote(Document):

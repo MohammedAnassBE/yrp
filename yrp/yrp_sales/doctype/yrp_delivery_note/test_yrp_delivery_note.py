@@ -316,8 +316,9 @@ class TestYRPDeliveryNote(unittest.TestCase):
 	def test_create_submits_two_orders_with_reservations(self):
 		first, second = self.make_order(qty=4), self.make_order(qty=3)
 		note = create_delivery_note(self.customer, [first.name, second.name],
-			header={"remarks": "Fictional remarks", "status": "Delivered"})
+			header={"remarks": "Fictional remarks", "status": "Delivered", "naming_series": "ZZ-DN-"})
 		self.assertEqual((note.docstatus, note.status, note.remarks), (1, "Submitted", "Fictional remarks"))
+		self.assertTrue(note.name.startswith("ZZ-DN-"))
 		self.assertEqual({row.lot for row in note.items}, {self.dimensions["lot"]})
 		self.assertEqual(self.get_reserved_qty(), 7)
 		self.assertEqual(len(self.get_reservations(note, "Reserved")), 2)
