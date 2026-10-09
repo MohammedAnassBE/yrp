@@ -11,8 +11,10 @@ fixtures = [
 		"YRP Sales Partner", "YRP Sales Person",
 	]]]},
 	{"dt": "Custom Field", "filters": [["module", "in", ["YRP", "YRP Partner", "YRP Retail"]]]},
-	# Permissions yrp customizes, selected by DocType so UI edits stay exported.
-	{"dt": "Custom DocPerm", "filters": [["parent", "in", [
+	# Permissions yrp customizes: its DocTypes x the roles it manages.
+	# Rows owned by other apps (e.g. frappe_tools "AI Bot") stay out.
+	{"dt": "Custom DocPerm", "filters": [
+		["parent", "in", [
 		"Account",
 		"Address",
 		"Blanket Order",
@@ -48,7 +50,38 @@ fixtures = [
 		"YRP Retail Order Summary",
 		"YRP Retailer",
 		"YRP Visit",
-	]]]},
+		]],
+		["role", "in", [
+		"Accounts Manager",
+		"Accounts User",
+		"All",
+		"Auditor",
+		"Desk User",
+		"Employee",
+		"HR Manager",
+		"HR User",
+		"Item Manager",
+		"Maintenance Manager",
+		"Maintenance User",
+		"Manufacturing User",
+		"Projects User",
+		"Purchase Manager",
+		"Purchase Master Manager",
+		"Purchase User",
+		"Sales Manager",
+		"Sales Master Manager",
+		"Sales User",
+		"Stock Manager",
+		"Stock User",
+		"System Manager",
+		"YRP Customer",
+		"YRP Partner",
+		"YRP Partner Manager",
+		"YRP Retail User",
+		"YRP Sales Partner",
+		"YRP Sales Person",
+		]],
+	]},
 	{"dt": "Custom Role", "filters": [["name", "in", [
 		"7efd7215a2", "YRP-Customer-Report-YRP Packing and Delivery", "YRP-Customer-Report-YRP Retail Demand", "YRP-Customer-Report-YRP Retail Summary Allocation",
 		"YRP-Customer-Report-YRP Sales Order Fulfilment", "a07c31b3ba", "e3d4c742f2",
