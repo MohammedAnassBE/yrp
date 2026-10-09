@@ -33,6 +33,7 @@ PORTAL_REPORTS = {
 	"Customerwise Received": "YRP Sales Order",
 	"Customerwise Cancelled": "YRP Sales Order",
 	"Order Dashboard": "YRP Sales Order",
+	"Order Categorisation": "YRP Sales Order",
 	"Datewise Item Packed": "YRP Delivery Note",
 	"Packed Item Detail": "YRP Delivery Note",
 	"Party-wise Total Sales": "Sales Invoice",
