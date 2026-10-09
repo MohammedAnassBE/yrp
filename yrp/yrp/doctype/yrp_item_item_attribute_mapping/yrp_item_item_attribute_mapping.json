@@ -19,7 +19,8 @@
    "fieldname": "attribute_name",
    "fieldtype": "Link",
    "label": "Attribute Name",
-   "options": "Item Attribute"
+   "options": "Item Attribute",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,

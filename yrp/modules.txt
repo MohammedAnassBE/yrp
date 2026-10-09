@@ -1,2 +1,5 @@
 YRP
 YRP Stock
+YRP Partner
+YRP Retail
+YRP Sales

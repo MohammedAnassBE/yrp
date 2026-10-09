@@ -1,0 +1,37 @@
+# Attribute mapping values and ownership
+
+Each mapping selects values from one native ERPNext **Item Attribute**. The
+`attribute_value` rows store Links to **YRP Item Attribute Value**, a linkable
+projection of ERPNext's canonical values. They never link to the internal
+`Item Attribute Value` child-row name. Desk filters the Link by the mapping's
+Item Attribute. Server validation enforces the same attribute, unique actual
+values, and native numeric range/increment rules. Business readers use
+`get_mapping_document` or `get_mapping_values` to obtain value text such as
+`Blue`. An empty mapping is valid while its owner is being configured.
+
+Each **YRP Item Master Template** keeps its own mapping documents. Saving a
+template copies a selected mapping and its values in the same transaction. New
+or replaced mapping links are copied, private saved links remain stable, and
+previously shared links are separated on the owner's next save. Unsaved forms
+hide mapping links until saving creates the private copies. An Item created
+from a template clones the template's mappings on insert.
+
+Cleanup runs after an owner save or deletion, once its child rows reflect the
+change. Only removed/replaced mappings and source mappings actually consumed by
+that save are considered. If a consumed standalone mapping has no remaining
+references, its private copy replaces it and the original is removed. Unrelated
+standalone mappings and drafts are never swept.
+
+Saved references in `YRP Item Item Attribute`, native `Item Variant Attribute`,
+and `YRP IPD Item Attribute` preserve mappings needed by other catalog or
+manufacturing documents. Native Frappe deletion checks also protect other Link
+and Dynamic Link references; cleanup never uses forced deletion. Owner writes,
+copies, and cleanup roll back together. Mapping IDs are locked in sorted order;
+this does not replace concurrency control in independent Item/IPD integrations.
+
+The idempotent post-model-sync patch
+`yrp.patches.separate_template_product_attribute_mappings` repairs existing
+shared Template links through normal document saves under row locks.
+It preserves selected values and makes no further changes after separation.
+It neither purges standalone mappings nor changes the separate
+`YRP Item Dependent Attribute Mapping` lifecycle.

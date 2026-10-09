@@ -1,11 +1,11 @@
-"""Item Master Template — reusable template for creating Items with pre-filled attributes.
+"""Item Master Template — reusable preset that prefills a new Item once.
 
-Shares the same attribute/mapping/dependent-attribute structure as Item,
-so users can create multiple Items from the same template without
-re-configuring attributes each time.
+Shares the same attribute/mapping/dependent-attribute structure as Item. Once
+any Item links the template it is locked, so later edits never reach Items.
 """
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 from yrp.attribute_links import value as _attribute_value
@@ -15,12 +15,33 @@ from yrp.yrp.doctype.yrp_item_dependent_attribute_mapping.yrp_item_dependent_att
 	get_dependent_attribute_details,
 )
 
+PREFILL_FIELDS = {
+	"stock_uom": "default_unit_of_measure",
+	"secondary_unit_of_measure": "secondary_unit_of_measure",
+	"primary_attribute": "primary_attribute",
+	"dependent_attribute": "dependent_attribute",
+	"dependent_attribute_mapping": "dependent_attribute_mapping",
+	"yrp_item_type": "item_type",
+}
+PREFILL_TABLES = {
+	"additional_parameters": "additional_parameters",
+	"yrp_categories": "categories",
+	"taxes": "taxes",
+	"item_defaults": "item_defaults",
+}
+
 
 class YRPItemMasterTemplate(Document):
+	def _save(self, *args, **kwargs):
+		from yrp.yrp_retail.pricing import lock_pricing_policy
+		lock_pricing_policy()
+		return super()._save(*args, **kwargs)
+
 	def onload(self):
 		"""Load attribute list and dependent attribute details into __onload."""
 		self._load_attribute_list()
 		self._load_dependent_attribute()
+		self.set_onload("has_linked_items", self.has_linked_items)
 
 	def _load_attribute_list(self):
 		"""Load each attribute's mapping values into __onload.attr_list."""
@@ -35,15 +56,13 @@ class YRPItemMasterTemplate(Document):
 				mapping_doc = get_mapping_document(attribute.mapping)
 				mapped_values = mapping_doc.values
 
-			attribute_list.append(
-				{
-					"name": attribute.name,
-					"attr_name": attribute.attribute,
-					"attr_values_link": attribute.mapping,
-					"attr_values": mapped_values,
-					"doctype": "YRP Item Item Attribute Mapping",
-				}
-			)
+			attribute_list.append({
+				"name": attribute.name,
+				"attr_name": attribute.attribute,
+				"attr_values_link": attribute.mapping,
+				"attr_values": mapped_values,
+				"doctype": "YRP Item Item Attribute Mapping",
+			})
 
 		self.set_onload("attr_list", attribute_list)
 
@@ -54,12 +73,51 @@ class YRPItemMasterTemplate(Document):
 			dependent_attribute = get_dependent_attribute_details(self.dependent_attribute_mapping)
 		self.set_onload("dependent_attribute", dependent_attribute)
 
+	@property
+	def has_linked_items(self):
+		return bool(frappe.db.exists("Item", {"yrp_item_master_template": self.name}))
+
+	def prefill_item(self, item):
+		"""Copy this template's values onto a new Item where the template has them."""
+		from yrp.yrp_retail.item_template import rows_of
+
+		for item_field, template_field in PREFILL_FIELDS.items():
+			if self.get(template_field):
+				item.set(item_field, self.get(template_field))
+		item.yrp_is_free_item = self.is_free_item
+		for item_table, template_table in PREFILL_TABLES.items():
+			if self.get(template_table):
+				item.set(item_table, rows_of(self.get(template_table)))
+		if self.uom_conversion_details:
+			item.set("uoms", [{"uom": row.uom, "conversion_factor": row.conversion_factor}
+				for row in self.uom_conversion_details])
+		if self.attributes:
+			item.has_variants = 1
+			item.set("attributes", [
+				{"attribute": row.attribute, "mapping": row.mapping} for row in self.attributes
+			])
+
 	def validate(self):
+		from yrp.yrp_retail.item_template import validate_template
+		if not self.is_new() and self.has_linked_items:
+			frappe.throw(_("YRP Item Master Template {0} is linked to Items and can no longer be edited.")
+				.format(self.name))
+		validate_template(self)
 		self._validate_default_uom()
 		self._validate_primary_attribute()
 		self._duplicate_mappings_on_create()
 		self._ensure_attribute_mappings_exist()
 		self._validate_dependent_attribute()
+
+	def on_update(self):
+		from yrp.yrp.doctype.yrp_item_item_attribute_mapping.ownership import cleanup_owner_mappings
+
+		cleanup_owner_mappings(self)
+
+	def after_delete(self):
+		from yrp.yrp.doctype.yrp_item_item_attribute_mapping.ownership import cleanup_owner_mappings
+
+		cleanup_owner_mappings(self, deleted=True)
 
 	def _validate_default_uom(self):
 		"""Ensure default UOM is not a secondary-only UOM."""
@@ -76,21 +134,15 @@ class YRPItemMasterTemplate(Document):
 			frappe.throw("Default Attribute must be in Attribute List")
 
 	def _duplicate_mappings_on_create(self):
-		"""On new template creation, duplicate shared mappings so each template has its own copy."""
+		"""Retain the independent lifecycle of the dependent-attribute mapping.
+
+		Attribute mappings are cloned by ensure_owned_mappings instead.
+		"""
 		if not self.get("__islocal"):
 			return
 
-		for attribute in self.get("attributes"):
-			if attribute.mapping:
-				original = get_mapping_document(attribute.mapping)
-				copy = frappe.copy_doc(original)
-				copy.save()
-				attribute.mapping = copy.name
-
 		if self.dependent_attribute and self.dependent_attribute_mapping:
-			original = frappe.get_doc(
-				"YRP Item Dependent Attribute Mapping", self.dependent_attribute_mapping
-			)
+			original = frappe.get_doc("YRP Item Dependent Attribute Mapping", self.dependent_attribute_mapping)
 			copy = frappe.copy_doc(original)
 			copy.save()
 			self.dependent_attribute_mapping = copy.name
@@ -98,18 +150,10 @@ class YRPItemMasterTemplate(Document):
 			self.dependent_attribute_mapping = None
 
 	def _ensure_attribute_mappings_exist(self):
-		"""Create empty mapping docs for attributes that don't have one yet."""
-		for attribute in self.get("attributes"):
-			# Guard with falsiness, not `is None`: the /web SPA's addChildRow()
-			# initialises new attribute rows with mapping="" (empty string, not
-			# None), which `is None` lets through — the empty mapping then reaches
-			# validate()/get_doc("YRP Item Item Attribute Mapping", "") and raises
-			# DoesNotExistError. `not attribute.mapping` auto-creates for "" too.
-			if not attribute.mapping:
-				mapping = frappe.new_doc("YRP Item Item Attribute Mapping")
-				mapping.attribute_name = attribute.attribute
-				mapping.save()
-				attribute.mapping = mapping.name
+		"""Allocate missing maps and separate snapshots from every other owner."""
+		from yrp.yrp.doctype.yrp_item_item_attribute_mapping.ownership import ensure_owned_mappings
+
+		ensure_owned_mappings(self)
 
 	def _validate_dependent_attribute(self):
 		"""Validate dependent attribute setup."""
@@ -144,49 +188,32 @@ class YRPItemMasterTemplate(Document):
 			)
 
 
-@frappe.whitelist()
-def create_item_from_template(template_name, item_name, item_group):
-	"""Create a new Item from a template, copying all attributes and mappings."""
-	template = frappe.get_doc("YRP Item Master Template", template_name)
+def validate_mapping_unlocked(mapping):
+	"""A linked template's attribute and dependent mappings are locked with it."""
+	if mapping.is_new():
+		return
+	if mapping.doctype == "YRP Item Dependent Attribute Mapping":
+		templates = frappe.get_all("YRP Item Master Template",
+			filters={"dependent_attribute_mapping": mapping.name}, pluck="name")
+	else:
+		templates = frappe.get_all("YRP Item Item Attribute",
+			filters={"parenttype": "YRP Item Master Template", "mapping": mapping.name}, pluck="parent")
+	for name in templates:
+		if frappe.db.exists("Item", {"yrp_item_master_template": name}):
+			frappe.throw(_("YRP Item Master Template {0} is linked to Items, so its mapping {1} can no longer be edited.")
+				.format(name, mapping.name))
 
+
+@frappe.whitelist(methods=["POST"])
+def create_item_from_template(template_name, item_name, item_group, gst_hsn_code=None):
+	"""Create an Item linked to the template; Item before_validate applies the prefill."""
 	item = frappe.new_doc("Item")
+	item.yrp_item_master_template = template_name
 	item.item_code = item_name
 	item.item_name = item_name
 	item.item_group = item_group
-	item.stock_uom = template.default_unit_of_measure
-	item.secondary_unit_of_measure = template.secondary_unit_of_measure
-	item.primary_attribute = template.primary_attribute
-	item.dependent_attribute = template.dependent_attribute
-	item.dependent_attribute_mapping = template.dependent_attribute_mapping
-	item.has_variants = bool(template.attributes)
-
-	for row in template.uom_conversion_details:
-		item.append(
-			"uoms",
-			{
-				"uom": row.uom,
-				"conversion_factor": row.conversion_factor,
-			},
-		)
-
-	for row in template.attributes:
-		item.append(
-			"attributes",
-			{
-				"attribute": row.attribute,
-				"mapping": row.mapping,
-			},
-		)
-
-	for row in template.additional_parameters:
-		item.append(
-			"additional_parameters",
-			{
-				"additional_parameter_key": row.additional_parameter_key,
-				"additional_parameter_value": row.additional_parameter_value,
-			},
-		)
-
+	if item.meta.has_field("gst_hsn_code"):
+		item.gst_hsn_code = gst_hsn_code
 	item.insert()
 	return item.name
 

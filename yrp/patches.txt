@@ -26,3 +26,13 @@ yrp.patches.link_item_attribute_mapping_values
 
 yrp.patches.link_remaining_attribute_values
 yrp.patches.seed_role_settings
+
+yrp.patches.backfill_retailer_sales_partner
+yrp.patches.separate_template_product_attribute_mappings
+yrp.patches.refresh_delivery_progress_default_uom
+yrp.patches.remove_partner_provisioning
+yrp.patches.rename_partner_workspace
+yrp.patches.remove_yrp_product
+yrp.patches.add_classification_variant_fields
+yrp.patches.drop_variant_master_template_links
+yrp.patches.remove_native_sales_partner_permissions

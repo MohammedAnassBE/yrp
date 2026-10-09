@@ -7,7 +7,12 @@ from yrp.attribute_links import value as _attribute_value
 
 
 class YRPItemDependentAttributeMapping(Document):
-	pass
+	def validate(self):
+		from yrp.yrp.doctype.yrp_item_master_template.yrp_item_master_template import (
+			validate_mapping_unlocked,
+		)
+
+		validate_mapping_unlocked(self)
 	# def before_save(self):
 	# 	x = 0
 	# 	for items in self.details:

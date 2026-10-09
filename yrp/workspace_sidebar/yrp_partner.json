@@ -1,0 +1,32 @@
+{
+ "doctype": "Workspace Sidebar",
+ "name": "YRP Partner",
+ "title": "YRP Partner",
+ "app": "yrp",
+ "module": "YRP Partner",
+ "header_icon": "users",
+ "standard": 1,
+ "items": [
+  {
+   "type": "Link",
+   "label": "Home",
+   "link_type": "Workspace",
+   "link_to": "YRP Partner Management",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Partner Type",
+   "link_type": "DocType",
+   "link_to": "YRP Partner Type",
+   "child": 0
+  },
+  {
+   "type": "Link",
+   "label": "YRP Partner",
+   "link_type": "DocType",
+   "link_to": "YRP Partner",
+   "child": 0
+  }
+ ]
+}

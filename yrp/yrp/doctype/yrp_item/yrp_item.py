@@ -453,9 +453,13 @@ def update_yrp_variants(variants, template, publish_progress=True):
 
 def _create_dependent_attribute_mapping(doc, attr_list):
 	mapping = frappe.new_doc("YRP Item Dependent Attribute Mapping")
-	mapping.item = doc.name
+	if doc.doctype == "Item":
+		mapping.item = doc.name
+		uom = doc.stock_uom
+	else:
+		uom = doc.default_unit_of_measure
 	mapping.dependent_attribute = doc.dependent_attribute
-	mapping.set("details", [{"attribute_value": value, "uom": doc.stock_uom} for value in attr_list])
+	mapping.set("details", [{"attribute_value": value, "uom": uom} for value in attr_list])
 	mapping.set(
 		"mapping",
 		[
@@ -654,11 +658,13 @@ def _copy_template_fields(template, variant):
 		"is_zero_rated",
 		"is_ineligible_for_itc",
 		"po_excess_allowed_percentage",
+		"yrp_item_type",
+		"yrp_is_free_item",
 	)
 	for fieldname in fieldnames:
 		if variant.meta.get_field(fieldname):
 			variant.set(fieldname, template.get(fieldname))
-	for table_field in ("uoms", "item_defaults"):
+	for table_field in ("uoms", "item_defaults", "taxes", "yrp_categories"):
 		if variant.meta.get_field(table_field):
 			variant.set(table_field, [])
 			for row in template.get(table_field) or []:
@@ -730,10 +736,17 @@ def get_or_create_variant(template, args, dependent_attr=None):
 	if isinstance(args, str):
 		args = json.loads(args)
 	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
-	if not args:
-		template_doc = frappe.get_cached_doc("Item", template)
-		if not template_doc.has_variants and not template_doc.variant_of:
-			return template_doc.name
+	template_doc = frappe.get_cached_doc("Item", template)
+	if not args and not template_doc.has_variants and not template_doc.variant_of:
+		return template_doc.name
+	stage = args.get(template_doc.dependent_attribute) if template_doc.dependent_attribute else None
+	if stage:
+		source = (
+			frappe._dict(name=template, dependent_attribute_mapping=dependent_attr)
+			if dependent_attr
+			else template_doc
+		)
+		args = build_variant_attributes(args, stage, source)
 	existing = get_variant(template, args)
 	if existing:
 		return existing
@@ -760,7 +773,12 @@ def get_variant(template, args):
 		frappe.throw(_("Please specify at least one attribute."))
 	tuple_value = str(tuple(sorted((key, cstr(value)) for key, value in args.items())))
 	name = frappe.db.get_value("Item", {"variant_of": template, "item_tuple_attribute": tuple_value}, "name")
-	return name or _find_variant_by_attributes(template, args)
+	if name:
+		return name
+	name = _find_variant_by_attributes(template, args)
+	if name:
+		frappe.db.set_value("Item", name, "item_tuple_attribute", tuple_value, update_modified=False)
+	return name
 
 
 def _find_variant_by_attributes(template, args):

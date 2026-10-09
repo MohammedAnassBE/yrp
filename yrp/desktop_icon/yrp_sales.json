@@ -1,0 +1,14 @@
+{
+ "app": "yrp",
+ "doctype": "Desktop Icon",
+ "label": "YRP Sales",
+ "name": "YRP Sales",
+ "icon": "sell",
+ "icon_type": "Link",
+ "link_type": "Workspace Sidebar",
+ "link_to": "YRP Sales",
+ "parent_icon": "YRP",
+ "standard": 1,
+ "hidden": 0,
+ "idx": 1
+}

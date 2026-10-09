@@ -160,6 +160,9 @@ class YRPStockEntry(Document):
 		self.update_grn_completion(cancel=False)
 
 	def before_cancel(self):
+		if self.against == "YRP Delivery Note" and not self.flags.cancel_from_sales_invoice:
+			frappe.throw(_("Stock Entry {0} was issued by a Sales Invoice; cancel that invoice instead.").format(
+				self.name))
 		# Preserve an owning voucher's explicit backlink exemption.  Custom
 		# workflows may generate and control this Stock Entry, then cancel it from
 		# the owner's before_cancel hook.  Replacing the tuple here would make the
