@@ -6,6 +6,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from yrp import attribute_links
+from yrp.attribute_values import ensure_value_master
 
 RULES = {
 	"_Test Row": {
@@ -63,6 +64,36 @@ class TestAttributeLinkRules(IntegrationTestCase):
 
 		self.assertEqual(resolved, "From Link")
 		get_value.assert_called_once_with("_Test Linked", "LINK-1", "*", as_dict=True)
+
+	def test_search_matches_the_stored_name_for_link_validation(self):
+		stage = make_attribute_value("_Test Link Stage", "_Test Cut")
+		other = make_attribute_value("_Test Link Other", "_Test Cut")
+		filters = {
+			"fieldname": "by_context",
+			"row": {"doctype": "_Test Row", "first_attribute": "_Test Link Stage"},
+		}
+
+		def names(txt):
+			return [
+				row[0]
+				for row in attribute_links.search_values(attribute_links.MASTER, txt, "name", 0, 20, filters)
+			]
+
+		self.assertEqual(names(stage), [stage])
+		self.assertEqual(names(other), [])
+		self.assertIn(stage, names("Cut"))
+
+
+def make_attribute_value(attribute, value):
+	if not frappe.db.exists("Item Attribute", attribute):
+		frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": attribute,
+				"item_attribute_values": [{"attribute_value": value, "abbr": value}],
+			}
+		).insert(ignore_permissions=True)
+	return ensure_value_master(attribute, value)
 
 
 class TestAttributeLinkRegistry(IntegrationTestCase):

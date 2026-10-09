@@ -419,11 +419,12 @@ def search_values(doctype, txt, searchfield, start, page_len, filters):
 	parent = frappe._dict(filters.get("parent") or {})
 	attribute = attribute_for(row, filters.get("fieldname"), (parent,))
 	conditions = {"attribute_name": attribute} if attribute else {}
-	if txt:
-		conditions["attribute_value"] = ["like", "%" + txt + "%"]
+	# Link validation re-runs this query with the stored name as txt.
+	or_conditions = {"attribute_value": ["like", "%" + txt + "%"], "name": txt} if txt else None
 	return frappe.get_list(
 		MASTER,
 		filters=conditions,
+		or_filters=or_conditions,
 		fields=["name", "attribute_value", "attribute_name"],
 		start=start,
 		page_length=page_len,
