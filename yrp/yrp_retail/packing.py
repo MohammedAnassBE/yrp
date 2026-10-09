@@ -208,7 +208,20 @@ def refresh_progress(doc, method=None):
 
 
 def prevent_delivered_cancellation(doc, method=None):
-	lock_packing()
+	if method == "on_trash":
+		# Native delete_doc already locks the target parent before on_trash.
+		# Waiting here would invert save's pricing -> carton -> parent order.
+		# Acquire both shared mutexes immediately or abort this deletion; the
+		# caller must roll back the failed operation, never silently retry it.
+		try:
+			frappe.db.get_value("DocType", "YRP Item Master Template", for_update=True, wait=False)
+			frappe.db.get_value("DocType", "Packing Slip", for_update=True, wait=False)
+		except (frappe.QueryTimeoutError, frappe.QueryDeadlockError) as error:
+			raise frappe.QueryTimeoutError(
+				"This document cannot be deleted while packing or pricing is being modified. Please try again."
+			) from error
+	else:
+		lock_packing()
 	if doc.doctype == "Packing Slip":
 		current = frappe.get_doc("Packing Slip", doc.name, for_update=True)
 		require(not current.get("yrp_delivered"), "Unmark carton delivery before cancelling or deleting this Packing Slip.")
