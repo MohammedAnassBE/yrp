@@ -9,11 +9,11 @@ from yrp.yrp.utils.ipd_engine import get_consumables
 
 class TestItemBOMMetadata(IntegrationTestCase):
 	def test_item_bom_keeps_validated_f16_fields_and_f15_defaults(self):
-		meta = frappe.get_meta('YRP Item BOM', cached=False)
+		meta = frappe.get_meta("YRP Item BOM", cached=False)
 
 		uom = meta.get_field("uom")
 		self.assertEqual(uom.fieldtype, "Link")
-		self.assertEqual(uom.options, 'UOM')
+		self.assertEqual(uom.options, "UOM")
 		self.assertEqual(uom.fetch_from, "item.stock_uom")
 		self.assertEqual(uom.reqd, 1)
 
@@ -26,16 +26,16 @@ class TestItemBOMMetadata(IntegrationTestCase):
 		self.assertEqual(meta.get_field("process_name").reqd, 0)
 
 	def test_mapping_carries_legacy_migration_context(self):
-		meta = frappe.get_meta('YRP Item BOM Attribute Mapping', cached=False)
+		meta = frappe.get_meta("YRP Item BOM Attribute Mapping", cached=False)
 
 		ipd = meta.get_field("item_production_detail")
 		self.assertEqual(ipd.fieldtype, "Link")
-		self.assertEqual(ipd.options, 'YRP Item Production Detail')
+		self.assertEqual(ipd.options, "YRP Item Production Detail")
 		self.assertEqual(ipd.hidden, 1)
 
 		bom_uom = meta.get_field("bom_uom")
 		self.assertEqual(bom_uom.fieldtype, "Link")
-		self.assertEqual(bom_uom.options, 'UOM')
+		self.assertEqual(bom_uom.options, "UOM")
 		self.assertEqual(bom_uom.fetch_from, "bom_item.stock_uom")
 		self.assertEqual(bom_uom.read_only, 1)
 

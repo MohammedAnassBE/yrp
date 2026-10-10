@@ -17,9 +17,7 @@ class TestReworkInspectionAggregation(FrappeTestCase):
 			return_value=[{"fieldname": "production_group", "label": "Production Group"}],
 		):
 			_enrich_dimension_metadata(rows)
-		self.assertEqual(
-			rows[0]["dimension_labels"], {"production_group": "Production Group"}
-		)
+		self.assertEqual(rows[0]["dimension_labels"], {"production_group": "Production Group"})
 
 	def test_multiple_inspections_aggregate_by_grn_item_and_bucket(self):
 		aggregated_rows = [

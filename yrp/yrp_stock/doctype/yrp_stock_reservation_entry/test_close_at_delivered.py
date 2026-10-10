@@ -33,70 +33,73 @@ def _build_normal_wo_with_sre(reserved=10, seed_qty=10):
 	deliverable = wo.deliverables[0]
 	dim_values = _stock_dimension_values(wo, deliverable)
 	dim_values["received_type"] = rt
-	sre = frappe.get_doc({
-		"doctype": 'YRP Stock Reservation Entry',
-		"item_code": item_variant,
-		"warehouse": delivery_wh,
-		"voucher_type": 'YRP Work Order',
-		"voucher_no": wo.name,
-		"voucher_detail_no": deliverable.name,
-		"stock_uom": uom,
-		"available_qty": seed_qty,
-		"voucher_qty": reserved,
-		"reserved_qty": reserved,
-		"delivered_qty": 0,
-		"closed_qty": 0,
-		**dim_values,
-	})
+	sre = frappe.get_doc(
+		{
+			"doctype": "YRP Stock Reservation Entry",
+			"item_code": item_variant,
+			"warehouse": delivery_wh,
+			"voucher_type": "YRP Work Order",
+			"voucher_no": wo.name,
+			"voucher_detail_no": deliverable.name,
+			"stock_uom": uom,
+			"available_qty": seed_qty,
+			"voucher_qty": reserved,
+			"reserved_qty": reserved,
+			"delivered_qty": 0,
+			"closed_qty": 0,
+			**dim_values,
+		}
+	)
 	sre.insert(ignore_permissions=True)
 	sre.submit()
 	return wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt
 
 
 def _make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty):
-	dc = frappe.get_doc({
-		"doctype": 'YRP Delivery Challan',
-		"work_order": wo.name,
-		"from_location": wo.delivery_location,
-		"supplier": wo.supplier,
-		"from_warehouse": delivery_wh,
-		"to_warehouse": supplier_wh,
-		"from_address": wo.delivery_address,
-		"supplier_address": wo.supplier_address,
-		"process_name": wo.process_name,
-		"item": wo.item,
-		"posting_date": nowdate(),
-		"posting_time": nowtime(),
-		"items": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"delivered_quantity": qty,
-			"uom": uom,
-			"stock_uom": uom,
-			"conversion_factor": 1,
-			"received_type": rt,
-			"ref_doctype": 'YRP Work Order Deliverables',
-			"ref_docname": wo.deliverables[0].name,
-			"table_index": 0,
-			"row_index": "0",
-		}],
-	})
+	dc = frappe.get_doc(
+		{
+			"doctype": "YRP Delivery Challan",
+			"work_order": wo.name,
+			"from_location": wo.delivery_location,
+			"supplier": wo.supplier,
+			"from_warehouse": delivery_wh,
+			"to_warehouse": supplier_wh,
+			"from_address": wo.delivery_address,
+			"supplier_address": wo.supplier_address,
+			"process_name": wo.process_name,
+			"item": wo.item,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"items": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"delivered_quantity": qty,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"received_type": rt,
+					"ref_doctype": "YRP Work Order Deliverables",
+					"ref_docname": wo.deliverables[0].name,
+					"table_index": 0,
+					"row_index": "0",
+				}
+			],
+		}
+	)
 	dc.insert(ignore_permissions=True)
 	dc.submit()
 	return dc
 
 
 def _bin_reserved_qty(sre):
-	dim_filters = {
-		fieldname: sre.get(fieldname)
-		for fieldname in get_dimension_fieldnames()
-	}
+	dim_filters = {fieldname: sre.get(fieldname) for fieldname in get_dimension_fieldnames()}
 	bin_name = get_or_make_bin(
 		sre.item_code,
 		sre.warehouse,
 		**dim_filters,
 	)
-	return flt(frappe.db.get_value('YRP Bin', bin_name, "reserved_qty"))
+	return flt(frappe.db.get_value("YRP Bin", bin_name, "reserved_qty"))
 
 
 class TestSREClose(FrappeTestCase):
@@ -105,7 +108,8 @@ class TestSREClose(FrappeTestCase):
 		reserved_qty and delivered_qty unchanged (audit preserved).
 		"""
 		wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt = _build_normal_wo_with_sre(
-			reserved=10, seed_qty=10,
+			reserved=10,
+			seed_qty=10,
 		)
 		self.assertAlmostEqual(_bin_reserved_qty(sre), 10)
 		_make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty=6)
@@ -131,17 +135,18 @@ class TestSREClose(FrappeTestCase):
 		live reserved drops by the released `closed_qty`.
 		"""
 		wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt = _build_normal_wo_with_sre(
-			reserved=10, seed_qty=10,
+			reserved=10,
+			seed_qty=10,
 		)
 		dim_filters = {
-			fieldname: sre.get(fieldname)
-			for fieldname in get_dimension_fieldnames()
-			if sre.get(fieldname)
+			fieldname: sre.get(fieldname) for fieldname in get_dimension_fieldnames() if sre.get(fieldname)
 		}
 		dim_filters["received_type"] = rt
 		# Before any delivery: SRE reserves 10 → reserved seen = 10.
 		reserved_before = get_sre_reserved_qty(
-			item_code=item_variant, warehouse=delivery_wh, **dim_filters,
+			item_code=item_variant,
+			warehouse=delivery_wh,
+			**dim_filters,
 		)
 		self.assertAlmostEqual(flt(reserved_before), 10)
 
@@ -152,16 +157,19 @@ class TestSREClose(FrappeTestCase):
 		sre.close_at_delivered()
 
 		reserved_after = get_sre_reserved_qty(
-			item_code=item_variant, warehouse=delivery_wh, **dim_filters,
+			item_code=item_variant,
+			warehouse=delivery_wh,
+			**dim_filters,
 		)
 		self.assertAlmostEqual(
-			flt(reserved_after), 0,
+			flt(reserved_after),
+			0,
 			msg="A Closed SRE must stop counting in get_sre_reserved_qty.",
 		)
 
 	def test_close_at_delivered_with_zero_delivered_still_works(self):
 		"""Reserved 10, delivered 0, close: closed_qty=10, status='Closed'."""
-		wo, sre, *_ = _build_normal_wo_with_sre(reserved=10, seed_qty=10)
+		_wo, sre, *_ = _build_normal_wo_with_sre(reserved=10, seed_qty=10)
 		sre.close_at_delivered()
 		sre.reload()
 		self.assertAlmostEqual(flt(sre.closed_qty), 10)
@@ -172,7 +180,8 @@ class TestSREClose(FrappeTestCase):
 		"""If delivered == reserved, close_at_delivered must throw — there's
 		nothing left to close."""
 		wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt = _build_normal_wo_with_sre(
-			reserved=10, seed_qty=10,
+			reserved=10,
+			seed_qty=10,
 		)
 		_make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty=10)
 		sre.reload()
@@ -184,7 +193,8 @@ class TestSREClose(FrappeTestCase):
 		"""Once an SRE is closed, a fresh DC submit that would update it must
 		throw — the SRE is frozen."""
 		wo, sre, delivery_wh, supplier_wh, item_variant, uom, rt = _build_normal_wo_with_sre(
-			reserved=10, seed_qty=10,
+			reserved=10,
+			seed_qty=10,
 		)
 		_make_partial_dc(wo, delivery_wh, supplier_wh, item_variant, uom, rt, qty=4)
 		sre.reload()
@@ -197,7 +207,7 @@ class TestSREClose(FrappeTestCase):
 
 	def test_validate_blocks_delivered_plus_closed_exceeding_reserved(self):
 		"""Direct attempt to set delivered + closed > reserved must throw."""
-		wo, sre, *_ = _build_normal_wo_with_sre(reserved=10, seed_qty=10)
+		_wo, sre, *_ = _build_normal_wo_with_sre(reserved=10, seed_qty=10)
 		sre.delivered_qty = 7
 		sre.closed_qty = 5  # 7 + 5 = 12 > 10
 		with self.assertRaises(frappe.ValidationError):

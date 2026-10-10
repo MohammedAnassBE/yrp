@@ -35,7 +35,7 @@ export class EditBOMAttributeMappingWrapper {
     update_status() {
         this.bomEntry.update_status();
     }
-};
+}
 
 export class BOMAttributeMappingWrapper {
 
@@ -49,4 +49,4 @@ export class BOMAttributeMappingWrapper {
         this.app = createApp(BomAttributeMapping);
         this.bomEntry = this.app.mount(this.$wrapper.get(0));
     }
-};
+}

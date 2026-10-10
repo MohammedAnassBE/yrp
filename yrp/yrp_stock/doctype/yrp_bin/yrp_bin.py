@@ -24,15 +24,14 @@ class YRPBin(Document):
 		if not self.stock_uom and self.item_code:
 			parent = get_parent_item(self.item_code)
 			if parent:
-				self.stock_uom = frappe.db.get_value('Item', parent, "stock_uom")
+				self.stock_uom = frappe.db.get_value("Item", parent, "stock_uom")
 
 	def update_reserved_stock(self):
 		"""Refresh the displayed reservation balance from submitted SRE rows."""
 		from yrp.stock.utils import get_sre_reserved_qty
 
 		dimension_values = {
-			dimension["fieldname"]: self.get(dimension["fieldname"])
-			for dimension in get_stock_dimensions()
+			dimension["fieldname"]: self.get(dimension["fieldname"]) for dimension in get_stock_dimensions()
 		}
 		reserved_qty = flt(
 			get_sre_reserved_qty(
@@ -48,6 +47,7 @@ class YRPBin(Document):
 		self.db_set("reserved_qty", reserved_qty, update_modified=False)
 		return reserved_qty
 
+
 def update_qty(bin_name, args):
 	"""Refresh Bin values from the Stock Ledger.
 
@@ -56,14 +56,12 @@ def update_qty(bin_name, args):
 	  - valuation_rate: from latest SLE matching VALUATION dimensions only (shared rate)
 	  - stock_value:    computed as actual_qty * valuation_rate
 	"""
-	bin_doc = frappe.get_doc('YRP Bin', bin_name)
+	bin_doc = frappe.get_doc("YRP Bin", bin_name)
 	all_dims = get_stock_dimensions()
 	val_dim_fields = get_valuation_dimensions()
 
 	# --- Query 1: actual_qty from latest SLE matching ALL dimensions ---
-	actual_qty = _get_latest_sle_value(
-		bin_doc, all_dims, "qty_after_transaction"
-	)
+	actual_qty = _get_latest_sle_value(bin_doc, all_dims, "qty_after_transaction")
 
 	# --- Query 2: valuation_rate from latest SLE matching VALUATION dims only ---
 	valuation_rate = _get_latest_sle_value(
@@ -89,7 +87,7 @@ def _get_latest_sle_value(bin_doc, dims, field_name):
 	Returns:
 		float value of the requested field, or 0.0 if no matching SLE exists
 	"""
-	sle = frappe.qb.DocType('YRP Stock Ledger Entry')
+	sle = frappe.qb.DocType("YRP Stock Ledger Entry")
 
 	query = (
 		frappe.qb.from_(sle)

@@ -19,9 +19,7 @@ class YRPStockLedgerEntry(Document):
 		self.validate_mandatory()
 		from yrp.stock.stock_ledger import validate_stock_valuation_period
 
-		validate_stock_valuation_period(
-			self.posting_date, self.voucher_type, self.voucher_no
-		)
+		validate_stock_valuation_period(self.posting_date, self.voucher_type, self.voucher_no)
 
 	def on_submit(self):
 		self.set_posting_datetime(save=True)
@@ -46,7 +44,9 @@ class YRPStockLedgerEntry(Document):
 		mandatory = ["item", "warehouse", "posting_date", "voucher_type", "voucher_no"]
 		for field in mandatory:
 			if not self.get(field):
-				frappe.throw(_("{0} is mandatory for Stock Ledger Entry").format(_(field.replace("_", " ").title())))
+				frappe.throw(
+					_("{0} is mandatory for Stock Ledger Entry").format(_(field.replace("_", " ").title()))
+				)
 
 		# Validate mandatory dimensions from YRP Stock Settings
 		for dim in get_stock_dimensions():

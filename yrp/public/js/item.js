@@ -44,6 +44,18 @@ frappe.ui.form.on("Item", {
 	},
 
 	refresh(frm) {
+		if (frm.doc.variant_of && !frm.is_new()) {
+			frm.page.add_menu_item(__("Rename Variant"), () => {
+				return rename_variant_from_attributes(frm).catch((error) => {
+					frappe.msgprint({
+						title: __("Rename failed"),
+						message: error.message || error,
+						indicator: "red",
+					});
+				});
+			});
+		}
+
 		const isTemplate = Boolean(frm.doc.has_variants && !frm.doc.variant_of);
 		frm.toggle_display(["yrp_attribute_section", "attribute_list_html", "dependent_attribute_details_html"], isTemplate);
 		if (!isTemplate || frm.is_new()) {
@@ -66,6 +78,27 @@ frappe.ui.form.on("Item", {
 		}
 	},
 });
+
+function rename_variant_from_attributes(frm) {
+	const docname = frm.doc.name;
+	const doctype = frm.doctype;
+
+	return frappe
+		.xcall("yrp.yrp.doctype.yrp_item_variant.yrp_item_variant.rename_item_variant", {
+			variant: docname,
+			freeze: true,
+			freeze_message: __("Renaming..."),
+		})
+		.then((newDocname) => {
+			if (newDocname !== docname) {
+				$(document).trigger("rename", [doctype, docname, newDocname]);
+				if (locals[doctype] && locals[doctype][docname]) {
+					delete locals[doctype][docname];
+				}
+			}
+			return frm.reload_doc();
+		});
+}
 
 frappe.ui.form.on("YRP Item Classification", {
 	category(frm, cdt, cdn) {

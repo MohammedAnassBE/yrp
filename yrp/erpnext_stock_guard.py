@@ -3,7 +3,6 @@
 import frappe
 from frappe import _
 
-
 STOCK_UPDATING_INVOICES = {"Purchase Invoice", "Sales Invoice"}
 STOCK_ITEM_TABLES = ("items", "packed_items", "supplied_items")
 STOCK_ITEM_FIELDS = ("item_code", "item", "rm_item_code", "main_item_code")

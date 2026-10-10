@@ -136,16 +136,16 @@ function rename_item_name(frm, name, brand) {
 							});
 						}
 					});
-					frappe.show_alert(
-						__("Document renaming from {0} to {1} has been queued", [
-							docname.bold(),
-							input_name.bold(),
-						])
-					);
-				}
+						frappe.show_alert(
+							__("Document renaming from {0} to {1} has been queued", [
+								docname.bold(),
+								name.bold(),
+							])
+						);
+					}
 
-				if (name && (new_docname || input_name) != docname) {
-					reload_form(new_docname || input_name);
+					if (name && (new_docname || name) != docname) {
+						reload_form(new_docname || name);
 				}
 			});
 	};

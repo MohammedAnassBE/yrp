@@ -16,27 +16,35 @@ def get_stock_dimensions_for_ui():
 	dims = get_stock_dimensions()
 	out = []
 	for d in dims:
-		out.append({
-			"fieldname": d["fieldname"],
-			"label": d["label"],
-			"options": d["dimension_doctype"],
-			"mandatory": d["mandatory"],
-			"in_valuation": d["in_valuation"],
-			"is_production_group": d["is_production_group"],
-		})
+		out.append(
+			{
+				"fieldname": d["fieldname"],
+				"label": d["label"],
+				"options": d["dimension_doctype"],
+				"mandatory": d["mandatory"],
+				"in_valuation": d["in_valuation"],
+				"is_production_group": d["is_production_group"],
+			}
+		)
 	return out
 
 
 @frappe.whitelist()
 def get_stock_balance(item, warehouse, posting_date=None, posting_time=None, **dimension_filters):
-	return _get_stock_balance(item, warehouse, posting_date=posting_date, posting_time=posting_time, **dimension_filters)
+	return _get_stock_balance(
+		item, warehouse, posting_date=posting_date, posting_time=posting_time, **dimension_filters
+	)
 
 
 @frappe.whitelist()
 def get_valuation_rate(item, warehouse, posting_date=None, posting_time=None, **dimension_filters):
-	qty, rate = _get_stock_balance(
-		item, warehouse, posting_date=posting_date, posting_time=posting_time,
-		with_valuation_rate=True, **dimension_filters,
+	_qty, rate = _get_stock_balance(
+		item,
+		warehouse,
+		posting_date=posting_date,
+		posting_time=posting_time,
+		with_valuation_rate=True,
+		**dimension_filters,
 	)
 	return rate
 
@@ -45,6 +53,7 @@ def get_valuation_rate(item, warehouse, posting_date=None, posting_time=None, **
 def get_stock_balance_for_items(items, warehouse, **dimension_filters):
 	"""Bulk balance lookup. ``items`` may be a JSON list."""
 	import json as _json
+
 	if isinstance(items, str):
 		try:
 			items = _json.loads(items)
@@ -91,7 +100,7 @@ def get_total_stock(item_code, filters=None):
 		SELECT COALESCE(SUM(actual_qty), 0) AS actual_qty,
 		       COALESCE(SUM(stock_value), 0) AS stock_value
 		FROM `tabYRP Bin`
-		WHERE {' AND '.join(conds)}
+		WHERE {" AND ".join(conds)}
 		""",
 		tuple(values),
 		as_dict=True,
@@ -106,18 +115,25 @@ def get_total_stock(item_code, filters=None):
 def get_item_uom_and_rate(item):
 	"""UOM, conversion factors, and last incoming rate for an item variant."""
 	parent = get_parent_item(item)
-	stock_uom = frappe.db.get_value('Item', parent, "stock_uom") if parent else None
-	conversions = frappe.get_all(
-		'UOM Conversion Detail',
-		filters={"parent": parent, "parenttype": "Item", "parentfield": "uoms"},
-		fields=["uom", "conversion_factor"],
-	) if parent else []
-	last_rate = frappe.db.get_value(
-		'YRP Stock Ledger Entry',
-		{"item": item, "is_cancelled": 0, "qty": [">", 0]},
-		"valuation_rate",
-		order_by="posting_datetime desc, creation desc",
-	) or 0.0
+	stock_uom = frappe.db.get_value("Item", parent, "stock_uom") if parent else None
+	conversions = (
+		frappe.get_all(
+			"UOM Conversion Detail",
+			filters={"parent": parent, "parenttype": "Item", "parentfield": "uoms"},
+			fields=["uom", "conversion_factor"],
+		)
+		if parent
+		else []
+	)
+	last_rate = (
+		frappe.db.get_value(
+			"YRP Stock Ledger Entry",
+			{"item": item, "is_cancelled": 0, "qty": [">", 0]},
+			"valuation_rate",
+			order_by="posting_datetime desc, creation desc",
+		)
+		or 0.0
+	)
 	return {
 		"stock_uom": stock_uom,
 		"conversions": conversions,
@@ -135,7 +151,7 @@ def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 	# Only allow filtering on known Warehouse fields
 	ALLOWED_FILTER_FIELDS = {"name", "disabled", "is_transit", "default_supplier"}
 
-	wh = frappe.qb.DocType('Warehouse')
+	wh = frappe.qb.DocType("Warehouse")
 	q = frappe.qb.from_(wh).select(wh.name).where(wh.disabled == 0)
 
 	# Apply user-provided filters (only whitelisted fields)
@@ -151,9 +167,7 @@ def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 
 	# Restrict to warehouses this user has access to
 	user = frappe.session.user
-	restricted = frappe.db.sql_list(
-		"SELECT DISTINCT parent FROM `tabYRP Warehouse User` WHERE user=%s", user
-	)
+	restricted = frappe.db.sql_list("SELECT DISTINCT parent FROM `tabYRP Warehouse User` WHERE user=%s", user)
 	if restricted:
 		q = q.where(wh.name.isin(restricted))
 

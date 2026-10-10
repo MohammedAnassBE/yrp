@@ -59,7 +59,7 @@
                             </tfoot>
                         </table>
                     </div>
-                    
+
                     <!-- Add Row -->
                     <div v-if="edit" class="add-row-section">
                         <div class="add-row-inputs">
@@ -102,7 +102,7 @@
                         <div :class="get_qty_class(blockIdx, 0, 0)" class="single-qty-input-wrapper"></div>
                     </div>
                 </template>
-                
+
                 <!-- Initial state -->
                 <div v-else-if="!block.item" class="empty-state">
                     <div class="empty-icon">
@@ -630,7 +630,7 @@ defineExpose({
     --danger-bg: #fef2f2;
     --danger-text: #dc2626;
     --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    
+
     padding: 8px 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: var(--text-main);

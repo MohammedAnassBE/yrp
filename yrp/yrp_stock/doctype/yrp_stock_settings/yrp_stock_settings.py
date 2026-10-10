@@ -25,7 +25,7 @@ class YRPStockSettings(Document):
 		current = {d.fieldname: d for d in (self.stock_dimensions or [])}
 
 		# C.1 — Removal blocked when SLE/Bin data exists.
-		for fieldname, prev_row in previous.items():
+		for fieldname, _prev_row in previous.items():
 			if fieldname in current:
 				continue
 			if self._dimension_has_data(fieldname):
@@ -36,9 +36,13 @@ class YRPStockSettings(Document):
 
 		# C.2 — Fieldname rename blocked when data exists.
 		# Match prior rows by row.name (Frappe child row id) to detect renames.
-		for current_row in (self.stock_dimensions or []):
+		for current_row in self.stock_dimensions or []:
 			prior = next(
-				(p for p in previous.values() if getattr(p, "name", None) == getattr(current_row, "name", None)),
+				(
+					p
+					for p in previous.values()
+					if getattr(p, "name", None) == getattr(current_row, "name", None)
+				),
 				None,
 			)
 			if not prior:
@@ -62,7 +66,7 @@ class YRPStockSettings(Document):
 
 	def _previous_dimension_rows(self):
 		rows = frappe.get_all(
-			'YRP Stock Dimension',
+			"YRP Stock Dimension",
 			filters={"parent": self.name, "parenttype": self.doctype},
 			fields=["name", "fieldname", "is_production_group"],
 		)
@@ -74,10 +78,8 @@ class YRPStockSettings(Document):
 		from yrp.stock.dimensions import assert_safe_fieldname
 
 		assert_safe_fieldname(fieldname)
-		for table in ('YRP Stock Ledger Entry', 'YRP Bin'):
-			cols = frappe.db.sql(
-				f"SHOW COLUMNS FROM `tab{table}` LIKE %s", fieldname
-			)
+		for table in ("YRP Stock Ledger Entry", "YRP Bin"):
+			cols = frappe.db.sql(f"SHOW COLUMNS FROM `tab{table}` LIKE %s", fieldname)
 			if not cols:
 				continue
 			row = frappe.db.sql(
@@ -155,8 +157,10 @@ class YRPStockSettings(Document):
 		"""Ensure each configured dimension DocType actually exists."""
 		for d in self.stock_dimensions:
 			if not frappe.db.exists("DocType", d.dimension_doctype):
-				frappe.throw(f"DocType '{d.dimension_doctype}' does not exist. "
-					"Create the DocType before adding it as a stock dimension.")
+				frappe.throw(
+					f"DocType '{d.dimension_doctype}' does not exist. "
+					"Create the DocType before adding it as a stock dimension."
+				)
 
 
 StockSettings = YRPStockSettings

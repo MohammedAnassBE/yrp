@@ -2,5 +2,4 @@
 
 from erpnext.stock.doctype.item_variant_attribute.item_variant_attribute import ItemVariantAttribute
 
-
 YRPItemVariantAttribute = ItemVariantAttribute

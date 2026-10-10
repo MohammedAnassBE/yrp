@@ -15,8 +15,7 @@ class TestWhatsAppHooks(IntegrationTestCase):
 		"""Property Setter must be exportable so the WhatsApp medium is never dropped."""
 		fixtures = frappe.get_hooks("fixtures", app_name="yrp")
 		registered = any(
-			isinstance(f, dict) and (f.get("dt") or f.get("doctype")) == "Property Setter"
-			for f in fixtures
+			isinstance(f, dict) and (f.get("dt") or f.get("doctype")) == "Property Setter" for f in fixtures
 		)
 		self.assertTrue(registered, "Property Setter not registered in yrp fixtures hook")
 

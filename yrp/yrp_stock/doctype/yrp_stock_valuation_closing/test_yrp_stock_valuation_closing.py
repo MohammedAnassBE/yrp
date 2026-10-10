@@ -20,26 +20,24 @@ class TestStockValuationClosing(IntegrationTestCase):
 	def _closing(self, closing_date="2026-08-20"):
 		return frappe.get_doc(
 			{
-				"doctype": 'YRP Stock Valuation Closing',
+				"doctype": "YRP Stock Valuation Closing",
 				"closing_through_date": closing_date,
 				"closing_remarks": "Regression test closing",
 			}
 		)
 
 	def test_schema_is_submittable_and_settings_cutoff_is_read_only(self):
-		closing_meta = frappe.get_meta('YRP Stock Valuation Closing')
+		closing_meta = frappe.get_meta("YRP Stock Valuation Closing")
 		self.assertTrue(closing_meta.is_submittable)
 		self.assertTrue(closing_meta.get_field("closing_through_date").reqd)
-		settings_field = frappe.get_meta('YRP Stock Settings').get_field(
-			"last_stock_valuation_closing_date"
-		)
+		settings_field = frappe.get_meta("YRP Stock Settings").get_field("last_stock_valuation_closing_date")
 		self.assertTrue(settings_field.read_only)
 
 	@patch(
 		"yrp.yrp_stock.doctype.yrp_stock_valuation_closing.yrp_stock_valuation_closing.get_closing_snapshot"
 	)
 	def test_submit_and_cancel_lifecycle_updates_real_settings_cutoff(self, snapshot):
-		if frappe.db.exists('YRP Stock Valuation Closing', {"docstatus": 1}):
+		if frappe.db.exists("YRP Stock Valuation Closing", {"docstatus": 1}):
 			self.skipTest("A submitted closing already exists on this test site")
 
 		snapshot.side_effect = lambda closing_date: {
@@ -60,7 +58,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		self.assertEqual(
 			getdate(
 				frappe.db.get_single_value(
-					'YRP Stock Settings',
+					"YRP Stock Settings",
 					"last_stock_valuation_closing_date",
 					cache=False,
 				)
@@ -74,7 +72,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		self.assertEqual(
 			getdate(
 				frappe.db.get_single_value(
-					'YRP Stock Settings',
+					"YRP Stock Settings",
 					"last_stock_valuation_closing_date",
 					cache=False,
 				)
@@ -87,7 +85,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 			frappe.db.exists(
 				"Singles",
 				{
-					"doctype": 'YRP Stock Settings',
+					"doctype": "YRP Stock Settings",
 					"field": "last_stock_valuation_closing_date",
 				},
 			)
@@ -98,9 +96,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		"yrp.yrp_stock.doctype.yrp_stock_valuation_closing.yrp_stock_valuation_closing.get_latest_submitted_closing"
 	)
 	def test_closing_date_must_move_forward(self, get_latest):
-		get_latest.return_value = frappe._dict(
-			name="SVC-OLDER", closing_through_date="2026-07-31"
-		)
+		get_latest.return_value = frappe._dict(name="SVC-OLDER", closing_through_date="2026-07-31")
 		closing = self._closing("2026-07-15")
 		with self.assertRaisesRegex(frappe.ValidationError, "must be after"):
 			closing.set_period_boundaries()
@@ -109,9 +105,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		"yrp.yrp_stock.doctype.yrp_stock_valuation_closing.yrp_stock_valuation_closing.get_latest_submitted_closing"
 	)
 	def test_period_starts_after_previous_closing(self, get_latest):
-		get_latest.return_value = frappe._dict(
-			name="SVC-JULY", closing_through_date="2026-07-31"
-		)
+		get_latest.return_value = frappe._dict(name="SVC-JULY", closing_through_date="2026-07-31")
 		closing = self._closing("2026-08-20")
 		closing.set_period_boundaries()
 		self.assertEqual(getdate(closing.previous_closing_date), getdate("2026-07-31"))
@@ -134,9 +128,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 	def test_only_latest_closing_can_be_cancelled(self, _lock, get_latest):
 		closing = self._closing("2026-07-31")
 		closing.name = "SVC-JULY"
-		get_latest.return_value = frappe._dict(
-			name="SVC-AUGUST", closing_through_date="2026-08-20"
-		)
+		get_latest.return_value = frappe._dict(name="SVC-AUGUST", closing_through_date="2026-08-20")
 		with self.assertRaisesRegex(frappe.ValidationError, "Only the latest"):
 			closing.before_cancel()
 
@@ -147,9 +139,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		"yrp.yrp_stock.doctype.yrp_stock_valuation_closing.yrp_stock_valuation_closing.get_latest_submitted_closing"
 	)
 	def test_cancel_restores_previous_submitted_cutoff(self, get_latest, set_cutoff):
-		get_latest.return_value = frappe._dict(
-			name="SVC-JUNE", closing_through_date="2026-06-30"
-		)
+		get_latest.return_value = frappe._dict(name="SVC-JUNE", closing_through_date="2026-06-30")
 		closing = self._closing("2026-07-31")
 		closing.name = "SVC-JULY"
 		closing.on_cancel()
@@ -195,9 +185,7 @@ class TestStockValuationClosing(IntegrationTestCase):
 		return_value=0,
 	)
 	@patch.object(frappe.db, "count")
-	def test_pending_late_cost_adjustment_blocks_snapshot(
-		self, db_count, _negative, _rows
-	):
+	def test_pending_late_cost_adjustment_blocks_snapshot(self, db_count, _negative, _rows):
 		db_count.side_effect = [0, 1, 15]
 		snapshot = get_closing_snapshot("2026-07-31")
 		self.assertEqual(snapshot["active_valuation_adjustment_count"], 1)
@@ -210,9 +198,7 @@ class TestStockValuationPeriodGuard(IntegrationTestCase):
 		return_value=None,
 	)
 	def test_blank_cutoff_skips_validation(self, _closing_date):
-		validate_stock_valuation_period(
-			"2026-01-01", 'YRP Stock Entry', "STE-TEST"
-		)
+		validate_stock_valuation_period("2026-01-01", "YRP Stock Entry", "STE-TEST")
 
 	@patch(
 		"yrp.stock.stock_ledger.get_last_stock_valuation_closing_date",
@@ -220,27 +206,21 @@ class TestStockValuationPeriodGuard(IntegrationTestCase):
 	)
 	def test_date_on_cutoff_is_blocked(self, _closing_date):
 		with self.assertRaises(StockValuationPeriodClosedError):
-			validate_stock_valuation_period(
-				"2026-07-31", 'YRP Stock Entry', "STE-CLOSED"
-			)
+			validate_stock_valuation_period("2026-07-31", "YRP Stock Entry", "STE-CLOSED")
 
 	@patch(
 		"yrp.stock.stock_ledger.get_last_stock_valuation_closing_date",
 		return_value=getdate("2026-07-31"),
 	)
 	def test_date_after_cutoff_is_allowed(self, _closing_date):
-		validate_stock_valuation_period(
-			"2026-08-01", 'YRP Stock Entry', "STE-OPEN"
-		)
+		validate_stock_valuation_period("2026-08-01", "YRP Stock Entry", "STE-OPEN")
 
 	@patch("yrp.stock.stock_ledger._set_voucher_cancelled")
 	@patch(
 		"yrp.stock.stock_ledger.get_last_stock_valuation_closing_date",
 		return_value=getdate("2026-07-31"),
 	)
-	def test_cancel_is_blocked_before_existing_sles_are_mutated(
-		self, _closing_date, set_cancelled
-	):
+	def test_cancel_is_blocked_before_existing_sles_are_mutated(self, _closing_date, set_cancelled):
 		with self.assertRaises(StockValuationPeriodClosedError):
 			make_sl_entries(
 				[
@@ -248,7 +228,7 @@ class TestStockValuationPeriodGuard(IntegrationTestCase):
 						"item": "ITEM-TEST",
 						"warehouse": "WAREHOUSE-TEST",
 						"posting_date": "2026-07-15",
-						"voucher_type": 'YRP Goods Received Note',
+						"voucher_type": "YRP Goods Received Note",
 						"voucher_no": "GRN-CLOSED",
 						"qty": 1,
 					}
@@ -267,7 +247,5 @@ class TestStockValuationPeriodGuard(IntegrationTestCase):
 		)
 		with open(path) as source:
 			metadata = json.load(source)
-		stock_manager = next(
-			row for row in metadata["permissions"] if row["role"] == "Stock Manager"
-		)
+		stock_manager = next(row for row in metadata["permissions"] if row["role"] == "Stock Manager")
 		self.assertEqual(stock_manager["cancel"], 1)

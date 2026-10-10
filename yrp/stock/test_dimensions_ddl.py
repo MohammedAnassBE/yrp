@@ -17,10 +17,10 @@ class TestStockDimensionDDL(TestCase):
 			dimensions.get_stock_dimensions()
 
 		get_all.assert_called_once_with(
-			'YRP Stock Dimension',
+			"YRP Stock Dimension",
 			filters={
-				"parent": 'YRP Stock Settings',
-				"parenttype": 'YRP Stock Settings',
+				"parent": "YRP Stock Settings",
+				"parenttype": "YRP Stock Settings",
 				"parentfield": "stock_dimensions",
 			},
 			fields=[
@@ -42,9 +42,7 @@ class TestStockDimensionDDL(TestCase):
 			{"Column_name": "old_dimension"},
 		]
 		with patch.object(dimensions.frappe, "db", db):
-			dimensions._ensure_bin_unique_constraint(
-				[{"fieldname": "lot"}, {"fieldname": "received_type"}]
-			)
+			dimensions._ensure_bin_unique_constraint([{"fieldname": "lot"}, {"fieldname": "received_type"}])
 
 		db.sql_ddl.assert_called_once_with(
 			"ALTER TABLE `tabYRP Bin` DROP INDEX `unique_bin_dimension`, "
@@ -59,8 +57,7 @@ class TestStockDimensionDDL(TestCase):
 			dimensions._ensure_bin_unique_constraint([])
 
 		db.sql_ddl.assert_called_once_with(
-			"ALTER TABLE `tabYRP Bin` ADD UNIQUE INDEX `unique_bin_dimension` "
-			"(`item_code`, `warehouse`)"
+			"ALTER TABLE `tabYRP Bin` ADD UNIQUE INDEX `unique_bin_dimension` (`item_code`, `warehouse`)"
 		)
 
 	def test_matching_bin_index_does_not_run_ddl(self):

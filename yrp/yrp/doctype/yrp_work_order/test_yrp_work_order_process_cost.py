@@ -52,7 +52,7 @@ class TestWorkOrderProcessCost(FrappeTestCase):
 
 
 def _work_order(calculated_items, receivables):
-	work_order = WorkOrder({"doctype": 'YRP Work Order'})
+	work_order = WorkOrder({"doctype": "YRP Work Order"})
 	for item_variant, quantity in calculated_items:
 		work_order.append(
 			"work_order_calculated_items",

@@ -4,21 +4,20 @@ The module path is retained because it is a stable public API used by the YRP
 and Essdee frontends. The old YRP Item/Variant DocTypes are no longer storage
 authorities: templates, variants and standalone stock items are standard Items.
 """
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 
 import copy
 import json
 
 import frappe
-from yrp.attribute_values import get_mapping_document
 from frappe import _
 from frappe.utils import cstr
 
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
+from yrp.attribute_values import get_mapping_document
 from yrp.yrp.doctype.yrp_item_dependent_attribute_mapping.yrp_item_dependent_attribute_mapping import (
 	get_dependent_attribute_details,
 )
-
 
 _YRP_VARIANT_IDENTITY_FIELDS = (
 	"attributes",
@@ -89,6 +88,7 @@ def ensure_global_attribute_values(attribute, values, *, check_permission=True):
 		doc.check_permission("write")
 	if doc.numeric_values:
 		from yrp.attribute_values import ensure_value_master
+
 		clean_values = [cstr(value).strip() for value in values or []]
 		for value in clean_values:
 			validate_attribute_value(attribute, value)
@@ -96,9 +96,7 @@ def ensure_global_attribute_values(attribute, values, *, check_permission=True):
 		return clean_values
 	existing = {_attribute_value(row.attribute_value) for row in doc.get("item_attribute_values") or []}
 	used_abbrs = {
-		cstr(row.abbr).strip().casefold()
-		for row in doc.get("item_attribute_values") or []
-		if row.abbr
+		cstr(row.abbr).strip().casefold() for row in doc.get("item_attribute_values") or [] if row.abbr
 	}
 	changed = False
 	for value in values or []:
@@ -143,7 +141,8 @@ class YRPItemMixin:
 		_call_super(self, "before_validate")
 		dependent_attribute = (
 			frappe.get_cached_value("Item", self.variant_of, "dependent_attribute")
-			if self.variant_of else None
+			if self.variant_of
+			else None
 		)
 		self.dependent_attribute_value = get_dependent_attribute_value(
 			self.get("attributes"), dependent_attribute
@@ -175,10 +174,36 @@ class YRPItemMixin:
 
 	def on_trash(self):
 		if frappe.db.exists("YRP Stock Ledger Entry", {"item": self.name}):
-			frappe.throw(_("Cannot delete Item {0} because YRP stock ledger entries exist.").format(self.name))
+			frappe.throw(
+				_("Cannot delete Item {0} because YRP stock ledger entries exist.").format(self.name)
+			)
 		if frappe.db.exists("YRP Bin", {"item_code": self.name}):
 			frappe.throw(_("Cannot delete Item {0} because YRP stock balances exist.").format(self.name))
 		return _call_super(self, "on_trash")
+
+	def after_rename(self, old, new, merge=False):
+		_call_super(self, "after_rename", old, new, merge)
+		if not self.has_variants or self.variant_of:
+			return
+
+		variants = frappe.get_all("Item", filters={"variant_of": new}, pluck="name")
+		if not variants:
+			return
+
+		batch_size = 50
+		for start in range(0, len(variants), batch_size):
+			frappe.enqueue(
+				"yrp.yrp.doctype.yrp_item.yrp_item.update_variants",
+				queue="long",
+				variants=variants[start : start + batch_size],
+				enqueue_after_commit=True,
+			)
+		frappe.enqueue(
+			"frappe.utils.global_search.rebuild_for_doctype",
+			doctype="Item",
+			queue="long",
+			enqueue_after_commit=True,
+		)
 
 	def update_variants(self):
 		"""Propagate template fields without overwriting YRP variant identity.
@@ -293,7 +318,9 @@ class YRPItemMixin:
 			frappe.throw(_("Dependent Attribute must be in the standard Variant Attributes table."))
 
 		if not dependent_values:
-			frappe.throw(_("Please configure values for Dependent Attribute {0}.").format(self.dependent_attribute))
+			frappe.throw(
+				_("Please configure values for Dependent Attribute {0}.").format(self.dependent_attribute)
+			)
 		if not self.primary_attribute:
 			frappe.throw(_("Please set Primary Attribute for this Item."))
 		if not self.dependent_attribute_mapping:
@@ -340,7 +367,14 @@ class YRPItemMixin:
 			"item_hash_value",
 			"item_tuple_attribute",
 		)
-		changed = [field for field in restricted if before.get(field) != self.get(field)]
+		changed = [
+			field
+			for field in restricted
+			if before.get(field) != self.get(field)
+			and not (
+				field == "item_hash_value" and not before.get(field) and self.get(field)
+			)
+		]
 		before_attrs = [
 			(r.attribute, _attribute_value(r.attribute_value), r.get("mapping"))
 			for r in before.get("attributes") or []
@@ -407,8 +441,7 @@ def update_yrp_variants(variants, template, publish_progress=True):
 	for count, row in enumerate(variants, start=1):
 		variant = frappe.get_doc("Item", row)
 		identity = {
-			fieldname: copy.deepcopy(variant.get(fieldname))
-			for fieldname in _YRP_VARIANT_IDENTITY_FIELDS
+			fieldname: copy.deepcopy(variant.get(fieldname)) for fieldname in _YRP_VARIANT_IDENTITY_FIELDS
 		}
 		copy_attributes_to_variant(template, variant)
 		for fieldname, value in identity.items():
@@ -447,9 +480,7 @@ def update_dependent_attribute_details(dependent_attribute_mapping, detail):
 	mapping_rows = []
 	for value, config in detail["attr_list"].items():
 		validate_attribute_value(mapping.dependent_attribute, value)
-		details.append(
-			{"attribute_value": value, "uom": config["uom"], "display_name": config["name"]}
-		)
+		details.append({"attribute_value": value, "uom": config["uom"], "display_name": config["name"]})
 		mapping_rows.extend(
 			{"dependent_attribute_value": value, "depending_attribute": attribute}
 			for attribute in config["attributes"]
@@ -598,20 +629,37 @@ def _variant_code(template, rows):
 			code += "-" + cstr(part)
 	if len(code) > 140:
 		frappe.throw(
-			_("Generated Item Code is {0} characters; the maximum is 140. Shorten the template or attribute display names.").format(
-				len(code)
-			)
+			_(
+				"Generated Item Code is {0} characters; the maximum is 140. Shorten the template or attribute display names."
+			).format(len(code))
 		)
 	return code
 
 
 def _copy_template_fields(template, variant):
 	fieldnames = (
-		"item_group", "stock_uom", "brand", "description", "is_stock_item",
-		"allow_negative_stock", "is_purchase_item", "is_sales_item", "purchase_uom",
-		"sales_uom", "weight_per_unit", "weight_uom", "secondary_unit_of_measure",
-		"hsn_code", "gst_hsn_code", "tax_code", "is_exempt", "is_zero_rated",
-		"is_ineligible_for_itc", "po_excess_allowed_percentage", "yrp_item_type", "yrp_is_free_item",
+		"item_group",
+		"stock_uom",
+		"brand",
+		"description",
+		"is_stock_item",
+		"allow_negative_stock",
+		"is_purchase_item",
+		"is_sales_item",
+		"purchase_uom",
+		"sales_uom",
+		"weight_per_unit",
+		"weight_uom",
+		"secondary_unit_of_measure",
+		"hsn_code",
+		"gst_hsn_code",
+		"tax_code",
+		"is_exempt",
+		"is_zero_rated",
+		"is_ineligible_for_itc",
+		"po_excess_allowed_percentage",
+		"yrp_item_type",
+		"yrp_is_free_item",
 	)
 	for fieldname in fieldnames:
 		if variant.meta.get_field(fieldname):
@@ -660,9 +708,7 @@ def create_variant(template, args, dependent_attr=None):
 	variant.has_variants = 0
 	variant.variant_based_on = "Item Attribute"
 	variant.set("attributes", rows)
-	variant.dependent_attribute_value = get_dependent_attribute_value(
-		rows, template_doc.dependent_attribute
-	)
+	variant.dependent_attribute_value = get_dependent_attribute_value(rows, template_doc.dependent_attribute)
 	variant.item_tuple_attribute = str(
 		tuple(sorted((row["attribute"], _attribute_value(row["attribute_value"])) for row in rows))
 	)
@@ -706,7 +752,8 @@ def get_or_create_variant(template, args, dependent_attr=None):
 		return existing
 	variant = create_variant(template, args, dependent_attr=dependent_attr)
 	try:
-		variant.insert()
+		# Variants of an existing template are system records; callers authorize the business document.
+		variant.insert(ignore_permissions=True)
 	except frappe.DuplicateEntryError:
 		existing = get_variant(template, args)
 		if not existing:
@@ -756,7 +803,12 @@ def _get_variants_by_attributes(args, template=None):
 	matching_sets = []
 	for attribute, values in args.items():
 		values = values if isinstance(values, list) else [values]
-		filters = {"parenttype": "Item", "parentfield": "attributes", "attribute": attribute, "attribute_value": ["in", values]}
+		filters = {
+			"parenttype": "Item",
+			"parentfield": "attributes",
+			"attribute": attribute,
+			"attribute_value": ["in", values],
+		}
 		if candidates is not None:
 			filters["parent"] = ["in", list(candidates)]
 		parents = frappe.get_all(
@@ -775,9 +827,7 @@ def _get_variants_by_attributes(args, template=None):
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
-def get_item_attribute_values(
-	doctype=None, txt="", searchfield=None, start=0, page_len=20, filters=None
-):
+def get_item_attribute_values(doctype=None, txt="", searchfield=None, start=0, page_len=20, filters=None):
 	filters = frappe.parse_json(filters) if isinstance(filters, str) else (filters or {})
 	if not filters.get("attribute"):
 		return []
@@ -795,6 +845,7 @@ def get_item_attribute_values(
 	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	if doctype == "YRP Item Attribute Value":
 		from yrp.attribute_value_identity import attribute_value_name
+
 		return [[attribute_value_name(attribute, value), value] for value in matched]
 	return [[value] for value in matched]
 
@@ -896,20 +947,42 @@ def rename_item(docname, name, brand=None):
 	return doc.name
 
 
+def rename_variant(variant, *, rebuild_search=True):
+	"""Rename a standard Item variant from its template and YRP display attributes."""
+	doc = frappe.get_doc("Item", variant)
+	if not doc.variant_of:
+		frappe.throw(_("Item {0} is not a variant").format(variant))
+	doc.check_permission("write")
+	template = frappe.get_cached_doc("Item", doc.variant_of)
+	new_name = _variant_code(template, doc.get("attributes") or [])
+	if new_name == doc.name:
+		return doc.name
+	return frappe.rename_doc(
+		"Item",
+		doc.name,
+		new_name,
+		force=True,
+		rebuild_search=rebuild_search,
+	)
+
+
 def update_variants(variants):
-	"""Physical Item codes are stable and never regenerated from abbreviations."""
-	return [row.get("name") if isinstance(row, dict) else row for row in variants or []]
+	"""Rename Item variants in a background-job batch after their template is renamed."""
+	renamed = []
+	for row in variants or []:
+		if isinstance(row, dict):
+			variant = row.get("name") or row.get("item_code")
+		else:
+			variant = row
+		renamed.append(rename_variant(variant, rebuild_search=False))
+	return renamed
 
 
 def ensure_variant_tuple_unique_index():
 	"""Enforce one non-empty YRP tuple per standard Item template."""
-	if not frappe.db.table_exists("Item") or not frappe.get_meta("Item").has_field(
-		"item_tuple_attribute"
-	):
+	if not frappe.db.table_exists("Item") or not frappe.get_meta("Item").has_field("item_tuple_attribute"):
 		return
-	frappe.db.sql(
-		"update `tabItem` set item_tuple_attribute = null where item_tuple_attribute = ''"
-	)
+	frappe.db.sql("update `tabItem` set item_tuple_attribute = null where item_tuple_attribute = ''")
 	duplicate = frappe.db.sql(
 		"""
 		select variant_of, item_tuple_attribute, count(*)

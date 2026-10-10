@@ -11,13 +11,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt
 
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
-
 from yrp.yrp.doctype.yrp_delivery_challan.test_internal_unit_transfer import _make_wo
-from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
-	get_purchase_order_defaults,
-	get_work_order_defaults,
-)
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
 	_process,
@@ -27,52 +21,61 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_supplier_warehouse,
 	_warehouse,
 )
+from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
+	get_purchase_order_defaults,
+	get_work_order_defaults,
+)
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 def _wo_grn(wo, from_wh, to_wh, item_variant, uom, qty):
 	from frappe.utils import nowdate, nowtime
 
 	receivable = wo.receivables[0]
-	grn = frappe.get_doc({
-		"doctype": 'YRP Goods Received Note',
-		"against": 'YRP Work Order',
-		"against_id": wo.name,
-		"posting_date": nowdate(),
-		"posting_time": nowtime(),
-		"supplier": wo.supplier,
-		"delivery_location": wo.delivery_location,
-		"supplier_address": wo.supplier_address,
-		"delivery_address": wo.delivery_address,
-		"from_warehouse": from_wh,
-		"to_warehouse": to_wh,
-		"process_name": wo.process_name,
-		"item": wo.item,
-		"items": [{
-			"item_variant": item_variant,
-			"quantity": qty,
-			"uom": uom,
-			"stock_uom": uom,
-			"conversion_factor": 1,
-			"rate": 12,
-			"ref_doctype": 'YRP Work Order Receivables',
-			"ref_docname": receivable.name,
-			"table_index": 0,
-			"row_index": "0",
-		}],
-	})
+	grn = frappe.get_doc(
+		{
+			"doctype": "YRP Goods Received Note",
+			"against": "YRP Work Order",
+			"against_id": wo.name,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"supplier": wo.supplier,
+			"delivery_location": wo.delivery_location,
+			"supplier_address": wo.supplier_address,
+			"delivery_address": wo.delivery_address,
+			"from_warehouse": from_wh,
+			"to_warehouse": to_wh,
+			"process_name": wo.process_name,
+			"item": wo.item,
+			"items": [
+				{
+					"item_variant": item_variant,
+					"quantity": qty,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"rate": 12,
+					"ref_doctype": "YRP Work Order Receivables",
+					"ref_docname": receivable.name,
+					"table_index": 0,
+					"row_index": "0",
+				}
+			],
+		}
+	)
 	grn.insert(ignore_permissions=True)
 	return grn
 
 
 def _set_po_excess(item_variant, pct):
 	parent_item = get_parent_item(item_variant)
-	frappe.db.set_value('Item', parent_item, "po_excess_allowed_percentage", pct)
-	frappe.clear_cache(doctype='Item')
+	frappe.db.set_value("Item", parent_item, "po_excess_allowed_percentage", pct)
+	frappe.clear_cache(doctype="Item")
 
 
 def _set_wo_excess(process_name, pct):
-	frappe.db.set_value('YRP Process', process_name, "wo_excess_allowed_percentage", pct)
-	frappe.clear_cache(doctype='YRP Process')
+	frappe.db.set_value("YRP Process", process_name, "wo_excess_allowed_percentage", pct)
+	frappe.clear_cache(doctype="YRP Process")
 
 
 def _first_value_detail(defaults):
@@ -146,7 +149,7 @@ class TestGRNExcessAllowance(FrappeTestCase):
 
 	def test_05_wo_within_allowance_succeeds(self):
 		sender = _supplier(f"_T_Excess_WO_Sup_{frappe.generate_hash(length=6)}")
-		frappe.db.set_value('Supplier', sender, "is_company_location", 0)
+		frappe.db.set_value("Supplier", sender, "is_company_location", 0)
 		receiver = _supplier(f"_T_Excess_WO_Loc_{frappe.generate_hash(length=6)}")
 		wo, from_wh, to_wh, iv, uom = _make_wo(sender, receiver, qty=100)
 		_set_wo_excess(wo.process_name, 25)
@@ -156,7 +159,7 @@ class TestGRNExcessAllowance(FrappeTestCase):
 
 	def test_06_wo_beyond_allowance_blocked(self):
 		sender = _supplier(f"_T_Excess_WO_Sup_{frappe.generate_hash(length=6)}")
-		frappe.db.set_value('Supplier', sender, "is_company_location", 0)
+		frappe.db.set_value("Supplier", sender, "is_company_location", 0)
 		receiver = _supplier(f"_T_Excess_WO_Loc_{frappe.generate_hash(length=6)}")
 		wo, from_wh, to_wh, iv, uom = _make_wo(sender, receiver, qty=100)
 		_set_wo_excess(wo.process_name, 25)
@@ -166,7 +169,7 @@ class TestGRNExcessAllowance(FrappeTestCase):
 
 	def test_07_wo_strict_when_pct_zero(self):
 		sender = _supplier(f"_T_Excess_WO_Sup_{frappe.generate_hash(length=6)}")
-		frappe.db.set_value('Supplier', sender, "is_company_location", 0)
+		frappe.db.set_value("Supplier", sender, "is_company_location", 0)
 		receiver = _supplier(f"_T_Excess_WO_Loc_{frappe.generate_hash(length=6)}")
 		wo, from_wh, to_wh, iv, uom = _make_wo(sender, receiver, qty=10)
 		_set_wo_excess(wo.process_name, 0)
@@ -208,7 +211,7 @@ class TestGRNExcessAllowance(FrappeTestCase):
 
 	def test_10_wo_defaults_keep_row_for_remaining_excess_after_pending_zero(self):
 		sender = _supplier(f"_T_Excess_WO_Sup_{frappe.generate_hash(length=6)}")
-		frappe.db.set_value('Supplier', sender, "is_company_location", 0)
+		frappe.db.set_value("Supplier", sender, "is_company_location", 0)
 		receiver = _supplier(f"_T_Excess_WO_Loc_{frappe.generate_hash(length=6)}")
 		wo, from_wh, to_wh, iv, uom = _make_wo(sender, receiver, qty=100)
 		_set_wo_excess(wo.process_name, 25)

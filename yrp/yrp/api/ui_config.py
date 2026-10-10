@@ -11,7 +11,6 @@ No caching in v1 — deliberately (§4.4): resolution is two indexed point-reads
 plus pure dict merging, once per full /web page load. Propagation rule:
 SM saves → user's next page load shows it.
 """
-from yrp.attribute_links import value as _attribute_value
 
 import json
 import re
@@ -21,6 +20,8 @@ import frappe
 from frappe import _
 from frappe.model import no_value_fields
 from frappe.rate_limiter import rate_limit
+
+from yrp.attribute_links import value as _attribute_value
 
 CURRENT_SCHEMA_VERSION = 1
 
@@ -142,11 +143,10 @@ def get_home_queue_metrics():
 	except Exception:
 		return HOME_QUEUE_METRICS
 	downstream = [
-		key
-		for key, spec in registry.items()
-		if spec.get("home_queue") and key not in HOME_QUEUE_METRICS
+		key for key, spec in registry.items() if spec.get("home_queue") and key not in HOME_QUEUE_METRICS
 	]
 	return (*HOME_QUEUE_METRICS, *downstream)
+
 
 # Per-block-type prop vocabulary (the defineProps list of every registered
 # block). Unknown block types stay unvalidated (the client bundle may be
@@ -449,7 +449,7 @@ NON_LISTABLE_FIELDTYPES = (
 	"Button",
 	"Image",
 	"Geolocation",
-	'SD YRP Signature',
+	"SD YRP Signature",
 )
 
 # Soft-checked vocabularies for the structural knobs. An off-vocabulary value
@@ -539,6 +539,8 @@ ACTIONS_KEYS = ("placement", "dialogPosition", "items")
 # STACK_DECISION: Drawer-bottom IS action-sheet; still a FILTER over capability,
 # never a grant).
 ACTIONS_PLACEMENTS = ("header", "inline", "floating", "action-sheet")
+
+
 # actions.items is a FILTER over affordances registered by the installed /web
 # host. Base YRP deliberately knows no visual or business action names. A host
 # contributes safe identifiers through ``yrp_ui_actions``; JSON can select only
@@ -606,7 +608,9 @@ ACCENT_RE = re.compile(r"#[0-9a-fA-F]{6}")
 ICON_RE = re.compile(r"pi pi-[a-z0-9-]+")
 # muted/line/surface2 may carry an rgba() wash — same conservative form the
 # engine accepts (applyTheme.js RGBA_RE; values land inside a client <style>).
-THEME_RGBA_RE = re.compile(r"rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d{1,4})\s*)?\)")
+THEME_RGBA_RE = re.compile(
+	r"rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d{1,4})\s*)?\)"
+)
 # Font stacks: ASCII letters/digits/underscore, spaces, commas, quotes, hyphens.
 # Deliberately NOT Python \w — JS \w is ASCII-only, so a Unicode-lettered value
 # ("Ariál") passes a \w-based server check yet gets dropped by the client's
@@ -692,7 +696,9 @@ def validate_config(config, layer):
 
 	if len(serialized.encode("utf-8")) > CONFIG_SIZE_WARN_BYTES:
 		warnings.append(
-			_("{0}: serialized config exceeds 32 KB — it rides in boot on every /web page load; consider trimming").format(layer)
+			_(
+				"{0}: serialized config exceeds 32 KB — it rides in boot on every /web page load; consider trimming"
+			).format(layer)
 		)
 
 	return warnings
@@ -709,7 +715,10 @@ def _hard(layer, message):
 def _validate_schema_version(cfg, layer):
 	version = cfg.get("schema_version")
 	if isinstance(version, bool) or not isinstance(version, int) or version < 1:
-		_hard(layer, _("schema_version must be a positive integer (current: {0})").format(CURRENT_SCHEMA_VERSION))
+		_hard(
+			layer,
+			_("schema_version must be a positive integer (current: {0})").format(CURRENT_SCHEMA_VERSION),
+		)
 	if version > CURRENT_SCHEMA_VERSION:
 		_hard(
 			layer,
@@ -829,9 +838,7 @@ def validate_layout_rendering(render_mode, experience_key, config):
 	if experience_key not in registry:
 		_hard(
 			"layout",
-			_("experience_key '{0}' is not registered by an installed application").format(
-				experience_key
-			),
+			_("experience_key '{0}' is not registered by an installed application").format(experience_key),
 		)
 
 	cfg = _config_object(config) or {}
@@ -906,9 +913,7 @@ def _warn_unusable_doctype(layer, path, doctype, warnings, catalog):
 	must surface it. Returns True when a warning was emitted (callers skip
 	their deeper per-doctype checks)."""
 	if not frappe.db.exists("DocType", doctype):
-		warnings.append(
-			_("{0}: {1} doctype '{2}' does not exist as a DocType").format(layer, path, doctype)
-		)
+		warnings.append(_("{0}: {1} doctype '{2}' does not exist as a DocType").format(layer, path, doctype))
 		return True
 	if catalog is not None and doctype not in catalog:
 		warnings.append(
@@ -949,9 +954,7 @@ def _validate_nav(nav, layer, warnings, catalog=None):
 	sidebar_mode = nav.get("sidebar")
 	if sidebar_mode is not None:
 		if sidebar_mode not in NAV_SIDEBAR_MODES:
-			_warn_off_vocabulary(
-				layer, "nav.sidebar", sidebar_mode, NAV_SIDEBAR_MODES, "flyout", warnings
-			)
+			_warn_off_vocabulary(layer, "nav.sidebar", sidebar_mode, NAV_SIDEBAR_MODES, "flyout", warnings)
 		if position is not None and position not in NAV_SIDEBAR_POSITIONS:
 			warnings.append(
 				_(
@@ -1006,9 +1009,9 @@ def _validate_nav(nav, layer, warnings, catalog=None):
 			# Soft: the client keys sidebar-collapse persistence on group id;
 			# a missing id only degrades that, it doesn't break rendering.
 			warnings.append(
-				_("{0}: nav group {1!r} has no string 'id' — sidebar collapse state will not persist for it").format(
-					layer, group.get("label") or group_id
-				)
+				_(
+					"{0}: nav group {1!r} has no string 'id' — sidebar collapse state will not persist for it"
+				).format(layer, group.get("label") or group_id)
 			)
 		else:
 			seen_group_ids[group_id] = seen_group_ids.get(group_id, 0) + 1
@@ -1063,9 +1066,7 @@ def _validate_nav(nav, layer, warnings, catalog=None):
 	for doctype, count in seen_doctypes.items():
 		if count > 1:
 			warnings.append(
-				_("{0}: nav doctype '{1}' appears {2} times across nav groups").format(
-					layer, doctype, count
-				)
+				_("{0}: nav doctype '{1}' appears {2} times across nav groups").format(layer, doctype, count)
 			)
 	for group_id, count in seen_group_ids.items():
 		if count > 1:
@@ -1194,9 +1195,7 @@ def _validate_screens(screens, layer, warnings, catalog=None):
 		seen_ids[block_id] = seen_ids.get(block_id, 0) + 1
 		for key in block:
 			if key not in BLOCK_KEYS:
-				warnings.append(
-					_("{0}: unknown key '{1}' inside block '{2}'").format(layer, key, block_id)
-				)
+				warnings.append(_("{0}: unknown key '{1}' inside block '{2}'").format(layer, key, block_id))
 		size = _attribute_value(block.get("size"))
 		if size is not None and size not in BLOCK_SIZES:
 			warnings.append(
@@ -1275,23 +1274,19 @@ def _validate_columns(columns, fieldnames, doctype, path, layer, warnings, strin
 			if not strings_legal:
 				warnings.append(
 					_(
-						"{0}: {1} column '{2}' is a bare fieldname string — the routed list page reads only {{field, label}} objects and DROPS string entries (write {{\"field\": \"{2}\"}}; strings work only in record-list block columns)"
+						'{0}: {1} column \'{2}\' is a bare fieldname string — the routed list page reads only {{field, label}} objects and DROPS string entries (write {{"field": "{2}"}}; strings work only in record-list block columns)'
 					).format(layer, path, entry)
 				)
 		elif isinstance(entry, dict):
 			field = entry.get("field")
 			if not isinstance(field, str) or not field.strip():
 				warnings.append(
-					_("{0}: {1} column {2!r} needs a non-empty string 'field'").format(
-						layer, path, entry
-					)
+					_("{0}: {1} column {2!r} needs a non-empty string 'field'").format(layer, path, entry)
 				)
 				continue
 			label = entry.get("label")
 			if label is not None and not isinstance(label, str):
-				warnings.append(
-					_("{0}: {1} column '{2}' label must be a string").format(layer, path, field)
-				)
+				warnings.append(_("{0}: {1} column '{2}' label must be a string").format(layer, path, field))
 			for key in entry:
 				if key not in COLUMN_KEYS:
 					warnings.append(
@@ -1326,9 +1321,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 	block_type = block["type"]
 	props = block.get("props")
 	if props is not None and not isinstance(props, dict):
-		warnings.append(
-			_("{0}: block '{1}' props must be an object").format(layer, block["id"])
-		)
+		warnings.append(_("{0}: block '{1}' props must be an object").format(layer, block["id"]))
 		return
 	if props is None:
 		# Absent props stay legal for every optional-prop block, but the
@@ -1352,20 +1345,14 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			# Validated since day one, consumed by nothing (HomeQueues reads
 			# only `stats`) — RESERVED until Track 1 item 11 wires or deletes it.
 			_warn_reserved(layer, _("block '{0}' maxCards").format(block["id"]), warnings)
-			if (
-				isinstance(max_cards, bool)
-				or not isinstance(max_cards, int)
-				or not (1 <= max_cards <= 10)
-			):
+			if isinstance(max_cards, bool) or not isinstance(max_cards, int) or not (1 <= max_cards <= 10):
 				warnings.append(
 					_("{0}: block '{1}' maxCards must be an integer between 1 and 10").format(
 						layer, block["id"]
 					)
 				)
 		stats = props.get("stats")
-		if stats is not None and (
-			not isinstance(stats, list) or not all(isinstance(s, str) for s in stats)
-		):
+		if stats is not None and (not isinstance(stats, list) or not all(isinstance(s, str) for s in stats)):
 			warnings.append(
 				_("{0}: block '{1}' stats must be a list of metric names").format(layer, block["id"])
 			)
@@ -1401,55 +1388,41 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			)
 		elif doctypes:
 			for name in doctypes:
-				_warn_unusable_doctype(
-					layer, _("block '{0}'").format(block["id"]), name, warnings, catalog
-				)
+				_warn_unusable_doctype(layer, _("block '{0}'").format(block["id"]), name, warnings, catalog)
 		if block_type == "home-recent":
 			recent_style = props.get("recentStyle")
 			if recent_style is not None and recent_style not in ("table", "tiles"):
 				warnings.append(
-					_("{0}: block '{1}' recentStyle must be 'table' or 'tiles'").format(
-						layer, block["id"]
-					)
+					_("{0}: block '{1}' recentStyle must be 'table' or 'tiles'").format(layer, block["id"])
 				)
 	elif block_type == "home-greeting":
 		for key in ("greetingName", "sub"):
 			value = props.get(key)
 			if value is not None and not isinstance(value, str):
-				warnings.append(
-					_("{0}: block '{1}' {2} must be a string").format(layer, block["id"], key)
-				)
+				warnings.append(_("{0}: block '{1}' {2} must be a string").format(layer, block["id"], key))
 		new_cta = props.get("newCta")
 		if new_cta is not None and not isinstance(new_cta, dict):
-			warnings.append(
-				_("{0}: block '{1}' newCta must be an object").format(layer, block["id"])
-			)
+			warnings.append(_("{0}: block '{1}' newCta must be an object").format(layer, block["id"]))
 		elif isinstance(new_cta, dict):
 			# newCta names route through the same catalog gate as quickCreate
 			# (HomeGreeting drops entries without a catalog route silently).
 			for key in new_cta:
 				if key not in NEWCTA_KEYS:
 					warnings.append(
-						_("{0}: block '{1}' unknown key '{2}' inside newCta").format(
-							layer, block["id"], key
-						)
+						_("{0}: block '{1}' unknown key '{2}' inside newCta").format(layer, block["id"], key)
 					)
 			primary = new_cta.get("primary")
 			if primary is not None:
 				if not isinstance(primary, str) or not primary.strip():
 					warnings.append(
-						_("{0}: block '{1}' newCta.primary must be a DocType name").format(
-							layer, block["id"]
-						)
+						_("{0}: block '{1}' newCta.primary must be a DocType name").format(layer, block["id"])
 					)
 				else:
 					_warn_unusable_doctype(
 						layer, _("block '{0}' newCta").format(block["id"]), primary, warnings, catalog
 					)
 			menu = new_cta.get("menu")
-			if menu is not None and (
-				not isinstance(menu, list) or not all(isinstance(m, str) for m in menu)
-			):
+			if menu is not None and (not isinstance(menu, list) or not all(isinstance(m, str) for m in menu)):
 				warnings.append(
 					_("{0}: block '{1}' newCta.menu must be a list of DocType names").format(
 						layer, block["id"]
@@ -1482,9 +1455,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 		fieldnames = None
 		if not isinstance(doctype, str) or not doctype.strip():
 			warnings.append(
-				_("{0}: block '{1}' requires a non-empty string 'doctype'").format(
-					layer, block["id"]
-				)
+				_("{0}: block '{1}' requires a non-empty string 'doctype'").format(layer, block["id"])
 			)
 			doctype = None
 		elif not frappe.db.exists("DocType", doctype):
@@ -1500,9 +1471,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 		variant = props.get("variant")
 		if variant is not None and variant not in ("table", "cards", "kanban"):
 			warnings.append(
-				_("{0}: block '{1}' variant must be 'table', 'cards' or 'kanban'").format(
-					layer, block["id"]
-				)
+				_("{0}: block '{1}' variant must be 'table', 'cards' or 'kanban'").format(layer, block["id"])
 			)
 		columns = props.get("columns")
 		if columns is not None:
@@ -1514,18 +1483,14 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			isinstance(page_size, bool) or not isinstance(page_size, int) or not (1 <= page_size <= 50)
 		):
 			warnings.append(
-				_("{0}: block '{1}' pageSize must be an integer between 1 and 50").format(
-					layer, block["id"]
-				)
+				_("{0}: block '{1}' pageSize must be an integer between 1 and 50").format(layer, block["id"])
 			)
 		for key in ("groupBy", "titleField", "title"):
 			value = props.get(key)
 			if value is None:
 				continue
 			if not isinstance(value, str):
-				warnings.append(
-					_("{0}: block '{1}' {2} must be a string").format(layer, block["id"], key)
-				)
+				warnings.append(_("{0}: block '{1}' {2} must be a string").format(layer, block["id"], key))
 			elif key != "title" and fieldnames is not None and value not in fieldnames:
 				# groupBy/titleField silently fall back client-side when they
 				# name no meta field (kanban regroups by status, title falls
@@ -1549,25 +1514,21 @@ def _check_block_props(block, layer, warnings, catalog=None):
 		# _validate_composite_tree for the hard/soft split.
 		source = props.get("source")
 		if source is not None and not isinstance(source, dict):
-			warnings.append(
-				_("{0}: block '{1}' source must be an object").format(layer, block["id"])
-			)
+			warnings.append(_("{0}: block '{1}' source must be an object").format(layer, block["id"]))
 		elif isinstance(source, dict):
 			for key in source:
 				if key not in COMPOSITE_SOURCE_KEYS:
 					warnings.append(
-						_(
-							"{0}: block '{1}' source key '{2}' is ignored — the client reads only {3}"
-						).format(layer, block["id"], key, ", ".join(COMPOSITE_SOURCE_KEYS))
+						_("{0}: block '{1}' source key '{2}' is ignored — the client reads only {3}").format(
+							layer, block["id"], key, ", ".join(COMPOSITE_SOURCE_KEYS)
+						)
 					)
 			metrics = source.get("metrics")
 			if metrics is not None and (
 				not isinstance(metrics, list) or not all(isinstance(m, str) for m in metrics)
 			):
 				warnings.append(
-					_("{0}: block '{1}' source.metrics must be a list of strings").format(
-						layer, block["id"]
-					)
+					_("{0}: block '{1}' source.metrics must be a list of strings").format(layer, block["id"])
 				)
 			elif metrics:
 				known = _known_metric_keys()
@@ -1582,9 +1543,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			if doctype is not None:
 				if not isinstance(doctype, str) or not doctype.strip():
 					warnings.append(
-						_("{0}: block '{1}' source.doctype must be a DocType name").format(
-							layer, block["id"]
-						)
+						_("{0}: block '{1}' source.doctype must be a DocType name").format(layer, block["id"])
 					)
 				elif not frappe.db.exists("DocType", doctype):
 					# record-list parity: any readable site doctype is legal
@@ -1605,9 +1564,9 @@ def _check_block_props(block, layer, warnings, catalog=None):
 				)
 			if limit is not None and not source.get("doctype"):
 				warnings.append(
-					_(
-						"{0}: block '{1}' source.limit does nothing without source.doctype"
-					).format(layer, block["id"])
+					_("{0}: block '{1}' source.limit does nothing without source.doctype").format(
+						layer, block["id"]
+					)
 				)
 		tree = props.get("tree")
 		if tree is None:
@@ -1618,9 +1577,9 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			)
 		elif not isinstance(tree, dict) or not isinstance(tree.get("type"), str):
 			warnings.append(
-				_(
-					"{0}: block '{1}' tree must be an object with a string 'type' root node"
-				).format(layer, block["id"])
+				_("{0}: block '{1}' tree must be an object with a string 'type' root node").format(
+					layer, block["id"]
+				)
 			)
 		else:
 			# Deep tree validation against the block's own source: the scope
@@ -1641,7 +1600,9 @@ def _check_block_props(block, layer, warnings, catalog=None):
 			else:
 				metric_names = set()  # no metrics fetched — metric binds are dead
 			limit = src.get("limit")
-			row_limit = limit if isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 20 else 5
+			row_limit = (
+				limit if isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 20 else 5
+			)
 			_validate_composite_tree(
 				tree,
 				_("block '{0}'").format(block["id"]),
@@ -1658,9 +1619,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 		calculation = props.get("calculation")
 		if not isinstance(calculation, str) or not calculation.strip():
 			warnings.append(
-				_("{0}: block '{1}' requires a non-empty string 'calculation'").format(
-					layer, block["id"]
-				)
+				_("{0}: block '{1}' requires a non-empty string 'calculation'").format(layer, block["id"])
 			)
 		else:
 			known = _known_calculation_keys()
@@ -1672,9 +1631,7 @@ def _check_block_props(block, layer, warnings, catalog=None):
 				)
 		params = props.get("params")
 		if params is not None and not isinstance(params, dict):
-			warnings.append(
-				_("{0}: block '{1}' params must be an object").format(layer, block["id"])
-			)
+			warnings.append(_("{0}: block '{1}' params must be an object").format(layer, block["id"]))
 	elif block_type == "story-scroller":
 		# USE_CASE §4 item 7. Same soft posture as record-list: a required
 		# `source` doctype (exist-checked, no catalog gate — an off-catalog
@@ -1749,16 +1706,14 @@ def _check_card_template(card_template, variant, context, layer, warnings, docty
 		return
 	if not isinstance(card_template, dict) or not isinstance(card_template.get("type"), str):
 		warnings.append(
-			_(
-				"{0}: {1} cardTemplate must be a composite tree object with a string 'type' root node"
-			).format(layer, context)
+			_("{0}: {1} cardTemplate must be a composite tree object with a string 'type' root node").format(
+				layer, context
+			)
 		)
 		return
 	if variant not in ("cards", "kanban"):
 		warnings.append(
-			_("{0}: {1} cardTemplate does nothing without variant 'cards' or 'kanban'").format(
-				layer, context
-			)
+			_("{0}: {1} cardTemplate does nothing without variant 'cards' or 'kanban'").format(layer, context)
 		)
 	row_fieldnames = None
 	if doctype and frappe.db.exists("DocType", doctype):
@@ -1831,7 +1786,9 @@ def _hard_if_injection_string(value, path, layer):
 		)
 
 
-def _check_composite_path(path_value, path_label, layer, warnings, scope, doctype, fieldnames, metric_names, row_limit):
+def _check_composite_path(
+	path_value, path_label, layer, warnings, scope, doctype, fieldnames, metric_names, row_limit
+):
 	"""Dot-path grammar + scope checks for bind paths and showIf fields.
 
 	HARD: prototype-shaped segments (__proto__/prototype/constructor) and
@@ -1844,9 +1801,9 @@ def _check_composite_path(path_value, path_label, layer, warnings, scope, doctyp
 	if any(seg in COMPOSITE_FORBIDDEN_PATH_SEGMENTS for seg in segments):
 		_hard(
 			layer,
-			_(
-				"{0} '{1}' contains a prototype-shaped segment ({2}) — refused"
-			).format(path_label, path_value, "/".join(COMPOSITE_FORBIDDEN_PATH_SEGMENTS)),
+			_("{0} '{1}' contains a prototype-shaped segment ({2}) — refused").format(
+				path_label, path_value, "/".join(COMPOSITE_FORBIDDEN_PATH_SEGMENTS)
+			),
 		)
 	if not COMPOSITE_BIND_CHARSET_RE.fullmatch(path_value):
 		_hard(
@@ -1857,9 +1814,9 @@ def _check_composite_path(path_value, path_label, layer, warnings, scope, doctyp
 		)
 	if not COMPOSITE_BIND_PATH_RE.fullmatch(path_value):
 		warnings.append(
-			_(
-				"{0}: {1} '{2}' is a malformed dot-path — the client resolves nothing (em-dash)"
-			).format(layer, path_label, path_value)
+			_("{0}: {1} '{2}' is a malformed dot-path — the client resolves nothing (em-dash)").format(
+				layer, path_label, path_value
+			)
 		)
 		return
 
@@ -1947,9 +1904,9 @@ def _check_composite_bindable(value, prop_path, layer, warnings, path_kwargs):
 			_hard_if_injection_string(fmt, _("{0}.format").format(prop_path), layer)
 			if fmt not in COMPOSITE_FORMATS:
 				warnings.append(
-					_(
-						"{0}: {1} format {2!r} is not one of {3} — the client renders the raw value"
-					).format(layer, prop_path, fmt, ", ".join(COMPOSITE_FORMATS))
+					_("{0}: {1} format {2!r} is not one of {3} — the client renders the raw value").format(
+						layer, prop_path, fmt, ", ".join(COMPOSITE_FORMATS)
+					)
 				)
 		for key in value:
 			if key not in COMPOSITE_BINDING_KEYS:
@@ -2030,16 +1987,16 @@ def _validate_composite_tree(
 		if isinstance(version, bool) or not isinstance(version, int) or version < 1:
 			_hard(
 				layer,
-				_(
-					"{0} {1}.version must be a positive integer (current composite grammar: {2})"
-				).format(context, root_label, COMPOSITE_GRAMMAR_VERSION),
+				_("{0} {1}.version must be a positive integer (current composite grammar: {2})").format(
+					context, root_label, COMPOSITE_GRAMMAR_VERSION
+				),
 			)
 		if version > COMPOSITE_GRAMMAR_VERSION:
 			_hard(
 				layer,
-				_(
-					"{0} {1}.version {2} is newer than this server's composite grammar ({3})"
-				).format(context, root_label, version, COMPOSITE_GRAMMAR_VERSION),
+				_("{0} {1}.version {2} is newer than this server's composite grammar ({3})").format(
+					context, root_label, version, COMPOSITE_GRAMMAR_VERSION
+				),
 			)
 
 	# Caps BEFORE the deep walk (hard — the engine renders NOTHING over-cap),
@@ -2076,9 +2033,9 @@ def _validate_composite_tree(
 def _walk_composite_node(node, path, is_root, layer, warnings, path_kwargs):
 	if not isinstance(node, dict):
 		warnings.append(
-			_(
-				"{0}: {1} is not a node object — the client renders a path-labelled honest fallback"
-			).format(layer, path)
+			_("{0}: {1} is not a node object — the client renders a path-labelled honest fallback").format(
+				layer, path
+			)
 		)
 		return
 
@@ -2095,9 +2052,9 @@ def _walk_composite_node(node, path, is_root, layer, warnings, path_kwargs):
 	spec = None
 	if not isinstance(ntype, str) or not ntype.strip():
 		warnings.append(
-			_(
-				"{0}: {1} has no string 'type' — the client renders a path-labelled honest fallback"
-			).format(layer, path)
+			_("{0}: {1} has no string 'type' — the client renders a path-labelled honest fallback").format(
+				layer, path
+			)
 		)
 	else:
 		_hard_if_injection_string(ntype, _("{0}.type").format(path), layer)
@@ -2124,9 +2081,9 @@ def _walk_composite_node(node, path, is_root, layer, warnings, path_kwargs):
 			pspec = spec["props"].get(name)
 			if pspec is None:
 				warnings.append(
-					_(
-						"{0}: '{1}' is not a prop of primitive '{2}' at {3} — the client ignores it"
-					).format(layer, name, ntype, path)
+					_("{0}: '{1}' is not a prop of primitive '{2}' at {3} — the client ignores it").format(
+						layer, name, ntype, path
+					)
 				)
 				_injection_scan(value, prop_path, layer)
 				continue
@@ -2139,9 +2096,9 @@ def _walk_composite_node(node, path, is_root, layer, warnings, path_kwargs):
 		else:
 			if spec is not None and not spec["container"]:
 				warnings.append(
-					_(
-						"{0}: '{1}' at {2} is not a container ({3}) — the client ignores its children"
-					).format(layer, ntype, path, "/".join(COMPOSITE_CONTAINER_PRIMITIVES))
+					_("{0}: '{1}' at {2} is not a container ({3}) — the client ignores its children").format(
+						layer, ntype, path, "/".join(COMPOSITE_CONTAINER_PRIMITIVES)
+					)
 				)
 			for i, child in enumerate(children):
 				_walk_composite_node(
@@ -2171,13 +2128,15 @@ def _validate_composite_prop(value, pspec, prop_path, layer, warnings, path_kwar
 				)
 			)
 	elif kind == "int":
-		if isinstance(value, bool) or not isinstance(value, int) or not (
-			pspec["min"] <= value <= pspec["max"]
+		if (
+			isinstance(value, bool)
+			or not isinstance(value, int)
+			or not (pspec["min"] <= value <= pspec["max"])
 		):
 			warnings.append(
-				_(
-					"{0}: {1} must be an integer between {2} and {3} — the client falls back"
-				).format(layer, prop_path, pspec["min"], pspec["max"])
+				_("{0}: {1} must be an integer between {2} and {3} — the client falls back").format(
+					layer, prop_path, pspec["min"], pspec["max"]
+				)
 			)
 	elif kind == "string":
 		if not isinstance(value, str):
@@ -2204,9 +2163,7 @@ def _validate_composite_prop(value, pspec, prop_path, layer, warnings, path_kwar
 			)
 			_injection_scan(value, prop_path, layer)
 		elif not isinstance(value, str):
-			warnings.append(
-				_("{0}: {1} must be a static site-file path string").format(layer, prop_path)
-			)
+			warnings.append(_("{0}: {1} must be a static site-file path string").format(layer, prop_path))
 		elif ":" in value or ".." in value or "\\" in value or value.startswith("//"):
 			# Scheme, traversal, backslash or protocol-relative — the injection
 			# shapes: an external/derived URL can never be a site file.
@@ -2353,9 +2310,7 @@ def _validate_list_views(list_views, layer, warnings, catalog=None):
 			continue  # null = no opinion (the merge skips it)
 		if not isinstance(view, dict):
 			warnings.append(
-				_("{0}: listViews['{1}'] must be an object — the client ignores it").format(
-					layer, doctype
-				)
+				_("{0}: listViews['{1}'] must be an object — the client ignores it").format(layer, doctype)
 			)
 			continue
 		for key in view:
@@ -2392,9 +2347,7 @@ def _validate_list_views(list_views, layer, warnings, catalog=None):
 				continue
 			if not isinstance(value, str) or not value.strip():
 				warnings.append(
-					_("{0}: listViews['{1}'].{2} must be a fieldname string").format(
-						layer, doctype, key
-					)
+					_("{0}: listViews['{1}'].{2} must be a fieldname string").format(layer, doctype, key)
 				)
 			elif fieldnames is not None and value not in fieldnames:
 				warnings.append(
@@ -2438,7 +2391,9 @@ def _validate_chrome(chrome, layer, warnings):
 		return
 	if not isinstance(chrome, dict):
 		warnings.append(
-			_("{0}: chrome must be an object — the client ignores it and keeps the standard topbar").format(layer)
+			_("{0}: chrome must be an object — the client ignores it and keeps the standard topbar").format(
+				layer
+			)
 		)
 		return
 	for key, value in chrome.items():
@@ -2566,9 +2521,7 @@ def _validate_detail_related(related, layer, warnings):
 				).format(layer, source_doctype, len(sets), DETAIL_RELATED_MAX_SETS)
 			)
 		for i, entry in enumerate(sets):
-			_validate_detail_related_entry(
-				entry, source_doctype, source_fieldnames, i, layer, warnings
-			)
+			_validate_detail_related_entry(entry, source_doctype, source_fieldnames, i, layer, warnings)
 
 
 def _validate_detail_related_entry(entry, source_doctype, source_fieldnames, index, layer, warnings):
@@ -2579,9 +2532,7 @@ def _validate_detail_related_entry(entry, source_doctype, source_fieldnames, ind
 	each linked card (same deep-validated grammar as listViews cardTemplate)."""
 	context = "detail.related['{0}'][{1}]".format(source_doctype, index)
 	if not isinstance(entry, dict):
-		warnings.append(
-			_("{0}: {1} must be an object — the client ignores it").format(layer, context)
-		)
+		warnings.append(_("{0}: {1} must be an object — the client ignores it").format(layer, context))
 		return
 
 	for key in entry:
@@ -2599,9 +2550,7 @@ def _validate_detail_related_entry(entry, source_doctype, source_fieldnames, ind
 		)
 	elif not frappe.db.exists("DocType", target_doctype):
 		warnings.append(
-			_("{0}: {1}.doctype '{2}' does not exist as a DocType").format(
-				layer, context, target_doctype
-			)
+			_("{0}: {1}.doctype '{2}' does not exist as a DocType").format(layer, context, target_doctype)
 		)
 	else:
 		target_fieldnames = _composite_fetchable_fieldnames(target_doctype)
@@ -2614,9 +2563,9 @@ def _validate_detail_related_entry(entry, source_doctype, source_fieldnames, ind
 		)
 	elif target_fieldnames is not None and filter_field not in target_fieldnames:
 		warnings.append(
-			_(
-				"{0}: {1}.filterField '{2}' is not a field on '{3}' — the client fetches nothing"
-			).format(layer, context, filter_field, target_doctype)
+			_("{0}: {1}.filterField '{2}' is not a field on '{3}' — the client fetches nothing").format(
+				layer, context, filter_field, target_doctype
+			)
 		)
 
 	# fromField — a fetchable field on the SOURCE doctype ('name' always legal).
@@ -2636,20 +2585,22 @@ def _validate_detail_related_entry(entry, source_doctype, source_fieldnames, ind
 	title = entry.get("title")
 	if title is not None:
 		if not isinstance(title, str):
-			warnings.append(
-				_("{0}: {1}.title must be a string").format(layer, context)
-			)
+			warnings.append(_("{0}: {1}.title must be a string").format(layer, context))
 		else:
 			_hard_if_injection_string(title, context + ".title", layer)
 
 	# limit — optional int in 1..DETAIL_RELATED_MAX_LIMIT.
 	limit = entry.get("limit")
 	if limit is not None:
-		if isinstance(limit, bool) or not isinstance(limit, int) or not (1 <= limit <= DETAIL_RELATED_MAX_LIMIT):
+		if (
+			isinstance(limit, bool)
+			or not isinstance(limit, int)
+			or not (1 <= limit <= DETAIL_RELATED_MAX_LIMIT)
+		):
 			warnings.append(
-				_(
-					"{0}: {1}.limit must be an integer 1–{2} — the client falls back to {3}"
-				).format(layer, context, DETAIL_RELATED_MAX_LIMIT, DETAIL_RELATED_DEFAULT_LIMIT)
+				_("{0}: {1}.limit must be an integer 1–{2} — the client falls back to {3}").format(
+					layer, context, DETAIL_RELATED_MAX_LIMIT, DETAIL_RELATED_DEFAULT_LIMIT
+				)
 			)
 
 	# cardTemplate — optional row-scoped composite tree over the LINKED doctype.
@@ -2714,9 +2665,7 @@ def _validate_dc_entry(dc_entry, layer, warnings):
 
 	variant = dc_entry.get("variant")
 	if variant is not None and variant not in DC_ENTRY_VARIANTS:
-		_warn_off_vocabulary(
-			layer, "dcEntry.variant", variant, DC_ENTRY_VARIANTS, "form-grid", warnings
-		)
+		_warn_off_vocabulary(layer, "dcEntry.variant", variant, DC_ENTRY_VARIANTS, "form-grid", warnings)
 
 	qty_control = dc_entry.get("qtyControl")
 	if qty_control is not None and qty_control not in DC_ENTRY_QTY_CONTROLS:
@@ -2755,9 +2704,7 @@ def _validate_actions(actions, layer, warnings):
 
 	placement = actions.get("placement")
 	if placement is not None and placement not in ACTIONS_PLACEMENTS:
-		_warn_off_vocabulary(
-			layer, "actions.placement", placement, ACTIONS_PLACEMENTS, "header", warnings
-		)
+		_warn_off_vocabulary(layer, "actions.placement", placement, ACTIONS_PLACEMENTS, "header", warnings)
 
 	dialog_position = actions.get("dialogPosition")
 	if dialog_position is not None and dialog_position not in OVERLAY_POSITIONS:
@@ -2772,20 +2719,16 @@ def _validate_actions(actions, layer, warnings):
 		registered_actions = get_registered_action_items()
 		for item in items:
 			if not isinstance(item, str):
-				warnings.append(
-					_("{0}: actions.items entry {1!r} is not a string").format(layer, item)
-				)
+				warnings.append(_("{0}: actions.items entry {1!r} is not a string").format(layer, item))
 			elif not EXPERIENCE_PROP_KEY_RE.fullmatch(item):
 				warnings.append(
-					_("{0}: actions.items entry '{1}' is not a safe action identifier").format(
-						layer, item
-					)
+					_("{0}: actions.items entry '{1}' is not a safe action identifier").format(layer, item)
 				)
 			elif registered_actions and item not in registered_actions:
 				warnings.append(
-					_(
-						"{0}: actions.items entry '{1}' is not one of {2} — the client ignores it"
-					).format(layer, item, ", ".join(registered_actions))
+					_("{0}: actions.items entry '{1}' is not one of {2} — the client ignores it").format(
+						layer, item, ", ".join(registered_actions)
+					)
 				)
 
 	for key in actions:
@@ -2840,9 +2783,9 @@ def _validate_theme(theme, layer, warnings):
 			not isinstance(dark_accent, str) or not ACCENT_RE.fullmatch(dark_accent)
 		):
 			warnings.append(
-				_("{0}: theme.dark.accent {1!r} is not '#rrggbb' — the client will keep the shipped palette").format(
-					layer, dark_accent
-				)
+				_(
+					"{0}: theme.dark.accent {1!r} is not '#rrggbb' — the client will keep the shipped palette"
+				).format(layer, dark_accent)
 			)
 		_soft_validate_theme_tokens(dark, "theme.dark", layer, warnings)
 		# Scheme-neutral presentation modes are read from the TOP level only —
@@ -2883,9 +2826,7 @@ def _warn_light_only_palette(theme, mode, dark, layer, warnings):
 	]
 	if not anchors:
 		return
-	dark_has_colors = isinstance(dark, dict) and any(
-		dark.get(key) is not None for key in THEME_COLOR_KEYS
-	)
+	dark_has_colors = isinstance(dark, dict) and any(dark.get(key) is not None for key in THEME_COLOR_KEYS)
 	if not dark_has_colors:
 		warnings.append(
 			_(
@@ -2911,9 +2852,7 @@ def _soft_validate_theme_tokens(t, path, layer, warnings):
 		value = t.get(key)
 		if value is None:
 			continue
-		if not isinstance(value, str) or not (
-			ACCENT_RE.fullmatch(value) or THEME_RGBA_RE.fullmatch(value)
-		):
+		if not isinstance(value, str) or not (ACCENT_RE.fullmatch(value) or THEME_RGBA_RE.fullmatch(value)):
 			warn(key, value, _("'#rrggbb' or 'rgba(r, g, b[, a])'"))
 
 	radius = t.get("radius")
@@ -2937,8 +2876,7 @@ def _soft_validate_theme_tokens(t, path, layer, warnings):
 	# A valid colour is silent; an off-form value warns softly (never blocks).
 	focus = t.get("focus")
 	if focus is not None and (
-		not isinstance(focus, str)
-		or not (ACCENT_RE.fullmatch(focus) or THEME_RGBA_RE.fullmatch(focus))
+		not isinstance(focus, str) or not (ACCENT_RE.fullmatch(focus) or THEME_RGBA_RE.fullmatch(focus))
 	):
 		warn("focus", focus, _("'#rrggbb' or 'rgba(r, g, b[, a])'"))
 
@@ -3249,21 +3187,19 @@ def _load_layout_terminology(layout):
 	if not layout:
 		return {}
 	try:
-		if not frappe.db.table_exists('YRP UI Terminology') or not frappe.db.table_exists('YRP UI Term'):
+		if not frappe.db.table_exists("YRP UI Terminology") or not frappe.db.table_exists("YRP UI Term"):
 			return {}
-		parent = frappe.db.get_value('YRP UI Terminology', {"ui_layout": layout}, "name")
+		parent = frappe.db.get_value("YRP UI Terminology", {"ui_layout": layout}, "name")
 		if not parent:
 			return {}
 		rows = frappe.get_all(
-			'YRP UI Term',
-			filters={"parent": parent, "parenttype": 'YRP UI Terminology', "parentfield": "terms"},
+			"YRP UI Term",
+			filters={"parent": parent, "parenttype": "YRP UI Terminology", "parentfield": "terms"},
 			fields=["term_key", "source_text", "tamil_text"],
 			order_by="idx asc",
 		)
 		return {
-			row.term_key: {"source": row.source_text, "ta": row.tamil_text}
-			for row in rows
-			if row.term_key
+			row.term_key: {"source": row.source_text, "ta": row.tamil_text} for row in rows if row.term_key
 		}
 	except Exception:
 		# A terminology defect must never make /web unavailable. The owning
@@ -3282,12 +3218,10 @@ def _layout_row_fields():
 	"""
 	fields = ["config", "disabled"]
 	try:
-		columns = set(frappe.db.get_table_columns('YRP UI Layout'))
+		columns = set(frappe.db.get_table_columns("YRP UI Layout"))
 	except Exception:
 		return fields
-	return fields + [
-		field for field in ("render_mode", "experience_key") if field in columns
-	]
+	return fields + [field for field in ("render_mode", "experience_key") if field in columns]
 
 
 def _prepare_layout_rendering(row, cfg, label, warnings):
@@ -3322,9 +3256,7 @@ def _prepare_layout_rendering(row, cfg, label, warnings):
 	if unknown:
 		_drop(
 			label,
-			_("experience_props contains unsupported keys for '{0}': {1}").format(
-				key, ", ".join(unknown)
-			),
+			_("experience_props contains unsupported keys for '{0}': {1}").format(key, ", ".join(unknown)),
 			warnings,
 		)
 		return None
@@ -3347,7 +3279,7 @@ def _load_layout_config(requested, warnings):
 	for name in candidates:
 		label = _("layout '{0}'").format(name)
 		row = frappe.db.get_value(
-			'YRP UI Layout',
+			"YRP UI Layout",
 			name,
 			_layout_row_fields(),
 			as_dict=True,
@@ -3381,9 +3313,7 @@ def _resolve_config(user):
 	if user and isinstance(user, str):
 		# Point-read 1 of 2 (docname == user; §4.1). SM-only DocTypes read in
 		# code, scoped to the passed user — the sidebar_view isolation pattern.
-		pref = frappe.db.get_value(
-			'YRP UI Preference', user, ["layout", "overrides"], as_dict=True
-		)
+		pref = frappe.db.get_value("YRP UI Preference", user, ["layout", "overrides"], as_dict=True)
 
 	# Point-read 2 of 2 (+ fallback hops only on degradation).
 	layout_cfg, layout_name, render_mode, experience_key = _load_layout_config(
@@ -3440,8 +3370,8 @@ def delete_ui_preference_for_user(doc, method=None):
 	``LinkExistsError`` after ``on_trash`` hooks run, so without this hook
 	user offboarding is blocked by a cosmetic record.
 	"""
-	if frappe.db.exists('YRP UI Preference', doc.name):
-		frappe.delete_doc('YRP UI Preference', doc.name, ignore_permissions=True, force=True)
+	if frappe.db.exists("YRP UI Preference", doc.name):
+		frappe.delete_doc("YRP UI Preference", doc.name, ignore_permissions=True, force=True)
 
 
 def merge_ui_preference_for_user(doc, method=None, old=None, new=None, merge=False):
@@ -3461,8 +3391,8 @@ def merge_ui_preference_for_user(doc, method=None, old=None, new=None, merge=Fal
 	"""
 	if not merge:
 		return
-	if frappe.db.exists('YRP UI Preference', old) and frappe.db.exists('YRP UI Preference', new):
-		frappe.delete_doc('YRP UI Preference', old, ignore_permissions=True, force=True)
+	if frappe.db.exists("YRP UI Preference", old) and frappe.db.exists("YRP UI Preference", new):
+		frappe.delete_doc("YRP UI Preference", old, ignore_permissions=True, force=True)
 
 
 def rename_ui_preference_for_user(doc, method=None, old=None, new=None, merge=False):
@@ -3471,16 +3401,16 @@ def rename_ui_preference_for_user(doc, method=None, old=None, new=None, merge=Fa
 	Frappe's rename machinery updates the ``user`` Link value on the
 	preference but not its docname; rename the record to match.
 	"""
-	if not old or not frappe.db.exists('YRP UI Preference', old):
+	if not old or not frappe.db.exists("YRP UI Preference", old):
 		return
-	if frappe.db.exists('YRP UI Preference', new):
+	if frappe.db.exists("YRP UI Preference", new):
 		# Normally unreachable: merge collisions are resolved up front by
 		# merge_ui_preference_for_user (before_rename). Kept as cheap defense —
 		# the surviving user keeps their own preference; drop the stray record
 		# instead of failing the rename.
-		frappe.delete_doc('YRP UI Preference', old, ignore_permissions=True, force=True)
+		frappe.delete_doc("YRP UI Preference", old, ignore_permissions=True, force=True)
 		return
-	frappe.rename_doc('YRP UI Preference', old, new, force=True)
+	frappe.rename_doc("YRP UI Preference", old, new, force=True)
 
 
 # ── Whitelisted endpoints + boot hook (§4) ──────────────────────────────────
@@ -3628,18 +3558,14 @@ def save_my_ui_overrides(overrides=None):
 		_hard("overrides", _("config must be a JSON object"))
 	else:
 		# Dict input (direct/in-process callers) gets the same ceiling.
-		_reject_oversize_overrides(
-			len(json.dumps(cfg, default=str, ensure_ascii=False).encode("utf-8"))
-		)
+		_reject_oversize_overrides(len(json.dumps(cfg, default=str, ensure_ascii=False).encode("utf-8")))
 
 	# Same save-time gate as the Desk path (§3.2): hard errors throw here,
 	# soft issues come back as warnings for the caller.
 	save_warnings = validate_config(cfg, layer="overrides")
 
 	filtered = {
-		key: value
-		for key, value in cfg.items()
-		if key == "schema_version" or key in OVERRIDABLE_KEYS
+		key: value for key, value in cfg.items() if key == "schema_version" or key in OVERRIDABLE_KEYS
 	}
 	_upsert_my_overrides(user, json.dumps(filtered, default=str, ensure_ascii=False))
 
@@ -3662,7 +3588,7 @@ def get_my_ui_overrides():
 	"""
 	user = _require_logged_in_session_user()
 	warnings = []
-	raw = frappe.db.get_value('YRP UI Preference', user, "overrides")
+	raw = frappe.db.get_value("YRP UI Preference", user, "overrides")
 	overrides = _prepare_layer(raw, "overrides", warnings)
 	return {"overrides": overrides or {}, "warnings": warnings}
 
@@ -3686,10 +3612,10 @@ def reset_my_ui_overrides():
 	"""
 	user = _require_logged_in_session_user()
 
-	if frappe.db.exists('YRP UI Preference', user):
-		doc = frappe.get_doc('YRP UI Preference', user)
+	if frappe.db.exists("YRP UI Preference", user):
+		doc = frappe.get_doc("YRP UI Preference", user)
 		if not doc.layout and not (doc.notes or "").strip():
-			frappe.delete_doc('YRP UI Preference', user, ignore_permissions=True)
+			frappe.delete_doc("YRP UI Preference", user, ignore_permissions=True)
 		elif doc.overrides:
 			doc.overrides = None
 			doc.save(ignore_permissions=True)
@@ -3739,16 +3665,16 @@ def _upsert_my_overrides(user, serialized):
 	rolls back its failed insert only (not the whole request transaction) and
 	updates the now-existing row so its save is not dropped.
 	"""
-	if frappe.db.exists('YRP UI Preference', user):
+	if frappe.db.exists("YRP UI Preference", user):
 		_update_overrides_only(user, serialized)
 		return
 
 	savepoint = "yrp_ui_pref_upsert"
 	frappe.db.savepoint(savepoint)
 	try:
-		frappe.get_doc(
-			{"doctype": 'YRP UI Preference', "user": user, "overrides": serialized}
-		).insert(ignore_permissions=True)
+		frappe.get_doc({"doctype": "YRP UI Preference", "user": user, "overrides": serialized}).insert(
+			ignore_permissions=True
+		)
 	except frappe.DuplicateEntryError:
 		# Lost the race — the row now exists. Undo the failed insert, then
 		# update the winner's row so this save still lands.
@@ -3757,7 +3683,7 @@ def _upsert_my_overrides(user, serialized):
 
 
 def _update_overrides_only(user, serialized):
-	doc = frappe.get_doc('YRP UI Preference', user)
+	doc = frappe.get_doc("YRP UI Preference", user)
 	doc.overrides = serialized
 	doc.save(ignore_permissions=True)
 
@@ -3801,7 +3727,7 @@ def _resolve_layout_preview(layout):
 		return get_skeleton(), _meta(None, False, [_("ui config disabled by site config")])
 
 	row = frappe.db.get_value(
-		'YRP UI Layout',
+		"YRP UI Layout",
 		layout,
 		_layout_row_fields(),
 		as_dict=True,
@@ -3817,9 +3743,7 @@ def _resolve_layout_preview(layout):
 				frappe.bold(layout), "; ".join(warnings) or _("empty config")
 			)
 		)
-	rendering = _prepare_layout_rendering(
-		row, cfg, _("layout '{0}'").format(layout), warnings
-	)
+	rendering = _prepare_layout_rendering(row, cfg, _("layout '{0}'").format(layout), warnings)
 	if rendering is None:
 		frappe.throw(
 			_("UI Layout {0} has an invalid renderer mapping: {1}").format(

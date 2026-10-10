@@ -29,7 +29,7 @@ from frappe import _
 from frappe.utils import cint, date_diff, flt
 
 from yrp.stock.ageing import FIFOSlots, get_average_age, get_range_age
-from yrp.stock.dimensions import get_stock_dimensions, get_dimension_fieldnames
+from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 
 
 def execute(filters=None):
@@ -63,7 +63,8 @@ def format_report_data(filters, item_details, to_date, dim_fields):
 		earliest_age = date_diff(to_date, fifo_queue[0][1])
 		latest_age = date_diff(to_date, fifo_queue[-1][1])
 		range1, range2, range3, above_range3 = get_range_age(
-			fifo_queue, to_date,
+			fifo_queue,
+			to_date,
 			cint(filters.get("range1", 30)),
 			cint(filters.get("range2", 60)),
 			cint(filters.get("range3", 90)),
@@ -83,16 +84,18 @@ def format_report_data(filters, item_details, to_date, dim_fields):
 				idx = 2 + i
 				row[fn] = key[idx] if idx < len(key) else ""
 
-		row.update({
-			"qty": flt(item_dict.get("total_qty"), precision),
-			"average_age": average_age,
-			"range1": flt(range1, precision),
-			"range2": flt(range2, precision),
-			"range3": flt(range3, precision),
-			"above_range3": flt(above_range3, precision),
-			"earliest": earliest_age,
-			"latest": latest_age,
-		})
+		row.update(
+			{
+				"qty": flt(item_dict.get("total_qty"), precision),
+				"average_age": average_age,
+				"range1": flt(range1, precision),
+				"range2": flt(range2, precision),
+				"range3": flt(range3, precision),
+				"above_range3": flt(above_range3, precision),
+				"earliest": earliest_age,
+				"latest": latest_age,
+			}
+		)
 
 		data.append(row)
 	return data
@@ -103,34 +106,58 @@ def get_columns(filters, dims):
 	setup_ageing_columns(filters, range_columns)
 
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'Item', "width": 150},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": "Item", "width": 150},
 		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
-		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'Item Group', "width": 100},
+		{
+			"label": _("Item Group"),
+			"fieldname": "item_group",
+			"fieldtype": "Link",
+			"options": "Item Group",
+			"width": 100,
+		},
 	]
 
 	if filters.get("show_warehouse_wise_stock"):
 		columns.append(
-			{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 120},
+			{
+				"label": _("Warehouse"),
+				"fieldname": "warehouse",
+				"fieldtype": "Link",
+				"options": "Warehouse",
+				"width": 120,
+			},
 		)
 		for dim in dims:
-			columns.append({
-				"label": _(dim["label"]),
-				"fieldname": dim["fieldname"],
-				"fieldtype": "Link",
-				"options": dim["dimension_doctype"],
-				"width": 100,
-			})
+			columns.append(
+				{
+					"label": _(dim["label"]),
+					"fieldname": dim["fieldname"],
+					"fieldtype": "Link",
+					"options": dim["dimension_doctype"],
+					"width": 100,
+				}
+			)
 
-	columns.extend([
-		{"label": _("Available Qty"), "fieldname": "qty", "fieldtype": "Float", "width": 100},
-		{"label": _("Average Age"), "fieldname": "average_age", "fieldtype": "Float", "width": 100},
-	])
+	columns.extend(
+		[
+			{"label": _("Available Qty"), "fieldname": "qty", "fieldtype": "Float", "width": 100},
+			{"label": _("Average Age"), "fieldname": "average_age", "fieldtype": "Float", "width": 100},
+		]
+	)
 	columns.extend(range_columns)
-	columns.extend([
-		{"label": _("Earliest"), "fieldname": "earliest", "fieldtype": "Int", "width": 80},
-		{"label": _("Latest"), "fieldname": "latest", "fieldtype": "Int", "width": 80},
-		{"label": _("UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'UOM', "width": 100},
-	])
+	columns.extend(
+		[
+			{"label": _("Earliest"), "fieldname": "earliest", "fieldtype": "Int", "width": 80},
+			{"label": _("Latest"), "fieldname": "latest", "fieldtype": "Int", "width": 80},
+			{
+				"label": _("UOM"),
+				"fieldname": "stock_uom",
+				"fieldtype": "Link",
+				"options": "UOM",
+				"width": 100,
+			},
+		]
+	)
 	return columns
 
 
@@ -146,12 +173,14 @@ def setup_ageing_columns(filters, range_columns):
 	]
 	for i, label in enumerate(ranges):
 		fieldname = "range" + str(i + 1) if i < 3 else "above_range3"
-		range_columns.append({
-			"label": _("Age ({0})").format(label),
-			"fieldname": fieldname,
-			"fieldtype": "Float",
-			"width": 140,
-		})
+		range_columns.append(
+			{
+				"label": _("Age ({0})").format(label),
+				"fieldname": fieldname,
+				"fieldtype": "Float",
+				"width": 140,
+			}
+		)
 
 
 def get_chart_data(data, filters):

@@ -8,7 +8,7 @@ from frappe.tests.utils import FrappeTestCase
 def _tnc(po=0, wo=0, company=0):
 	return frappe.get_doc(
 		{
-			"doctype": 'YRP Terms and Condition',
+			"doctype": "YRP Terms and Condition",
 			"terms_and_condition_name": f"_Test TnC {frappe.generate_hash(length=8)}",
 			"is_default_po_term": po,
 			"is_default_wo_term": wo,
@@ -21,7 +21,7 @@ def _supplier(po_tc=None, wo_tc=None, terms_tc=None):
 	supplier_name = f"_Test Supplier {frappe.generate_hash(length=8)}"
 	return frappe.get_doc(
 		{
-			"doctype": 'Supplier',
+			"doctype": "Supplier",
 			"supplier_name": supplier_name,
 			"po_terms_and_condition": po_tc,
 			"wo_terms_and_condition": wo_tc,
@@ -31,7 +31,7 @@ def _supplier(po_tc=None, wo_tc=None, terms_tc=None):
 
 
 def _flag(name, flag):
-	return frappe.db.get_value('YRP Terms and Condition', name, flag)
+	return frappe.db.get_value("YRP Terms and Condition", name, flag)
 
 
 class TestTermsAndConditionDefaults(FrappeTestCase):
@@ -118,7 +118,7 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 	def test_po_prefills_terms_on_new_when_empty(self):
 		mapped = _tnc()
 		supplier = _supplier(po_tc=mapped.name)
-		po = frappe.new_doc('Purchase Order')
+		po = frappe.new_doc("Purchase Order")
 		po.supplier = supplier.name
 		po.set_default_terms()
 		self.assertEqual(po.terms_and_condition, mapped.name)
@@ -127,7 +127,7 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 		mapped = _tnc()
 		chosen = _tnc()
 		supplier = _supplier(po_tc=mapped.name)
-		po = frappe.new_doc('Purchase Order')
+		po = frappe.new_doc("Purchase Order")
 		po.supplier = supplier.name
 		po.terms_and_condition = chosen.name
 		po.set_default_terms()
@@ -137,7 +137,7 @@ class TestTermsAndConditionDefaults(FrappeTestCase):
 	def test_wo_prefills_terms_on_new_when_empty(self):
 		mapped = _tnc()
 		supplier = _supplier(wo_tc=mapped.name)
-		wo = frappe.new_doc('YRP Work Order')
+		wo = frappe.new_doc("YRP Work Order")
 		wo.supplier = supplier.name
 		wo.set_default_terms()
 		self.assertEqual(wo.terms_and_condition, mapped.name)

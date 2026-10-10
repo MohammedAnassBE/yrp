@@ -10,11 +10,11 @@ class YRPWorkOrderCorrection(Document):
 
 		self.set_onload(
 			"deliverable_details",
-			group_items_for_ui(self.get("deliverables") or [], 'YRP Work Order Deliverables'),
+			group_items_for_ui(self.get("deliverables") or [], "YRP Work Order Deliverables"),
 		)
 		self.set_onload(
 			"receivable_details",
-			group_items_for_ui(self.get("receivables") or [], 'YRP Work Order Receivables'),
+			group_items_for_ui(self.get("receivables") or [], "YRP Work Order Receivables"),
 		)
 
 	def sync_vue_item_details(self):
@@ -23,12 +23,12 @@ class YRPWorkOrderCorrection(Document):
 		from yrp.stock.save_stock_items import ungroup_items_from_ui
 
 		if self.get("deliverable_details"):
-			rows = ungroup_items_from_ui(self.deliverable_details, 'YRP Work Order Deliverables')
+			rows = ungroup_items_from_ui(self.deliverable_details, "YRP Work Order Deliverables")
 			self.set("deliverables", [])
 			for row in rows:
 				self.append("deliverables", row)
 		if self.get("receivable_details"):
-			rows = ungroup_items_from_ui(self.receivable_details, 'YRP Work Order Receivables')
+			rows = ungroup_items_from_ui(self.receivable_details, "YRP Work Order Receivables")
 			self.set("receivables", [])
 			for row in rows:
 				self.append("receivables", row)
@@ -37,11 +37,9 @@ class YRPWorkOrderCorrection(Document):
 		self.sync_vue_item_details()
 		from yrp.stock.uom import apply_item_uoms
 
-		apply_item_uoms(
-			(self.get("deliverables") or []) + (self.get("receivables") or [])
-		)
+		apply_item_uoms((self.get("deliverables") or []) + (self.get("receivables") or []))
 		docstatus, open_status = frappe.db.get_value(
-			'YRP Work Order', self.work_order, ["docstatus", "open_status"]
+			"YRP Work Order", self.work_order, ["docstatus", "open_status"]
 		) or (None, None)
 		if docstatus != 1:
 			frappe.throw(_("Work Order {0} must be submitted.").format(self.work_order))
@@ -86,7 +84,9 @@ class YRPWorkOrderCorrection(Document):
 		# Per-row floor at 0 (2026-07-10, same as Work Order.set_status): excess
 		# delivery drives a row's pending negative — a raw sum lets it mask
 		# another row's genuinely-owed pending.
-		total_delivery_pending = sum(max(flt(row.pending_quantity), 0) for row in self.get("deliverables") or [])
+		total_delivery_pending = sum(
+			max(flt(row.pending_quantity), 0) for row in self.get("deliverables") or []
+		)
 		if total_deliverable_qty:
 			if total_delivery_pending <= 0:
 				status = "Fully Delivered"
@@ -94,7 +94,9 @@ class YRPWorkOrderCorrection(Document):
 				status = "Partially Delivered"
 
 		total_receivable_qty = sum(flt(row.qty) for row in self.get("receivables") or [])
-		total_received_pending = sum(max(flt(row.pending_quantity), 0) for row in self.get("receivables") or [])
+		total_received_pending = sum(
+			max(flt(row.pending_quantity), 0) for row in self.get("receivables") or []
+		)
 		if total_receivable_qty:
 			received_qty = total_receivable_qty - total_received_pending
 			if received_qty > 0:

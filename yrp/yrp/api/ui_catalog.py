@@ -318,9 +318,7 @@ def _block_type_specs():
 				"off-catalog doctype only loses its 'View all' link)",
 				"effect": "The DocType this embedded list renders.",
 			},
-			"variant": _enum(
-				LIST_VIEW_VARIANTS, "List presentation for this block.", fallback="table"
-			),
+			"variant": _enum(LIST_VIEW_VARIANTS, "List presentation for this block.", fallback="table"),
 			"columns": {
 				"type": "array",
 				"items": {
@@ -558,8 +556,7 @@ def _composite_grammar_section():
 		"caps": {
 			"max_nodes": COMPOSITE_MAX_NODES,
 			"max_depth": COMPOSITE_MAX_DEPTH,
-			"validation": "HARD — an over-cap save is refused (the engine renders NOTHING "
-			"over-cap)",
+			"validation": "HARD — an over-cap save is refused (the engine renders NOTHING over-cap)",
 		},
 		"boundary": "USE_CASE §3(d): no HTML/CSS/selector/JS strings (markup-shaped literals "
 		"HARD-fail), no queries, no loops, no server-method names. Bindings only READ what "
@@ -1039,9 +1036,7 @@ def build_catalog():
 			"validation": "hard shape; soft vocabulary",
 			"effect": "How document creation opens.",
 			"keys": {
-				"mode": _enum(
-					ENTRY_MODES, "Full-page create vs popup create.", fallback="page"
-				),
+				"mode": _enum(ENTRY_MODES, "Full-page create vs popup create.", fallback="page"),
 				"popupPosition": _enum(
 					OVERLAY_POSITIONS,
 					"Popup anchor on the 9-position overlay grid. Only meaningful with mode 'popup' "
@@ -1241,8 +1236,7 @@ def check_drift(path=None):
 	if not os.path.exists(target):
 		print(DRIFT_SENTINEL)
 		raise Exception(
-			f"LAYOUT_SCHEMA drift: {target} does not exist — run "
-			"yrp.yrp.api.ui_catalog.generate to create it"
+			f"LAYOUT_SCHEMA drift: {target} does not exist — run yrp.yrp.api.ui_catalog.generate to create it"
 		)
 
 	with open(target, encoding="utf-8") as f:

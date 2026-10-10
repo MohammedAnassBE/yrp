@@ -34,8 +34,8 @@ class TestExcelStickerPrint(IntegrationTestCase):
 		self.assertEqual(
 			get_doc.call_args_list,
 			[
-				call('YRP Excel Sticker Print', "ESP-0001"),
-				call('YRP ZPL Raw Print Format', "ZPL-Test"),
+				call("YRP Excel Sticker Print", "ESP-0001"),
+				call("YRP ZPL Raw Print Format", "ZPL-Test"),
 			],
 		)
 		render.assert_called_once_with(
@@ -59,9 +59,7 @@ class TestExcelStickerPrint(IntegrationTestCase):
 		)
 		print_format = frappe._dict(
 			labels_per_row=2,
-			zpl_raw_print_format_details=[
-				frappe._dict(printer_type="200dpi", raw_code="200-template")
-			],
+			zpl_raw_print_format_details=[frappe._dict(printer_type="200dpi", raw_code="200-template")],
 		)
 
 		with (
@@ -73,8 +71,8 @@ class TestExcelStickerPrint(IntegrationTestCase):
 		self.assertEqual(
 			get_doc.call_args_list,
 			[
-				call('YRP Excel Sticker Print', "ESP-0001"),
-				call('YRP ZPL Raw Print Format', "ZPL-Test"),
+				call("YRP Excel Sticker Print", "ESP-0001"),
+				call("YRP ZPL Raw Print Format", "ZPL-Test"),
 			],
 		)
 		render.assert_called_once_with(
@@ -99,5 +97,5 @@ class TestExcelStickerPrint(IntegrationTestCase):
 			client,
 		)
 		self.assertIn('method: "POST"', client)
-		self.assertIn('body: preview.code', client)
+		self.assertIn("body: preview.code", client)
 		self.assertNotIn("encodeURI(r.message.code)", client)

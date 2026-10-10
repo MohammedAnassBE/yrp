@@ -17,9 +17,7 @@ class YRPWhatsAppTemplate(Document):
 		"""Whether this template's user-configured Applicable DocTypes lists
 		`doctype`. This is the template-centric replacement for the old
 		per-doctype YRP WhatsApp Template Config row."""
-		return any(
-			row.reference_doctype == doctype for row in (self.applicable_doctypes or [])
-		)
+		return any(row.reference_doctype == doctype for row in (self.applicable_doctypes or []))
 
 	def on_update(self):
 		# Load-bearing guard: every hub-driven write sets flags.from_meta_sync
@@ -28,5 +26,6 @@ class YRPWhatsAppTemplate(Document):
 		# kept for fidelity with the reference and the later authoring phase.
 		if self.flags.from_meta_sync:
 			return
+
 
 WhatsAppTemplate = YRPWhatsAppTemplate

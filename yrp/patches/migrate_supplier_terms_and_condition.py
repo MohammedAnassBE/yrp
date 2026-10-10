@@ -11,12 +11,12 @@ def execute():
 	never drop the source column unless the destination exists (else data loss),
 	commit the copy before the DDL, and clear the doctype cache afterwards.
 	"""
-	if not frappe.db.has_column('Supplier', "terms_and_condition"):
+	if not frappe.db.has_column("Supplier", "terms_and_condition"):
 		return
 
 	# Never drop the source unless the copy destination exists — otherwise the
 	# data move is skipped and the DROP would discard it.
-	if not frappe.db.has_column('Supplier', "po_terms_and_condition"):
+	if not frappe.db.has_column("Supplier", "po_terms_and_condition"):
 		return
 
 	frappe.db.sql(
@@ -30,4 +30,4 @@ def execute():
 	frappe.db.commit()
 
 	frappe.db.sql_ddl("ALTER TABLE `tabSupplier` DROP COLUMN `terms_and_condition`")
-	frappe.clear_cache(doctype='Supplier')
+	frappe.clear_cache(doctype="Supplier")

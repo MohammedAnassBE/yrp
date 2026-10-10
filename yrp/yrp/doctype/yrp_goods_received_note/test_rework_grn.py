@@ -4,10 +4,6 @@ from frappe.utils import flt, nowdate, nowtime
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_stock_balance
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
-from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
-	get_work_order_defaults,
-)
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
@@ -18,6 +14,10 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_supplier_warehouse,
 	_test_item_variant,
 )
+from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
+	get_work_order_defaults,
+)
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_make_parent_grn,
 	_make_parent_work_order,
@@ -75,89 +75,103 @@ def _make_rework_cycle(parent_process_rate):
 			wo.name,
 			[{"source_key": source["source_key"], "qty": 6}],
 		)
-		rework_wo = frappe.get_doc('YRP Work Order', rework_wo_name)
+		rework_wo = frappe.get_doc("YRP Work Order", rework_wo_name)
 		rework_wo.submit()
 
-	dc = frappe.get_doc({
-		"doctype": 'YRP Delivery Challan',
-		"work_order": rework_wo.name,
-		"from_location": rework_wo.delivery_location,
-		"supplier": rework_wo.supplier,
-		"from_address": rework_wo.delivery_address,
-		"supplier_address": rework_wo.supplier_address,
-		"from_warehouse": delivery_wh,
-		"to_warehouse": supplier_wh,
-		"process_name": rework_wo.process_name,
-		"item": rework_wo.item,
-		"items": [{
-			"item_variant": item_variant,
-			"qty": 6,
-			"delivered_quantity": 6,
-			"uom": uom,
-			"stock_uom": uom,
-			"conversion_factor": 1,
-			"received_type": rework_rt,
-			"ref_doctype": 'YRP Work Order Deliverables',
-			"ref_docname": rework_wo.deliverables[0].name,
-			"table_index": 0,
-			"row_index": "0",
-		}],
-	})
+	dc = frappe.get_doc(
+		{
+			"doctype": "YRP Delivery Challan",
+			"work_order": rework_wo.name,
+			"from_location": rework_wo.delivery_location,
+			"supplier": rework_wo.supplier,
+			"from_address": rework_wo.delivery_address,
+			"supplier_address": rework_wo.supplier_address,
+			"from_warehouse": delivery_wh,
+			"to_warehouse": supplier_wh,
+			"process_name": rework_wo.process_name,
+			"item": rework_wo.item,
+			"items": [
+				{
+					"item_variant": item_variant,
+					"qty": 6,
+					"delivered_quantity": 6,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"received_type": rework_rt,
+					"ref_doctype": "YRP Work Order Deliverables",
+					"ref_docname": rework_wo.deliverables[0].name,
+					"table_index": 0,
+					"row_index": "0",
+				}
+			],
+		}
+	)
 	dc.insert(ignore_permissions=True)
 	dc.submit()
 
 	defaults = get_work_order_defaults(rework_wo.name, dc.name)
 	self_dc_item = dc.items[0].name
 
-	grn = frappe.get_doc({
-		"doctype": 'YRP Goods Received Note',
-		"against": 'YRP Work Order',
-		"against_id": rework_wo.name,
-		"delivery_challan": dc.name,
-		"posting_date": nowdate(),
-		"posting_time": nowtime(),
-		"supplier": rework_wo.supplier,
-		"delivery_location": rework_wo.delivery_location,
-		"supplier_address": rework_wo.supplier_address,
-		"delivery_address": rework_wo.delivery_address,
-		"from_warehouse": supplier_wh,
-		"to_warehouse": delivery_wh,
-		"process_name": rework_wo.process_name,
-		"item": rework_wo.item,
-		"items": [
-			{
-				"item_variant": item_variant,
-				"quantity": 4,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"received_type": accepted_rt,
-				"delivery_challan_item": self_dc_item,
-				"ref_doctype": 'YRP Work Order Receivables',
-				"ref_docname": rework_wo.receivables[0].name,
-				"table_index": 0,
-				"row_index": "0::accepted",
-			},
-			{
-				"item_variant": item_variant,
-				"quantity": 2,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"received_type": rejected_rt,
-				"delivery_challan_item": self_dc_item,
-				"ref_doctype": 'YRP Work Order Receivables',
-				"ref_docname": rework_wo.receivables[0].name,
-				"table_index": 0,
-				"row_index": "0::rejected",
-			},
-		],
-	})
+	grn = frappe.get_doc(
+		{
+			"doctype": "YRP Goods Received Note",
+			"against": "YRP Work Order",
+			"against_id": rework_wo.name,
+			"delivery_challan": dc.name,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"supplier": rework_wo.supplier,
+			"delivery_location": rework_wo.delivery_location,
+			"supplier_address": rework_wo.supplier_address,
+			"delivery_address": rework_wo.delivery_address,
+			"from_warehouse": supplier_wh,
+			"to_warehouse": delivery_wh,
+			"process_name": rework_wo.process_name,
+			"item": rework_wo.item,
+			"items": [
+				{
+					"item_variant": item_variant,
+					"quantity": 4,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"received_type": accepted_rt,
+					"delivery_challan_item": self_dc_item,
+					"ref_doctype": "YRP Work Order Receivables",
+					"ref_docname": rework_wo.receivables[0].name,
+					"table_index": 0,
+					"row_index": "0::accepted",
+				},
+				{
+					"item_variant": item_variant,
+					"quantity": 2,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"received_type": rejected_rt,
+					"delivery_challan_item": self_dc_item,
+					"ref_doctype": "YRP Work Order Receivables",
+					"ref_docname": rework_wo.receivables[0].name,
+					"table_index": 0,
+					"row_index": "0::rejected",
+				},
+			],
+		}
+	)
 	grn.insert(ignore_permissions=True)
 	grn.submit()
 	return (
-		rework_wo, dc, grn, supplier_wh, delivery_wh,
-		accepted_rt, rejected_rt, rework_rt, item_variant, defaults,
+		rework_wo,
+		dc,
+		grn,
+		supplier_wh,
+		delivery_wh,
+		accepted_rt,
+		rejected_rt,
+		rework_rt,
+		item_variant,
+		defaults,
 	)
 
 
@@ -166,7 +180,16 @@ class TestReworkGRN(FrappeTestCase):
 		"""create_rework_work_order must stamp rework_type='No Cost' so the
 		downstream GRN does not add any process cost on top of material."""
 		(
-			rework_wo, _, _, _, _, _, _, _, _, _,
+			rework_wo,
+			_,
+			_,
+			_,
+			_,
+			_,
+			_,
+			_,
+			_,
+			_,
 		) = _make_rework_cycle(parent_process_rate=20)
 		self.assertEqual(rework_wo.rework_type, "No Cost")
 		# No Cost branch in set_receivable_process_costs zeroes every
@@ -184,29 +207,41 @@ class TestReworkGRN(FrappeTestCase):
 		"""
 		parent_process_rate = 20
 		(
-			_, dc, grn, _, delivery_wh,
-			accepted_rt, rejected_rt, _, item_variant, _,
+			_,
+			dc,
+			grn,
+			_,
+			delivery_wh,
+			accepted_rt,
+			rejected_rt,
+			_,
+			item_variant,
+			_,
 		) = _make_rework_cycle(parent_process_rate=parent_process_rate)
 
 		dc_material_rate = flt(dc.items[0].valuation_rate or dc.items[0].rate)
 		self.assertGreater(
-			dc_material_rate, 0,
+			dc_material_rate,
+			0,
 			"DC must carry a non-zero material valuation_rate for this test to be meaningful.",
 		)
 
 		for row in grn.items:
 			self.assertAlmostEqual(
-				flt(row.rate), dc_material_rate,
+				flt(row.rate),
+				dc_material_rate,
 				msg=f"GRN row received_type={row.received_type}: rate {row.rate} should equal DC material {dc_material_rate} (No Cost rework — no process cost added).",
 			)
 
 		_, accepted_valuation = get_stock_balance(
-			item_variant, delivery_wh,
+			item_variant,
+			delivery_wh,
 			received_type=accepted_rt,
 			with_valuation_rate=True,
 		)
 		_, rejected_valuation = get_stock_balance(
-			item_variant, delivery_wh,
+			item_variant,
+			delivery_wh,
 			received_type=rejected_rt,
 			with_valuation_rate=True,
 		)
@@ -218,8 +253,16 @@ class TestReworkGRN(FrappeTestCase):
 		multiple Received Types (Accepted + Rejected) — qty at the source
 		warehouse drains, qty at the destination splits per RT."""
 		(
-			_, _, grn, supplier_wh, delivery_wh,
-			accepted_rt, rejected_rt, rework_rt, item_variant, _,
+			_,
+			_,
+			grn,
+			supplier_wh,
+			delivery_wh,
+			accepted_rt,
+			rejected_rt,
+			rework_rt,
+			item_variant,
+			_,
 		) = _make_rework_cycle(parent_process_rate=20)
 
 		# Source bin (supplier warehouse, rework RT) fully drained — DC moved

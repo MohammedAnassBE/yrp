@@ -7,7 +7,7 @@ from datetime import date
 import frappe
 from frappe import _, throw
 from frappe.model.document import Document
-from frappe.utils import formatdate, getdate, today, add_days
+from frappe.utils import add_days, formatdate, getdate, today
 
 
 class YRPHolidayList(Document):
@@ -97,6 +97,7 @@ class YRPHolidayList(Document):
 
 		import calendar
 		from datetime import timedelta
+
 		from dateutil import relativedelta
 
 		date_list = []
@@ -134,12 +135,12 @@ def get_events(start, end, filters=None):
 		filters = []
 
 	if start:
-		filters.append(['Holiday', "holiday_date", ">", getdate(start)])
+		filters.append(["Holiday", "holiday_date", ">", getdate(start)])
 	if end:
-		filters.append(['Holiday', "holiday_date", "<", getdate(end)])
+		filters.append(["Holiday", "holiday_date", "<", getdate(end)])
 
 	return frappe.get_list(
-		'Holiday List',
+		"Holiday List",
 		fields=[
 			"name",
 			"`tabHoliday`.holiday_date",
@@ -156,13 +157,14 @@ def is_holiday(holiday_list, date=None):
 	if date is None:
 		date = today()
 	if holiday_list:
-		return bool(frappe.db.exists('Holiday', {"parent": holiday_list, "holiday_date": date}, cache=True))
+		return bool(frappe.db.exists("Holiday", {"parent": holiday_list, "holiday_date": date}, cache=True))
 	return False
 
 
 def local_country_name(country_code: str) -> str:
 	"""Return the localized country name for the given country code."""
 	from babel import Locale
+
 	return Locale.parse(frappe.local.lang, sep="-").territories.get(country_code, country_code)
 
 
@@ -180,10 +182,13 @@ def get_next_date(day, lead_time):
 
 
 def get_events_len(date1, date2):
-	return frappe.db.count('Holiday', filters={
-		"holiday_date": [">", date1],
-		"holiday_date": ["<=", date2],
-	})
+	return frappe.db.count(
+		"Holiday",
+		filters=[
+			["holiday_date", ">", date1],
+			["holiday_date", "<=", date2],
+		],
+	)
 
 
 HolidayList = YRPHolidayList

@@ -3,12 +3,11 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
-
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_test_item_variant,
 	_warehouse,
 )
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_purchase_invoice.test_yrp_purchase_invoice import (
 	_work_order_for_invoice,
 	_work_order_grn,
@@ -27,7 +26,7 @@ class TestWorkOrderClose(FrappeTestCase):
 		}
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP Settings' and fieldname in role_fields:
+			if doctype == "YRP Settings" and fieldname in role_fields:
 				return "System Manager"
 			return cls._get_single_value(doctype, fieldname, *args, **kwargs)
 
@@ -56,7 +55,7 @@ class TestWorkOrderClose(FrappeTestCase):
 			reason="Test close debit",
 			on_close=1,
 		)
-		frappe.db.set_value('YRP Debit', debit.name, "status", "Debit Requested")
+		frappe.db.set_value("YRP Debit", debit.name, "status", "Debit Requested")
 
 		with self.assertRaises(frappe.ValidationError):
 			frappe.get_attr("yrp.yrp.doctype.yrp_work_order.yrp_work_order.update_stock")(wo.name)
@@ -89,7 +88,7 @@ class TestWorkOrderCancelReservationCleanup(FrappeTestCase):
 
 		item_variant = _test_item_variant()
 		parent_item = get_parent_item(item_variant)
-		uom = frappe.db.get_value('Item', parent_item, "stock_uom") or "Piece"
+		uom = frappe.db.get_value("Item", parent_item, "stock_uom") or "Piece"
 		wh = _warehouse(f"_Test WO Cancel SRE WH {frappe.generate_hash(length=6)}")
 
 		# Fill mandatory stock dimensions from the site's current config so the
@@ -107,36 +106,42 @@ class TestWorkOrderCancelReservationCleanup(FrappeTestCase):
 					dim_values[fn] = existing
 
 		# Seed stock in the bin so SRE's before_submit live check passes.
-		se = frappe.get_doc({
-			"doctype": 'YRP Stock Entry',
-			"purpose": "Material Receipt",
-			"to_warehouse": wh,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"items": [{
-				"item": item_variant,
-				"qty": qty * 2,
-				"rate": 1,
-				"uom": uom,
-				"row_index": 0,
-				"table_index": 0,
-				**dim_values,
-			}],
-		})
+		se = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Entry",
+				"purpose": "Material Receipt",
+				"to_warehouse": wh,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"items": [
+					{
+						"item": item_variant,
+						"qty": qty * 2,
+						"rate": 1,
+						"uom": uom,
+						"row_index": 0,
+						"table_index": 0,
+						**dim_values,
+					}
+				],
+			}
+		)
 		se.flags.ignore_permissions = True
 		se.insert(ignore_permissions=True)
 		se.submit()
 
-		sre = frappe.get_doc({
-			"doctype": 'YRP Stock Reservation Entry',
-			"item_code": item_variant,
-			"warehouse": wh,
-			"reserved_qty": qty,
-			"available_qty": 9999,
-			"voucher_type": 'YRP Work Order',
-			"voucher_no": wo.name,
-			**dim_values,
-		})
+		sre = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Reservation Entry",
+				"item_code": item_variant,
+				"warehouse": wh,
+				"reserved_qty": qty,
+				"available_qty": 9999,
+				"voucher_type": "YRP Work Order",
+				"voucher_no": wo.name,
+				**dim_values,
+			}
+		)
 		sre.flags.ignore_permissions = True
 		sre.flags.ignore_links = True
 		sre.insert(ignore_permissions=True)
@@ -161,7 +166,7 @@ class TestWorkOrderCancelReservationCleanup(FrappeTestCase):
 		filters on `status NOT IN ('Delivered','Cancelled')`)."""
 		wo = _work_order_for_invoice(qty=1)
 		sre = self._make_sre(wo, qty=1)
-		frappe.db.set_value('YRP Stock Reservation Entry', sre.name, "status", "Delivered")
+		frappe.db.set_value("YRP Stock Reservation Entry", sre.name, "status", "Delivered")
 
 		wo.reload()
 		wo.cancel()

@@ -11,11 +11,11 @@ import frappe
 
 
 def execute():
-	if not frappe.db.exists("DocType", 'YRP Bin'):
+	if not frappe.db.exists("DocType", "YRP Bin"):
 		return
 	cols = frappe.db.sql("SHOW COLUMNS FROM `tabYRP Bin` LIKE 'reserved_qty'")
 	if cols:
 		frappe.db.sql_ddl("ALTER TABLE `tabYRP Bin` DROP COLUMN `reserved_qty`")
 	# Frappe metadata cleanup
-	frappe.db.delete("DocField", {"parent": 'YRP Bin', "fieldname": "reserved_qty"})
-	frappe.clear_cache(doctype='YRP Bin')
+	frappe.db.delete("DocField", {"parent": "YRP Bin", "fieldname": "reserved_qty"})
+	frappe.clear_cache(doctype="YRP Bin")

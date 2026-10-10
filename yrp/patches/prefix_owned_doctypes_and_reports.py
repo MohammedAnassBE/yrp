@@ -8,7 +8,6 @@ from yrp.namespace_migration import (
 	rewrite_owned_doctype_discriminators,
 )
 
-
 PREFIX = "YRP "
 OWNED_MODULES = {"YRP", "YRP Stock"}
 
@@ -28,16 +27,12 @@ def _metadata_renames():
 			# Rename parent DocTypes before their child tables. Reports are last so
 			# every ref_doctype already points at its final name.
 			priority = 1 if data.get("istable") else 0
-			records.append(
-				(priority, "DocType", data["name"].removeprefix(PREFIX), data["name"])
-			)
+			records.append((priority, "DocType", data["name"].removeprefix(PREFIX), data["name"]))
 		elif data.get("doctype") == "Report":
 			report_name = data.get("report_name") or data.get("name") or ""
 			if not report_name.startswith(PREFIX):
 				continue
-			records.append(
-				(2, "Report", report_name.removeprefix(PREFIX), report_name)
-			)
+			records.append((2, "Report", report_name.removeprefix(PREFIX), report_name))
 
 	for _priority, record_type, old_name, new_name in sorted(records):
 		yield record_type, old_name, new_name

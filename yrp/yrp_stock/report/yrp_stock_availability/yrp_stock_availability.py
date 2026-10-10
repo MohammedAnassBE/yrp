@@ -66,12 +66,12 @@ def _query_bin(filters, dims, group_dims):
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT {', '.join(select_cols)},
+		SELECT {", ".join(select_cols)},
 		       COALESCE(SUM(actual_qty), 0) AS actual_qty,
 		       COALESCE(SUM(stock_value), 0) AS stock_value
 		FROM `tabYRP Bin`
-		WHERE {' AND '.join(conds)}
-		GROUP BY {', '.join(group_cols)}
+		WHERE {" AND ".join(conds)}
+		GROUP BY {", ".join(group_cols)}
 		ORDER BY item_code, warehouse
 		""",
 		values,
@@ -83,7 +83,9 @@ def _query_bin(filters, dims, group_dims):
 def _attach_planning_quantities(rows, filters, dims, group_dims, defaults):
 	row_map = {}
 	for row in rows:
-		_merge_row(row_map, row, group_dims, actual_qty=row.get("actual_qty"), stock_value=row.get("stock_value"))
+		_merge_row(
+			row_map, row, group_dims, actual_qty=row.get("actual_qty"), stock_value=row.get("stock_value")
+		)
 
 	for row in _query_purchase_order_pending(filters, dims, group_dims, defaults):
 		_merge_row(row_map, row, group_dims, on_order=row.get("on_order"))
@@ -102,10 +104,10 @@ def _attach_planning_quantities(rows, filters, dims, group_dims, defaults):
 
 
 def _query_purchase_order_pending(filters, dims, group_dims, defaults):
-	if not frappe.db.exists("DocType", 'Purchase Order'):
+	if not frappe.db.exists("DocType", "Purchase Order"):
 		return []
 
-	sources = _dimension_sources('Purchase Order', 'Purchase Order Item', dims)
+	sources = _dimension_sources("Purchase Order", "Purchase Order Item", dims)
 	select_cols = [
 		"poi.item_code AS item_code",
 		"COALESCE(poi.warehouse, po.set_warehouse) AS warehouse",
@@ -143,11 +145,11 @@ def _query_purchase_order_pending(filters, dims, group_dims, defaults):
 
 	return frappe.db.sql(
 		f"""
-		SELECT {', '.join(select_cols)}
+		SELECT {", ".join(select_cols)}
 		FROM `tabPurchase Order Item` poi
 		INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
-		WHERE {' AND '.join(conds)}
-		GROUP BY {', '.join(group_cols)}
+		WHERE {" AND ".join(conds)}
+		GROUP BY {", ".join(group_cols)}
 		""",
 		values,
 		as_dict=True,
@@ -155,10 +157,10 @@ def _query_purchase_order_pending(filters, dims, group_dims, defaults):
 
 
 def _query_work_order_expected(filters, dims, group_dims, defaults):
-	if not frappe.db.exists("DocType", 'YRP Work Order'):
+	if not frappe.db.exists("DocType", "YRP Work Order"):
 		return []
 
-	sources = _dimension_sources('YRP Work Order', 'YRP Work Order Receivables', dims)
+	sources = _dimension_sources("YRP Work Order", "YRP Work Order Receivables", dims)
 	select_cols = [
 		"wor.item_variant AS item_code",
 		"wo.delivery_location AS delivery_location",
@@ -189,11 +191,11 @@ def _query_work_order_expected(filters, dims, group_dims, defaults):
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT {', '.join(select_cols)}
+		SELECT {", ".join(select_cols)}
 		FROM `tabYRP Work Order Receivables` wor
 		INNER JOIN `tabYRP Work Order` wo ON wo.name = wor.parent
-		WHERE {' AND '.join(conds)}
-		GROUP BY {', '.join(group_cols)}
+		WHERE {" AND ".join(conds)}
+		GROUP BY {", ".join(group_cols)}
 		""",
 		values,
 		as_dict=True,
@@ -218,9 +220,7 @@ def _attach_reservation(rows, filters, dims, group_dims):
 	out = []
 	for r in rows:
 		dim_filter = _reservation_dimension_filter(r, filters, dims, group_dims)
-		reserved = get_sre_reserved_qty(
-			item_code=r["item_code"], warehouse=r["warehouse"], **dim_filter
-		)
+		reserved = get_sre_reserved_qty(item_code=r["item_code"], warehouse=r["warehouse"], **dim_filter)
 		actual = flt(r["actual_qty"])
 		out.append(
 			{
@@ -266,7 +266,7 @@ def _dimension_defaults(dims):
 		settings_field = DIMENSION_DEFAULT_SETTINGS_FIELD.get(fn)
 		if not settings_field:
 			continue
-		defaults[fn] = frappe.db.get_single_value('YRP Stock Settings', settings_field)
+		defaults[fn] = frappe.db.get_single_value("YRP Stock Settings", settings_field)
 	return defaults
 
 
@@ -338,8 +338,14 @@ def _single_warehouse_by_supplier():
 
 def _columns(group_dims, dims):
 	cols = [
-		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": 'Item', "width": 180},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 160},
+		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 180},
+		{
+			"label": _("Warehouse"),
+			"fieldname": "warehouse",
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 160,
+		},
 	]
 	dim_lookup = {d["fieldname"]: d for d in dims}
 	for fn in group_dims:

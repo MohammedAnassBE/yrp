@@ -32,20 +32,16 @@ def _stock_context():
 	if not item_variant:
 		raise frappe.DoesNotExistError("Valuation tests require one Item Variant")
 	item = get_parent_item(item_variant)
-	uom = frappe.db.get_value('Item', item, "stock_uom")
+	uom = frappe.db.get_value("Item", item, "stock_uom")
 	if not uom:
 		raise frappe.DoesNotExistError(f"{item} requires a default UOM")
 	dimensions = {}
 	for dimension in get_mandatory_dimensions():
 		fieldname = dimension["fieldname"]
 		if fieldname == "received_type":
-			value = frappe.db.get_single_value(
-				'YRP Stock Settings', "default_received_type"
-			)
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 		else:
-			value = frappe.db.get_value(
-				dimension.get("dimension_doctype"), {}, "name"
-			)
+			value = frappe.db.get_value(dimension.get("dimension_doctype"), {}, "name")
 		if not value:
 			raise frappe.DoesNotExistError(
 				f"Valuation tests require {dimension.get('dimension_doctype') or fieldname}"
@@ -55,13 +51,17 @@ def _stock_context():
 
 
 def _warehouse(label):
-	return frappe.get_doc(
-		{
-			"doctype": 'Warehouse',
-			"warehouse_name": f"_Test Valuation {label} {frappe.generate_hash(length=8)}",
-			"company": frappe.db.get_value('Company', {}, "name"),
-		}
-	).insert(ignore_permissions=True).name
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Warehouse",
+				"warehouse_name": f"_Test Valuation {label} {frappe.generate_hash(length=8)}",
+				"company": frappe.db.get_value("Company", {}, "name"),
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 def _stock_entry(
@@ -78,7 +78,7 @@ def _stock_entry(
 ):
 	doc = frappe.get_doc(
 		{
-			"doctype": 'YRP Stock Entry',
+			"doctype": "YRP Stock Entry",
 			"purpose": purpose,
 			"from_warehouse": from_warehouse,
 			"to_warehouse": to_warehouse,
@@ -121,7 +121,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 	def _adjust(self, receipt, difference, *, apply=True):
 		sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{
 				"voucher_type": receipt.doctype,
 				"voucher_no": receipt.name,
@@ -173,15 +173,9 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			adjustment, sle_name = self._adjust(receipt, 10, apply=False)
 
 		self.assertIsNone(adjustment)
-		self.assertFalse(
-			frappe.db.exists(
-				'YRP Stock Valuation Adjustment Source', {"target_sle": sle_name}
-			)
-		)
+		self.assertFalse(frappe.db.exists("YRP Stock Valuation Adjustment Source", {"target_sle": sle_name}))
 		self.assertEqual(
-			frappe.db.get_value(
-				'YRP Stock Ledger Entry', sle_name, "valuation_is_stale"
-			),
+			frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_is_stale"),
 			0,
 		)
 
@@ -223,39 +217,31 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 		adjustment, sle_name = self._adjust(receipt, 10)
 		sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			sle_name,
 			["qty", "rate", "valuation_adjustment_value", "stock_value"],
 			as_dict=True,
 		)
 		parent = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			adjustment,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
 		)
 		self.assertAlmostEqual(flt(sle.rate), 10)
 		self.assertAlmostEqual(flt(sle.valuation_adjustment_value), 10)
-		self.assertEqual(frappe.db.get_value('YRP Stock Ledger Entry', sle_name, "valuation_is_stale"), 0)
-		self.assertAlmostEqual(
-			flt(sle.stock_value), flt(sle.qty) * flt(sle.rate) + 10
-		)
+		self.assertEqual(frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_is_stale"), 0)
+		self.assertAlmostEqual(flt(sle.stock_value), flt(sle.qty) * flt(sle.rate) + 10)
 		self.assertEqual(parent.status, "Completed")
 		self.assertAlmostEqual(flt(parent.propagated_stock_difference), 10)
 		self.assertAlmostEqual(flt(parent.terminal_difference), 0)
 		with self.assertRaisesRegex(frappe.ValidationError, "immutable audit"):
-			frappe.get_doc(
-				'YRP Stock Valuation Adjustment', adjustment
-			).before_cancel()
+			frappe.get_doc("YRP Stock Valuation Adjustment", adjustment).before_cancel()
 
 		# A duplicated/retried RQ delivery must be a no-op after completion.
 		process_adjustment(adjustment)
 		self.assertAlmostEqual(
-			flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', sle_name, "valuation_adjustment_value"
-				)
-			),
+			flt(frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_adjustment_value")),
 			10,
 		)
 
@@ -279,9 +265,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			**self.dimensions,
 		)
 		self.assertTrue(balance["stale"])
-		self.assertEqual(
-			balance["stale_reason"], "Stock Valuation Adjustment in progress"
-		)
+		self.assertEqual(balance["stale_reason"], "Stock Valuation Adjustment in progress")
 
 		process_adjustment(adjustment)
 		balance = get_stock_balance(
@@ -305,10 +289,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			to_warehouse=warehouse,
 		)
 		adjustment, _sle_name = self._adjust(receipt, 10, apply=False)
-		module = (
-			"yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment."
-			"yrp_stock_valuation_adjustment"
-		)
+		module = "yrp.yrp_stock.doctype.yrp_stock_valuation_adjustment.yrp_stock_valuation_adjustment"
 
 		# First delivery persists the propagation plan but simulates a worker
 		# stopping before it applies the first target.
@@ -351,51 +332,37 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			# Simulate two workers selecting the cancellation job first.
 			process_adjustment(reversal)
 			self.assertAlmostEqual(
-				flt(
-					frappe.db.get_value(
-						'YRP Stock Ledger Entry', sle_name, "valuation_adjustment_value"
-					)
-				),
+				flt(frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_adjustment_value")),
 				0,
 			)
 			self.assertEqual(
-				frappe.db.get_value(
-					'YRP Stock Valuation Adjustment', reversal, "status"
-				),
+				frappe.db.get_value("YRP Stock Valuation Adjustment", reversal, "status"),
 				"Queued",
 			)
 
 			process_adjustment(original)
 			self.assertEqual(
-				frappe.db.get_value(
-					'YRP Stock Valuation Adjustment', original, "status"
-				),
+				frappe.db.get_value("YRP Stock Valuation Adjustment", original, "status"),
 				"Reversal Queued",
 			)
 			enqueue.assert_any_call(reversal)
 			self.assertEqual(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', sle_name, "valuation_is_stale"
-				),
+				frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_is_stale"),
 				1,
 			)
 
 			process_adjustment(reversal)
 
 		self.assertAlmostEqual(
-			flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', sle_name, "valuation_adjustment_value"
-				)
-			),
+			flt(frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_adjustment_value")),
 			0,
 		)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', original, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", original, "status"),
 			"Reversed",
 		)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Ledger Entry', sle_name, "valuation_is_stale"),
+			frappe.db.get_value("YRP Stock Ledger Entry", sle_name, "valuation_is_stale"),
 			0,
 		)
 
@@ -413,7 +380,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		original, _sle_name = self._adjust(receipt, 10)
 		reversal = create_reversal(receipt.doctype, receipt.name)[0]
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', original, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", original, "status"),
 			"Reversal Queued",
 		)
 		with patch(
@@ -421,7 +388,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		) as enqueue:
 			process_adjustment(original)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', original, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", original, "status"),
 			"Reversal Queued",
 		)
 		enqueue.assert_called_once_with(reversal, retry=True)
@@ -439,15 +406,11 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		)
 		adjustment, _sle_name = self._adjust(receipt, 10, apply=False)
 		self.assertEqual(
-			frappe.db.get_value(
-				'YRP Stock Valuation Adjustment', adjustment, "status"
-			),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "status"),
 			"Queued",
 		)
 		frappe.db.savepoint("before_active_valuation_cancel")
-		with self.assertRaisesRegex(
-			frappe.ValidationError, "unfinished Stock Valuation Adjustment"
-		):
+		with self.assertRaisesRegex(frappe.ValidationError, "unfinished Stock Valuation Adjustment"):
 			receipt.cancel()
 		# The request boundary rolls the failed cancellation back. Reproduce that
 		# boundary explicitly because this test intentionally catches the exception.
@@ -476,7 +439,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 				self._adjust(receipt, 10, apply=False)
 		self.assertFalse(
 			frappe.db.exists(
-				'YRP Stock Valuation Adjustment',
+				"YRP Stock Valuation Adjustment",
 				{"idempotency_key": f"test:{receipt.name}:10"},
 			)
 		)
@@ -489,12 +452,10 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			with self.assertRaisesRegex(frappe.ValidationError, "closed through"):
 				create_reversal(receipt.doctype, receipt.name)
 		self.assertFalse(
-			frappe.db.exists(
-				'YRP Stock Valuation Adjustment', {"reversal_of": original, "docstatus": 1}
-			)
+			frappe.db.exists("YRP Stock Valuation Adjustment", {"reversal_of": original, "docstatus": 1})
 		)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', original, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", original, "status"),
 			"Completed",
 		)
 
@@ -510,7 +471,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			to_warehouse=warehouse,
 		)
 		sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": receipt.name, "qty": [">", 0], "is_cancelled": 0},
 			["name", "item", "posting_date"],
 			as_dict=True,
@@ -533,11 +494,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			enqueue=False,
 		)
 		self.assertEqual(
-			getdate(
-				frappe.db.get_value(
-					'YRP Stock Valuation Adjustment', adjustment, "effective_date"
-				)
-			),
+			getdate(frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "effective_date")),
 			getdate(sle.posting_date),
 		)
 
@@ -555,22 +512,20 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 		adjustment, sle_name = self._adjust(receipt, -10)
 		sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			sle_name,
 			["qty", "rate", "valuation_adjustment_value", "stock_value"],
 			as_dict=True,
 		)
 		parent = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			adjustment,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
 		)
 		self.assertAlmostEqual(flt(sle.rate), 10)
 		self.assertAlmostEqual(flt(sle.valuation_adjustment_value), -10)
-		self.assertAlmostEqual(
-			flt(sle.stock_value), flt(sle.qty) * flt(sle.rate) - 10
-		)
+		self.assertAlmostEqual(flt(sle.stock_value), flt(sle.qty) * flt(sle.rate) - 10)
 		self.assertEqual(parent.status, "Completed")
 		self.assertAlmostEqual(flt(parent.propagated_stock_difference), -10)
 		self.assertAlmostEqual(flt(parent.terminal_difference), 0)
@@ -600,7 +555,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			posting_time="09:11:00",
 		)
 		transfer_sles = frappe.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": transfer.name, "is_cancelled": 0},
 			fields=["name", "qty", "paired_stock_ledger_entry"],
 			order_by="creation asc",
@@ -612,10 +567,10 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 		adjustment, _sle_name = self._adjust(receipt, 10)
 		incoming_overlay = frappe.db.get_value(
-			'YRP Stock Ledger Entry', incoming.name, "valuation_adjustment_value"
+			"YRP Stock Ledger Entry", incoming.name, "valuation_adjustment_value"
 		)
 		parent = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			adjustment,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
@@ -660,31 +615,23 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			posting_time="09:07:00",
 		)
 		incoming = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": transfer.name, "qty": [">", 0], "is_cancelled": 0},
 			"name",
 		)
 		adjustment, _sle_name = self._adjust(first, 10)
 		self.assertAlmostEqual(
-			flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', incoming, "valuation_adjustment_value"
-				)
-			),
+			flt(frappe.db.get_value("YRP Stock Ledger Entry", incoming, "valuation_adjustment_value")),
 			5,
 		)
 		reversal = create_reversal(first.doctype, first.name)[0]
 		process_adjustment(reversal)
 		self.assertAlmostEqual(
-			flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', incoming, "valuation_adjustment_value"
-				)
-			),
+			flt(frappe.db.get_value("YRP Stock Ledger Entry", incoming, "valuation_adjustment_value")),
 			0,
 		)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', adjustment, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "status"),
 			"Reversed",
 		)
 
@@ -713,7 +660,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 		adjustment, _sle_name = self._adjust(receipt, 10)
 		parent = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			adjustment,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
@@ -725,7 +672,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		reversal = create_reversal(receipt.doctype, receipt.name)[0]
 		process_adjustment(reversal)
 		reversal_result = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			reversal,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
@@ -734,7 +681,7 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		self.assertAlmostEqual(flt(reversal_result.propagated_stock_difference), 0)
 		self.assertAlmostEqual(flt(reversal_result.terminal_difference), -10)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', adjustment, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "status"),
 			"Reversed",
 		)
 
@@ -772,12 +719,12 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			posting_time="09:22:00",
 		)
 		consumption_sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": consumption.name, "qty": ["<", 0], "is_cancelled": 0},
 			"name",
 		)
 		output_sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": output.name, "qty": [">", 0], "is_cancelled": 0},
 			"name",
 		)
@@ -798,10 +745,10 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 		adjustment, _sle_name = self._adjust(receipt, 10)
 		output_overlay = frappe.db.get_value(
-			'YRP Stock Ledger Entry', output_sle, "valuation_adjustment_value"
+			"YRP Stock Ledger Entry", output_sle, "valuation_adjustment_value"
 		)
 		parent = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			adjustment,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
@@ -815,45 +762,33 @@ class TestStockValuationAdjustment(FrappeTestCase):
 		# reversal finishes. Cancellation must not strand the ₹5 overlay on a
 		# cancelled receipt or leave its production edge traversable.
 		frappe.db.savepoint("before_completed_lineage_cancel")
-		with self.assertRaisesRegex(
-			frappe.ValidationError, "completed Stock Valuation Adjustment"
-		):
+		with self.assertRaisesRegex(frappe.ValidationError, "completed Stock Valuation Adjustment"):
 			output.cancel()
 		frappe.db.rollback(save_point="before_completed_lineage_cancel")
+		self.assertEqual(frappe.db.get_value(output.doctype, output.name, "docstatus"), 1)
+		self.assertEqual(frappe.db.get_value("YRP Stock Ledger Entry", output_sle, "is_cancelled"), 0)
 		self.assertEqual(
-			frappe.db.get_value(output.doctype, output.name, "docstatus"), 1
-		)
-		self.assertEqual(
-			frappe.db.get_value('YRP Stock Ledger Entry', output_sle, "is_cancelled"), 0
-		)
-		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Production Link', link_name, "active"),
+			frappe.db.get_value("YRP Stock Valuation Production Link", link_name, "active"),
 			1,
 		)
 
 		reversal = create_reversal(receipt.doctype, receipt.name)[0]
 		process_adjustment(reversal)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Adjustment', adjustment, "status"),
+			frappe.db.get_value("YRP Stock Valuation Adjustment", adjustment, "status"),
 			"Reversed",
 		)
 		self.assertAlmostEqual(
-			flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', output_sle, "valuation_adjustment_value"
-				)
-			),
+			flt(frappe.db.get_value("YRP Stock Ledger Entry", output_sle, "valuation_adjustment_value")),
 			0,
 		)
 
 		output.reload()
 		output.cancel()
 		self.assertEqual(output.docstatus, 2)
+		self.assertEqual(frappe.db.get_value("YRP Stock Ledger Entry", output_sle, "is_cancelled"), 1)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Ledger Entry', output_sle, "is_cancelled"), 1
-		)
-		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Production Link', link_name, "active"),
+			frappe.db.get_value("YRP Stock Valuation Production Link", link_name, "active"),
 			0,
 		)
 
@@ -891,12 +826,12 @@ class TestStockValuationAdjustment(FrappeTestCase):
 			posting_time="10:02:00",
 		)
 		consumption_sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": late_consumption.name, "qty": ["<", 0], "is_cancelled": 0},
 			"name",
 		)
 		output_sle = frappe.db.get_value(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			{"voucher_no": output.name, "qty": [">", 0], "is_cancelled": 0},
 			"name",
 		)
@@ -918,21 +853,17 @@ class TestStockValuationAdjustment(FrappeTestCase):
 
 		adjustment, _sle_name = self._adjust(receipt, 10)
 		parent = frappe.db.get_value(
-			'YRP Stock Valuation Adjustment',
+			"YRP Stock Valuation Adjustment",
 			adjustment,
 			["status", "propagated_stock_difference", "terminal_difference"],
 			as_dict=True,
 		)
 		self.assertEqual(
-			frappe.db.get_value('YRP Stock Valuation Production Link', link_name, "active"),
+			frappe.db.get_value("YRP Stock Valuation Production Link", link_name, "active"),
 			1,
 		)
 		self.assertAlmostEqual(
-			flt(
-				frappe.db.get_value(
-					'YRP Stock Ledger Entry', output_sle, "valuation_adjustment_value"
-				)
-			),
+			flt(frappe.db.get_value("YRP Stock Ledger Entry", output_sle, "valuation_adjustment_value")),
 			5,
 		)
 		self.assertEqual(parent.status, "Completed")

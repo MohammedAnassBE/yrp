@@ -7,6 +7,8 @@
             :items="items"
             :edit="docstatus === 0"
 			:return-mode="returnMode"
+			:allow-excess="allowExcess"
+			:aggregate-physical-rows="aggregatePhysicalRows"
             @itemupdated="updated">
         </goods-received-note-editor>
         <item-dimension-fetcher
@@ -48,8 +50,10 @@ const props = defineProps({
     sourceType: { type: String, default: '' },
     showSecondary: { type: Boolean, default: false },
     aggregateDisplay: { type: Boolean, default: false },
-    aggregateRouteFields: { type: Array, default: () => [] },
+	aggregateRouteFields: { type: Array, default: () => [] },
 	returnMode: { type: Boolean, default: false },
+	allowExcess: { type: Boolean, default: false },
+	aggregatePhysicalRows: { type: Boolean, default: false },
 });
 
 const SECONDARY_COLUMNS = [

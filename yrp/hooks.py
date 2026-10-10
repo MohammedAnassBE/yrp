@@ -156,7 +156,9 @@ doctype_js = {
 	"Item": "public/js/item.js",
 	"Purchase Order": "public/js/purchase_order.js",
 }
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {
+	"Purchase Order": "public/js/purchase_order_list.js",
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -198,6 +200,11 @@ doctype_js = {
 # ------------
 
 # before_install = "yrp.install.before_install"
+after_install = [
+	# Patches are marked done on install without running.
+	"yrp.patches.seed_role_settings.execute",
+]
+
 # Static configuration is synchronized from the fixtures declared above.
 
 boot_session = [
@@ -337,7 +344,7 @@ doc_events = {
 		"on_update": "yrp.yrp_partner.sync.sync_document",
 		"on_update_after_submit": "yrp.yrp_partner.sync.sync_document",
 	},
-	'YRP Stock Settings': {
+	"YRP Stock Settings": {
 		"on_update": "yrp.stock.dimensions.clear_dimension_cache",
 	},
 	"Item Attribute": {
@@ -507,8 +514,28 @@ override_whitelisted_methods = {
 
 # Scoped attribute-value Link normalization for internal document writes.
 extend_doctype_class = globals().get("extend_doctype_class", {})
-for _attribute_link_doctype in ['YRP IPD Matrix Combination Attribute', 'YRP IPD Process', 'YRP IPD Process Matrix', 'YRP Item BOM', 'YRP Item BOM Attribute Mapping', 'YRP Item BOM Attribute Mapping Value', 'YRP Item Dependent Attribute Mapping', 'YRP Item Dependent Attribute Mapping Detail', 'YRP Item Dependent Attribute Mapping Value', 'YRP Item Price', 'YRP Item Price Value', 'YRP Item Production Detail', 'YRP Process Cost', 'YRP Process Cost Value', 'YRP Production Order', 'YRP Settings']:
+for _attribute_link_doctype in [
+	"YRP IPD Matrix Combination Attribute",
+	"YRP IPD Process",
+	"YRP IPD Process Matrix",
+	"YRP Item BOM",
+	"YRP Item BOM Attribute Mapping",
+	"YRP Item BOM Attribute Mapping Value",
+	"YRP Item Dependent Attribute Mapping",
+	"YRP Item Dependent Attribute Mapping Detail",
+	"YRP Item Dependent Attribute Mapping Value",
+	"YRP Item Price",
+	"YRP Item Price Value",
+	"YRP Item Production Detail",
+	"YRP Process Cost",
+	"YRP Process Cost Value",
+	"YRP Production Order",
+	"YRP Settings",
+]:
 	_existing_mixins = extend_doctype_class.get(_attribute_link_doctype, [])
 	if isinstance(_existing_mixins, str):
 		_existing_mixins = [_existing_mixins]
-	extend_doctype_class[_attribute_link_doctype] = [*_existing_mixins, "yrp.attribute_links.AttributeLinkStorageMixin"]
+	extend_doctype_class[_attribute_link_doctype] = [
+		*_existing_mixins,
+		"yrp.attribute_links.AttributeLinkStorageMixin",
+	]

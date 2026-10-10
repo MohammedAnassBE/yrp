@@ -29,13 +29,12 @@ class YRPUILayout(Document):
 		if old == DEFAULT_LAYOUT_NAME and not (frappe.flags.in_uninstall or frappe.flags.in_install):
 			frappe.throw(
 				_(
-					"The {0} UI Layout is protected and cannot be renamed. "
-					"Create a new layout instead."
+					"The {0} UI Layout is protected and cannot be renamed. Create a new layout instead."
 				).format(frappe.bold(DEFAULT_LAYOUT_NAME))
 			)
 
 	def on_trash(self):
-		linked = frappe.db.count('YRP UI Preference', {"layout": self.name})
+		linked = frappe.db.count("YRP UI Preference", {"layout": self.name})
 		if linked:
 			frappe.throw(
 				_(
@@ -44,32 +43,29 @@ class YRPUILayout(Document):
 				).format(frappe.bold(self.name), linked)
 			)
 
-		if self.name == DEFAULT_LAYOUT_NAME and not (
-			frappe.flags.in_uninstall or frappe.flags.in_install
-		):
+		if self.name == DEFAULT_LAYOUT_NAME and not (frappe.flags.in_uninstall or frappe.flags.in_install):
 			frappe.throw(
 				_(
-					"The {0} UI Layout is protected and cannot be deleted. "
-					"Set Disabled to retire it instead."
+					"The {0} UI Layout is protected and cannot be deleted. Set Disabled to retire it instead."
 				).format(frappe.bold(DEFAULT_LAYOUT_NAME))
 			)
 
 		# App code can be newer than an individual site's schema during a rolling
 		# deploy. Keep the existing UI Layout lifecycle usable until that site is
 		# migrated and the terminology tables exist.
-		if frappe.db.table_exists('YRP UI Terminology'):
-			terminology = frappe.db.get_value('YRP UI Terminology', {"ui_layout": self.name}, "name")
+		if frappe.db.table_exists("YRP UI Terminology"):
+			terminology = frappe.db.get_value("YRP UI Terminology", {"ui_layout": self.name}, "name")
 			if terminology:
-				frappe.delete_doc('YRP UI Terminology', terminology, ignore_permissions=True, force=True)
+				frappe.delete_doc("YRP UI Terminology", terminology, ignore_permissions=True, force=True)
 
 	def _ensure_terminology(self):
-		if not frappe.db.exists("DocType", 'YRP UI Terminology'):
+		if not frappe.db.exists("DocType", "YRP UI Terminology"):
 			return
-		if frappe.db.exists('YRP UI Terminology', {"ui_layout": self.name}):
+		if frappe.db.exists("YRP UI Terminology", {"ui_layout": self.name}):
 			return
 		frappe.get_doc(
 			{
-				"doctype": 'YRP UI Terminology',
+				"doctype": "YRP UI Terminology",
 				"ui_layout": self.name,
 			}
 		).insert(ignore_permissions=True)

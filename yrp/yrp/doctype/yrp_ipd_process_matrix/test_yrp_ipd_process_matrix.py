@@ -9,13 +9,11 @@ from frappe.tests import IntegrationTestCase
 from yrp.yrp.doctype.yrp_ipd_process_matrix.yrp_ipd_process_matrix import IPDProcessMatrix
 from yrp.yrp.utils.ipd_engine import get_process_io
 
-
 # On IntegrationTestCase, the doctype test records and all
 # link-field test record dependencies are recursively loaded
 # Use these module variables to add/remove to/from that list
 EXTRA_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
 IGNORE_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
-
 
 
 class IntegrationTestIPDProcessMatrix(IntegrationTestCase):
@@ -92,7 +90,7 @@ class IntegrationTestIPDProcessMatrix(IntegrationTestCase):
 		)
 
 		def get_doc(doctype, name):
-			return ipd if doctype == 'YRP Item Production Detail' else matrix
+			return ipd if doctype == "YRP Item Production Detail" else matrix
 
 		with (
 			patch("yrp.yrp.utils.ipd_engine.frappe.get_all", return_value=["MATRIX-1"]),

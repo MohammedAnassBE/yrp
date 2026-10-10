@@ -14,6 +14,8 @@ def _source_dimensions(row):
 		for fieldname in get_dimension_fieldnames()
 		if fieldname != "received_type" and row.get(fieldname)
 	}
+
+
 from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_make_parent_grn,
 	_make_parent_work_order,
@@ -60,33 +62,37 @@ class TestReworkSourceFilter(FrappeTestCase):
 		_make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, oil_mark, qty=10)
 
 		seed_wo, seed_supplier_wh, _, _, _ = _make_parent_work_order(qty=25)
-		seed_grn = frappe.get_doc({
-			"doctype": 'YRP Goods Received Note',
-			"against": 'YRP Work Order',
-			"against_id": seed_wo.name,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"supplier": seed_wo.supplier,
-			"delivery_location": seed_wo.delivery_location,
-			"supplier_address": seed_wo.supplier_address,
-			"delivery_address": seed_wo.delivery_address,
-			"from_warehouse": seed_supplier_wh,
-			"to_warehouse": delivery_wh,
-			"process_name": seed_wo.process_name,
-			"item": seed_wo.item,
-			"items": [{
-				"item_variant": item_variant,
-				"quantity": 25,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"received_type": oil_mark,
-				"ref_doctype": 'YRP Work Order Receivables',
-				"ref_docname": seed_wo.receivables[0].name,
-				"table_index": 0,
-				"row_index": "0",
-			}],
-		})
+		seed_grn = frappe.get_doc(
+			{
+				"doctype": "YRP Goods Received Note",
+				"against": "YRP Work Order",
+				"against_id": seed_wo.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"supplier": seed_wo.supplier,
+				"delivery_location": seed_wo.delivery_location,
+				"supplier_address": seed_wo.supplier_address,
+				"delivery_address": seed_wo.delivery_address,
+				"from_warehouse": seed_supplier_wh,
+				"to_warehouse": delivery_wh,
+				"process_name": seed_wo.process_name,
+				"item": seed_wo.item,
+				"items": [
+					{
+						"item_variant": item_variant,
+						"quantity": 25,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"received_type": oil_mark,
+						"ref_doctype": "YRP Work Order Receivables",
+						"ref_docname": seed_wo.receivables[0].name,
+						"table_index": 0,
+						"row_index": "0",
+					}
+				],
+			}
+		)
 		seed_grn.insert(ignore_permissions=True)
 		seed_grn.submit()
 
@@ -107,27 +113,31 @@ class TestReworkSourceFilter(FrappeTestCase):
 		grn = _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, accepted, qty=10)
 		grn_row = grn.items[0]
 
-		insp = frappe.get_doc({
-			"doctype": 'YRP Inspection Entry',
-			"against": 'YRP Goods Received Note',
-			"against_id": grn.name,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"status": "Converted",
-			"is_converted": 1,
-			"items": [{
-				"item_variant": item_variant,
-				"warehouse": delivery_wh,
-				"grn_qty": 10,
-				"target_received_type": oil_mark,
-				"qty": 4,
-				"received_date": nowdate(),
-				"ref_doctype": 'YRP Goods Received Note Item',
-				"ref_docname": grn_row.name,
-				"received_type": accepted,
-				**_source_dimensions(grn_row),
-			}],
-		})
+		insp = frappe.get_doc(
+			{
+				"doctype": "YRP Inspection Entry",
+				"against": "YRP Goods Received Note",
+				"against_id": grn.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"status": "Converted",
+				"is_converted": 1,
+				"items": [
+					{
+						"item_variant": item_variant,
+						"warehouse": delivery_wh,
+						"grn_qty": 10,
+						"target_received_type": oil_mark,
+						"qty": 4,
+						"received_date": nowdate(),
+						"ref_doctype": "YRP Goods Received Note Item",
+						"ref_docname": grn_row.name,
+						"received_type": accepted,
+						**_source_dimensions(grn_row),
+					}
+				],
+			}
+		)
 		insp.insert(ignore_permissions=True)
 		insp.submit()
 
@@ -149,26 +159,30 @@ class TestReworkSourceFilter(FrappeTestCase):
 		grn_row = grn.items[0]
 
 		for qty in (2, 3):
-			inspection = frappe.get_doc({
-				"doctype": 'YRP Inspection Entry',
-				"against": 'YRP Goods Received Note',
-				"against_id": grn.name,
-				"posting_date": nowdate(),
-				"posting_time": nowtime(),
-				"is_converted": 1,
-				"items": [{
-					"item_variant": item_variant,
-					"warehouse": delivery_wh,
-					"grn_qty": 10,
-					"target_received_type": oil_mark,
-					"qty": qty,
-					"received_date": nowdate(),
-					"ref_doctype": 'YRP Goods Received Note Item',
-					"ref_docname": grn_row.name,
-					"received_type": accepted,
-					**_source_dimensions(grn_row),
-				}],
-			})
+			inspection = frappe.get_doc(
+				{
+					"doctype": "YRP Inspection Entry",
+					"against": "YRP Goods Received Note",
+					"against_id": grn.name,
+					"posting_date": nowdate(),
+					"posting_time": nowtime(),
+					"is_converted": 1,
+					"items": [
+						{
+							"item_variant": item_variant,
+							"warehouse": delivery_wh,
+							"grn_qty": 10,
+							"target_received_type": oil_mark,
+							"qty": qty,
+							"received_date": nowdate(),
+							"ref_doctype": "YRP Goods Received Note Item",
+							"ref_docname": grn_row.name,
+							"received_type": accepted,
+							**_source_dimensions(grn_row),
+						}
+					],
+				}
+			)
 			inspection.insert(ignore_permissions=True)
 			inspection.submit()
 
@@ -190,27 +204,31 @@ class TestReworkSourceFilter(FrappeTestCase):
 		grn = _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, oil_mark, qty=10)
 		grn_row = grn.items[0]
 
-		insp = frappe.get_doc({
-			"doctype": 'YRP Inspection Entry',
-			"against": 'YRP Goods Received Note',
-			"against_id": grn.name,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"status": "Converted",
-			"is_converted": 1,
-			"items": [{
-				"item_variant": item_variant,
-				"warehouse": delivery_wh,
-				"grn_qty": 10,
-				"target_received_type": accepted,
-				"qty": 4,
-				"received_date": nowdate(),
-				"ref_doctype": 'YRP Goods Received Note Item',
-				"ref_docname": grn_row.name,
-				"received_type": oil_mark,
-				**_source_dimensions(grn_row),
-			}],
-		})
+		insp = frappe.get_doc(
+			{
+				"doctype": "YRP Inspection Entry",
+				"against": "YRP Goods Received Note",
+				"against_id": grn.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"status": "Converted",
+				"is_converted": 1,
+				"items": [
+					{
+						"item_variant": item_variant,
+						"warehouse": delivery_wh,
+						"grn_qty": 10,
+						"target_received_type": accepted,
+						"qty": 4,
+						"received_date": nowdate(),
+						"ref_doctype": "YRP Goods Received Note Item",
+						"ref_docname": grn_row.name,
+						"received_type": oil_mark,
+						**_source_dimensions(grn_row),
+					}
+				],
+			}
+		)
 		insp.insert(ignore_permissions=True)
 		insp.submit()
 
@@ -224,33 +242,37 @@ class TestReworkSourceFilter(FrappeTestCase):
 		"""An Inspection Entry row whose source RT equals target RT emits no
 		SLE and must not surface as a rework source.
 		"""
-		accepted = _default_received_type()
+		_default_received_type()
 		oil_mark = _received_type(f"_T_Filter_OilIdentity_{frappe.generate_hash(length=6)}")
 		wo, supplier_wh, delivery_wh, item_variant, uom = _make_parent_work_order(qty=10)
 		grn = _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, oil_mark, qty=10)
 		grn_row = grn.items[0]
 
-		insp = frappe.get_doc({
-			"doctype": 'YRP Inspection Entry',
-			"against": 'YRP Goods Received Note',
-			"against_id": grn.name,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"status": "Converted",
-			"is_converted": 1,
-			"items": [{
-				"item_variant": item_variant,
-				"warehouse": delivery_wh,
-				"grn_qty": 10,
-				"target_received_type": oil_mark,
-				"qty": 3,
-				"received_date": nowdate(),
-				"ref_doctype": 'YRP Goods Received Note Item',
-				"ref_docname": grn_row.name,
-				"received_type": oil_mark,
-				**_source_dimensions(grn_row),
-			}],
-		})
+		insp = frappe.get_doc(
+			{
+				"doctype": "YRP Inspection Entry",
+				"against": "YRP Goods Received Note",
+				"against_id": grn.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"status": "Converted",
+				"is_converted": 1,
+				"items": [
+					{
+						"item_variant": item_variant,
+						"warehouse": delivery_wh,
+						"grn_qty": 10,
+						"target_received_type": oil_mark,
+						"qty": 3,
+						"received_date": nowdate(),
+						"ref_doctype": "YRP Goods Received Note Item",
+						"ref_docname": grn_row.name,
+						"received_type": oil_mark,
+						**_source_dimensions(grn_row),
+					}
+				],
+			}
+		)
 		insp.insert(ignore_permissions=True)
 		insp.submit()
 

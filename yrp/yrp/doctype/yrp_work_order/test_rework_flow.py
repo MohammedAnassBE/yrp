@@ -6,11 +6,9 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate, nowtime
 
 from yrp.stock.utils import get_stock_balance
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_delivery_challan.test_internal_unit_transfer import (
 	_neutral_production_group_dimensions,
 )
-from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import get_work_order_defaults
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_address,
 	_default_received_type,
@@ -21,6 +19,8 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_supplier_warehouse,
 	_test_item_variant,
 )
+from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import get_work_order_defaults
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 	create_rework_work_order,
 	get_rework_source_rows,
@@ -28,12 +28,14 @@ from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 
 
 def _received_type(name):
-	if frappe.db.exists('YRP Received Type', name):
+	if frappe.db.exists("YRP Received Type", name):
 		return name
-	doc = frappe.get_doc({
-		"doctype": 'YRP Received Type',
-		"received_type_name": name,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Received Type",
+			"received_type_name": name,
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	return doc.name
 
@@ -42,7 +44,7 @@ def _set_rejected_received_type(name):
 	"""Mark `name` as the rejected RT in YRP Stock Settings for the duration of
 	the test transaction.
 	"""
-	frappe.db.set_single_value('YRP Stock Settings', "default_rejected_received_type", name)
+	frappe.db.set_single_value("YRP Stock Settings", "default_rejected_received_type", name)
 
 
 def _without_host_lot_process_validation():
@@ -58,39 +60,49 @@ def _make_parent_work_order(qty=10):
 	uom = _item_uom(item_variant)
 	supplier = _supplier(f"_T_Rework_Parent_Supplier_{frappe.generate_hash(length=6)}")
 	delivery_location = _supplier(f"_T_Rework_Location_{frappe.generate_hash(length=6)}")
-	supplier_wh = _supplier_warehouse(supplier, f"_T_Rework_Parent_Supplier_WH_{frappe.generate_hash(length=6)}")
-	delivery_wh = _supplier_warehouse(delivery_location, f"_T_Rework_Location_WH_{frappe.generate_hash(length=6)}")
+	supplier_wh = _supplier_warehouse(
+		supplier, f"_T_Rework_Parent_Supplier_WH_{frappe.generate_hash(length=6)}"
+	)
+	delivery_wh = _supplier_warehouse(
+		delivery_location, f"_T_Rework_Location_WH_{frappe.generate_hash(length=6)}"
+	)
 	process_name = _process("_Test Rework Parent Process")
 	# Do not borrow an arbitrary live production Lot. On an Essdee host that
 	# would correctly bind this synthetic base-YRP Work Order to another item.
 	dimensions = _neutral_production_group_dimensions(parent_item)
 	_process_cost(process_name, parent_item, supplier, dimensions)
 
-	wo = frappe.get_doc({
-		"doctype": 'YRP Work Order',
-		"supplier": supplier,
-		"delivery_location": delivery_location,
-		"planned_end_date": nowdate(),
-		"supplier_address": _address(f"_T_Rework_Parent_Supplier_Addr_{frappe.generate_hash(length=6)}"),
-		"delivery_address": _address(f"_T_Rework_Location_Addr_{frappe.generate_hash(length=6)}"),
-		"process_name": process_name,
-		"item": parent_item,
-		**dimensions,
-		"deliverables": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"uom": uom,
-			"table_index": 0,
-			"row_index": 0,
-		}],
-		"receivables": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"uom": uom,
-			"table_index": 0,
-			"row_index": 0,
-		}],
-	})
+	wo = frappe.get_doc(
+		{
+			"doctype": "YRP Work Order",
+			"supplier": supplier,
+			"delivery_location": delivery_location,
+			"planned_end_date": nowdate(),
+			"supplier_address": _address(f"_T_Rework_Parent_Supplier_Addr_{frappe.generate_hash(length=6)}"),
+			"delivery_address": _address(f"_T_Rework_Location_Addr_{frappe.generate_hash(length=6)}"),
+			"process_name": process_name,
+			"item": parent_item,
+			**dimensions,
+			"deliverables": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"uom": uom,
+					"table_index": 0,
+					"row_index": 0,
+				}
+			],
+			"receivables": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"uom": uom,
+					"table_index": 0,
+					"row_index": 0,
+				}
+			],
+		}
+	)
 	with _without_host_lot_process_validation():
 		wo.insert(ignore_permissions=True)
 		wo.submit()
@@ -99,33 +111,37 @@ def _make_parent_work_order(qty=10):
 
 def _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, received_type, qty=10):
 	row = wo.receivables[0]
-	grn = frappe.get_doc({
-		"doctype": 'YRP Goods Received Note',
-		"against": 'YRP Work Order',
-		"against_id": wo.name,
-		"posting_date": nowdate(),
-		"posting_time": nowtime(),
-		"supplier": wo.supplier,
-		"delivery_location": wo.delivery_location,
-		"supplier_address": wo.supplier_address,
-		"delivery_address": wo.delivery_address,
-		"from_warehouse": supplier_wh,
-		"to_warehouse": delivery_wh,
-		"process_name": wo.process_name,
-		"item": wo.item,
-		"items": [{
-			"item_variant": item_variant,
-			"quantity": qty,
-			"uom": uom,
-			"stock_uom": uom,
-			"conversion_factor": 1,
-			"received_type": received_type,
-			"ref_doctype": 'YRP Work Order Receivables',
-			"ref_docname": row.name,
-			"table_index": 0,
-			"row_index": "0",
-		}],
-	})
+	grn = frappe.get_doc(
+		{
+			"doctype": "YRP Goods Received Note",
+			"against": "YRP Work Order",
+			"against_id": wo.name,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+			"supplier": wo.supplier,
+			"delivery_location": wo.delivery_location,
+			"supplier_address": wo.supplier_address,
+			"delivery_address": wo.delivery_address,
+			"from_warehouse": supplier_wh,
+			"to_warehouse": delivery_wh,
+			"process_name": wo.process_name,
+			"item": wo.item,
+			"items": [
+				{
+					"item_variant": item_variant,
+					"quantity": qty,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"received_type": received_type,
+					"ref_doctype": "YRP Work Order Receivables",
+					"ref_docname": row.name,
+					"table_index": 0,
+					"row_index": "0",
+				}
+			],
+		}
+	)
 	grn.insert(ignore_permissions=True)
 	grn.submit()
 	return grn
@@ -147,17 +163,17 @@ class TestReworkFlow(FrappeTestCase):
 				wo.name,
 				[{"source_key": source["source_key"], "qty": 6}],
 			)
-			rework_wo = frappe.get_doc('YRP Work Order', rework_wo_name)
+			rework_wo = frappe.get_doc("YRP Work Order", rework_wo_name)
 			rework_wo.submit()
 		self.assertEqual(rework_wo.is_rework, 1)
 		self.assertEqual(rework_wo.parent_wo, wo.name)
 		self.assertEqual(rework_wo.deliverables[0].received_type, rework_rt)
 		sre = frappe.get_doc(
-			'YRP Stock Reservation Entry',
+			"YRP Stock Reservation Entry",
 			frappe.db.get_value(
-				'YRP Stock Reservation Entry',
+				"YRP Stock Reservation Entry",
 				{
-					"voucher_type": 'YRP Work Order',
+					"voucher_type": "YRP Work Order",
 					"voucher_no": rework_wo.name,
 					"voucher_detail_no": rework_wo.deliverables[0].name,
 					"docstatus": 1,
@@ -168,31 +184,35 @@ class TestReworkFlow(FrappeTestCase):
 		self.assertAlmostEqual(sre.reserved_qty, 6)
 		self.assertEqual(sre.status, "Reserved")
 
-		dc = frappe.get_doc({
-			"doctype": 'YRP Delivery Challan',
-			"work_order": rework_wo.name,
-			"from_location": rework_wo.delivery_location,
-			"supplier": rework_wo.supplier,
-			"from_address": rework_wo.delivery_address,
-			"supplier_address": rework_wo.supplier_address,
-			"from_warehouse": delivery_wh,
-			"to_warehouse": supplier_wh,
-			"process_name": rework_wo.process_name,
-			"item": rework_wo.item,
-			"items": [{
-				"item_variant": item_variant,
-				"qty": 6,
-				"delivered_quantity": 6,
-				"uom": uom,
-				"stock_uom": uom,
-				"conversion_factor": 1,
-				"received_type": rework_rt,
-				"ref_doctype": 'YRP Work Order Deliverables',
-				"ref_docname": rework_wo.deliverables[0].name,
-				"table_index": 0,
-				"row_index": "0",
-			}],
-		})
+		dc = frappe.get_doc(
+			{
+				"doctype": "YRP Delivery Challan",
+				"work_order": rework_wo.name,
+				"from_location": rework_wo.delivery_location,
+				"supplier": rework_wo.supplier,
+				"from_address": rework_wo.delivery_address,
+				"supplier_address": rework_wo.supplier_address,
+				"from_warehouse": delivery_wh,
+				"to_warehouse": supplier_wh,
+				"process_name": rework_wo.process_name,
+				"item": rework_wo.item,
+				"items": [
+					{
+						"item_variant": item_variant,
+						"qty": 6,
+						"delivered_quantity": 6,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"received_type": rework_rt,
+						"ref_doctype": "YRP Work Order Deliverables",
+						"ref_docname": rework_wo.deliverables[0].name,
+						"table_index": 0,
+						"row_index": "0",
+					}
+				],
+			}
+		)
 		dc.insert(ignore_permissions=True)
 		dc.submit()
 		sre.reload()
@@ -204,50 +224,52 @@ class TestReworkFlow(FrappeTestCase):
 		self.assertTrue(default_rows)
 		self.assertTrue(all(row.get("delivery_challan_item") == dc.items[0].name for row in default_rows))
 
-		grn = frappe.get_doc({
-			"doctype": 'YRP Goods Received Note',
-			"against": 'YRP Work Order',
-			"against_id": rework_wo.name,
-			"delivery_challan": dc.name,
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
-			"supplier": rework_wo.supplier,
-			"delivery_location": rework_wo.delivery_location,
-			"supplier_address": rework_wo.supplier_address,
-			"delivery_address": rework_wo.delivery_address,
-			"from_warehouse": supplier_wh,
-			"to_warehouse": delivery_wh,
-			"process_name": rework_wo.process_name,
-			"item": rework_wo.item,
-			"items": [
-				{
-					"item_variant": item_variant,
-					"quantity": 4,
-					"uom": uom,
-					"stock_uom": uom,
-					"conversion_factor": 1,
-					"received_type": accepted_rt,
-					"delivery_challan_item": dc.items[0].name,
-					"ref_doctype": 'YRP Work Order Receivables',
-					"ref_docname": rework_wo.receivables[0].name,
-					"table_index": 0,
-					"row_index": "0::accepted",
-				},
-				{
-					"item_variant": item_variant,
-					"quantity": 2,
-					"uom": uom,
-					"stock_uom": uom,
-					"conversion_factor": 1,
-					"received_type": rejected_rt,
-					"delivery_challan_item": dc.items[0].name,
-					"ref_doctype": 'YRP Work Order Receivables',
-					"ref_docname": rework_wo.receivables[0].name,
-					"table_index": 0,
-					"row_index": "0::rejected",
-				},
-			],
-		})
+		grn = frappe.get_doc(
+			{
+				"doctype": "YRP Goods Received Note",
+				"against": "YRP Work Order",
+				"against_id": rework_wo.name,
+				"delivery_challan": dc.name,
+				"posting_date": nowdate(),
+				"posting_time": nowtime(),
+				"supplier": rework_wo.supplier,
+				"delivery_location": rework_wo.delivery_location,
+				"supplier_address": rework_wo.supplier_address,
+				"delivery_address": rework_wo.delivery_address,
+				"from_warehouse": supplier_wh,
+				"to_warehouse": delivery_wh,
+				"process_name": rework_wo.process_name,
+				"item": rework_wo.item,
+				"items": [
+					{
+						"item_variant": item_variant,
+						"quantity": 4,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"received_type": accepted_rt,
+						"delivery_challan_item": dc.items[0].name,
+						"ref_doctype": "YRP Work Order Receivables",
+						"ref_docname": rework_wo.receivables[0].name,
+						"table_index": 0,
+						"row_index": "0::accepted",
+					},
+					{
+						"item_variant": item_variant,
+						"quantity": 2,
+						"uom": uom,
+						"stock_uom": uom,
+						"conversion_factor": 1,
+						"received_type": rejected_rt,
+						"delivery_challan_item": dc.items[0].name,
+						"ref_doctype": "YRP Work Order Receivables",
+						"ref_docname": rework_wo.receivables[0].name,
+						"table_index": 0,
+						"row_index": "0::rejected",
+					},
+				],
+			}
+		)
 		grn.insert(ignore_permissions=True)
 		grn.submit()
 

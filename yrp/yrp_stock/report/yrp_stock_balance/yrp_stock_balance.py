@@ -3,7 +3,6 @@
 Shows opening qty/value, in/out movement, and closing balance grouped by
 (item, warehouse, *stock_dimensions) for a given date range.
 """
-from yrp.attribute_links import value as _attribute_value
 
 from typing import Any, Dict, List
 
@@ -12,11 +11,11 @@ from frappe import _
 from frappe.query_builder.functions import CombineDatetime
 from frappe.utils import cint, date_diff, flt, getdate
 
+from yrp.attribute_links import value as _attribute_value
 from yrp.stock.ageing import FIFOSlots, get_average_age
-from yrp.stock.dimensions import get_stock_dimensions, get_dimension_fieldnames
+from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 
-
-SLEntry = Dict[str, Any]
+SLEntry = dict[str, Any]
 
 
 def execute(filters=None):
@@ -44,7 +43,7 @@ def execute(filters=None):
 
 	for group_key in iwb_map:
 		item = group_key[0]
-		warehouse = group_key[1]
+		group_key[1]
 		if not item_map.get(item):
 			continue
 		qty_dict = iwb_map[group_key]
@@ -59,9 +58,7 @@ def execute(filters=None):
 		if filters.get("show_inward_date_split"):
 			breakdown = get_inward_date_breakdown(fifo_queue)
 			row["inward_date_breakdown"] = breakdown
-			row["inward_split"] = "\n".join(
-				f"{entry['date']}: {entry['qty']:g}" for entry in breakdown
-			)
+			row["inward_split"] = "\n".join(f"{entry['date']}: {entry['qty']:g}" for entry in breakdown)
 
 		if filters.get("show_stock_ageing_data"):
 			ageing = {"average_age": 0, "earliest_age": 0, "latest_age": 0}
@@ -97,33 +94,61 @@ def get_inward_date_breakdown(fifo_queue):
 
 def get_columns(filters, dims):
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": 'Item', "width": 150},
-		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Link", "options": 'Item', "width": 150},
-		{"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Link", "options": 'Item Group', "width": 100},
-		{"label": _("Warehouse"), "fieldname": "warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 120},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": "Item", "width": 150},
+		{
+			"label": _("Item Name"),
+			"fieldname": "item_name",
+			"fieldtype": "Link",
+			"options": "Item",
+			"width": 150,
+		},
+		{
+			"label": _("Item Group"),
+			"fieldname": "item_group",
+			"fieldtype": "Link",
+			"options": "Item Group",
+			"width": 100,
+		},
+		{
+			"label": _("Warehouse"),
+			"fieldname": "warehouse",
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 120,
+		},
 	]
 	# Dynamic dimension columns
 	for dim in dims:
-		columns.append({
-			"label": _(dim["label"]),
-			"fieldname": dim["fieldname"],
-			"fieldtype": "Link",
-			"options": dim["dimension_doctype"],
-			"width": 100,
-		})
+		columns.append(
+			{
+				"label": _(dim["label"]),
+				"fieldname": dim["fieldname"],
+				"fieldtype": "Link",
+				"options": dim["dimension_doctype"],
+				"width": 100,
+			}
+		)
 
-	columns.extend([
-		{"label": _("Stock UOM"), "fieldname": "stock_uom", "fieldtype": "Link", "options": 'UOM', "width": 90},
-		{"label": _("Balance Qty"), "fieldname": "bal_qty", "fieldtype": "Float", "width": 100},
-		{"label": _("Balance Value"), "fieldname": "bal_val", "fieldtype": "Currency", "width": 110},
-		{"label": _("Opening Qty"), "fieldname": "opening_qty", "fieldtype": "Float", "width": 100},
-		{"label": _("Opening Value"), "fieldname": "opening_val", "fieldtype": "Currency", "width": 110},
-		{"label": _("In Qty"), "fieldname": "in_qty", "fieldtype": "Float", "width": 80},
-		{"label": _("In Value"), "fieldname": "in_val", "fieldtype": "Currency", "width": 80},
-		{"label": _("Out Qty"), "fieldname": "out_qty", "fieldtype": "Float", "width": 80},
-		{"label": _("Out Value"), "fieldname": "out_val", "fieldtype": "Currency", "width": 80},
-		{"label": _("Valuation Rate"), "fieldname": "val_rate", "fieldtype": "Currency", "width": 100},
-	])
+	columns.extend(
+		[
+			{
+				"label": _("Stock UOM"),
+				"fieldname": "stock_uom",
+				"fieldtype": "Link",
+				"options": "UOM",
+				"width": 90,
+			},
+			{"label": _("Balance Qty"), "fieldname": "bal_qty", "fieldtype": "Float", "width": 100},
+			{"label": _("Balance Value"), "fieldname": "bal_val", "fieldtype": "Currency", "width": 110},
+			{"label": _("Opening Qty"), "fieldname": "opening_qty", "fieldtype": "Float", "width": 100},
+			{"label": _("Opening Value"), "fieldname": "opening_val", "fieldtype": "Currency", "width": 110},
+			{"label": _("In Qty"), "fieldname": "in_qty", "fieldtype": "Float", "width": 80},
+			{"label": _("In Value"), "fieldname": "in_val", "fieldtype": "Currency", "width": 80},
+			{"label": _("Out Qty"), "fieldname": "out_qty", "fieldtype": "Float", "width": 80},
+			{"label": _("Out Value"), "fieldname": "out_val", "fieldtype": "Currency", "width": 80},
+			{"label": _("Valuation Rate"), "fieldname": "val_rate", "fieldtype": "Currency", "width": 100},
+		]
+	)
 
 	if filters.get("show_inward_date_split"):
 		balance_index = next(
@@ -141,26 +166,35 @@ def get_columns(filters, dims):
 		)
 
 	if filters.get("show_stock_ageing_data"):
-		columns.extend([
-			{"label": _("Average Age"), "fieldname": "average_age", "fieldtype": "Float", "width": 100},
-			{"label": _("Earliest Age"), "fieldname": "earliest_age", "fieldtype": "Int", "width": 100},
-			{"label": _("Latest Age"), "fieldname": "latest_age", "fieldtype": "Int", "width": 100},
-		])
+		columns.extend(
+			[
+				{"label": _("Average Age"), "fieldname": "average_age", "fieldtype": "Float", "width": 100},
+				{"label": _("Earliest Age"), "fieldname": "earliest_age", "fieldtype": "Int", "width": 100},
+				{"label": _("Latest Age"), "fieldname": "latest_age", "fieldtype": "Int", "width": 100},
+			]
+		)
 
 	if filters.get("show_variant_attributes"):
-		for att in frappe.get_all('Item Attribute', pluck="name"):
+		for att in frappe.get_all("Item Attribute", pluck="name"):
 			columns.append({"label": att, "fieldname": att, "width": 100})
 
 	return columns
 
 
 def get_stock_ledger_entries(filters, items, dim_fields):
-	sle = frappe.qb.DocType('YRP Stock Ledger Entry')
+	sle = frappe.qb.DocType("YRP Stock Ledger Entry")
 
 	select_fields = [
-		sle.item, sle.warehouse, sle.posting_date, sle.qty,
-		sle.valuation_rate, sle.voucher_type, sle.voucher_no,
-		sle.qty_after_transaction, sle.stock_value_difference, sle.stock_value,
+		sle.item,
+		sle.warehouse,
+		sle.posting_date,
+		sle.qty,
+		sle.valuation_rate,
+		sle.voucher_type,
+		sle.voucher_no,
+		sle.qty_after_transaction,
+		sle.stock_value_difference,
+		sle.stock_value,
 	]
 	for fn in dim_fields:
 		select_fields.append(getattr(sle, fn))
@@ -207,15 +241,19 @@ def get_item_warehouse_map(filters, sle, dim_fields):
 		group_key = _make_group_key(d, dim_fields)
 		if group_key not in iwb_map:
 			iwb_map[group_key] = frappe._dict(
-				opening_qty=0.0, opening_val=0.0,
-				in_qty=0.0, in_val=0.0,
-				out_qty=0.0, out_val=0.0,
-				bal_qty=0.0, bal_val=0.0,
+				opening_qty=0.0,
+				opening_val=0.0,
+				in_qty=0.0,
+				in_val=0.0,
+				out_qty=0.0,
+				out_val=0.0,
+				bal_qty=0.0,
+				bal_val=0.0,
 				val_rate=0.0,
 			)
 		qty_dict = iwb_map[group_key]
 
-		if d.voucher_type == 'YRP Stock Reconciliation':
+		if d.voucher_type == "YRP Stock Reconciliation":
 			qty_diff = flt(d.qty_after_transaction) - flt(qty_dict.bal_qty)
 		else:
 			qty_diff = flt(d.qty)
@@ -255,15 +293,15 @@ def get_item_warehouse_map(filters, sle, dim_fields):
 
 
 def get_opening_vouchers(to_date):
-	opening_vouchers = {'YRP Stock Reconciliation': []}
-	sr = frappe.qb.DocType('YRP Stock Reconciliation')
+	opening_vouchers = {"YRP Stock Reconciliation": []}
+	sr = frappe.qb.DocType("YRP Stock Reconciliation")
 	result = (
 		frappe.qb.from_(sr)
 		.select(sr.name)
 		.where((sr.docstatus == 1) & (sr.posting_date <= to_date) & (sr.purpose == "Opening Stock"))
 	).run(as_dict=True)
 	for d in result:
-		opening_vouchers['YRP Stock Reconciliation'].append(d.name)
+		opening_vouchers["YRP Stock Reconciliation"].append(d.name)
 	return opening_vouchers
 
 
@@ -273,7 +311,7 @@ def get_items(filters):
 	item_filters = {}
 	if parent_item := filters.get("parent_item"):
 		item_filters["variant_of"] = parent_item
-	return frappe.get_all('Item', filters=item_filters, pluck="name", order_by=None)
+	return frappe.get_all("Item", filters=item_filters, pluck="name", order_by=None)
 
 
 def get_item_details(items, sle, filters):
@@ -283,7 +321,7 @@ def get_item_details(items, sle, filters):
 	if not items:
 		return item_details
 
-	item_table = frappe.qb.DocType('Item')
+	item_table = frappe.qb.DocType("Item")
 	result = (
 		frappe.qb.from_(item_table)
 		.select(
@@ -300,7 +338,7 @@ def get_item_details(items, sle, filters):
 
 	if filters.get("show_variant_attributes"):
 		attrs = frappe.get_all(
-			'Item Variant Attribute',
+			"Item Variant Attribute",
 			filters={"parent": ("in", list(item_details))},
 			fields=["parent", "attribute", "attribute_value"],
 		)
@@ -317,8 +355,10 @@ def _make_group_key(row, dim_fields):
 	Single source of truth for key construction — used by both
 	get_item_warehouse_map (to group) and the main loop (to unpack).
 	"""
-	return (row.get("item") or row.item, row.get("warehouse") or row.warehouse) + tuple(
-		row.get(fn) or "" for fn in dim_fields
+	return (
+		row.get("item") or row.item,
+		row.get("warehouse") or row.warehouse,
+		*tuple(row.get(fn) or "" for fn in dim_fields),
 	)
 
 

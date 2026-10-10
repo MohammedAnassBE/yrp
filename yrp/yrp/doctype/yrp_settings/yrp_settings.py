@@ -15,11 +15,14 @@ class YRPSettings(Document):
 		seen = set()
 		for row in self.production_order_attributes or []:
 			if row.attribute in seen:
-				frappe.throw(_("Duplicate attribute {0} in Production Order Attributes").format(row.attribute))
+				frappe.throw(
+					_("Duplicate attribute {0} in Production Order Attributes").format(row.attribute)
+				)
 			seen.add(row.attribute)
 			if row.is_grid_attribute:
 				grid_count += 1
 		if grid_count > 1:
 			frappe.throw(_("Only one attribute can be marked as Grid Attribute"))
+
 
 Settings = YRPSettings

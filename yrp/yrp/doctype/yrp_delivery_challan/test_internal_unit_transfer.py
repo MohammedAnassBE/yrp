@@ -17,7 +17,6 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, nowdate
 
 from yrp.stock.dimensions import get_stock_dimensions
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import DeliveryChallan
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_address,
@@ -31,6 +30,7 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_test_item_variant,
 	_warehouse,
 )
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
 def _neutral_production_group_dimensions(item=None):
@@ -63,13 +63,17 @@ def _neutral_production_group_dimensions(item=None):
 				naming_field = (meta.autoname or "").removeprefix("field:")
 				if not naming_field or not meta.has_field(naming_field):
 					continue
-				neutral = frappe.get_doc(
-					{
-						"doctype": doctype,
-						naming_field: f"_Test Internal Transit {frappe.generate_hash(length=8)}",
-						"item": item,
-					}
-				).insert(ignore_permissions=True).name
+				neutral = (
+					frappe.get_doc(
+						{
+							"doctype": doctype,
+							naming_field: f"_Test Internal Transit {frappe.generate_hash(length=8)}",
+							"item": item,
+						}
+					)
+					.insert(ignore_permissions=True)
+					.name
+				)
 		else:
 			neutral = frappe.db.get_value(doctype, {"item": ["is", "not set"]}, "name")
 		if neutral:
@@ -79,13 +83,13 @@ def _neutral_production_group_dimensions(item=None):
 
 def _company_supplier(prefix):
 	sup = _supplier(f"{prefix}_{frappe.generate_hash(length=6)}")
-	frappe.db.set_value('Supplier', sup, "is_company_location", 1)
+	frappe.db.set_value("Supplier", sup, "is_company_location", 1)
 	return sup
 
 
 def _non_company_supplier(prefix):
 	sup = _supplier(f"{prefix}_{frappe.generate_hash(length=6)}")
-	frappe.db.set_value('Supplier', sup, "is_company_location", 0)
+	frappe.db.set_value("Supplier", sup, "is_company_location", 0)
 	return sup
 
 
@@ -125,27 +129,27 @@ def _seed_stock(item_variant, warehouse, qty, dimensions=None, posting_date=None
 	# first live production dimension (for example an Essdee Lot) couples this
 	# base-YRP test to unrelated host-app validation and mutable site data.
 	parent_item = get_parent_item(item_variant)
-	dimensions = (
-		_neutral_production_group_dimensions(parent_item)
-		if dimensions is None
-		else dimensions
+	dimensions = _neutral_production_group_dimensions(parent_item) if dimensions is None else dimensions
+	ste = frappe.get_doc(
+		{
+			"doctype": "YRP Stock Entry",
+			"purpose": "Material Receipt",
+			"to_warehouse": warehouse,
+			"edit_posting_date_and_time": 1 if posting_date else 0,
+			"posting_date": posting_date,
+			"posting_time": "09:00:00" if posting_date else None,
+			"items": [
+				{
+					"item": item_variant,
+					"qty": qty,
+					"uom": _item_uom(item_variant),
+					"conversion_factor": 1,
+					"rate": 10,
+					**dimensions,
+				}
+			],
+		}
 	)
-	ste = frappe.get_doc({
-		"doctype": 'YRP Stock Entry',
-		"purpose": "Material Receipt",
-		"to_warehouse": warehouse,
-		"edit_posting_date_and_time": 1 if posting_date else 0,
-		"posting_date": posting_date,
-		"posting_time": "09:00:00" if posting_date else None,
-		"items": [{
-			"item": item_variant,
-			"qty": qty,
-			"uom": _item_uom(item_variant),
-			"conversion_factor": 1,
-			"rate": 10,
-			**dimensions,
-		}],
-	})
 	ste.insert(ignore_permissions=True)
 	ste.submit()
 	return ste
@@ -160,41 +164,49 @@ def _make_wo(from_location, to_supplier, qty=10):
 	process_name = _process("_Test DC Internal Process")
 	dimensions = _neutral_production_group_dimensions(parent_item)
 	_process_cost(process_name, parent_item, to_supplier, dimensions)
-	wo = frappe.get_doc({
-		"doctype": 'YRP Work Order',
-		"supplier": to_supplier,
-		"delivery_location": from_location,
-		"planned_end_date": nowdate(),
-		"supplier_address": _address(f"_T_DC_To_Addr_{frappe.generate_hash(length=6)}"),
-		"delivery_address": _address(f"_T_DC_From_Addr_{frappe.generate_hash(length=6)}"),
-		"process_name": process_name,
-		"item": parent_item,
-		**dimensions,
-		"deliverables": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"uom": uom,
-			"table_index": 0,
-			"row_index": 0,
+	wo = frappe.get_doc(
+		{
+			"doctype": "YRP Work Order",
+			"supplier": to_supplier,
+			"delivery_location": from_location,
+			"planned_end_date": nowdate(),
+			"supplier_address": _address(f"_T_DC_To_Addr_{frappe.generate_hash(length=6)}"),
+			"delivery_address": _address(f"_T_DC_From_Addr_{frappe.generate_hash(length=6)}"),
+			"process_name": process_name,
+			"item": parent_item,
 			**dimensions,
-		}],
-		"receivables": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"uom": uom,
-			"cost": 12,
-			"table_index": 0,
-			"row_index": 0,
-			**dimensions,
-		}],
-		"work_order_calculated_items": [{
-			"item_variant": item_variant,
-			"quantity": qty,
-			"received_qty": 0,
-			"billed_qty": 0,
-			"set_combination": {},
-		}],
-	})
+			"deliverables": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"uom": uom,
+					"table_index": 0,
+					"row_index": 0,
+					**dimensions,
+				}
+			],
+			"receivables": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"uom": uom,
+					"cost": 12,
+					"table_index": 0,
+					"row_index": 0,
+					**dimensions,
+				}
+			],
+			"work_order_calculated_items": [
+				{
+					"item_variant": item_variant,
+					"quantity": qty,
+					"received_qty": 0,
+					"billed_qty": 0,
+					"set_combination": {},
+				}
+			],
+		}
+	)
 	# This is a base-YRP routing fixture, not a host-app production-order
 	# fixture.  When Essdee is installed its Lot/IPD selector is independently
 	# covered in Essdee tests and must not turn this test into a garment setup.
@@ -212,31 +224,35 @@ def _make_wo(from_location, to_supplier, qty=10):
 def _make_dc(wo, from_wh, to_wh, item_variant, uom, qty=5):
 	deliverable = wo.deliverables[0]
 	dimensions = _row_dimensions(deliverable)
-	dc = frappe.get_doc({
-		"doctype": 'YRP Delivery Challan',
-		"work_order": wo.name,
-		"from_location": wo.delivery_location,
-		"supplier": wo.supplier,
-		"from_address": wo.delivery_address,
-		"supplier_address": wo.supplier_address,
-		"from_warehouse": from_wh,
-		"to_warehouse": to_wh,
-		"process_name": wo.process_name,
-		"item": wo.item,
-		"items": [{
-			"item_variant": item_variant,
-			"qty": qty,
-			"delivered_quantity": qty,
-			"uom": uom,
-			"stock_uom": uom,
-			"conversion_factor": 1,
-			"ref_doctype": 'YRP Work Order Deliverables',
-			"ref_docname": deliverable.name,
-			"table_index": 0,
-			"row_index": "0",
-			**dimensions,
-		}],
-	})
+	dc = frappe.get_doc(
+		{
+			"doctype": "YRP Delivery Challan",
+			"work_order": wo.name,
+			"from_location": wo.delivery_location,
+			"supplier": wo.supplier,
+			"from_address": wo.delivery_address,
+			"supplier_address": wo.supplier_address,
+			"from_warehouse": from_wh,
+			"to_warehouse": to_wh,
+			"process_name": wo.process_name,
+			"item": wo.item,
+			"items": [
+				{
+					"item_variant": item_variant,
+					"qty": qty,
+					"delivered_quantity": qty,
+					"uom": uom,
+					"stock_uom": uom,
+					"conversion_factor": 1,
+					"ref_doctype": "YRP Work Order Deliverables",
+					"ref_docname": deliverable.name,
+					"table_index": 0,
+					"row_index": "0",
+					**dimensions,
+				}
+			],
+		}
+	)
 	dc.insert(ignore_permissions=True)
 	return dc
 
@@ -245,20 +261,14 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		cls._original_transit = frappe.db.get_single_value(
-			'YRP Stock Settings', "transit_warehouse"
-		)
+		cls._original_transit = frappe.db.get_single_value("YRP Stock Settings", "transit_warehouse")
 		cls.transit_wh = _warehouse(f"_T_DC_Transit_{frappe.generate_hash(length=6)}")
-		frappe.db.set_single_value(
-			'YRP Stock Settings', "transit_warehouse", cls.transit_wh
-		)
+		frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", cls.transit_wh)
 		_default_received_type()
 
 	@classmethod
 	def tearDownClass(cls):
-		frappe.db.set_single_value(
-			'YRP Stock Settings', "transit_warehouse", cls._original_transit
-		)
+		frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", cls._original_transit)
 		super().tearDownClass()
 
 	# ---------- Tests 1-3: is_internal_unit computation ----------
@@ -267,12 +277,10 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		work_order_location = _company_supplier("_T_DC_Default_From")
 		selected_location = _company_supplier("_T_DC_Selected_From")
 		to_supplier = _company_supplier("_T_DC_Selected_To")
-		wo, _from_wh, _to_wh, _iv, _uom = _make_wo(
-			work_order_location, to_supplier
-		)
+		wo, _from_wh, _to_wh, _iv, _uom = _make_wo(work_order_location, to_supplier)
 		# Exercise the base controller directly: Essdee intentionally overrides
 		# this fallback and requires the operator to choose both source fields.
-		dc = DeliveryChallan({"doctype": 'YRP Delivery Challan'})
+		dc = DeliveryChallan({"doctype": "YRP Delivery Challan"})
 		dc.work_order = wo.name
 		dc.from_location = selected_location
 
@@ -311,7 +319,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 	def test_03_internal_unit_false_when_same_location(self):
 		# Both ends are the same company-location supplier — no transit needed
 		loc = _company_supplier("_T_DC_Same")
-		wo, from_wh, to_wh, iv, uom = _make_wo(loc, loc)
+		wo, from_wh, _to_wh, iv, uom = _make_wo(loc, loc)
 		# from_wh == to_wh is rejected by DC.validate_items, so override to_wh
 		other_wh = _supplier_warehouse(loc, f"_T_DC_Same_Other_WH_{frappe.generate_hash(length=6)}")
 		_seed_stock(iv, from_wh, 50)
@@ -333,7 +341,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 
 		# Confirm SLEs: -from_wh, +transit_wh; NO entry at to_wh
 		sles = frappe.db.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": dc.name, "is_cancelled": 0},
 			fields=["warehouse", "qty"],
 		)
@@ -357,15 +365,15 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		)
 		ste_name = make_fn(dc.name)
 
-		ste = frappe.get_doc('YRP Stock Entry', ste_name)
+		ste = frappe.get_doc("YRP Stock Entry", ste_name)
 		self.assertEqual(ste.purpose, "DC Completion")
-		self.assertEqual(ste.against, 'YRP Delivery Challan')
+		self.assertEqual(ste.against, "YRP Delivery Challan")
 		self.assertEqual(ste.against_id, dc.name)
 		self.assertEqual(ste.from_warehouse, from_wh)
 		self.assertEqual(ste.to_warehouse, to_wh)
 		self.assertEqual(len(ste.items), 1)
 		self.assertEqual(ste.items[0].qty, 5)
-		self.assertEqual(ste.items[0].against, 'YRP Delivery Challan Item')
+		self.assertEqual(ste.items[0].against, "YRP Delivery Challan Item")
 		self.assertEqual(ste.items[0].against_id_detail, dc.items[0].name)
 
 	def test_06_double_make_dc_completion_rejected(self):
@@ -397,7 +405,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			"yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.make_dc_completion"
 		)
 		ste_name = make_fn(dc.name)
-		ste = frappe.get_doc('YRP Stock Entry', ste_name)
+		ste = frappe.get_doc("YRP Stock Entry", ste_name)
 		ste.items[0].qty = 2  # partial — only 2 of 6
 		ste.items[0].stock_qty = 2
 		ste.save(ignore_permissions=True)
@@ -421,7 +429,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			"yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.make_dc_completion"
 		)
 		ste_name = make_fn(dc.name)
-		ste = frappe.get_doc('YRP Stock Entry', ste_name)
+		ste = frappe.get_doc("YRP Stock Entry", ste_name)
 		ste.items[0].qty = 99  # way over pending of 4
 		ste.items[0].stock_qty = 99
 		with self.assertRaises(frappe.ValidationError):
@@ -439,7 +447,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			"yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.make_dc_completion"
 		)
 		ste_name = make_fn(dc.name)
-		ste = frappe.get_doc('YRP Stock Entry', ste_name)
+		ste = frappe.get_doc("YRP Stock Entry", ste_name)
 		ste.submit()  # full qty
 
 		dc.reload()
@@ -450,18 +458,14 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		# The ledger is always in the Item's stock UOM, while completion progress
 		# remains in the transaction UOM.
 		sles = frappe.db.get_all(
-			'YRP Stock Ledger Entry',
+			"YRP Stock Ledger Entry",
 			filters={"voucher_no": ste.name, "is_cancelled": 0},
 			fields=["warehouse", "qty"],
 		)
 		balances = {s.warehouse: flt(s.qty) for s in sles}
 		expected_stock_qty = 5 * flt(ste.items[0].conversion_factor)
-		self.assertAlmostEqual(
-			balances.get(self.transit_wh, 0), -expected_stock_qty, places=3
-		)
-		self.assertAlmostEqual(
-			balances.get(to_wh, 0), expected_stock_qty, places=3
-		)
+		self.assertAlmostEqual(balances.get(self.transit_wh, 0), -expected_stock_qty, places=3)
+		self.assertAlmostEqual(balances.get(to_wh, 0), expected_stock_qty, places=3)
 
 	# ---------- Test 10: STE cancel rollback ----------
 
@@ -477,7 +481,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			"yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.make_dc_completion"
 		)
 		ste_name = make_fn(dc.name)
-		ste = frappe.get_doc('YRP Stock Entry', ste_name)
+		ste = frappe.get_doc("YRP Stock Entry", ste_name)
 		ste.submit()
 
 		dc.reload()
@@ -506,7 +510,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			"yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.make_dc_completion"
 		)
 		ste_name = make_fn(dc.name)
-		ste = frappe.get_doc('YRP Stock Entry', ste_name)
+		ste = frappe.get_doc("YRP Stock Entry", ste_name)
 		ste.submit()
 
 		dc.reload()
@@ -522,7 +526,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 
 	def test_12_missing_transit_warehouse_blocks_submit(self):
 		# Temporarily clear transit warehouse
-		frappe.db.set_single_value('YRP Stock Settings', "transit_warehouse", None)
+		frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", None)
 		try:
 			from_loc = _company_supplier("_T_DC12_From")
 			to_sup = _company_supplier("_T_DC12_To")
@@ -532,9 +536,7 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 			with self.assertRaises(frappe.ValidationError):
 				dc.submit()
 		finally:
-			frappe.db.set_single_value(
-				'YRP Stock Settings', "transit_warehouse", self.transit_wh
-			)
+			frappe.db.set_single_value("YRP Stock Settings", "transit_warehouse", self.transit_wh)
 
 	# ---------- Tests 13-14: explicit RIV enqueue gating ----------
 
@@ -548,8 +550,8 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		dc.submit()
 
 		riv_count = frappe.db.count(
-			'YRP Repost Item Valuation',
-			{"voucher_type": 'YRP Delivery Challan', "voucher_no": dc.name},
+			"YRP Repost Item Valuation",
+			{"voucher_type": "YRP Delivery Challan", "voucher_no": dc.name},
 		)
 		self.assertEqual(riv_count, 0)
 
@@ -576,8 +578,8 @@ class TestDCInternalUnitTransfer(FrappeTestCase):
 		dc.submit()
 
 		rivs = frappe.db.get_all(
-			'YRP Repost Item Valuation',
-			filters={"voucher_type": 'YRP Delivery Challan', "voucher_no": dc.name},
+			"YRP Repost Item Valuation",
+			filters={"voucher_type": "YRP Delivery Challan", "voucher_no": dc.name},
 			fields=["name", "based_on", "status"],
 		)
 		self.assertEqual(len(rivs), 1, f"Expected 1 RIV, got {len(rivs)}: {rivs}")

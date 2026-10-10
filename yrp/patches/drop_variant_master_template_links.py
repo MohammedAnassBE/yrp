@@ -7,6 +7,8 @@ def execute():
 	frappe.db.delete(
 		"Variant Field", {"parent": "Item Variant Settings", "field_name": "yrp_item_master_template"}
 	)
+	if not frappe.db.has_column("Item", "yrp_item_master_template"):
+		return
 	frappe.db.set_value(
 		"Item",
 		{"variant_of": ["is", "set"], "yrp_item_master_template": ["is", "set"]},

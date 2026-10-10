@@ -8,14 +8,16 @@ Template sender fork. Spec: docs/superpowers/specs/2026-07-04-yrp-sms-supplier-n
 
 import frappe
 from frappe import _
+
 from yrp.yrp.doctype.yrp_notification_template.yrp_notification_template import (
 	validate_receiver_nos,
 )
 from yrp.yrp.doctype.yrp_sms_settings.yrp_sms_settings import get_sms_config
 
 
-def deliver_flow_sms(*, reference_doctype: str, mobile_no: str, params=None,
-		template_name: str | None = None) -> dict:
+def deliver_flow_sms(
+	*, reference_doctype: str, mobile_no: str, params=None, template_name: str | None = None
+) -> dict:
 	"""Send one SMS via the MSG91 Flow API, using the template_id + authkey
 	configured for `reference_doctype` (optionally the row named `template_name`)
 	in YRP SMS Settings.
@@ -27,9 +29,16 @@ def deliver_flow_sms(*, reference_doctype: str, mobile_no: str, params=None,
 	of acceptance. `template_id`/`template_name` echo the row actually used, so
 	the caller can stamp the log from a single source of truth. Never raises:
 	any failure is captured in the returned dict."""
-	result = {"ok": False, "http_status": None, "request_id": None,
-		"response_type": None, "template_id": None, "template_name": None,
-		"raw": "", "error": None}
+	result = {
+		"ok": False,
+		"http_status": None,
+		"request_id": None,
+		"response_type": None,
+		"template_id": None,
+		"template_name": None,
+		"raw": "",
+		"error": None,
+	}
 	try:
 		cfg = get_sms_config(reference_doctype, template_name)
 		result["template_id"] = cfg["template_id"]
@@ -93,8 +102,14 @@ def _send_flow(gateway_url, authkey, template_id, mobile, params):
 	ok = (200 <= status < 300) and response_type == "success"
 	if not ok and not error:
 		error = raw or _("HTTP {0}").format(status)
-	return {"ok": ok, "http_status": status, "request_id": request_id,
-		"response_type": response_type, "raw": raw, "error": None if ok else error}
+	return {
+		"ok": ok,
+		"http_status": status,
+		"request_id": request_id,
+		"response_type": response_type,
+		"raw": raw,
+		"error": None if ok else error,
+	}
 
 
 def deliver_sms(message: str, mobile_no: str, dynamic_params=None) -> dict:
@@ -137,5 +152,10 @@ def _send_and_capture(number, message, dynamic_params):
 	response = nt.send_request(ss.sms_gateway_url, args, headers, ss.use_post, use_json)
 	raw = (response.text or "").strip()
 	ok = 200 <= response.status_code < 300
-	return {"ok": ok, "http_status": response.status_code, "raw": raw,
-		"request_id": raw if ok else None, "error": None if ok else raw}
+	return {
+		"ok": ok,
+		"http_status": response.status_code,
+		"raw": raw,
+		"request_id": raw if ok else None,
+		"error": None if ok else raw,
+	}

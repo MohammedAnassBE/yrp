@@ -4,6 +4,7 @@
 import frappe
 from frappe.model.document import Document
 
+
 class YRPTaxSlab(Document):
 	def before_save(self):
 		try:

@@ -19,7 +19,7 @@
 		"semi": "off",
 		"camelcase": "off",
 		"no-unused-vars": "off",
-		"no-console": ["warn"],
+		"no-console": ["warn", { "allow": ["warn", "error"] }],
 		"no-extra-boolean-cast": ["off"],
 		"no-control-regex": ["off"],
 	},

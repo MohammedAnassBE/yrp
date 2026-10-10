@@ -7,7 +7,6 @@ from frappe.tests.utils import FrappeTestCase
 
 from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
-
 ITEM_VARIANT = None
 WH_FROM = None
 WH_TO = None
@@ -17,31 +16,41 @@ STOCK_DIMENSIONS = {}
 
 def _test_warehouse(label):
 	"""Create a transaction-scoped warehouse with no dependency on site masters."""
-	return frappe.get_doc({
-		"doctype": 'Warehouse',
-		"warehouse_name": f"_Test Stock Entry {label} {frappe.generate_hash(length=8)}",
-		"company": frappe.db.get_value('Company', {}, "name"),
-	}).insert(ignore_permissions=True).name
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Warehouse",
+				"warehouse_name": f"_Test Stock Entry {label} {frappe.generate_hash(length=8)}",
+				"company": frappe.db.get_value("Company", {}, "name"),
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 def _seed_stock(warehouse, qty=100, rate=10):
 	"""Add opening stock so reduces don't fail on negative stock."""
-	se = frappe.get_doc({
-		"doctype": 'YRP Stock Entry',
-		"purpose": "Material Receipt",
-		"to_warehouse": warehouse,
-		"posting_date": frappe.utils.today(),
-		"posting_time": frappe.utils.nowtime(),
-		"items": [{
-			"item": ITEM_VARIANT,
-			"qty": qty,
-			"rate": rate,
-			"uom": UOM,
-			"row_index": 0,
-			"table_index": 0,
-			**STOCK_DIMENSIONS,
-		}],
-	})
+	se = frappe.get_doc(
+		{
+			"doctype": "YRP Stock Entry",
+			"purpose": "Material Receipt",
+			"to_warehouse": warehouse,
+			"posting_date": frappe.utils.today(),
+			"posting_time": frappe.utils.nowtime(),
+			"items": [
+				{
+					"item": ITEM_VARIANT,
+					"qty": qty,
+					"rate": rate,
+					"uom": UOM,
+					"row_index": 0,
+					"table_index": 0,
+					**STOCK_DIMENSIONS,
+				}
+			],
+		}
+	)
 	se.insert(ignore_permissions=True)
 	se.submit()
 	return se
@@ -49,29 +58,33 @@ def _seed_stock(warehouse, qty=100, rate=10):
 
 def _make_se(purpose, from_wh=None, to_wh=None, qty=10, rate=5, skip_transit=0):
 	"""Helper to create a Stock Entry."""
-	return frappe.get_doc({
-		"doctype": 'YRP Stock Entry',
-		"purpose": purpose,
-		"from_warehouse": from_wh,
-		"to_warehouse": to_wh,
-		"skip_transit": skip_transit,
-		"posting_date": frappe.utils.today(),
-		"posting_time": frappe.utils.nowtime(),
-		"items": [{
-			"item": ITEM_VARIANT,
-			"qty": qty,
-			"rate": rate,
-			"uom": UOM,
-			"row_index": 0,
-			"table_index": 0,
-			**STOCK_DIMENSIONS,
-		}],
-	})
+	return frappe.get_doc(
+		{
+			"doctype": "YRP Stock Entry",
+			"purpose": purpose,
+			"from_warehouse": from_wh,
+			"to_warehouse": to_wh,
+			"skip_transit": skip_transit,
+			"posting_date": frappe.utils.today(),
+			"posting_time": frappe.utils.nowtime(),
+			"items": [
+				{
+					"item": ITEM_VARIANT,
+					"qty": qty,
+					"rate": rate,
+					"uom": UOM,
+					"row_index": 0,
+					"table_index": 0,
+					**STOCK_DIMENSIONS,
+				}
+			],
+		}
+	)
 
 
 def _get_sles(voucher_no, cancelled=0):
 	return frappe.get_all(
-		'YRP Stock Ledger Entry',
+		"YRP Stock Ledger Entry",
 		filters={"voucher_no": voucher_no, "is_cancelled": cancelled},
 		fields=["warehouse", "qty", "item", "voucher_type"],
 		order_by="creation asc",
@@ -80,7 +93,7 @@ def _get_sles(voucher_no, cancelled=0):
 
 class TestStockEntry(FrappeTestCase):
 	def test_before_cancel_preserves_owner_link_exemption(self):
-		stock_entry = frappe.new_doc('YRP Stock Entry')
+		stock_entry = frappe.new_doc("YRP Stock Entry")
 		stock_entry.ignore_linked_doctypes = ("Owning Voucher",)
 
 		stock_entry.before_cancel()
@@ -89,9 +102,9 @@ class TestStockEntry(FrappeTestCase):
 			stock_entry.ignore_linked_doctypes,
 			(
 				"Owning Voucher",
-				'YRP Stock Ledger Entry',
-				'YRP Repost Item Valuation',
-				'YRP Stock Valuation Adjustment',
+				"YRP Stock Ledger Entry",
+				"YRP Repost Item Valuation",
+				"YRP Stock Valuation Adjustment",
 			),
 		)
 
@@ -100,11 +113,11 @@ class TestStockEntry(FrappeTestCase):
 		super().setUpClass()
 		global ITEM_VARIANT, STOCK_DIMENSIONS, UOM, WH_FROM, WH_TO
 
-		ITEM_VARIANT = frappe.db.get_value('Item', {}, "name")
+		ITEM_VARIANT = frappe.db.get_value("Item", {}, "name")
 		if not ITEM_VARIANT:
 			raise frappe.DoesNotExistError("Stock Entry tests require one Item Variant")
 		parent_item = get_parent_item(ITEM_VARIANT)
-		UOM = frappe.db.get_value('Item', parent_item, "stock_uom")
+		UOM = frappe.db.get_value("Item", parent_item, "stock_uom")
 		if not UOM:
 			raise frappe.DoesNotExistError(f"{parent_item} requires a default UOM")
 
@@ -116,7 +129,7 @@ class TestStockEntry(FrappeTestCase):
 			target_doctype = dimension.get("dimension_doctype")
 			if fieldname == "received_type":
 				value = frappe.db.get_single_value(
-					'YRP Stock Settings',
+					"YRP Stock Settings",
 					"default_received_type",
 				)
 			else:
@@ -134,7 +147,7 @@ class TestStockEntry(FrappeTestCase):
 		cls._get_single_value = frappe.db.get_single_value
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP Stock Settings' and fieldname == "transit_warehouse":
+			if doctype == "YRP Stock Settings" and fieldname == "transit_warehouse":
 				return cls.transit_warehouse_override
 			return cls._get_single_value(doctype, fieldname, *args, **kwargs)
 
@@ -166,7 +179,7 @@ class TestStockEntry(FrappeTestCase):
 						"item": ITEM_VARIANT,
 						"warehouse": warehouse,
 						"uom": UOM,
-						"voucher_type": 'YRP Stock Entry',
+						"voucher_type": "YRP Stock Entry",
 						"voucher_no": receipt.name,
 						"voucher_detail_no": receipt.items[0].name,
 						"posting_date": frappe.utils.today(),
@@ -187,7 +200,7 @@ class TestStockEntry(FrappeTestCase):
 					"item": ITEM_VARIANT,
 					"warehouse": warehouse,
 					"uom": UOM,
-					"voucher_type": 'YRP Stock Entry',
+					"voucher_type": "YRP Stock Entry",
 					"voucher_no": voucher.name,
 					"voucher_detail_no": voucher.items[0].name,
 					"posting_date": frappe.utils.today(),
@@ -310,14 +323,16 @@ class TestStockEntry(FrappeTestCase):
 	# 9. Empty items
 	# ---------------------------------------------------------------
 	def test_empty_items(self):
-		se = frappe.get_doc({
-			"doctype": 'YRP Stock Entry',
-			"purpose": "Material Issue",
-			"from_warehouse": WH_FROM,
-			"posting_date": frappe.utils.today(),
-			"posting_time": frappe.utils.nowtime(),
-			"items": [],
-		})
+		se = frappe.get_doc(
+			{
+				"doctype": "YRP Stock Entry",
+				"purpose": "Material Issue",
+				"from_warehouse": WH_FROM,
+				"posting_date": frappe.utils.today(),
+				"posting_time": frappe.utils.nowtime(),
+				"items": [],
+			}
+		)
 		self.assertRaises(frappe.ValidationError, se.insert, ignore_permissions=True)
 
 	# ---------------------------------------------------------------

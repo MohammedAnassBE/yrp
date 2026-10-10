@@ -8,7 +8,6 @@ from pathlib import Path
 
 import frappe
 
-
 PREFIX_BY_MODULE = {
 	"YRP": "YRP ",
 	"YRP Stock": "YRP ",
@@ -28,10 +27,7 @@ def rewrite_owned_doctype_discriminators(app_names: tuple[str, ...]) -> None:
 	"""
 
 	records = list(_iter_namespaced_doctypes(app_names))
-	renames = {
-		name.removeprefix(prefix): name
-		for name, prefix, _fields in records
-	}
+	renames = {name.removeprefix(prefix): name for name, prefix, _fields in records}
 	final_names = set(renames.values())
 
 	for doctype, _prefix, fields in records:
@@ -119,9 +115,7 @@ def drop_empty_legacy_namespace_tables(app_names: tuple[str, ...]) -> list[str]:
 		if frappe.db.exists("DocType", legacy_name):
 			continue
 		if not frappe.db.exists("DocType", target_name):
-			frappe.throw(
-				f"Cannot clean legacy table {legacy_name}: target DocType {target_name} is missing"
-			)
+			frappe.throw(f"Cannot clean legacy table {legacy_name}: target DocType {target_name} is missing")
 		if not frappe.db.table_exists(legacy_name, cached=False):
 			continue
 
@@ -256,9 +250,7 @@ def _rename_customization_record(record_type: str, old_name: str, new_name: str)
 	if old_name == new_name:
 		return
 	if frappe.db.exists(record_type, new_name):
-		frappe.throw(
-			f"Both {record_type} {old_name} and {new_name} exist during the namespace migration"
-		)
+		frappe.throw(f"Both {record_type} {old_name} and {new_name} exist during the namespace migration")
 	frappe.rename_doc(
 		record_type,
 		old_name,

@@ -25,18 +25,12 @@ class TestNamespaceMigration(unittest.TestCase):
 			)
 		]
 		legacy_rows = [
-			namespace_migration.frappe._dict(
-				name="old-lot", idx=1, fieldname="lot", label="Lot"
-			),
+			namespace_migration.frappe._dict(name="old-lot", idx=1, fieldname="lot", label="Lot"),
 			namespace_migration.frappe._dict(
 				name="old-received", idx=2, fieldname="received_type", label="Received Type"
 			),
 		]
-		target_rows = [
-			namespace_migration.frappe._dict(
-				name="new-lot", idx=1, fieldname="lot", label="Lot"
-			)
-		]
+		target_rows = [namespace_migration.frappe._dict(name="new-lot", idx=1, fieldname="lot", label="Lot")]
 		db = SimpleNamespace()
 		db.exists = lambda record_type, name: name == "YRP Stock Settings"
 		db.get_value = lambda *args, **kwargs: 1
@@ -64,9 +58,7 @@ class TestNamespaceMigration(unittest.TestCase):
 			result = namespace_migration.reconcile_legacy_single_child_parents(("yrp",))
 
 		self.assertEqual(result, {"moved": 1, "deduplicated": 1})
-		db.delete.assert_called_once_with(
-			"YRP Stock Dimension", {"name": ["in", ["old-lot"]]}
-		)
+		db.delete.assert_called_once_with("YRP Stock Dimension", {"name": ["in", ["old-lot"]]})
 		db.set_value.assert_called_once_with(
 			"YRP Stock Dimension",
 			"old-received",
@@ -85,11 +77,13 @@ class TestNamespaceMigration(unittest.TestCase):
 			("YRP Legacy Child", "YRP ", []),
 		]
 		db = SimpleNamespace()
-		db.exists = lambda record_type, name: name in {
-			"Supplier",
-			"Supplier",
-			"YRP Legacy Child",
-		}
+		db.exists = lambda record_type, name: (
+			name
+			in {
+				"Supplier",
+				"YRP Legacy Child",
+			}
+		)
 		db.table_exists = lambda name, cached=False: name == "Legacy Child"
 		db.sql = unittest.mock.Mock(return_value=[[0]])
 		db.sql_ddl = unittest.mock.Mock()

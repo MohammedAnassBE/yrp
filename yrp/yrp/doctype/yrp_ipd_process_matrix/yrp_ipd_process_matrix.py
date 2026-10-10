@@ -1,7 +1,8 @@
-from yrp import attribute_links as attribute_db
-from yrp.attribute_links import value as _attribute_value
 import frappe
 from frappe.model.document import Document
+
+from yrp import attribute_links as attribute_db
+from yrp.attribute_links import value as _attribute_value
 
 
 class YRPIPDProcessMatrix(Document):
@@ -13,7 +14,7 @@ class YRPIPDProcessMatrix(Document):
 	def validate_reference_item_variant(self):
 		if not (self.ipd and self.reference_item_variant):
 			return
-		ipd_item = attribute_db.get_value('YRP Item Production Detail', self.ipd, "item")
+		ipd_item = attribute_db.get_value("YRP Item Production Detail", self.ipd, "item")
 		from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 		variant_item = get_parent_item(self.reference_item_variant)
@@ -25,7 +26,9 @@ class YRPIPDProcessMatrix(Document):
 	def validate_attributes_belong_to_ipd(self):
 		if not self.ipd:
 			return
-		ipd_item, dep_attr = attribute_db.get_value('YRP Item Production Detail', self.ipd, ["item", "dependent_attribute"])
+		ipd_item, dep_attr = attribute_db.get_value(
+			"YRP Item Production Detail", self.ipd, ["item", "dependent_attribute"]
+		)
 		# Dependent attribute (e.g. Stage) is not enumerated in matrix combos — it comes from IPD Process in/out_stage.
 		for row in list(self.input_attributes) + list(self.output_attributes):
 			if dep_attr and row.attribute == dep_attr:
@@ -36,8 +39,8 @@ class YRPIPDProcessMatrix(Document):
 		ipd_attrs = {
 			row.attribute
 			for row in frappe.get_all(
-				'YRP IPD Item Attribute',
-				filters={"parent": self.ipd, "parenttype": 'YRP Item Production Detail'},
+				"YRP IPD Item Attribute",
+				filters={"parent": self.ipd, "parenttype": "YRP Item Production Detail"},
 				fields=["attribute"],
 			)
 		}
@@ -49,8 +52,8 @@ class YRPIPDProcessMatrix(Document):
 			input_attrs = {
 				r.attribute
 				for r in frappe.get_all(
-					'Item Variant Attribute',
-					filters={"parent": input_item, "parenttype": 'Item', "parentfield": "attributes"},
+					"Item Variant Attribute",
+					filters={"parent": input_item, "parenttype": "Item", "parentfield": "attributes"},
 					fields=["attribute"],
 				)
 			}
@@ -71,9 +74,7 @@ class YRPIPDProcessMatrix(Document):
 		attr_keys = {(a.group_index, a.side, a.combo_index) for a in self.combination_attributes}
 		orphan_attrs = attr_keys - combo_keys
 		if orphan_attrs:
-			frappe.throw(
-				f"Combination attributes reference unknown combinations: {sorted(orphan_attrs)}"
-			)
+			frappe.throw(f"Combination attributes reference unknown combinations: {sorted(orphan_attrs)}")
 
 	def get_combinations_grouped(self):
 		"""Return groups dict: {group_index: {"input": [combo_dict, ...], "output": [...]}}.
@@ -82,18 +83,22 @@ class YRPIPDProcessMatrix(Document):
 		groups = {}
 		attrs_by_key = {}
 		for a in self.combination_attributes:
-			attrs_by_key.setdefault((a.group_index, a.side, a.combo_index), {})[a.attribute] = _attribute_value(a.attribute_value)
+			attrs_by_key.setdefault((a.group_index, a.side, a.combo_index), {})[a.attribute] = (
+				_attribute_value(a.attribute_value)
+			)
 		for c in self.combinations:
 			g = groups.setdefault(c.group_index, {"input": [], "output": []})
 			side_key = c.side.lower()
-			g[side_key].append({
-				"combo_index": c.combo_index,
-				"item": c.item or None,
-				"qty": c.quantity,
-				"uom": c.uom,
-				"wastage_pct": c.wastage_pct or 0,
-				"attrs": attrs_by_key.get((c.group_index, c.side, c.combo_index), {}),
-			})
+			g[side_key].append(
+				{
+					"combo_index": c.combo_index,
+					"item": c.item or None,
+					"qty": c.quantity,
+					"uom": c.uom,
+					"wastage_pct": c.wastage_pct or 0,
+					"attrs": attrs_by_key.get((c.group_index, c.side, c.combo_index), {}),
+				}
+			)
 		return groups
 
 
@@ -103,7 +108,7 @@ def get_reference_variant_query(doctype, txt, searchfield, start, page_len, filt
 	ipd = (filters or {}).get("ipd")
 	if not ipd:
 		return []
-	item = attribute_db.get_value('YRP Item Production Detail', ipd, "item")
+	item = attribute_db.get_value("YRP Item Production Detail", ipd, "item")
 	if not item:
 		return []
 	return frappe.db.sql(

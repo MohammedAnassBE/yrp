@@ -17,30 +17,34 @@ from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 
 def _department(name_prefix):
 	name = f"{name_prefix}_{frappe.generate_hash(length=6)}"
-	doc = frappe.get_doc({"doctype": 'Department', "department_name": name})
+	doc = frappe.get_doc({"doctype": "Department", "department_name": name})
 	doc.insert(ignore_permissions=True)
 	return doc.name
 
 
 def _received_via(value="HO"):
-	if not frappe.db.exists('YRP Bill Tracking Received Via', value):
-		frappe.get_doc({
-			"doctype": 'YRP Bill Tracking Received Via',
-			"received_via": value,
-		}).insert(ignore_permissions=True)
+	if not frappe.db.exists("YRP Bill Tracking Received Via", value):
+		frappe.get_doc(
+			{
+				"doctype": "YRP Bill Tracking Received Via",
+				"received_via": value,
+			}
+		).insert(ignore_permissions=True)
 	return value
 
 
 def _bill(supplier=None, bill_no=None, bill_date=None, invoice_value=1000, received_via="HO"):
-	doc = frappe.get_doc({
-		"doctype": 'YRP Bill Tracking',
-		"supplier": supplier or _supplier(f"_T_BT_Sup_{frappe.generate_hash(length=6)}"),
-		"bill_no": bill_no or f"BILL-{frappe.generate_hash(length=8)}",
-		"bill_date": bill_date or nowdate(),
-		"received_date": nowdate(),
-		"invoice_value": invoice_value,
-		"received_via": received_via,
-	})
+	doc = frappe.get_doc(
+		{
+			"doctype": "YRP Bill Tracking",
+			"supplier": supplier or _supplier(f"_T_BT_Sup_{frappe.generate_hash(length=6)}"),
+			"bill_no": bill_no or f"BILL-{frappe.generate_hash(length=8)}",
+			"bill_date": bill_date or nowdate(),
+			"received_date": nowdate(),
+			"invoice_value": invoice_value,
+			"received_via": received_via,
+		}
+	)
 	doc.insert(ignore_permissions=True)
 	return doc
 
@@ -55,22 +59,24 @@ def _build_pi_against_po(bill, link=True):
 	fetch_method = "yrp.yrp.doctype.yrp_purchase_invoice.yrp_purchase_invoice.fetch_grn_details"
 	if "essdee_yrp" in frappe.get_installed_apps():
 		fetch_method = "essdee_yrp.purchase_invoice.fetch_grn_details"
-	payload = frappe.get_attr(fetch_method)([grn.name], 'Purchase Order', po.supplier)
-	pi = frappe.get_doc({
-		"doctype": 'YRP Purchase Invoice',
-		"supplier": po.supplier,
-		"billing_supplier": po.supplier,
-		"bill_no": bill.bill_no,
-		"bill_date": bill.bill_date,
-		"bill_tracking": bill.name if link else None,
-		"against": 'Purchase Order',
-		"against_id": po.name,
-		"grn": [{"grn": grn.name}],
-		"items": payload["items"],
-		"pi_work_order_billed_details": payload.get("wo_items") or [],
-		"total_quantity": payload["total_quantity"],
-		**payload.get("additional_field_values", {}),
-	})
+	payload = frappe.get_attr(fetch_method)([grn.name], "Purchase Order", po.supplier)
+	pi = frappe.get_doc(
+		{
+			"doctype": "YRP Purchase Invoice",
+			"supplier": po.supplier,
+			"billing_supplier": po.supplier,
+			"bill_no": bill.bill_no,
+			"bill_date": bill.bill_date,
+			"bill_tracking": bill.name if link else None,
+			"against": "Purchase Order",
+			"against_id": po.name,
+			"grn": [{"grn": grn.name}],
+			"items": payload["items"],
+			"pi_work_order_billed_details": payload.get("wo_items") or [],
+			"total_quantity": payload["total_quantity"],
+			**payload.get("additional_field_values", {}),
+		}
+	)
 	pi.insert(ignore_permissions=True)
 	return pi
 
@@ -80,22 +86,20 @@ class TestBillTracking(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		_default_received_type()
-		for value in ("HO", "Post", "Email", 'Warehouse', "Others"):
+		for value in ("HO", "Post", "Email", "Warehouse", "Others"):
 			_received_via(value)
 
 	def test_00_erp_purchase_invoice_is_a_standard_link(self):
-		field = frappe.get_meta('YRP Bill Tracking', cached=False).get_field(
-			"erp_purchase_invoice"
-		)
+		field = frappe.get_meta("YRP Bill Tracking", cached=False).get_field("erp_purchase_invoice")
 		self.assertEqual(
 			(field.fieldtype, field.options, field.read_only, field.no_copy),
-			("Link", 'Purchase Invoice', 1, 1),
+			("Link", "Purchase Invoice", 1, 1),
 		)
 		self.assertFalse(
 			frappe.db.exists(
 				"Custom Field",
 				{
-					"dt": 'YRP Bill Tracking',
+					"dt": "YRP Bill Tracking",
 					"fieldname": "erp_purchase_invoice",
 				},
 			)
@@ -116,9 +120,7 @@ class TestBillTracking(FrappeTestCase):
 		bill.submit()
 		dept = _department("_T_BT_Dept")
 
-		assign_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.assign_vendor_bill"
-		)
+		assign_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.assign_vendor_bill")
 		assign_fn(bill.name, dept, remarks="please process")
 
 		bill.reload()
@@ -129,25 +131,21 @@ class TestBillTracking(FrappeTestCase):
 
 	def test_03_assign_propagates_to_supplier_when_empty(self):
 		supplier = _supplier(f"_T_BT_PropSup_{frappe.generate_hash(length=6)}")
-		frappe.db.set_value('Supplier', supplier, "department", None)
+		frappe.db.set_value("Supplier", supplier, "department", None)
 		bill = _bill(supplier=supplier)
 		bill.submit()
 		dept = _department("_T_BT_PropDept")
 
-		assign_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.assign_vendor_bill"
-		)
+		assign_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.assign_vendor_bill")
 		assign_fn(bill.name, dept)
 
-		self.assertEqual(frappe.db.get_value('Supplier', supplier, "department"), dept)
+		self.assertEqual(frappe.db.get_value("Supplier", supplier, "department"), dept)
 
 	def test_04_close_sets_pi_link_and_status(self):
 		bill = _bill()
 		bill.submit()
 		pi = _build_pi_against_po(bill, link=False)
-		close_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.close_vendor_bill"
-		)
+		close_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.close_vendor_bill")
 		close_fn(bill.name, pi.name, remarks="closed for test")
 		bill.reload()
 		self.assertEqual(bill.form_status, "Closed")
@@ -157,14 +155,10 @@ class TestBillTracking(FrappeTestCase):
 		bill = _bill()
 		bill.submit()
 		pi = _build_pi_against_po(bill, link=False)
-		close_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.close_vendor_bill"
-		)
+		close_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.close_vendor_bill")
 		close_fn(bill.name, pi.name)
 
-		reopen_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.reopen_vendor_bill"
-		)
+		reopen_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.reopen_vendor_bill")
 		reopen_fn(bill.name, remarks="reopen test")
 		bill.reload()
 		self.assertEqual(bill.form_status, "Reopen")
@@ -175,9 +169,7 @@ class TestBillTracking(FrappeTestCase):
 		bill.submit()
 		pi_a = _build_pi_against_po(bill, link=False)
 		pi_b = _build_pi_against_po(bill, link=False)
-		close_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.close_vendor_bill"
-		)
+		close_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.close_vendor_bill")
 		close_fn(bill.name, pi_a.name)
 		with self.assertRaisesRegex(frappe.ValidationError, "already closed"):
 			close_fn(bill.name, pi_b.name)
@@ -185,9 +177,7 @@ class TestBillTracking(FrappeTestCase):
 	def test_07_cancel_sets_status_and_history(self):
 		bill = _bill()
 		bill.submit()
-		cancel_fn = frappe.get_attr(
-			"yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.cancel_vendor_bill"
-		)
+		cancel_fn = frappe.get_attr("yrp.yrp.doctype.yrp_bill_tracking.yrp_bill_tracking.cancel_vendor_bill")
 		cancel_fn(bill.name, "duplicate bill")
 		bill.reload()
 		self.assertEqual(bill.form_status, "Cancelled")
@@ -205,7 +195,7 @@ class TestBillTracking(FrappeTestCase):
 		}
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == 'YRP Settings' and fieldname in settings:
+			if doctype == "YRP Settings" and fieldname in settings:
 				return settings[fieldname]
 			return original_get_single_value(doctype, fieldname, *args, **kwargs)
 

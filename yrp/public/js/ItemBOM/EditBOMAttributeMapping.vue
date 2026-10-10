@@ -1,6 +1,5 @@
 <template>
     <div>
-        <!-- <button class="btn btn-xs btn-default" @click="printHelp">help</button> -->
         <button class="btn btn-xs btn-default" @click="disable_rows">Disable</button>
         <button class="btn btn-xs btn-default" @click="enable_rows">Enable</button>
         <table v-if="attributes && attributes.length > 0" class="table table-sm table-bordered">
@@ -68,10 +67,6 @@ export default {
         };
     },
     methods: {
-        printHelp: function() {
-            console.log(this)
-        },
-
         get_final_output: function() {
             if (!this.get_input_values()) return;
             let output = [];

@@ -12,7 +12,9 @@ class YRPVendorBillDeliveryPerson(Document):
 		if not self.mobile_no:
 			frappe.throw("Mobile number is required")
 		if not re.fullmatch(r"[6-9]\d{9}", self.mobile_no):
-			frappe.throw("Invalid mobile number. It must be a 10-digit Indian mobile number starting with 6-9.")
+			frappe.throw(
+				"Invalid mobile number. It must be a 10-digit Indian mobile number starting with 6-9."
+			)
 
 
 @frappe.whitelist()

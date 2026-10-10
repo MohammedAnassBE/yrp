@@ -7,4 +7,5 @@ from frappe.model.document import Document
 class YRPWhatsAppHubAccount(Document):
 	pass
 
+
 WhatsAppHubAccount = YRPWhatsAppHubAccount

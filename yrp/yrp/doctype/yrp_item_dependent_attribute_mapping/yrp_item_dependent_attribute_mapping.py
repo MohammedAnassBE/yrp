@@ -1,9 +1,10 @@
-from yrp.attribute_links import value as _attribute_value
 # Copyright (c) 2023, Essdee and contributors
 # For license information, please see license.txt
-
 import frappe
 from frappe.model.document import Document
+
+from yrp.attribute_links import value as _attribute_value
+
 
 class YRPItemDependentAttributeMapping(Document):
 	def validate(self):
@@ -22,7 +23,6 @@ class YRPItemDependentAttributeMapping(Document):
 	# 			frappe.throw("More than one final state for this item")
 
 
-
 def get_dependent_attribute_details(name):
 	"""
 	Sample output -
@@ -38,7 +38,7 @@ def get_dependent_attribute_details(name):
 		}
 	"""
 	dependent_attribute = {}
-	dependent_attribute_mapping = frappe.get_cached_doc('YRP Item Dependent Attribute Mapping', name)
+	dependent_attribute_mapping = frappe.get_cached_doc("YRP Item Dependent Attribute Mapping", name)
 	dependent_attribute["attribute"] = dependent_attribute_mapping.dependent_attribute
 	attr_list = {}
 	for d in dependent_attribute_mapping.details:

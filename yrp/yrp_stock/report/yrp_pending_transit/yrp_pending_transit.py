@@ -13,7 +13,7 @@ def execute(filters=None):
 	filters = frappe._dict(filters or {})
 	threshold = cint(
 		filters.get("transit_aging_threshold_days")
-		or frappe.db.get_single_value('YRP Stock Settings', "transit_aging_threshold_days")
+		or frappe.db.get_single_value("YRP Stock Settings", "transit_aging_threshold_days")
 		or 7
 	)
 	cutoff = filters.get("as_of_date") or today()
@@ -46,11 +46,29 @@ def execute(filters=None):
 
 def _columns():
 	return [
-		{"label": _("Stock Entry"), "fieldname": "stock_entry", "fieldtype": "Link", "options": 'YRP Stock Entry', "width": 160},
+		{
+			"label": _("Stock Entry"),
+			"fieldname": "stock_entry",
+			"fieldtype": "Link",
+			"options": "YRP Stock Entry",
+			"width": 160,
+		},
 		{"label": _("Date"), "fieldname": "posting_date", "fieldtype": "Date", "width": 100},
-		{"label": _("From"), "fieldname": "from_warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 140},
-		{"label": _("Transit"), "fieldname": "transit_warehouse", "fieldtype": "Link", "options": 'Warehouse', "width": 140},
-		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": 'Item', "width": 160},
+		{
+			"label": _("From"),
+			"fieldname": "from_warehouse",
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 140,
+		},
+		{
+			"label": _("Transit"),
+			"fieldname": "transit_warehouse",
+			"fieldtype": "Link",
+			"options": "Warehouse",
+			"width": 140,
+		},
+		{"label": _("Item"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 160},
 		{"label": _("Sent Qty"), "fieldname": "sent_qty", "fieldtype": "Float", "width": 100},
 		{"label": _("Received Qty"), "fieldname": "received_qty", "fieldtype": "Float", "width": 100},
 		{"label": _("% Transferred"), "fieldname": "per_transferred", "fieldtype": "Percent", "width": 110},

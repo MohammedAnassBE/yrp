@@ -53,9 +53,16 @@ ignore = [
     "W191", # indentation contains tabs
     "UP030", # Use implicit references for positional format fields (translations)
     "UP031", # Use format specifiers instead of percent format
-    "UP032", # Use f-string instead of `format` call (translations)
+	"UP032", # Use f-string instead of `format` call (translations)
+	"UP035", # Keep legacy typing aliases where runtime annotation evaluation may matter
+	"RUF001", # User-facing strings intentionally use typographic symbols
+	"RUF002", # Docstrings intentionally use typographic symbols
+	"RUF003", # Comments intentionally use mathematical/typographic symbols
 ]
 typing-modules = ["frappe.types.DF"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/test_*.py" = ["RUF012"]
 
 [tool.ruff.format]
 quote-style = "double"

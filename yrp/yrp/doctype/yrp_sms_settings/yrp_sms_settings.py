@@ -31,7 +31,7 @@ def get_sms_config(reference_doctype, template_name=None):
 	Returns {gateway_url, template_id, template_name, template_body, authkey,
 	country_code}. Raises if SMS is disabled or no matching template row exists —
 	deliver_flow_sms turns that into a Failed log rather than a silent no-op."""
-	settings = frappe.get_cached_doc('YRP SMS Settings')
+	settings = frappe.get_cached_doc("YRP SMS Settings")
 	if not settings.enabled:
 		frappe.throw(_("YRP SMS Settings is disabled"))
 	row = settings.get_template_config(reference_doctype, template_name)
@@ -60,5 +60,6 @@ def parse_template_variables(template_body):
 			seen.add(token)
 			ordered.append(token)
 	return ordered
+
 
 SMSSettings = YRPSMSSettings

@@ -8,11 +8,9 @@ frappe.yrp.attribute_value = function (value) {
 
 // Standard Desk controls store scoped IDs. Existing item-specific queries take
 // precedence; this supplies attribute filtering where the old Data field had none.
-const contextFields = ['doctype', 'name', 'attribute', 'dependent_attribute',
-    'po_dependent_attribute', 'packing_attribute', 'primary_attribute',
-    'set_item_attribute', 'stiching_attribute', 'production_detail',
-    'item_production_detail', 'lot', 'cutting_plan'];
-const linkContext = (doc) => Object.fromEntries(contextFields.map(key => [key, doc[key]]));
+// The server resolves each field from these document fields (merged app registries).
+const linkContext = (doc) => Object.fromEntries(
+    (frappe.boot.yrp_attribute_link_context_fields || []).map(key => [key, doc[key]]));
 function configureAttributeLinks(frm) {
     const registry = frappe.boot.yrp_attribute_link_fields || {};
     for (const fieldname of registry[frm.doctype] || []) {

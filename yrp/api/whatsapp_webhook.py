@@ -16,18 +16,14 @@ def _assert_webhook_user():
 	status (a spoofed ``failed`` -> double-send) or inject audit rows. Raises
 	``frappe.PermissionError`` on mismatch.
 	"""
-	webhook_user = frappe.db.get_single_value(
-		'YRP WhatsApp Hub Settings', "webhook_user"
-	)
+	webhook_user = frappe.db.get_single_value("YRP WhatsApp Hub Settings", "webhook_user")
 	# Opt-in pin: enforce ONLY when a webhook_user is configured. When it is unset,
 	# fall back to the base guarantee (allow_guest=False + Frappe token auth) so an
 	# unconfigured spoke degrades to "any authenticated caller" (the reference
 	# behaviour) instead of hard-rejecting every hub call with 403. Set webhook_user
 	# to the dedicated hub caller to turn the extra hardening on.
 	if webhook_user and frappe.session.user != webhook_user:
-		raise frappe.PermissionError(
-			_("WhatsApp webhook caller is not the configured webhook_user")
-		)
+		raise frappe.PermissionError(_("WhatsApp webhook caller is not the configured webhook_user"))
 
 
 def _raw_request_body():
@@ -97,12 +93,14 @@ def receive(**kwargs):
 	# (2) Persist the raw payload FIRST. Never lose an audit row to a crash.
 	log = None
 	try:
-		log = frappe.get_doc({
-			"doctype": 'YRP WhatsApp Webhook Log',
-			"payload": frappe.as_json(data) if data else None,
-			"raw": raw_text,
-			"processed": 0,
-		})
+		log = frappe.get_doc(
+			{
+				"doctype": "YRP WhatsApp Webhook Log",
+				"payload": frappe.as_json(data) if data else None,
+				"raw": raw_text,
+				"processed": 0,
+			}
+		)
 		log.insert(ignore_permissions=True)
 	except Exception:
 		frappe.log_error(

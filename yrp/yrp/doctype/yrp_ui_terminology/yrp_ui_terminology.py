@@ -7,7 +7,6 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-
 TERM_KEY_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*")
 
 
@@ -26,5 +25,6 @@ class YRPUITerminology(Document):
 				frappe.throw(_("Row {0}: Term Key {1} is duplicated.").format(row.idx, frappe.bold(key)))
 				seen.add(key)
 				row.term_key = key
+
 
 UITerminology = YRPUITerminology

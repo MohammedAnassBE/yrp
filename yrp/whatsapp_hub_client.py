@@ -9,7 +9,7 @@ import requests
 
 def _get_settings():
 	"""Load the hub connection Single; throw when the integration is off."""
-	settings = frappe.get_single('YRP WhatsApp Hub Settings')
+	settings = frappe.get_single("YRP WhatsApp Hub Settings")
 	if not settings.enabled:
 		frappe.throw("WhatsApp Hub integration is not enabled")
 	return settings
@@ -45,13 +45,14 @@ def _get_account_name(account=None):
 def hub_enabled():
 	"""Check if hub integration is enabled. Never raises."""
 	try:
-		settings = frappe.get_single('YRP WhatsApp Hub Settings')
+		settings = frappe.get_single("YRP WhatsApp Hub Settings")
 		return bool(settings.enabled)
 	except Exception:
 		return False
 
 
 # --- Message sending ---
+
 
 def send_template_message(whatsapp_account, to_number, template_name, language_code="en", components=None):
 	"""Send an approved template. Inspects ``components``: a media header
@@ -98,48 +99,60 @@ def send_template_message(whatsapp_account, to_number, template_name, language_c
 
 	try:
 		if document_url or document_id:
-			result = _call_hub_api("send.send_template_with_document", {
-				"to_number": to_number,
-				"template_name": template_name,
-				"language_code": language_code,
-				"document_url": document_url,
-				"document_id": document_id,
-				"document_filename": document_filename,
-				"header_format": "document",
-				"body_variables": json.dumps(body_variables) if body_variables else None,
-				"account_name": account_name,
-			})
+			result = _call_hub_api(
+				"send.send_template_with_document",
+				{
+					"to_number": to_number,
+					"template_name": template_name,
+					"language_code": language_code,
+					"document_url": document_url,
+					"document_id": document_id,
+					"document_filename": document_filename,
+					"header_format": "document",
+					"body_variables": json.dumps(body_variables) if body_variables else None,
+					"account_name": account_name,
+				},
+			)
 		elif image_link or image_id:
-			result = _call_hub_api("send.send_template_with_document", {
-				"to_number": to_number,
-				"template_name": template_name,
-				"language_code": language_code,
-				"document_url": image_link,
-				"document_id": image_id,
-				"header_format": "image",
-				"body_variables": json.dumps(body_variables) if body_variables else None,
-				"account_name": account_name,
-			})
+			result = _call_hub_api(
+				"send.send_template_with_document",
+				{
+					"to_number": to_number,
+					"template_name": template_name,
+					"language_code": language_code,
+					"document_url": image_link,
+					"document_id": image_id,
+					"header_format": "image",
+					"body_variables": json.dumps(body_variables) if body_variables else None,
+					"account_name": account_name,
+				},
+			)
 		elif video_link or video_id:
-			result = _call_hub_api("send.send_template_with_document", {
-				"to_number": to_number,
-				"template_name": template_name,
-				"language_code": language_code,
-				"document_url": video_link,
-				"document_id": video_id,
-				"header_format": "video",
-				"body_variables": json.dumps(body_variables) if body_variables else None,
-				"account_name": account_name,
-			})
+			result = _call_hub_api(
+				"send.send_template_with_document",
+				{
+					"to_number": to_number,
+					"template_name": template_name,
+					"language_code": language_code,
+					"document_url": video_link,
+					"document_id": video_id,
+					"header_format": "video",
+					"body_variables": json.dumps(body_variables) if body_variables else None,
+					"account_name": account_name,
+				},
+			)
 		else:
-			result = _call_hub_api("send.send_template", {
-				"to_number": to_number,
-				"template_name": template_name,
-				"language_code": language_code,
-				"body_variables": json.dumps(body_variables) if body_variables else None,
-				"header_variables": json.dumps(header_variables) if header_variables else None,
-				"account_name": account_name,
-			})
+			result = _call_hub_api(
+				"send.send_template",
+				{
+					"to_number": to_number,
+					"template_name": template_name,
+					"language_code": language_code,
+					"body_variables": json.dumps(body_variables) if body_variables else None,
+					"header_variables": json.dumps(header_variables) if header_variables else None,
+					"account_name": account_name,
+				},
+			)
 		if result.get("success"):
 			return True, result
 		# Meta failure: return the FULL hub dict (carries error/meta_error/
@@ -154,13 +167,16 @@ def send_media_message(whatsapp_account, to_number, media_id, media_type, captio
 	"""Send a standalone (non-template) media message by media_id."""
 	account_name = _get_account_name(whatsapp_account)
 	try:
-		result = _call_hub_api("send.send_media", {
-			"to_number": to_number,
-			"media_type": media_type,
-			"media_id": media_id,
-			"caption": caption,
-			"account_name": account_name,
-		})
+		result = _call_hub_api(
+			"send.send_media",
+			{
+				"to_number": to_number,
+				"media_type": media_type,
+				"media_id": media_id,
+				"caption": caption,
+				"account_name": account_name,
+			},
+		)
 		if result.get("success"):
 			return True, result
 		# Meta failure: return the FULL hub dict (carries error/meta_error/
@@ -173,6 +189,7 @@ def send_media_message(whatsapp_account, to_number, media_id, media_type, captio
 
 # --- Media operations ---
 
+
 def upload_media(whatsapp_account, file_content_b64, content_type, filename):
 	"""Upload already-base64-encoded bytes through the hub to Meta.
 
@@ -181,19 +198,26 @@ def upload_media(whatsapp_account, file_content_b64, content_type, filename):
 	propagate to the caller (``yrp/whatsapp.py::_upload_header`` catches them).
 	"""
 	account_name = _get_account_name(whatsapp_account)
-	return _call_hub_api("media.upload_media", {
-		"account_name": account_name,
-		"file_content_b64": file_content_b64,
-		"content_type": content_type,
-		"filename": filename,
-	})
+	return _call_hub_api(
+		"media.upload_media",
+		{
+			"account_name": account_name,
+			"file_content_b64": file_content_b64,
+			"content_type": content_type,
+			"filename": filename,
+		},
+	)
 
 
 # --- Template sync ---
 
+
 def sync_templates_from_meta(account_name):
 	"""Ask the hub to refresh templates from Meta for ``account_name`` and
 	return ``{"synced": …, "data": [ … Meta-shape templates … ]}``."""
-	return _call_hub_api("templates.sync_templates_from_meta", {
-		"account_name": account_name,
-	})
+	return _call_hub_api(
+		"templates.sync_templates_from_meta",
+		{
+			"account_name": account_name,
+		},
+	)

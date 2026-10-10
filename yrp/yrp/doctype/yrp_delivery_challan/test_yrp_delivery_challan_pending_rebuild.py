@@ -24,7 +24,10 @@ class TestDeliveryChallanPendingRebuild(UnitTestCase):
 
 		with (
 			patch("yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.frappe.db.sql", side_effect=sql),
-			patch("yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.frappe.get_doc", return_value=work_order),
+			patch(
+				"yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan.frappe.get_doc",
+				return_value=work_order,
+			),
 			patch("yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan._update_work_order_status"),
 		):
 			result = rebuild_work_order_deliverable_pending("WO-1")

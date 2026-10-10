@@ -8,7 +8,7 @@ from yrp.yrp.doctype.yrp_purchase_order import yrp_purchase_order as purchase_or
 
 class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 	def test_generic_procurement_fields_are_native_to_yrp(self):
-		meta = frappe.get_meta('Purchase Order')
+		meta = frappe.get_meta("Purchase Order")
 		expected = {
 			"supplier_address": ("Link", "Address"),
 			"address_display": ("Text Editor", None),
@@ -16,7 +16,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 			"contact_display": ("Small Text", None),
 			"contact_mobile": ("Small Text", None),
 			"deliver_to_supplier": ("Check", None),
-			"default_delivery_location": ("Link", 'Supplier'),
+			"default_delivery_location": ("Link", "Supplier"),
 			"shipping_address": ("Link", "Address"),
 			"shipping_address_display": ("Text Editor", None),
 			"show_delivery_details": ("Check", None),
@@ -57,7 +57,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 			self.assertIsNone(meta.get_field("sd_lot"))
 			self.assertFalse(
 				any(
-					field.options in {'SD YRP Lot', "Purchase Order Lot", 'SD YRP Lot MultiSelect'}
+					field.options in {"SD YRP Lot", "Purchase Order Lot", "SD YRP Lot MultiSelect"}
 					for field in meta.fields
 					if field.fieldtype in {"Link", "Table", "Table MultiSelect"}
 				)
@@ -66,7 +66,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 	def test_hidden_items_requirement_is_server_enforced(self):
 		doc = frappe.get_doc(
 			{
-				"doctype": 'Purchase Order',
+				"doctype": "Purchase Order",
 				"is_yrp_managed": 1,
 				"supplier": "SUPPLIER-A",
 				"set_warehouse": "WAREHOUSE-A",
@@ -76,9 +76,9 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 			doc.validate_items()
 
 	def test_item_rows_receive_configured_stock_dimensions(self):
-		meta = frappe.get_meta('Purchase Order Item', cached=False)
+		meta = frappe.get_meta("Purchase Order Item", cached=False)
 		self.assertEqual(meta.autoname, "hash")
-		child_row = frappe.new_doc('Purchase Order Item')
+		child_row = frappe.new_doc("Purchase Order Item")
 		child_row.set_new_name()
 		self.assertTrue(child_row.name)
 		from yrp.stock.dimensions import get_stock_dimensions
@@ -117,16 +117,15 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 	def test_desk_editor_exposes_dimensions_on_purchase_order_rows(self):
 		from pathlib import Path
 
-		source = (
-			Path(frappe.get_app_path("yrp"))
-			/ "public/js/purchase_order.js"
-		).read_text(encoding="utf-8")
+		source = (Path(frappe.get_app_path("yrp")) / "public/js/purchase_order.js").read_text(
+			encoding="utf-8"
+		)
 		self.assertIn("showDimensions: true", source)
 
 	def test_item_delivery_and_migration_fields_are_native_to_yrp(self):
-		meta = frappe.get_meta('Purchase Order Item', cached=False)
+		meta = frappe.get_meta("Purchase Order Item", cached=False)
 		expected = {
-			"delivery_location": ("Link", 'Supplier'),
+			"delivery_location": ("Link", "Supplier"),
 			"expected_delivery_date": ("Date", None),
 			"additional_parameters": ("Text", None),
 		}
@@ -158,7 +157,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 	def test_item_delivery_defaults_preserve_original_expected_date(self):
 		doc = frappe.get_doc(
 			{
-				"doctype": 'Purchase Order',
+				"doctype": "Purchase Order",
 				"is_yrp_managed": 1,
 				"default_delivery_location": "LOCATION-A",
 				"schedule_date": "2026-08-20",
@@ -188,7 +187,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 	def test_party_details_are_stored_as_snapshots(self):
 		doc = frappe.get_doc(
 			{
-				"doctype": 'Purchase Order',
+				"doctype": "Purchase Order",
 				"is_yrp_managed": 1,
 				"supplier": "SUPPLIER-A",
 				"default_delivery_location": "LOCATION-A",
@@ -217,7 +216,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 	def test_delivery_destination_type_is_server_validated(self):
 		doc = frappe.get_doc(
 			{
-				"doctype": 'Purchase Order',
+				"doctype": "Purchase Order",
 				"default_delivery_location": "EXTERNAL-SUPPLIER",
 				"deliver_to_supplier": 0,
 			}
