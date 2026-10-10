@@ -16,9 +16,9 @@ class YRPPartnerType(Document):
 				frappe.throw(_("Reference DocType cannot change after partners have been generated. Create another Partner Type."))
 
 	def on_update(self):
-		from yrp.yrp_partner.setup import ensure_partner_read_permission
+		from yrp.permissions import ensure_partner_source_permission
 
-		ensure_partner_read_permission(self.reference_doctype)
+		ensure_partner_source_permission(self.reference_doctype)
 		from yrp.yrp_partner.backfill import sync_partner_type
 
 		sync_partner_type(self)

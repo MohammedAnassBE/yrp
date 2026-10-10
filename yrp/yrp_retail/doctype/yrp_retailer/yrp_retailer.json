@@ -98,7 +98,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-05 18:03:38.109765",
+ "modified": "2026-10-10 15:21:20.033236",
  "modified_by": "Administrator",
  "module": "YRP Retail",
  "name": "YRP Retailer",
@@ -116,6 +116,19 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Customer",
+   "select": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "role": "YRP Partner"
   },
   {
    "create": 1,
@@ -137,6 +150,24 @@
    "report": 1,
    "role": "YRP Retail User",
    "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Sales Partner",
+   "select": 1
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "YRP Sales Person",
+   "select": 1,
    "write": 1
   }
  ],

@@ -2,6 +2,7 @@
 import unittest
 
 import frappe
+from frappe.permissions import update_permission_property
 
 from yrp.yrp_retail import api
 from yrp.yrp_retail.test_retail_flow import TestRetailFlow
@@ -187,9 +188,7 @@ class TestSalesPersonRole(unittest.TestCase):
 		other = frappe.get_doc({"doctype": "YRP Retailer", "retailer_name": f.label("Managed Shop"),
 			"shop_name": f.label("Managed Shop Name"),
 			"customer": f.customer.name, "sales_person": f.person.name}).insert()
-		permission = frappe.get_doc("Custom DocPerm", {"parent": "YRP Retailer", "role": "YRP Sales Person"})
-		permission.if_owner = 1
-		permission.save()
+		update_permission_property("YRP Retailer", "YRP Sales Person", 0, "if_owner", 1)
 		frappe.clear_cache(doctype="YRP Retailer")
 		frappe.set_user(f.user.name)
 		own.shop_name = "Owner edit"
