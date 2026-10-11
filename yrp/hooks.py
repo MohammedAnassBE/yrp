@@ -253,6 +253,7 @@ doc_events = {
 	"Sales Person": {"onload": "yrp.yrp_partner.contacts.load_contacts", "validate": "yrp.yrp_retail.setup.validate_sales_person"},
 	"Employee": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
 	"YRP Retailer": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
+	"File": {"before_insert": "yrp.yrp_partner.customer_reports.own_prepared_result_file"},
 	"YRP Partner Type": {
 		"on_update": "yrp.yrp_partner.workspace.clear_partner_navigation_cache",
 		"on_trash": "yrp.yrp_partner.workspace.clear_partner_navigation_cache",

@@ -6,7 +6,8 @@ extensions therefore keep live and exported results under the same boundary.
 PreparedReport.before_insert also runs for make_prepared_report's privileged
 insert. These roles may prepare only the portal reports they can run, a few at
 a time, and read only their own results; the job runs as the owner, so the
-same scoping applies. GL and AR caches stay unavailable to them.
+same scoping applies. The result File is not theirs, so they cannot download it
+directly. GL and AR caches stay unavailable to them.
 
 ERPNext GL get_conditions and ReceivablePayableReport.add_common_filters apply
 party_type/party before opening balances, ageing, subtotals and charts. Native
@@ -379,11 +380,18 @@ class CustomerReportMixin:
 class CustomerPreparedReportMixin:
 	def before_insert(self):
 		self.check_report_access()
-		if is_customer_report_user() and frappe.db.count("Prepared Report", {
-				"owner": frappe.session.user, "status": ("in", ("Queued", "Started"))}) >= MAX_QUEUED_PREPARED_REPORTS:
+		if is_customer_report_user():
+			self.check_queued_limit()
+		return super().before_insert()
+
+	def check_queued_limit(self):
+		"""Lock the user's row until commit, so parallel inserts count each other's reports."""
+		frappe.db.get_value("User", frappe.session.user, "name", for_update=True)
+		queued = frappe.db.get_values("Prepared Report", {
+			"owner": frappe.session.user, "status": ("in", ("Queued", "Started"))}, "name", for_update=True)
+		if len(queued) >= MAX_QUEUED_PREPARED_REPORTS:
 			frappe.throw(_("{0} reports are already running. Wait for one to finish or cancel it.").format(
 				MAX_QUEUED_PREPARED_REPORTS))
-		return super().before_insert()
 
 	def get_prepared_data(self, with_file_name=False):
 		self.check_report_access()
@@ -406,6 +414,13 @@ class CustomerPreparedReportMixin:
 				_deny()
 		elif _processing_financial_report(frappe.get_doc("Report", self.report_name)):
 			_deny()
+
+
+def own_prepared_result_file(doc, method=None):
+	"""A customer user's Prepared Report result is saved as Administrator's File, so its owner cannot
+	download it by URL and reads it only through `get_prepared_data` and the portal's checks."""
+	if doc.attached_to_doctype == "Prepared Report" and is_customer_report_user():
+		doc.owner = "Administrator"
 
 
 @frappe.whitelist()

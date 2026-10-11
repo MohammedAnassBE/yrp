@@ -241,7 +241,7 @@ class TestCustomerReports(unittest.TestCase):
 
 	def test_portal_report_is_prepared_and_read_by_its_owner_only(self):
 		self.roles.return_value = ["YRP Sales Partner"]
-		self.enterContext(patch.object(frappe, "db", Mock(count=Mock(return_value=0))))
+		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
 		doc = self.prepared("Itemwise Pending")
 		self.assertEqual(doc.before_insert(), "native insert")
 		self.assertEqual(doc.get_prepared_data(), "native data")
@@ -264,9 +264,31 @@ class TestCustomerReports(unittest.TestCase):
 
 	def test_too_many_queued_prepared_reports_are_refused(self):
 		self.roles.return_value = ["YRP Sales Partner"]
-		self.enterContext(patch.object(frappe, "db", Mock(count=Mock(return_value=reports.MAX_QUEUED_PREPARED_REPORTS))))
+		queued = [("PR-1",), ("PR-2",), ("PR-3",)][: reports.MAX_QUEUED_PREPARED_REPORTS]
+		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=queued))))
 		with self.assertRaises(frappe.PermissionError):
 			self.prepared("YRP Retail Demand").before_insert()
+
+	def test_queued_limit_counts_after_locking_the_users_row(self):
+		"""Parallel inserts wait on the user's row lock, then a locking read sees committed reports."""
+		db = self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
+		self.prepared("YRP Retail Demand").check_queued_limit()
+		self.assertEqual([call[0] for call in db.method_calls], ["get_value", "get_values"])
+		self.assertEqual(db.get_value.call_args.args, ("User", "customer@example.invalid", "name"))
+		self.assertTrue(db.get_value.call_args.kwargs["for_update"])
+		self.assertTrue(db.get_values.call_args.kwargs["for_update"])
+
+	def test_customer_users_prepared_result_file_is_not_theirs(self):
+		for attached_to, scoped, owner in (
+			("Prepared Report", True, "Administrator"),
+			("Prepared Report", False, "user@example.invalid"),
+			("Sales Invoice", True, "user@example.invalid"),
+		):
+			self.scoped.return_value = scoped
+			file = frappe._dict(attached_to_doctype=attached_to, owner="user@example.invalid")
+			reports.own_prepared_result_file(file)
+			with self.subTest(attached_to=attached_to, scoped=scoped):
+				self.assertEqual(file.owner, owner)
 
 	def test_unscoped_users_retain_native_behavior(self):
 		self.scoped.return_value = False
