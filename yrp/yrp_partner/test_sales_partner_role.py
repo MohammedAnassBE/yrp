@@ -6,7 +6,7 @@ from unittest.mock import patch
 import frappe
 
 from yrp.yrp_partner import sales_roles
-from yrp.yrp_retail.tests.fixtures import customer, sales_partner
+from yrp.yrp_retail.tests.fixtures import customer, sales_partner, set_member
 from yrp.yrp_sales.doctype.yrp_sales_order import test_yrp_sales_order as order_fixtures
 
 
@@ -33,14 +33,7 @@ class TestSalesPartnerRole(unittest.TestCase):
 				}
 			).insert()
 		self.user = self.make_user("YRP Sales Partner")
-		self.contact = frappe.get_doc(
-			{
-				"doctype": "Contact",
-				"first_name": self.label("ZZ Partner"),
-				"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
-				"links": [{"link_doctype": "Sales Partner", "link_name": self.partner.name}],
-			}
-		).insert()
+		set_member(self.user.name, "Sales Partner", self.partner.name)
 
 	def make_user(self, *roles):
 		return frappe.get_doc(
@@ -127,13 +120,16 @@ class TestSalesPartnerRole(unittest.TestCase):
 	def test_missing_or_revoked_membership_grants_no_rows_or_creation(self):
 		order = self.order().insert()
 		unlinked = self.make_user("YRP Sales Partner", "Sales User")
-		self.contact.set("email_ids", [])
-		self.contact.save()
-		for user in (unlinked.name, self.user.name):
-			frappe.set_user(user)
-			with self.subTest(user=user):
-				self.assertEqual(frappe.get_list("YRP Sales Order", pluck="name"), [])
-				self.assertFalse(frappe.has_permission("YRP Sales Order", "read", order))
-				for bypass in (False, True):
-					with self.assertRaises(frappe.PermissionError):
-						self.order().insert(ignore_permissions=bypass)
+		set_member(self.user.name, "Sales Partner", self.partner.name, member=False)
+		# The last membership takes the member roles, so the user loses read and create.
+		self.assertFalse({"YRP Partner", "YRP Sales Partner"} & set(frappe.get_roles(self.user.name)))
+		frappe.set_user(self.user.name)
+		self.assertFalse(frappe.has_permission("YRP Sales Order", "read", order))
+		with self.assertRaises(frappe.PermissionError):
+			self.order().insert()
+		frappe.set_user(unlinked.name)
+		self.assertEqual(frappe.get_list("YRP Sales Order", pluck="name"), [])
+		self.assertFalse(frappe.has_permission("YRP Sales Order", "read", order))
+		for bypass in (False, True):
+			with self.subTest(bypass=bypass), self.assertRaises(frappe.PermissionError):
+				self.order().insert(ignore_permissions=bypass)

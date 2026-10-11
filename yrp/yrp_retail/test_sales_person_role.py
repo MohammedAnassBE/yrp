@@ -6,7 +6,7 @@ from frappe.permissions import update_permission_property
 
 from yrp.yrp_retail import api
 from yrp.yrp_retail.test_retail_flow import TestRetailFlow
-from yrp.yrp_retail.tests.fixtures import sales_person
+from yrp.yrp_retail.tests.fixtures import sales_person, set_member
 
 
 class TestSalesPersonRole(unittest.TestCase):
@@ -72,9 +72,7 @@ class TestSalesPersonRole(unittest.TestCase):
 		user = frappe.get_doc({"doctype": "User", "first_name": "Fictional Colleague",
 			"email": frappe.generate_hash(length=12) + "@example.invalid", "send_welcome_email": 0,
 			"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}]}).insert()
-		frappe.get_doc({"doctype": "Contact", "first_name": f.label("Colleague Contact"),
-			"email_ids": [{"email_id": user.email, "is_primary": 1}],
-			"links": [{"link_doctype": "Sales Person", "link_name": colleague.name}]}).insert()
+		set_member(user.name, "Sales Person", colleague.name)
 		f.person.set("yrp_customers", [])
 		f.person.save()
 		frappe.set_user(user.name)

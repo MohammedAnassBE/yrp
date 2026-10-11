@@ -1,4 +1,4 @@
-"""Configuration selecting the source DocType for Contact-derived access."""
+"""Configuration selecting the source DocType whose records get a YRP Partner."""
 
 import frappe
 from frappe import _

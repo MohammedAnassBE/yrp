@@ -1,4 +1,4 @@
-"""Backfills derive existing email memberships without changing Contacts or Users."""
+"""Backfills generate Partners without members and without changing Contacts or Users."""
 
 import unittest
 from unittest.mock import patch
@@ -65,7 +65,7 @@ class TestPartnerBackfill(unittest.TestCase):
 		for contact in contacts:
 			self.assertEqual(contact.reload().as_dict(), before[contact.name])
 
-	def test_backfill_uses_only_enabled_existing_users_with_partner_role(self):
+	def test_backfill_never_derives_members_from_contact_emails(self):
 		active = self.make_user()
 		disabled = self.make_user(enabled=False)
 		without_role = self.make_user(partner_role=False)
@@ -77,23 +77,12 @@ class TestPartnerBackfill(unittest.TestCase):
 		partner_type = self.make_type()
 		for _ in range(2):
 			partner_type.save()
-			self.assert_membership(partner_type, [active])
+			self.assert_membership(partner_type, [])
 			self.assertEqual(frappe.db.count("User"), user_count)
 			for contact in contacts:
 				self.assertEqual(contact.reload().as_dict(), contact_snapshots[contact.name])
 			for user in users:
 				self.assertEqual(user.reload().as_dict(), user_snapshots[user.name])
-
-	def test_backfill_matches_secondary_email_without_populating_contact_user(self):
-		user = self.make_user()
-		contact = self.make_contact(emails=[
-			"unmatched-" + frappe.generate_hash(length=12) + "@example.invalid", user.email,
-		])
-		self.assertFalse(contact.user)
-		before = contact.reload().as_dict()
-		partner_type = self.make_type()
-		self.assert_membership(partner_type, [user])
-		self.assertEqual(contact.reload().as_dict(), before)
 
 	def test_real_stale_contact_update_is_still_rejected(self):
 		contact = self.make_contact()
@@ -105,7 +94,7 @@ class TestPartnerBackfill(unittest.TestCase):
 		with self.assertRaises(frappe.TimestampMismatchError):
 			stale.save()
 
-	def test_large_backfill_queues_then_worker_derives_membership(self):
+	def test_large_backfill_queues_then_worker_generates_partners(self):
 		from yrp.yrp_partner import backfill
 
 		user = self.make_user()
@@ -120,7 +109,7 @@ class TestPartnerBackfill(unittest.TestCase):
 			"frappe.contacts.doctype.contact.contact.Contact.save", side_effect=AssertionError("Unexpected Contact update")
 		), patch("frappe.core.doctype.user.user.User.save", side_effect=AssertionError("Unexpected User update")):
 			backfill.run_batch(partner_type.name, str(partner_type.modified))
-		self.assert_membership(partner_type, [user])
+		self.assert_membership(partner_type, [])
 		self.assertEqual(contact.reload().as_dict(), contact_before)
 		self.assertEqual(user.reload().as_dict(), user_before)
 

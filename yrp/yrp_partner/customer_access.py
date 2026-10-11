@@ -1,8 +1,8 @@
 """Live Customer scope for customer-facing records and financial reports.
 
 Roles select which sources can grant access; roles alone grant no records.
-Every grant needs a generated Partner membership and a current Contact email
-matching an enabled login. Retailer memberships never grant Customer ledgers.
+Every grant needs an enabled login listed in the source's Partner `users`
+table. Retailer memberships never grant Customer ledgers.
 No result is cached, so reassignment and identity revocation apply immediately.
 """
 
@@ -40,7 +40,7 @@ def is_customer_report_user(user=None):
 
 
 def _source_references(doctype, user, roles):
-	"""Recheck generated membership against its current source and identity."""
+	"""Recheck explicit membership against its current source, login and roles."""
 	role_values = ", ".join(frappe.db.escape(role) for role in sorted(roles))
 	return f"""SELECT DISTINCT p.reference_name FROM `tabYRP Partner` p
 		JOIN `tab{doctype.replace('`', '``')}` source_record ON source_record.name=p.reference_name
@@ -57,14 +57,7 @@ def _source_references(doctype, user, roles):
 			AND scope_role.parentfield='roles' AND scope_role.role='YRP Partner')
 		AND EXISTS (SELECT 1 FROM `tabHas Role` action_role
 			WHERE action_role.parent=actor.name AND action_role.parenttype='User'
-			AND action_role.parentfield='roles' AND action_role.role IN ({role_values}))
-		AND EXISTS (SELECT 1 FROM `tabDynamic Link` identity_link
-			JOIN `tabContact` identity_contact ON identity_contact.name=identity_link.parent
-			JOIN `tabContact Email` identity_email ON identity_email.parent=identity_contact.name
-				AND identity_email.parenttype='Contact' AND identity_email.parentfield='email_ids'
-			WHERE identity_link.parenttype='Contact' AND identity_link.parentfield='links'
-			AND identity_link.link_doctype=p.reference_doctype
-			AND identity_link.link_name=p.reference_name AND identity_email.email_id=actor.email)"""
+			AND action_role.parentfield='roles' AND action_role.role IN ({role_values}))"""
 
 
 def _customer_references(user):

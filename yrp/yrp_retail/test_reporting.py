@@ -5,6 +5,7 @@ import frappe
 from frappe.utils import today
 from yrp.yrp_retail import reporting
 from yrp.yrp_retail.test_sales_sources import TestSalesSources
+from yrp.yrp_retail.tests.fixtures import set_member
 
 class TestReportRows(unittest.TestCase):
     def doc(self, **values):
@@ -78,8 +79,8 @@ class TestReportIntegration(TestSalesSources):
         frappe.set_user(self.user.name)
         self.assertIn(self.primary,[r['document'] for r in reporting.run('demand',filters)[1]])
         frappe.set_user('Administrator')
-        contact=self.contact.reload()
-        contact.set('links',[])
-        contact.save()
+        set_member(self.user.name,'Sales Person',self.person.name,member=False)
         frappe.set_user(self.user.name)
-        self.assertEqual(reporting.run('demand',filters)[1],[])
+        # The last membership takes the member roles, so the report is denied.
+        with self.assertRaises(frappe.PermissionError):
+            reporting.run('demand',filters)

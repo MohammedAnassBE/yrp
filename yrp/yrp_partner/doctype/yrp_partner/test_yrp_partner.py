@@ -37,6 +37,15 @@ class PartnerTestCase(unittest.TestCase):
 			'roles': [{'role': 'YRP Partner'}] if partner_role else [],
 		}).insert()
 
+	def add_member(self, user, source=None):
+		partner = self.partner(source)
+		partner.append('users', {'user': user.name})
+		partner.save()
+		return partner
+
+	def members(self, source=None):
+		return [row.user for row in self.partner(source).users]
+
 	def make_contact(self, user=None, source=None, *, emails=None):
 		if emails is None:
 			emails = [user.email] if user else []
@@ -101,33 +110,28 @@ class TestYRPPartner(PartnerTestCase):
 		self.source.save()
 		self.assertTrue(self.partner().name)
 
-	def test_linked_contact_emails_derive_unique_members(self):
-		user = self.make_user()
-		self.make_contact(user)
-		self.make_contact(user)
-		self.make_contact()
+	def test_linked_contact_emails_never_add_members(self):
+		self.make_contact(self.make_user())
 		self.source.save()
 		self.partner_type.save()
-		self.assertEqual([r.user for r in self.partner().users], [user.name])
+		self.assertEqual(self.members(), [])
 
-	def test_contact_reassignment_refreshes_both_partners(self):
+	def test_contact_changes_keep_explicit_members(self):
 		user = self.make_user()
+		self.add_member(user)
 		contact = self.make_contact(user)
 		other = self.make_source()
 		contact.links[0].link_name = other.name
 		contact.save()
-		self.assertEqual(self.partner().users, [])
-		self.assertEqual([r.user for r in self.partner(other).users], [user.name])
+		contact.delete()
+		self.assertEqual(self.members(), [user.name])
+		self.assertEqual(self.members(other), [])
 
-	def test_contact_deletion_hook_removes_user(self):
-		contact = self.make_contact(self.make_user())
-		# Exercise the registered lifecycle hook without scanning unrelated historical links.
-		contact.run_method('on_trash')
-		self.assertEqual(self.partner().users, [])
-
-	def test_manual_membership_is_rejected(self):
-		partner = self.partner()
-		partner.append('users', {'user': self.make_user().name})
+	def test_manual_membership_is_saved_once(self):
+		user = self.make_user()
+		partner = self.add_member(user)
+		self.assertEqual(self.members(), [user.name])
+		partner.append('users', {'user': user.name})
 		with self.assertRaises(frappe.ValidationError):
 			partner.save()
 
@@ -153,18 +157,8 @@ class TestYRPPartner(PartnerTestCase):
 				'reference_doctype': 'UOM', 'reference_name': self.source.name,
 			}).insert(ignore_permissions=True)
 
-
-	def test_contact_user_change_does_not_replace_email_membership(self):
-		user = self.make_user()
-		contact = self.make_contact(user)
-		replacement = self.make_user()
-		contact.user = replacement.name
-		contact.save()
-		self.assertEqual([r.user for r in self.partner().users], [user.name])
-
-	def test_type_backfill_uses_existing_contacts(self):
-		user = self.make_user()
-		self.make_contact(user)
+	def test_type_backfill_creates_partners_without_members(self):
+		self.make_contact(self.make_user())
 		partner_type = frappe.get_doc({
 			"doctype": "YRP Partner Type",
 			"partner_type_name": "Test Backfill " + frappe.generate_hash(length=10),
@@ -173,17 +167,4 @@ class TestYRPPartner(PartnerTestCase):
 		partner = frappe.get_doc("YRP Partner", {
 			"partner_type": partner_type.name, "reference_name": self.source.name,
 		})
-		self.assertEqual([r.user for r in partner.users], [user.name])
-
-	def test_unlinking_contact_removes_membership(self):
-		contact = self.make_contact(self.make_user())
-		contact.set("links", [])
-		contact.save()
-		self.assertEqual(self.partner().users, [])
-
-	def test_deleting_one_of_two_contacts_keeps_shared_user(self):
-		user = self.make_user()
-		contact = self.make_contact(user)
-		self.make_contact(user)
-		contact.run_method("on_trash")
-		self.assertEqual([r.user for r in self.partner().users], [user.name])
+		self.assertEqual(partner.users, [])

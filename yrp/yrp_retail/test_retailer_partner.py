@@ -2,6 +2,7 @@
 import frappe
 from unittest.mock import patch
 from yrp.yrp_retail.test_retail_flow import TestRetailFlow
+from yrp.yrp_retail.tests.fixtures import set_member
 
 class TestRetailerPartner(TestRetailFlow):
     def setUp(self):
@@ -10,14 +11,14 @@ class TestRetailerPartner(TestRetailFlow):
         self.partners=[]
         self.users=[]
         # Keep the initial scan off copied business records; subsequent fictional
-        # Sales Partner/Contact inserts run normal membership hooks.
+        # Sales Partner inserts generate their Partners.
         get_all = frappe.get_all
         with patch.object(frappe, 'get_all', side_effect=lambda dt, *args, **kw: [] if dt == 'Sales Partner' else get_all(dt, *args, **kw)):
             frappe.get_doc(dict(doctype='YRP Partner Type',partner_type_name=self.label('Partner Kind'),reference_doctype='Sales Partner')).insert()
         for index in range(2):
             partner=frappe.get_doc(dict(doctype='Sales Partner',partner_name=self.label('Partner'),territory=self.customer.territory,commission_rate=1)).insert()
             user=frappe.get_doc(dict(doctype='User',email=frappe.generate_hash(length=12)+'@example.invalid',first_name='Fictional Partner',send_welcome_email=0,roles=[dict(role='YRP Partner')])).insert()
-            frappe.get_doc(dict(doctype='Contact',first_name=self.label('Partner Contact'),user=user.name,email_ids=[dict(email_id=user.email,is_primary=1)],links=[dict(link_doctype='Sales Partner',link_name=partner.name)])).insert()
+            set_member(user.name,'Sales Partner',partner.name)
             self.partners.append(partner);self.users.append(user)
         self.customer.default_sales_partner=self.partners[0].name
         self.customer.save()

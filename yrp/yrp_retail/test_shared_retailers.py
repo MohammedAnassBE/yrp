@@ -4,7 +4,7 @@ from frappe.utils import now_datetime
 
 from yrp.yrp_retail import api
 from yrp.yrp_retail.test_retail_flow import TestRetailFlow
-from yrp.yrp_retail.tests.fixtures import sales_person
+from yrp.yrp_retail.tests.fixtures import sales_person, set_member
 
 
 class TestSharedRetailers(TestRetailFlow):
@@ -29,24 +29,21 @@ class TestSharedRetailers(TestRetailFlow):
 		doc.reload()
 		self.assertEqual(doc.primary_address, address.name)
 
-	def test_one_contact_grants_only_linked_shops_and_unlink_revokes(self):
+	def test_membership_grants_only_its_shops_and_removal_revokes(self):
 		names = [self.retailer() for _ in range(3)]
 		frappe.set_user("Administrator")
 		frappe.get_doc(dict(doctype="YRP Partner Type", partner_type_name=self.label("Retail Membership"),
 			reference_doctype="YRP Retailer")).insert()
 		user = frappe.get_doc(dict(doctype="User", email=frappe.generate_hash(length=12)+"@example.invalid",
 			first_name="Fictional Shop Owner", send_welcome_email=0, roles=[dict(role="YRP Partner")])).insert()
-		contact = frappe.get_doc(dict(doctype="Contact", first_name=self.label("Shop Contact"), user=user.name,
-			email_ids=[dict(email_id=user.name, is_primary=1)],
-			phone_nos=[dict(phone="2025550100", is_primary_mobile_no=1)],
-			links=[dict(link_doctype="YRP Retailer", link_name=n) for n in names[:2]])).insert()
+		for name in names[:2]:
+			set_member(user.name, "YRP Retailer", name)
 		frappe.set_user(user.name)
 		self.assertEqual(set(frappe.get_list("YRP Retailer", pluck="name")), set(names[:2]))
 		self.assertTrue(frappe.has_permission("YRP Retailer", "read", frappe.get_doc("YRP Retailer", names[1])))
 		self.assertFalse(frappe.has_permission("YRP Retailer", "read", frappe.get_doc("YRP Retailer", names[2])))
 		frappe.set_user("Administrator")
-		contact.set("links", [dict(link_doctype="YRP Retailer", link_name=names[0])])
-		contact.save()
+		set_member(user.name, "YRP Retailer", names[1], member=False)
 		frappe.set_user(user.name)
 		self.assertEqual(frappe.get_list("YRP Retailer", pluck="name"), [names[0]])
 
@@ -57,9 +54,7 @@ class TestSharedRetailers(TestRetailFlow):
 		user = frappe.get_doc(dict(doctype="User", email=frappe.generate_hash(length=12)+"@example.invalid",
 			first_name="Fictional Visiting Person", send_welcome_email=0,
 			roles=[dict(role="YRP Partner"), dict(role="YRP Sales Person")])).insert()
-		frappe.get_doc(dict(doctype="Contact", first_name=self.label("Visitor Contact"), user=user.name,
-			email_ids=[dict(email_id=user.email, is_primary=1)],
-			links=[dict(link_doctype="Sales Person", link_name=second.name)])).insert()
+		set_member(user.name, "Sales Person", second.name)
 		frappe.set_user(user.name)
 		self.assertIn(retailer, [r.name for r in api.list_records("YRP Retailer")])
 		self.assertTrue(frappe.has_permission("YRP Retailer", "read", frappe.get_doc("YRP Retailer", retailer)))

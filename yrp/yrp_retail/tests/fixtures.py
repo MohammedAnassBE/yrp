@@ -27,3 +27,17 @@ def customer():
     return frappe.get_doc(dict(doctype='Customer',customer_name='Test Customer '+suffix,
         customer_type='Individual',customer_group=group.name,territory=territory.name,
         default_sales_partner=sales_partner(territory.name).name)).insert()
+
+
+def set_member(user, doctype, name, member=True):
+    """Add the user to (or remove it from) every Partner of a source, as an administrator does."""
+    from yrp.yrp_partner.sync import ensure_partner
+
+    for partner_type in frappe.get_all("YRP Partner Type", {"reference_doctype": doctype}, pluck="name"):
+        ensure_partner(partner_type, doctype, name)
+    for partner in frappe.get_all("YRP Partner", {"reference_doctype": doctype, "reference_name": name}, pluck="name"):
+        doc = frappe.get_doc("YRP Partner", partner)
+        doc.set("users", [row for row in doc.users if row.user != user])
+        if member:
+            doc.append("users", {"user": user})
+        doc.save(ignore_permissions=True)

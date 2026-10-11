@@ -3,8 +3,8 @@
 Small configurations stay synchronous. Large configurations queue after the Type
 has committed, and each worker commits only one page through Frappe's normal job
 runner. Saving the Type again supersedes older pages without erasing completed
-partners. Membership reconciliation is idempotent, so a failed run can be restarted.
-No worker creates accounts or changes Contact/User documents.
+partners. Partner creation is idempotent, so a failed run can be restarted.
+No worker creates accounts, changes members or changes Contact/User documents.
 """
 
 from hashlib import sha256

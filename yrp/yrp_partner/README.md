@@ -3,47 +3,51 @@
 ## Access flow
 
 1. Configure a source DocType in **YRP Partner Type**, such as Sales Partner.
-2. Link a Contact to a source record using Frappe's standard **Links** table.
-3. An administrator or a separate custom app creates the login and assigns the
-   **YRP Partner** role. YRP Partner does neither.
-4. Each Contact email matching an existing enabled User with that role contributes
-   membership to the generated Partner. The user's permitted lists and document
-   reads are filtered to the linked business records.
+2. yrp generates one **YRP Partner** per source record.
+3. An administrator or a separate custom app adds Users to the Partner's **Users**
+   table. yrp never derives members from Contacts, emails or phone numbers.
+4. yrp gives each member the **YRP Partner** role plus the role of the source type
+   (see *Member roles*). The member's permitted lists and document reads are
+   filtered to the linked business records.
 
-All entries in the Contact's email table are considered, including secondary
-emails. Multiple Contacts and sources can grant access to the same user. A phone
-number or the Contact's `user` field alone does not grant membership. Administrator
-and Guest are excluded from generated membership.
-
-YRP Partner never generates emails, creates Users, assigns User roles, changes
-login mobile numbers, or enables/disables accounts. Those operations belong to
-normal User administration or a separate custom app. Native Frappe Contact/User
-behavior remains in place, including filling Contact.user from a matching email.
+YRP Partner never generates emails, creates Users, changes login mobile numbers
+or enables/disables accounts. A custom app (such as essdee_yrp_partner) owns the
+mapping of Contacts to Users.
 
 ## Records and synchronization
 
 Saving a Partner Type generates one **YRP Partner** per source record. Source saves
 create missing Partners. New IDs use the native `PR.#####` series (`PR00001`,
 `PR00002`, ...); resynchronization preserves existing names. Partners cannot be
-created manually and their membership table is derived, not manually editable.
-
-Contact saves refresh both former and current links. Removing an email or link,
-or deleting the Contact, removes only the memberships no longer supported by other
-Contacts. Saving/renaming an existing User refreshes memberships after changes to
-its email, enabled state or roles. These hooks only write derived Partner records.
+created manually. Their **Users** table is explicit and editable by users with write
+permission. Generation never changes existing members, and Contact, source or User
+saves never change membership. A User that is a member cannot be deleted until it
+is removed from its Partners.
 
 Configurations above 100 source records run after commit in pages of 50 through
 Frappe's long worker. The form reports queued/running/completed/failed progress.
 **Restart Partner Generation** retries a failed run. Each page checks the initiating
 user's current write permission and the configuration revision. Older runs stop
-after a configuration change. Backfills never save Contacts or Users, so they
-cannot create login accounts or cause Contact timestamp conflicts.
+after a configuration change. Backfills never save Contacts or Users.
 
 The `remove_partner_provisioning` migration removes retired User Custom Field
-metadata and reconciles existing memberships. Existing queued backfills retain
-their revisions and run the current membership-only synchronization.
-It preserves existing User records, login IDs, roles, mobile numbers and enabled
-states. Frappe retains retired columns until normal database maintenance.
+metadata. The `grant_partner_member_roles` migration keeps the existing users as
+explicit members and adds their missing member roles. It removes no role.
+
+## Member roles
+
+Saving or deleting a Partner updates the roles of the users that were added or
+removed (`member_roles.py`). The update is idempotent and saves only the User:
+
+| Source type | Roles given to a member |
+| --- | --- |
+| Customer | YRP Partner, YRP Customer |
+| Sales Partner | YRP Partner, YRP Sales Partner |
+| Sales Person | YRP Partner, YRP Sales Person |
+| Any other type (e.g. YRP Retailer) | YRP Partner |
+
+A removed member loses the roles of that Partner only when no other membership
+of the user needs them. Other roles are never changed. Existing sessions may need to log in again after a role change.
 
 ## Roles and scope
 
@@ -58,10 +62,8 @@ states. Frappe retains retired columns until normal database maintenance.
 | Sales Master Manager | Native ERPNext Sales Person management. |
 | HR Manager | Native Employee management. |
 
-Assign roles through normal User management. The module defines its roles and base
-DocType permissions; it does not add roles to any User. Changing access-bearing
-Contact emails or Links requires write permission on the affected source records,
-so owning a Contact does not allow a user to grant themselves arbitrary access.
+Membership gives the partner roles (see *Member roles*). Other roles are assigned
+through normal User management.
 
 Desk access uses Frappe's native Role setting and does not grant System Manager.
 Role definitions, fixed Custom DocPerm rows and Custom Fields are core fixtures
@@ -101,8 +103,8 @@ Custom SQL or `get_all` endpoints must enforce permissions themselves.
 
 ## Code and tests
 
-- `sync.py`: email-derived membership, source/Contact/User lifecycle and Contact
-  access-change validation. No account management.
+- `sync.py`: Partner generation for source records. No membership or account management.
+- `member_roles.py`: roles that follow membership.
 - `backfill.py`: bounded, revision-checked Partner generation.
 - `permissions.py`: list filters, document checks and write guards.
 - `setup.py`: read permission for newly configured dynamic Partner source types.
@@ -111,30 +113,28 @@ Custom SQL or `get_all` endpoints must enforce permissions themselves.
 - `workspace.py`: navigation derived from configured Partner Types.
 - `contacts.py`: native Address/Contact display payload.
 - `doctype/yrp_partner_type`: source configuration.
-- `doctype/yrp_partner`: generated record, membership validation and unique index.
+- `doctype/yrp_partner`: generated record, explicit members, role sync and unique index.
 
-Tests use fictional records with rollback. They cover email and role matching,
-shared access, account non-mutation, revocation, source authority, background
-generation, naming and permission boundaries. Run them with Frappe's standard
+Tests use fictional records with rollback. They cover explicit membership, member
+roles, shared access, account non-mutation, revocation, background generation,
+naming and permission boundaries. Run them with Frappe's standard
 test runner on a development/test site. Framework source files are not modified.
 
 ### Customer documents and ledgers
 
-Assign `YRP Partner` plus the applicable business role to an existing User. A
-Contact email must match that enabled User, and its Dynamic Links must point to
-records configured in YRP Partner Type. This feature never creates Users or
-assigns roles.
+Add an existing enabled User to the Partner of a record configured in YRP Partner
+Type; the membership gives `YRP Partner` plus the business role. This feature
+never creates Users.
 
 | Business role | Customers available to financial reports |
 | --- | --- |
-| YRP Customer | Every Customer directly linked through the User's Contacts |
+| YRP Customer | Every Customer whose Partner lists the User |
 | YRP Sales Person | Every currently assigned Customer across linked Sales Persons |
 | YRP Sales Partner | Every Customer currently assigned to linked Sales Partners |
 
-Several Contacts, several links on one Contact, and several business roles are
-combined. A Sales Person assignment is valid only while the person is enabled
-and its Sales Partner agrees with the Customer's current Sales Partner. Contact
-unlinking, disabling a User, or removing the required role invalidates access.
+Several memberships and several business roles are combined. A Sales Person assignment is valid only while the person is enabled
+and its Sales Partner agrees with the Customer's current Sales Partner. Removing
+the membership, disabling a User, or removing the required role invalidates access.
 A Retailer membership alone never grants its Customer's accounts.
 
 Customer access is read-only. Existing Sales Person retail actions and Sales

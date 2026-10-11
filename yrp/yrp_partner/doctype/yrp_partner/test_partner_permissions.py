@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import frappe
-from yrp.yrp_retail.tests.fixtures import customer, sales_person
+from yrp.yrp_retail.tests.fixtures import customer, sales_person, set_member
 
 
 class TestPartnerPermissions(unittest.TestCase):
@@ -30,6 +30,7 @@ class TestPartnerPermissions(unittest.TestCase):
 			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
 			"links": [{"link_doctype": "YRP Retailer", "link_name": self.allowed.name}],
 		}).insert()
+		set_member(self.user.name, "YRP Retailer", self.allowed.name)
 
 	def test_list_and_direct_read_match(self):
 		# Desk entry must not expand the records this Partner can read.
@@ -53,50 +54,15 @@ class TestPartnerPermissions(unittest.TestCase):
 			frappe.get_doc({"doctype": "Contact", "first_name": "Not allowed"}).insert()
 
 	def test_removing_membership_denies_all_rows(self):
-		self.contact.set("email_ids", [])
-		self.contact.save()
-		# The native Contact.user field cannot preserve an email-derived grant.
+		set_member(self.user.name, "YRP Retailer", self.allowed.name, member=False)
+		# The native Contact.user field and Contact email grant nothing.
 		self.assertEqual(self.contact.user, self.user.name)
+		# The last membership takes the member roles, so the list is denied, not just empty.
+		self.assertNotIn("YRP Partner", frappe.get_roles(self.user.name))
 		frappe.set_user(self.user.name)
-		self.assertEqual(frappe.get_list("YRP Retailer", pluck="name"), [])
+		with self.assertRaises(frappe.PermissionError):
+			frappe.get_list("YRP Retailer", pluck="name")
 		self.assertFalse(frappe.has_permission("YRP Retailer", "read", self.allowed))
-
-	def test_contact_writer_cannot_grant_membership_without_source_write_permission(self):
-		source = frappe.get_doc({
-			"doctype": "UOM", "uom_name": "Test Protected Unit " + frappe.generate_hash(length=10),
-		}).insert()
-		with patch("yrp.yrp_partner.backfill.sync_partner_type"):
-			frappe.get_doc({
-				"doctype": "YRP Partner Type", "partner_type_name": "Test Protected Type " + frappe.generate_hash(length=10),
-				"reference_doctype": "UOM",
-			}).insert()
-		writer = frappe.get_doc({
-			"doctype": "User", "email": "contact-writer-" + frappe.generate_hash(length=12) + "@example.invalid",
-			"first_name": "Test Contact Writer", "send_welcome_email": 0,
-			"roles": [{"role": "YRP Retail User"}],
-		}).insert()
-		linked = frappe.get_doc({
-			"doctype": "Contact", "first_name": "Test Protected Contact",
-			"links": [{"link_doctype": "UOM", "link_name": source.name}],
-		}).insert()
-		unlinked = frappe.get_doc({
-			"doctype": "Contact", "first_name": "Test Unlinked Contact",
-			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
-		}).insert()
-		frappe.set_user(writer.name)
-		self.assertTrue(frappe.has_permission("Contact", "create"))
-		self.assertTrue(frappe.has_permission("Contact", "write", linked))
-		self.assertFalse(frappe.has_permission("UOM", "write", source))
-		new = frappe.get_doc({
-			"doctype": "Contact", "first_name": "Test Forbidden Contact",
-			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
-			"links": [{"link_doctype": "UOM", "link_name": source.name}],
-		})
-		linked.append("email_ids", {"email_id": self.user.email, "is_primary": 1})
-		unlinked.append("links", {"link_doctype": "UOM", "link_name": source.name})
-		for contact in (new, linked, unlinked):
-			with self.subTest(contact=contact.first_name), self.assertRaises(frappe.PermissionError):
-				contact.save(ignore_permissions=True)
 
 	def test_additional_edit_role_cannot_bypass_partner_read_only(self):
 		self.user.append("roles", {"role": "YRP Retail User"})

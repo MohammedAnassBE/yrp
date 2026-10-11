@@ -7,7 +7,7 @@ import frappe
 from yrp.yrp_retail.access import require_customer
 from yrp.yrp_retail.logic import validate_assignment
 from yrp.yrp_retail.setup import assigned_customers, validate_sales_person
-from yrp.yrp_retail.tests.fixtures import customer, sales_person
+from yrp.yrp_retail.tests.fixtures import customer, sales_person, set_member
 
 
 class TestSalesPersonAssignment(unittest.TestCase):
@@ -72,9 +72,7 @@ class TestSalesPersonAssignment(unittest.TestCase):
 		user = frappe.get_doc({"doctype": "User", "first_name": "Fictional Sales Person",
 			"email": frappe.generate_hash(length=12) + "@example.invalid",
 			"send_welcome_email": 0, "roles": [{"role": "YRP Partner"}]}).insert()
-		frappe.get_doc({"doctype": "Contact", "first_name": "Fictional Assignment",
-			"email_ids": [{"email_id": user.email, "is_primary": 1}],
-			"user": user.name, "links": [{"link_doctype": "Sales Person", "link_name": self.person.name}]}).insert()
+		set_member(user.name, "Sales Person", self.person.name)
 		retailer = frappe.get_doc({"doctype": "YRP Retailer", "retailer_name": "Fictional Owner",
 			"shop_name": "Fictional Shop", "sales_person": self.person.name,
 			"customer": self.customer.name}).insert()

@@ -39,18 +39,17 @@
    "reqd": 1
   },
   {
-   "description": "Users from Contacts linked to the reference record.",
+   "description": "Users who act for the reference record.",
    "fieldname": "users",
    "fieldtype": "Table",
    "label": "Users",
-   "options": "YRP Partner User",
-   "read_only": 1
+   "options": "YRP Partner User"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-10 15:21:19.743500",
+ "modified": "2026-10-11 08:24:16.234334",
  "modified_by": "Administrator",
  "module": "YRP Partner",
  "name": "YRP Partner",

@@ -14,7 +14,7 @@ from frappe.utils import flt, today
 from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 from yrp.yrp_partner import customer_reports
 from yrp.yrp_retail.test_packing import TestPacking
-from yrp.yrp_retail.tests.fixtures import customer, sales_partner, sales_person
+from yrp.yrp_retail.tests.fixtures import customer, sales_partner, sales_person, set_member
 
 
 class TestCustomerLedger(unittest.TestCase):
@@ -62,9 +62,8 @@ class TestCustomerLedger(unittest.TestCase):
 				"email": "ledger-test-" + frappe.generate_hash(length=12) + "@example.invalid",
 				"first_name": "Fictional Ledger User", "send_welcome_email": 0,
 				"roles": [{"role": "YRP Partner"}, {"role": role}]}).insert()
-			frappe.get_doc({"doctype": "Contact", "first_name": "Fictional Ledger Contact",
-				"user": user.name, "email_ids": [{"email_id": user.email, "is_primary": 1}],
-				"links": [{"link_doctype": doctype, "link_name": name} for name in names]}).insert()
+			for name in names:
+				set_member(user.name, doctype, name)
 			self.users[role] = user.name
 
 	def make_invoice(self, party, amount):

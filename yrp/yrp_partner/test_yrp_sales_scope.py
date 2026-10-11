@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import frappe
 
-from yrp.yrp_retail.tests.fixtures import customer, sales_person
+from yrp.yrp_retail.tests.fixtures import customer, sales_person, set_member
 
 SALES_DOCTYPES = ("YRP Sales Order", "YRP Delivery Note", "YRP Packing Slip")
 
@@ -75,14 +75,7 @@ class TestYRPSalesScope(unittest.TestCase):
 				"roles": [{"role": "YRP Partner"}, {"role": role}],
 			}
 		).insert()
-		frappe.get_doc(
-			{
-				"doctype": "Contact",
-				"first_name": "ZZ Sales Scope " + frappe.generate_hash(length=10),
-				"email_ids": [{"email_id": user.email, "is_primary": 1}],
-				"links": [{"link_doctype": source_doctype, "link_name": source_name}],
-			}
-		).insert()
+		set_member(user.name, source_doctype, source_name)
 		return user
 
 	def documents(self, party, company):

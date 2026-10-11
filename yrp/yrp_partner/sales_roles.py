@@ -1,4 +1,4 @@
-"""Sales action roles layered on Contact-derived Partner record scope.
+"""Sales action roles layered on explicit Partner membership scope.
 
 DocPerm controls available actions. These checks only narrow those permissions:
 the actor must still have YRP Partner membership, valid assignments and a valid
@@ -69,7 +69,7 @@ def _sales_partner_scope(doc, user):
 
 
 def registered_processing_customer_query(user):
-	"""Live Contact membership for registered processing operations, never finance."""
+	"""Live Partner membership for registered processing operations, never finance."""
 	roles=set(frappe.get_roles(user))
 	if 'YRP Partner' not in roles or not roles & {'Sales Manager','Sales User'} or roles & {'System Manager','YRP Customer','YRP Sales Person','YRP Sales Partner'}:
 		return None

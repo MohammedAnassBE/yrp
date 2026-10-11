@@ -253,10 +253,6 @@ doc_events = {
 	"Sales Person": {"onload": "yrp.yrp_partner.contacts.load_contacts", "validate": "yrp.yrp_retail.setup.validate_sales_person"},
 	"Employee": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
 	"YRP Retailer": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
-	"Contact": {
-		"before_validate": "yrp.yrp_partner.sync.validate_contact_links",
-		"on_trash": "yrp.yrp_partner.sync.sync_contact",
-	},
 	"YRP Partner Type": {
 		"on_update": "yrp.yrp_partner.workspace.clear_partner_navigation_cache",
 		"on_trash": "yrp.yrp_partner.workspace.clear_partner_navigation_cache",
@@ -316,12 +312,11 @@ doc_events = {
 		"after_delete": "yrp.yrp_sales.invoicing.refresh_delivery_note_billing",
 	},
 	"User": {
-		"on_update": "yrp.yrp_partner.sync.sync_user_memberships",
 		# Per-user UI storage lifecycle (PER_USER_UI_SPEC.md §3.3): the YRP UI
 		# Preference docname == user; keep it in sync on offboarding/rename.
-		"on_trash": ["yrp.yrp_partner.sync.sync_user_memberships", "yrp.yrp.api.ui_config.delete_ui_preference_for_user"],
+		"on_trash": "yrp.yrp.api.ui_config.delete_ui_preference_for_user",
 		"before_rename": "yrp.yrp.api.ui_config.merge_ui_preference_for_user",
-		"after_rename": ["yrp.yrp_partner.sync.sync_user_memberships", "yrp.yrp.api.ui_config.rename_ui_preference_for_user"],
+		"after_rename": "yrp.yrp.api.ui_config.rename_ui_preference_for_user",
 	},
 }
 

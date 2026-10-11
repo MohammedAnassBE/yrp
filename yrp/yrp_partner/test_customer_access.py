@@ -1,7 +1,7 @@
 """Customer authorization tests use fictional records and roll back every row.
 
 Minimal transaction rows isolate the permission layer from posting side effects;
-memberships and Contacts use the ordinary application synchronization hooks.
+memberships are explicit Partner `users` rows; Contacts never grant access.
 """
 
 import unittest
@@ -10,8 +10,9 @@ from unittest.mock import patch
 import frappe
 
 from yrp.yrp_partner import customer_access as access
+from yrp.yrp_partner.member_roles import MEMBER_ROLES
 from yrp.yrp_partner.permissions import prevent_partner_write
-from yrp.yrp_retail.tests.fixtures import customer, sales_person
+from yrp.yrp_retail.tests.fixtures import customer, sales_person, set_member
 
 
 class TestCustomerAccess(unittest.TestCase):
@@ -45,11 +46,14 @@ class TestCustomerAccess(unittest.TestCase):
 		}).insert()
 
 	def link(self, user, doctype, name):
-		return frappe.get_doc({
+		"""A linked Contact plus the explicit membership that grants access."""
+		contact = frappe.get_doc({
 			"doctype": "Contact", "first_name": "Fictional Customer Contact " + frappe.generate_hash(length=10),
 			"user": user.name, "email_ids": [{"email_id": user.email, "is_primary": 1}],
 			"links": [{"link_doctype": doctype, "link_name": name}],
 		}).insert()
+		set_member(user.name, doctype, name)
+		return contact
 
 	def row(self, doctype, **values):
 		"""Insert only synthetic query fixtures; do not trigger financial posting."""
@@ -66,31 +70,30 @@ class TestCustomerAccess(unittest.TestCase):
 		return set(frappe.db.sql(
 			f"SELECT name FROM `tab{doctype}` WHERE {condition}", pluck=True))
 
-	def test_direct_customer_and_multiple_contact_memberships_are_unioned(self):
-		second = self.link(self.user, "Customer", self.foreign.name)
-		duplicate = self.link(self.user, "Customer", self.own.name)
+	def test_direct_customer_and_multiple_memberships_are_unioned(self):
+		self.link(self.user, "Customer", self.foreign.name)
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name, self.foreign.name})
 		self.contact.set("email_ids", [])
 		self.contact.save()
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name, self.foreign.name})
-		duplicate.set("email_ids", [])
-		duplicate.save()
+		set_member(self.user.name, "Customer", self.own.name, member=False)
 		self.assertEqual(access.customer_names(self.user.name), {self.foreign.name})
-		second.set("links", [])
-		second.save()
+		set_member(self.user.name, "Customer", self.foreign.name, member=False)
 		self.assertEqual(access.customer_names(self.user.name), set())
 
 	def test_role_alone_and_contact_user_field_never_grant_customer_access(self):
 		unlinked = self.make_user("YRP Partner", "YRP Customer")
 		only_role = self.make_user("YRP Customer")
 		self.link(only_role, "Customer", self.own.name)
+		# Membership adds the scope role; remove it to check the live role test.
+		frappe.db.delete("Has Role", {"parent": only_role.name, "role": "YRP Partner"})
 		for user in (unlinked, only_role):
 			self.assertTrue(access.is_customer_user(user.name))
 			self.assertEqual(access.customer_names(user.name), set())
 			self.assertEqual(self.visible("Customer", user.name), set())
-		# Leave the generated membership and Contact.user stale intentionally.
+		# Contact emails are not identity; the explicit membership still grants access.
 		frappe.db.delete("Contact Email", {"parent": self.contact.name, "parenttype": "Contact"})
-		self.assertEqual(access.customer_names(self.user.name), set())
+		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
 
 	def test_disabled_user_and_revoked_roles_invalidate_stale_memberships(self):
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
@@ -105,12 +108,36 @@ class TestCustomerAccess(unittest.TestCase):
 				self.assertEqual(access.customer_names(self.user.name), set())
 				frappe.db.set_value("Has Role", role_row, "role", role)
 
-	def test_contact_reassignment_revokes_old_source_before_membership_cleanup(self):
-		frappe.db.set_value("Dynamic Link", self.contact.links[0].name, "link_name", self.foreign.name)
-		self.assertEqual(access.customer_names(self.user.name), set())
-		self.contact.reload()
+	def test_membership_gives_and_takes_its_roles(self):
+		user = self.make_user("Sales User")
+		people = [sales_person(party) for party in (self.own, self.foreign)]
+		for person in people:
+			set_member(user.name, "Sales Person", person.name)
+		set_member(user.name, "Customer", self.own.name)
+
+		def roles():
+			return set(frappe.get_roles(user.name)) & MEMBER_ROLES
+
+		self.assertEqual(roles(), {"YRP Partner", "YRP Sales Person", "YRP Customer"})
+		set_member(user.name, "Sales Person", people[0].name, member=False)
+		self.assertEqual(roles(), {"YRP Partner", "YRP Sales Person", "YRP Customer"})
+		set_member(user.name, "Sales Person", people[1].name, member=False)
+		self.assertEqual(roles(), {"YRP Partner", "YRP Customer"})
+		set_member(user.name, "Customer", self.own.name, member=False)
+		self.assertEqual(roles(), set())
+		self.assertIn("Sales User", frappe.get_roles(user.name))
+
+	def test_membership_keeps_roles_it_did_not_give(self):
+		user = self.make_user("YRP Sales Person")
+		set_member(user.name, "Customer", self.own.name)
+		set_member(user.name, "Customer", self.own.name)
+		set_member(user.name, "Customer", self.own.name, member=False)
+		self.assertEqual(set(frappe.get_roles(user.name)) & MEMBER_ROLES, {"YRP Sales Person"})
+
+	def test_contact_reassignment_does_not_move_membership(self):
+		self.contact.links[0].link_name = self.foreign.name
 		self.contact.save()
-		self.assertEqual(access.customer_names(self.user.name), {self.foreign.name})
+		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
 
 	def test_disabled_customer_retains_history_but_mismatched_partner_type_fails_closed(self):
 		frappe.db.set_value("Customer", self.own.name, "disabled", 1)
@@ -146,7 +173,11 @@ class TestCustomerAccess(unittest.TestCase):
 		person = sales_person(self.foreign)
 		self.link(self.user, "Sales Person", person.name)
 		self.link(self.user, "Sales Partner", self.foreign.default_sales_partner)
+		# Membership adds the sales roles; remove them to check the role boundary.
+		frappe.db.delete("Has Role", {"parent": self.user.name, "role": ["in", ["YRP Sales Person", "YRP Sales Partner"]]})
+		frappe.clear_cache(user=self.user.name)
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
+		self.user.reload()
 		self.user.append("roles", {"role": "YRP Sales Person"})
 		self.user.save()
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name, self.foreign.name})
@@ -199,8 +230,7 @@ class TestCustomerAccess(unittest.TestCase):
 
 	def test_contacts_and_addresses_require_explicit_authorized_links(self):
 		foreign_contact = self.link(self.user, "Customer", self.foreign.name)
-		foreign_contact.set("email_ids", [])
-		foreign_contact.save()
+		set_member(self.user.name, "Customer", self.foreign.name, member=False)
 		for contact in (self.contact, foreign_contact):
 			contact.append("phone_nos", {"phone": "5550100000", "is_primary_phone": 1})
 			contact.save()

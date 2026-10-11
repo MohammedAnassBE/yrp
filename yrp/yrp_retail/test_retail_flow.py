@@ -7,7 +7,7 @@ import frappe
 from frappe.utils import now_datetime
 
 from yrp.yrp_retail import api
-from yrp.yrp_retail.tests.fixtures import sales_partner
+from yrp.yrp_retail.tests.fixtures import sales_partner, set_member
 
 
 class TestRetailFlow(unittest.TestCase):
@@ -37,9 +37,7 @@ class TestRetailFlow(unittest.TestCase):
 			"first_name": "Fictional Salesperson", "send_welcome_email": 0,
 			"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}]}).insert()
 		self.partner_type = frappe.get_doc({"doctype": "YRP Partner Type", "partner_type_name": self.label("Partner Type"), "reference_doctype": "Sales Person"}).insert()
-		self.contact = frappe.get_doc({"doctype": "Contact", "first_name": self.label("Contact"), "user": self.user.name,
-			"email_ids": [{"email_id": self.user.email, "is_primary": 1}],
-			"links": [{"link_doctype": "Sales Person", "link_name": self.person.name}]}).insert()
+		set_member(self.user.name, "Sales Person", self.person.name)
 		frappe.set_user(self.user.name)
 
 	def label(self, label):

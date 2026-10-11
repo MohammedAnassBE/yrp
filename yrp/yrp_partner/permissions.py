@@ -1,7 +1,7 @@
 """Partner record scope with explicit, state-limited sales action roles.
 
 Management roles grant ordinary Frappe permissions. YRP Partner narrows supported
-records to derived memberships; only System Manager bypasses this restriction.
+records to explicit memberships; only System Manager bypasses this restriction.
 No membership means no scoped rows. Explicit Frappe document sharing remains
 an administrator-controlled read exception; lifecycle guards still deny writes.
 """
