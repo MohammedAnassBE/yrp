@@ -158,6 +158,16 @@ class TestCustomerLedger(unittest.TestCase):
 				self.assertEqual(flt(rows[self.second.name]["advance"]), 0)
 				self.assertEqual(flt(result["result"][-1]["outstanding"]), 215)
 
+	def test_prepared_ledger_runs_as_its_owner_with_the_same_scope_and_projection(self):
+		from frappe.core.doctype.prepared_report.prepared_report import generate_report, make_prepared_report
+		frappe.set_user(self.users["YRP Customer"])
+		name = make_prepared_report("General Ledger", self.filters())["name"]
+		generate_report(name)
+		result = json.loads(frappe.get_doc("Prepared Report", name).get_prepared_data())
+		result["result"] = [row for row in result["result"] if isinstance(row, dict)]
+		self.assertIn(self.invoices[self.customer.name].name, json.dumps(result, default=str))
+		self.assert_projection(result)
+
 	def test_real_csv_export_redacts_internal_data_and_prepared_paths_fail_closed(self):
 		frappe.set_user(self.users["YRP Customer"])
 		form = frappe._dict(report_name="General Ledger", filters=json.dumps(self.filters(show_remarks=1)),
@@ -183,9 +193,6 @@ class TestCustomerLedger(unittest.TestCase):
 				"fieldname": "remarks", "doctype": "GL Entry", "link_field": "gl_entry", "insert_after_index": 0}])
 		with self.assertRaises(frappe.PermissionError):
 			self.run_report("General Ledger", prepared_report_name="Unrestricted cache")
-		from frappe.core.doctype.prepared_report.prepared_report import make_prepared_report
-		with self.assertRaises(frappe.PermissionError):
-			make_prepared_report("General Ledger", self.filters())
 		prepared = frappe.get_doc({"doctype": "Prepared Report", "report_name": "General Ledger",
 			"name": "Fictional unrestricted cache", "status": "Completed", "owner": "Administrator"})
 		with self.assertRaises(frappe.PermissionError):

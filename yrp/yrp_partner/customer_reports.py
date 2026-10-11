@@ -4,10 +4,11 @@ Frappe v16 desk/query_report.py checks Report.is_permitted before choosing the
 prepared result path, and exports re-run that same path. Report controller
 extensions therefore keep live and exported results under the same boundary.
 PreparedReport.before_insert also runs for make_prepared_report's privileged
-insert. These roles may prepare only the portal reports they can run, a few at
-a time, and read only their own results; the job runs as the owner, so the
-same scoping applies. The result File is not theirs, so they cannot download it
-directly. GL and AR caches stay unavailable to them.
+insert. These roles may prepare only the portal reports, General Ledger and
+Retail reports they can run, a few at a time, and read only their own results;
+the job runs as the owner, so the same scoping and projection apply. The result
+File is not theirs, so they cannot download it directly. AR caches stay
+unavailable to them.
 
 ERPNext GL get_conditions and ReceivablePayableReport.add_common_filters apply
 party_type/party before opening balances, ageing, subtotals and charts. Native
@@ -58,8 +59,8 @@ _RETAIL_KINDS = {
 	"YRP Retail Demand": "demand",
 	"YRP Retail Summary Allocation": "allocation",
 }
-# The partner portal runs these through Frappe's Prepared Report.
-PREPARED_REPORTS = frozenset(PORTAL_REPORTS) | frozenset(_RETAIL_KINDS)
+# The partner portal and app run these through Frappe's Prepared Report.
+PREPARED_REPORTS = frozenset(PORTAL_REPORTS) | frozenset(_RETAIL_KINDS) | {"General Ledger"}
 MAX_QUEUED_PREPARED_REPORTS = 3
 
 _ACCOUNTING_REFERENCES = {
@@ -400,7 +401,7 @@ class CustomerPreparedReportMixin:
 		return super().get_prepared_data(with_file_name=with_file_name)
 
 	def is_partner_report(self):
-		"""Partners write only their own Prepared Reports of the portal reports they may run."""
+		"""Partners write only their own Prepared Reports of the prepared reports they may run."""
 		return (
 			self.report_name in PREPARED_REPORTS
 			and (self.is_new() or self.owner == frappe.session.user)
@@ -408,7 +409,7 @@ class CustomerPreparedReportMixin:
 		)
 
 	def check_report_access(self):
-		"""Customer users only on portal reports they may run; processing users never on accounting ones."""
+		"""Customer users only on prepared reports they may run; processing users never on accounting ones."""
 		if is_customer_report_user():
 			if self.report_name not in PREPARED_REPORTS or not frappe.get_doc("Report", self.report_name).is_permitted():
 				_deny()

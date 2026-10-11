@@ -231,23 +231,25 @@ class TestCustomerReports(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			doc.get_prepared_data(with_file_name=True)
 
-	def test_ledger_and_receivable_caches_stay_denied(self):
-		for name in ("General Ledger", "Accounts Receivable", "Accounts Receivable Summary"):
+	def test_receivable_caches_stay_denied(self):
+		for name in ("Accounts Receivable", "Accounts Receivable Summary"):
 			doc = self.prepared(name)
 			with self.subTest(report=name), self.assertRaises(frappe.PermissionError):
 				doc.before_insert()
 			with self.subTest(report=name), self.assertRaises(frappe.PermissionError):
 				doc.get_prepared_data()
 
-	def test_portal_report_is_prepared_and_read_by_its_owner_only(self):
+	def test_portal_report_and_ledger_are_prepared_and_read_by_their_owner_only(self):
 		self.roles.return_value = ["YRP Sales Partner"]
 		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
-		doc = self.prepared("Itemwise Pending")
-		self.assertEqual(doc.before_insert(), "native insert")
-		self.assertEqual(doc.get_prepared_data(), "native data")
-		doc.owner = "another@example.invalid"
-		with self.assertRaises(frappe.PermissionError):
-			doc.get_prepared_data()
+		for name in ("Itemwise Pending", "General Ledger"):
+			doc = self.prepared(name)
+			with self.subTest(report=name):
+				self.assertEqual(doc.before_insert(), "native insert")
+				self.assertEqual(doc.get_prepared_data(), "native data")
+				doc.owner = "another@example.invalid"
+				with self.assertRaises(frappe.PermissionError):
+					doc.get_prepared_data()
 
 	def test_partners_write_only_their_own_portal_prepared_reports(self):
 		self.roles.return_value = ["YRP Sales Partner"]
@@ -255,7 +257,8 @@ class TestCustomerReports(unittest.TestCase):
 		self.assertTrue(doc.is_partner_report())
 		doc.owner = "another@example.invalid"
 		self.assertFalse(doc.is_partner_report())
-		self.assertFalse(self.prepared("General Ledger").is_partner_report())
+		self.assertTrue(self.prepared("General Ledger").is_partner_report())
+		self.assertFalse(self.prepared("Accounts Receivable").is_partner_report())
 
 	def test_portal_report_needs_the_portal_role(self):
 		doc = self.prepared("Itemwise Pending")
