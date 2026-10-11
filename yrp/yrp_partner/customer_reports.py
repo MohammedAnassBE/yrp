@@ -5,11 +5,10 @@ prepared result path, and exports re-run that same path. Report controller
 extensions therefore keep live and exported results under the same boundary.
 PreparedReport.before_insert also runs for make_prepared_report's privileged
 insert. These roles may prepare only the portal reports, General Ledger and
-Retail reports they can run, a few at a time, and read only their own results
-while their report scope is as when queued;
-the job runs as the owner, so the same scoping and projection apply. The result
-File is not theirs, so they cannot download it directly. AR caches stay
-unavailable to them.
+Retail reports they can run, a few at a time; the job runs as the owner, so
+the same scoping and projection apply. No partner reads a raw result or
+downloads its File: only the partner portal reads its runs server-side, after
+its own access check. AR caches stay unavailable to them.
 
 ERPNext GL get_conditions and ReceivablePayableReport.add_common_filters apply
 party_type/party before opening balances, ageing, subtotals and charts. Native
@@ -19,22 +18,18 @@ native GL comparison and future-payment queries are not customer-safe. The
 bounded summary retains native ageing/aggregation and scopes advances itself.
 """
 
-import hashlib
 import json
 
 import frappe
 from frappe import _
-from frappe.permissions import get_user_permissions
 from frappe.utils import cint, flt
 
 from yrp.yrp_partner.customer_access import (
 	company_names,
-	customer_company_pairs,
 	customer_names,
 	is_customer_report_user,
+	is_partner_user,
 )
-from yrp.yrp_partner.customer_api import is_processing_scoped_user
-from yrp.yrp_partner.sales_roles import processing_customer_names
 
 
 # Essdee partner portal reports. Each reads through permission-checked lists, so its rows
@@ -72,8 +67,6 @@ _RETAIL_KINDS = {
 # The partner portal and app run these through Frappe's Prepared Report.
 PREPARED_REPORTS = frozenset(PORTAL_REPORTS) | frozenset(_RETAIL_KINDS) | {"General Ledger"}
 MAX_QUEUED_PREPARED_REPORTS = 3
-PREPARED_SCOPE_KEY = "yrp_prepared_report_scope"
-PREPARED_SCOPE_TTL = 24 * 60 * 60
 
 _ACCOUNTING_REFERENCES = {
 	'Account','GL Entry','Sales Invoice','Purchase Invoice','Payment Ledger Entry',
@@ -85,6 +78,7 @@ def _processing_financial_report(report):
 	"""Account metadata for processing must not open raw accounting reports."""
 	if is_customer_report_user():
 		return False
+	from yrp.yrp_partner.customer_api import is_processing_scoped_user
 	return is_processing_scoped_user() and (
 		report.get('module') == 'Accounts' or report.get('ref_doctype') in _ACCOUNTING_REFERENCES
 	)
@@ -321,6 +315,10 @@ class CustomerReportMixin:
 		if _processing_financial_report(self):
 			return False
 		if not is_customer_report_user():
+			if is_partner_user():
+				# Desk runs a partner's report live: partners never read a Prepared Report.
+				self.prepared_report = 0
+				self.disable_prepared_report_automation = 1
 			return super().is_permitted()
 		_request_options()
 		if (self.name not in CUSTOMER_REPORTS or not customer_names()
@@ -405,34 +403,11 @@ class CustomerPreparedReportMixin:
 			frappe.throw(_("{0} reports are already running. Wait for one to finish or cancel it.").format(
 				MAX_QUEUED_PREPARED_REPORTS))
 
-	def after_insert(self):
-		if is_scoped_report_user(self.owner):
-			frappe.cache.set_value(self.scope_key, get_scope_fingerprint(self.owner), expires_in_sec=PREPARED_SCOPE_TTL)
-		return super().after_insert()
-
-	def on_update(self):
-		"""A scope change while the job ran voids the snapshot, so its result is never read."""
-		if self.status == "Completed" and not self.has_current_scope():
-			frappe.cache.delete_value(self.scope_key)
-
 	def get_prepared_data(self, with_file_name=False):
-		self.check_report_access()
-		if is_customer_report_user() and self.owner != frappe.session.user:
+		"""Partners never read a raw result; the partner portal reads its own runs server-side."""
+		if is_partner_user():
 			_deny()
-		if is_scoped_report_user() and not self.has_current_scope():
-			frappe.throw(_("Your access has changed. Run the report again."), frappe.PermissionError)
 		return super().get_prepared_data(with_file_name=with_file_name)
-
-	@property
-	def scope_key(self):
-		return f"{PREPARED_SCOPE_KEY}:{self.name}"
-
-	def has_current_scope(self):
-		"""True unless a scoped owner's result was queued with another `get_report_scope`."""
-		if not is_scoped_report_user(self.owner):
-			return True
-		stored = frappe.cache.get_value(self.scope_key, expires=True, use_local_cache=False)
-		return stored == get_scope_fingerprint(self.owner)
 
 	def is_partner_report(self):
 		"""Partners write only their own Prepared Reports of the prepared reports they may run."""
@@ -451,31 +426,10 @@ class CustomerPreparedReportMixin:
 			_deny()
 
 
-def is_scoped_report_user(user=None):
-	"""Customer and processing partners, whose report rows follow their Customer/company scope."""
-	return is_customer_report_user(user) or is_processing_scoped_user(user)
-
-
-def get_report_scope(user):
-	"""What decides a scoped user's report rows: roles, User Permissions, Customers and their exact
-	Customer/company pairs."""
-	customers = customer_names(user) | processing_customer_names(user)
-	return {
-		"roles": sorted(frappe.get_roles(user)),
-		"user_permissions": get_user_permissions(user),
-		"customers": sorted(customers),
-		"pairs": customer_company_pairs(customers),
-	}
-
-
-def get_scope_fingerprint(user):
-	return hashlib.sha1(frappe.as_json(get_report_scope(user)).encode()).hexdigest()
-
-
 def own_prepared_result_file(doc, method=None):
-	"""A scoped user's Prepared Report result is saved as Administrator's File, so its owner cannot
-	download it by URL and reads it only through `get_prepared_data` and the portal's checks."""
-	if doc.attached_to_doctype == "Prepared Report" and is_scoped_report_user():
+	"""A partner's Prepared Report result is saved as Administrator's File, so its owner cannot
+	download it by URL; only the partner portal reads it, after its access check."""
+	if doc.attached_to_doctype == "Prepared Report" and is_partner_user():
 		doc.owner = "Administrator"
 
 

@@ -39,6 +39,11 @@ def is_customer_report_user(user=None):
 	return _has_scoped_role(user or frappe.session.user, FINANCIAL_ROLES)
 
 
+def is_partner_user(user=None):
+	"""Any partner login: a financial role or the YRP Partner role, as processing and retailer partners."""
+	return _has_scoped_role(user or frappe.session.user, FINANCIAL_ROLES | {"YRP Partner"})
+
+
 def _source_references(doctype, user, roles):
 	"""Recheck explicit membership against its current source, login and roles."""
 	role_values = ", ".join(frappe.db.escape(role) for role in sorted(roles))

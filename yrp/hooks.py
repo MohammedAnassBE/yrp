@@ -215,9 +215,6 @@ scheduler_events = {
 	},
 }
 
-# Snapshots of a scoped user's Prepared Report scope; a cleared one makes its result unreadable.
-persistent_cache_keys = ["yrp_prepared_report_scope*"]
-
 doc_events = {
 	"Customer": {"on_update": "yrp.yrp_retail.retailer.sync_customer_partner"},
 	"Item": {
