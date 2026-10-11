@@ -5,7 +5,8 @@ prepared result path, and exports re-run that same path. Report controller
 extensions therefore keep live and exported results under the same boundary.
 PreparedReport.before_insert also runs for make_prepared_report's privileged
 insert. These roles may prepare only the portal reports, General Ledger and
-Retail reports they can run, a few at a time, and read only their own results;
+Retail reports they can run, a few at a time, and read only their own results
+while their Customers and Customer/company pairs are as when queued;
 the job runs as the owner, so the same scoping and projection apply. The result
 File is not theirs, so they cannot download it directly. AR caches stay
 unavailable to them.
@@ -18,13 +19,19 @@ native GL comparison and future-payment queries are not customer-safe. The
 bounded summary retains native ageing/aggregation and scopes advances itself.
 """
 
+import hashlib
 import json
 
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
 
-from yrp.yrp_partner.customer_access import company_names, customer_names, is_customer_report_user
+from yrp.yrp_partner.customer_access import (
+	company_names,
+	customer_company_pairs,
+	customer_names,
+	is_customer_report_user,
+)
 
 
 # Essdee partner portal reports. Each reads through permission-checked lists, so its rows
@@ -62,6 +69,8 @@ _RETAIL_KINDS = {
 # The partner portal and app run these through Frappe's Prepared Report.
 PREPARED_REPORTS = frozenset(PORTAL_REPORTS) | frozenset(_RETAIL_KINDS) | {"General Ledger"}
 MAX_QUEUED_PREPARED_REPORTS = 3
+PREPARED_SCOPE_KEY = "yrp_prepared_report_scope"
+PREPARED_SCOPE_TTL = 24 * 60 * 60
 
 _ACCOUNTING_REFERENCES = {
 	'Account','GL Entry','Sales Invoice','Purchase Invoice','Payment Ledger Entry',
@@ -394,11 +403,40 @@ class CustomerPreparedReportMixin:
 			frappe.throw(_("{0} reports are already running. Wait for one to finish or cancel it.").format(
 				MAX_QUEUED_PREPARED_REPORTS))
 
+	def after_insert(self):
+		if is_customer_report_user(self.owner):
+			frappe.cache.set_value(self.scope_key, self.get_scope(), expires_in_sec=PREPARED_SCOPE_TTL)
+		return super().after_insert()
+
+	def on_update(self):
+		"""A scope change while the job ran voids the snapshot, so its result is never read."""
+		if self.status == "Completed" and not self.has_current_scope():
+			frappe.cache.delete_value(self.scope_key)
+
 	def get_prepared_data(self, with_file_name=False):
 		self.check_report_access()
 		if is_customer_report_user() and self.owner != frappe.session.user:
 			_deny()
+		if is_customer_report_user() and not self.has_current_scope():
+			frappe.throw(_("Your access has changed. Run the report again."), frappe.PermissionError)
 		return super().get_prepared_data(with_file_name=with_file_name)
+
+	@property
+	def scope_key(self):
+		return f"{PREPARED_SCOPE_KEY}:{self.name}"
+
+	def get_scope(self):
+		"""A fingerprint of the owner's Customers and exact Customer/company pairs."""
+		customers = customer_names(self.owner)
+		scope = {"customers": sorted(customers), "pairs": customer_company_pairs(customers)}
+		return hashlib.sha1(frappe.as_json(scope).encode()).hexdigest()
+
+	def has_current_scope(self):
+		"""True unless a customer user's result was queued with other Customers or Customer/company pairs."""
+		if not is_customer_report_user(self.owner):
+			return True
+		stored = frappe.cache.get_value(self.scope_key, expires=True, use_local_cache=False)
+		return stored == self.get_scope()
 
 	def is_partner_report(self):
 		"""Partners write only their own Prepared Reports of the prepared reports they may run."""

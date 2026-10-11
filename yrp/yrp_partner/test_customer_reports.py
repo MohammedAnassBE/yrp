@@ -218,7 +218,7 @@ class TestCustomerReports(unittest.TestCase):
 
 	def prepared(self, report_name, owner="customer@example.invalid"):
 		doc = _PreparedReport()
-		doc.report_name, doc.owner = report_name, owner
+		doc.name, doc.report_name, doc.owner = "Fictional prepared", report_name, owner
 		self.enterContext(patch.object(frappe, "get_doc", side_effect=lambda doctype, name: _Report(name)))
 		return doc
 
@@ -242,11 +242,18 @@ class TestCustomerReports(unittest.TestCase):
 	def test_portal_report_and_ledger_are_prepared_and_read_by_their_owner_only(self):
 		self.roles.return_value = ["YRP Sales Partner"]
 		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
+		pairs = self.enterContext(patch.object(reports, "customer_company_pairs", return_value=[("Customer A", "Company")]))
+		cache = self.enterContext(patch.object(frappe, "cache", Mock()))
 		for name in ("Itemwise Pending", "General Ledger"):
 			doc = self.prepared(name)
 			with self.subTest(report=name):
 				self.assertEqual(doc.before_insert(), "native insert")
+				cache.get_value.return_value = doc.get_scope()
 				self.assertEqual(doc.get_prepared_data(), "native data")
+				pairs.return_value = [("Customer A", "Other Company")]
+				with self.assertRaises(frappe.PermissionError):
+					doc.get_prepared_data()
+				pairs.return_value = [("Customer A", "Company")]
 				doc.owner = "another@example.invalid"
 				with self.assertRaises(frappe.PermissionError):
 					doc.get_prepared_data()

@@ -158,15 +158,42 @@ class TestCustomerLedger(unittest.TestCase):
 				self.assertEqual(flt(rows[self.second.name]["advance"]), 0)
 				self.assertEqual(flt(result["result"][-1]["outstanding"]), 215)
 
+	def prepare_ledger(self):
+		"""Prepare the ledger inline; Frappe's job commits and queues it for a worker, which would leak fixtures."""
+		from frappe.core.doctype.prepared_report import prepared_report
+		with patch.object(prepared_report, "enqueue"), patch.object(prepared_report, "update_job_id"):
+			name = prepared_report.make_prepared_report("General Ledger", self.filters())["name"]
+			prepared_report.generate_report(name)
+		return name
+
 	def test_prepared_ledger_runs_as_its_owner_with_the_same_scope_and_projection(self):
-		from frappe.core.doctype.prepared_report.prepared_report import generate_report, make_prepared_report
 		frappe.set_user(self.users["YRP Customer"])
-		name = make_prepared_report("General Ledger", self.filters())["name"]
-		generate_report(name)
+		name = self.prepare_ledger()
 		result = json.loads(frappe.get_doc("Prepared Report", name).get_prepared_data())
 		result["result"] = [row for row in result["result"] if isinstance(row, dict)]
 		self.assertIn(self.invoices[self.customer.name].name, json.dumps(result, default=str))
 		self.assert_projection(result)
+
+	def test_prepared_ledger_is_refused_once_a_customer_company_pair_is_revoked(self):
+		"""Revoking one pair can leave the Customer and Company sets as they were; the result still closes."""
+		from yrp.yrp_partner.customer_access import company_names, customer_names
+		other = frappe.db.get_value("Company", {"name": ("!=", self.company.name)})
+		self.assertTrue(other)
+		self.customer.append("accounts", {"company": other})
+		self.customer.save()
+		user = self.users["YRP Customer"]
+		frappe.set_user(user)
+		name = self.prepare_ledger()
+		self.assertIn(self.invoices[self.customer.name].name,
+			frappe.get_doc("Prepared Report", name).get_prepared_data().decode())
+		scope = (customer_names(user), company_names(user))
+		frappe.set_user("Administrator")
+		frappe.db.delete("Party Account", {"parenttype": "Customer", "parent": self.customer.name,
+			"company": self.company.name})
+		self.assertEqual((customer_names(user), company_names(user)), scope)
+		frappe.set_user(user)
+		with self.assertRaises(frappe.PermissionError):
+			frappe.get_doc("Prepared Report", name).get_prepared_data()
 
 	def test_real_csv_export_redacts_internal_data_and_prepared_paths_fail_closed(self):
 		frappe.set_user(self.users["YRP Customer"])

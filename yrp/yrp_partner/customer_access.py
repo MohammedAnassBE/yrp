@@ -111,16 +111,20 @@ def company_names(user=None, customers=None):
 	An optional Customer subset can only narrow the live membership union. Empty
 	defaults fail closed; credit limits and internal-company links are unrelated.
 	"""
-	user = user or frappe.session.user
 	allowed = customer_names(user)
 	if customers is not None:
 		allowed &= set(customers)
-	if not allowed:
-		return set()
-	return set(frappe.db.sql("""SELECT DISTINCT defaults.company FROM `tabParty Account` defaults
-		JOIN `tabCompany` company ON company.name=defaults.company
+	return {company for _customer, company in customer_company_pairs(allowed)}
+
+
+def customer_company_pairs(customers):
+	"""Sorted exact (Customer, Company) assignments of these Customers in their Default Accounts."""
+	if not customers:
+		return []
+	return sorted({tuple(row) for row in frappe.db.sql("""SELECT defaults.parent, defaults.company
+		FROM `tabParty Account` defaults JOIN `tabCompany` company ON company.name=defaults.company
 		WHERE defaults.parenttype='Customer' AND defaults.parentfield='accounts'
-		AND defaults.parent IN %(customers)s""", {"customers": sorted(allowed)}, pluck=True))
+		AND defaults.parent IN %(customers)s""", {"customers": sorted(customers)})})
 
 
 def warehouse_company_condition(user,table, *, customers=None):
