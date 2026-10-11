@@ -33,6 +33,21 @@ class _Report(reports.CustomerReportMixin, _NativeReport):
 	pass
 
 
+class _NativePreparedReport:
+	def is_new(self):
+		return False
+
+	def before_insert(self):
+		return "native insert"
+
+	def get_prepared_data(self, with_file_name=False):
+		return "native data"
+
+
+class _PreparedReport(reports.CustomerPreparedReportMixin, _NativePreparedReport):
+	pass
+
+
 class TestCustomerReports(unittest.TestCase):
 	def setUp(self):
 		self.scoped = self.enterContext(patch.object(reports, "is_customer_report_user", return_value=True))
@@ -201,13 +216,57 @@ class TestCustomerReports(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			reports._request_options()
 
+	def prepared(self, report_name, owner="customer@example.invalid"):
+		doc = _PreparedReport()
+		doc.report_name, doc.owner = report_name, owner
+		self.enterContext(patch.object(frappe, "get_doc", side_effect=lambda doctype, name: _Report(name)))
+		return doc
+
 	def test_prepared_creation_and_download_denied_even_without_membership(self):
 		self.memberships.return_value = []
-		doc = reports.CustomerPreparedReportMixin()
+		doc = self.prepared("Itemwise Pending")
+		self.roles.return_value = ["YRP Sales Partner"]
 		with self.assertRaises(frappe.PermissionError):
 			doc.before_insert()
 		with self.assertRaises(frappe.PermissionError):
 			doc.get_prepared_data(with_file_name=True)
+
+	def test_ledger_and_receivable_caches_stay_denied(self):
+		for name in ("General Ledger", "Accounts Receivable", "Accounts Receivable Summary"):
+			doc = self.prepared(name)
+			with self.subTest(report=name), self.assertRaises(frappe.PermissionError):
+				doc.before_insert()
+			with self.subTest(report=name), self.assertRaises(frappe.PermissionError):
+				doc.get_prepared_data()
+
+	def test_portal_report_is_prepared_and_read_by_its_owner_only(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		self.enterContext(patch.object(frappe, "db", Mock(count=Mock(return_value=0))))
+		doc = self.prepared("Itemwise Pending")
+		self.assertEqual(doc.before_insert(), "native insert")
+		self.assertEqual(doc.get_prepared_data(), "native data")
+		doc.owner = "another@example.invalid"
+		with self.assertRaises(frappe.PermissionError):
+			doc.get_prepared_data()
+
+	def test_partners_write_only_their_own_portal_prepared_reports(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		doc = self.prepared("Itemwise Pending")
+		self.assertTrue(doc.is_partner_report())
+		doc.owner = "another@example.invalid"
+		self.assertFalse(doc.is_partner_report())
+		self.assertFalse(self.prepared("General Ledger").is_partner_report())
+
+	def test_portal_report_needs_the_portal_role(self):
+		doc = self.prepared("Itemwise Pending")
+		with self.assertRaises(frappe.PermissionError):
+			doc.before_insert()
+
+	def test_too_many_queued_prepared_reports_are_refused(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		self.enterContext(patch.object(frappe, "db", Mock(count=Mock(return_value=reports.MAX_QUEUED_PREPARED_REPORTS))))
+		with self.assertRaises(frappe.PermissionError):
+			self.prepared("YRP Retail Demand").before_insert()
 
 	def test_unscoped_users_retain_native_behavior(self):
 		self.scoped.return_value = False

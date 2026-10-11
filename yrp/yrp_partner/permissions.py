@@ -230,6 +230,8 @@ def prevent_partner_write(doc, *args, **kwargs):
 
 		if doc.doctype == "YRP Partner" and doc.flags.generation_token is _GENERATION_TOKEN:
 			return
+		if doc.doctype == "Prepared Report" and doc.is_partner_report():
+			return
 		from yrp.yrp_partner.sales_roles import permitted_event
 
 		event = args[0] if args else kwargs.get("method")
