@@ -6,7 +6,7 @@ extensions therefore keep live and exported results under the same boundary.
 PreparedReport.before_insert also runs for make_prepared_report's privileged
 insert. These roles may prepare only the portal reports, General Ledger and
 Retail reports they can run, a few at a time, and read only their own results
-while their Customers and Customer/company pairs are as when queued;
+while their report scope is as when queued;
 the job runs as the owner, so the same scoping and projection apply. The result
 File is not theirs, so they cannot download it directly. AR caches stay
 unavailable to them.
@@ -24,6 +24,7 @@ import json
 
 import frappe
 from frappe import _
+from frappe.permissions import get_user_permissions
 from frappe.utils import cint, flt
 
 from yrp.yrp_partner.customer_access import (
@@ -32,6 +33,8 @@ from yrp.yrp_partner.customer_access import (
 	customer_names,
 	is_customer_report_user,
 )
+from yrp.yrp_partner.customer_api import is_processing_scoped_user
+from yrp.yrp_partner.sales_roles import processing_customer_names
 
 
 # Essdee partner portal reports. Each reads through permission-checked lists, so its rows
@@ -82,7 +85,6 @@ def _processing_financial_report(report):
 	"""Account metadata for processing must not open raw accounting reports."""
 	if is_customer_report_user():
 		return False
-	from yrp.yrp_partner.customer_api import is_processing_scoped_user
 	return is_processing_scoped_user() and (
 		report.get('module') == 'Accounts' or report.get('ref_doctype') in _ACCOUNTING_REFERENCES
 	)
@@ -404,8 +406,8 @@ class CustomerPreparedReportMixin:
 				MAX_QUEUED_PREPARED_REPORTS))
 
 	def after_insert(self):
-		if is_customer_report_user(self.owner):
-			frappe.cache.set_value(self.scope_key, self.get_scope(), expires_in_sec=PREPARED_SCOPE_TTL)
+		if is_scoped_report_user(self.owner):
+			frappe.cache.set_value(self.scope_key, get_scope_fingerprint(self.owner), expires_in_sec=PREPARED_SCOPE_TTL)
 		return super().after_insert()
 
 	def on_update(self):
@@ -417,7 +419,7 @@ class CustomerPreparedReportMixin:
 		self.check_report_access()
 		if is_customer_report_user() and self.owner != frappe.session.user:
 			_deny()
-		if is_customer_report_user() and not self.has_current_scope():
+		if is_scoped_report_user() and not self.has_current_scope():
 			frappe.throw(_("Your access has changed. Run the report again."), frappe.PermissionError)
 		return super().get_prepared_data(with_file_name=with_file_name)
 
@@ -425,18 +427,12 @@ class CustomerPreparedReportMixin:
 	def scope_key(self):
 		return f"{PREPARED_SCOPE_KEY}:{self.name}"
 
-	def get_scope(self):
-		"""A fingerprint of the owner's Customers and exact Customer/company pairs."""
-		customers = customer_names(self.owner)
-		scope = {"customers": sorted(customers), "pairs": customer_company_pairs(customers)}
-		return hashlib.sha1(frappe.as_json(scope).encode()).hexdigest()
-
 	def has_current_scope(self):
-		"""True unless a customer user's result was queued with other Customers or Customer/company pairs."""
-		if not is_customer_report_user(self.owner):
+		"""True unless a scoped owner's result was queued with another `get_report_scope`."""
+		if not is_scoped_report_user(self.owner):
 			return True
 		stored = frappe.cache.get_value(self.scope_key, expires=True, use_local_cache=False)
-		return stored == self.get_scope()
+		return stored == get_scope_fingerprint(self.owner)
 
 	def is_partner_report(self):
 		"""Partners write only their own Prepared Reports of the prepared reports they may run."""
@@ -455,10 +451,31 @@ class CustomerPreparedReportMixin:
 			_deny()
 
 
+def is_scoped_report_user(user=None):
+	"""Customer and processing partners, whose report rows follow their Customer/company scope."""
+	return is_customer_report_user(user) or is_processing_scoped_user(user)
+
+
+def get_report_scope(user):
+	"""What decides a scoped user's report rows: roles, User Permissions, Customers and their exact
+	Customer/company pairs."""
+	customers = customer_names(user) | processing_customer_names(user)
+	return {
+		"roles": sorted(frappe.get_roles(user)),
+		"user_permissions": get_user_permissions(user),
+		"customers": sorted(customers),
+		"pairs": customer_company_pairs(customers),
+	}
+
+
+def get_scope_fingerprint(user):
+	return hashlib.sha1(frappe.as_json(get_report_scope(user)).encode()).hexdigest()
+
+
 def own_prepared_result_file(doc, method=None):
-	"""A customer user's Prepared Report result is saved as Administrator's File, so its owner cannot
+	"""A scoped user's Prepared Report result is saved as Administrator's File, so its owner cannot
 	download it by URL and reads it only through `get_prepared_data` and the portal's checks."""
-	if doc.attached_to_doctype == "Prepared Report" and is_customer_report_user():
+	if doc.attached_to_doctype == "Prepared Report" and is_scoped_report_user():
 		doc.owner = "Administrator"
 
 

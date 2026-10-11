@@ -242,21 +242,36 @@ class TestCustomerReports(unittest.TestCase):
 	def test_portal_report_and_ledger_are_prepared_and_read_by_their_owner_only(self):
 		self.roles.return_value = ["YRP Sales Partner"]
 		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
-		pairs = self.enterContext(patch.object(reports, "customer_company_pairs", return_value=[("Customer A", "Company")]))
+		scope = self.enterContext(patch.object(reports, "get_report_scope", return_value={"pairs": [["A", "X"]]}))
 		cache = self.enterContext(patch.object(frappe, "cache", Mock()))
+		cache.get_value.return_value = reports.get_scope_fingerprint("customer@example.invalid")
 		for name in ("Itemwise Pending", "General Ledger"):
 			doc = self.prepared(name)
 			with self.subTest(report=name):
 				self.assertEqual(doc.before_insert(), "native insert")
-				cache.get_value.return_value = doc.get_scope()
 				self.assertEqual(doc.get_prepared_data(), "native data")
-				pairs.return_value = [("Customer A", "Other Company")]
+				scope.return_value = {"pairs": [["A", "Y"]]}
 				with self.assertRaises(frappe.PermissionError):
 					doc.get_prepared_data()
-				pairs.return_value = [("Customer A", "Company")]
+				scope.return_value = {"pairs": [["A", "X"]]}
 				doc.owner = "another@example.invalid"
 				with self.assertRaises(frappe.PermissionError):
 					doc.get_prepared_data()
+
+	def test_processing_partner_reads_its_prepared_result_only_with_the_same_scope(self):
+		self.scoped.return_value = False
+		self.roles.return_value = ["YRP Partner", "Sales User"]
+		scope = self.enterContext(patch.object(reports, "get_report_scope", return_value={"user_permissions": {}}))
+		cache = self.enterContext(patch.object(frappe, "cache", Mock()))
+		cache.get_value.return_value = reports.get_scope_fingerprint("customer@example.invalid")
+		doc = self.prepared("Itemwise Pending")
+		self.assertEqual(doc.get_prepared_data(), "native data")
+		scope.return_value = {"user_permissions": {"Customer": [{"doc": "A"}]}}
+		with self.assertRaises(frappe.PermissionError):
+			doc.get_prepared_data()
+		result_file = frappe._dict(attached_to_doctype="Prepared Report", owner="customer@example.invalid")
+		reports.own_prepared_result_file(result_file)
+		self.assertEqual(result_file.owner, "Administrator")
 
 	def test_partners_write_only_their_own_portal_prepared_reports(self):
 		self.roles.return_value = ["YRP Sales Partner"]

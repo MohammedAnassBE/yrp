@@ -92,9 +92,9 @@ def _document_doctype(value):
 	return value["doctype"]
 
 
-def is_processing_scoped_user():
+def is_processing_scoped_user(user=None):
 	"""Processing account metadata never confers financial RPC access."""
-	roles=set(frappe.get_roles())
+	roles=set(frappe.get_roles(user))
 	return 'YRP Partner' in roles and bool(roles & {'Sales User','Sales Manager'}) and 'System Manager' not in roles
 
 
