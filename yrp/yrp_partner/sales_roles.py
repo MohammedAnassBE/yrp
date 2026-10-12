@@ -21,7 +21,7 @@ ROLE_PERMISSIONS = {
 		"YRP Retailer": ("read", "create", "write"),
 		"YRP Visit": ("read", "create", "write"),
 		"YRP Retail Order": ("read", "create", "write", "submit", "cancel"),
-		"YRP Retail Order Summary": ("read", "create", "write", "submit", "cancel"),
+		"YRP Retail Order Summary": ("read", "create", "write", "submit", "cancel", "delete"),
 	},
 	SALES_PARTNER: {
 		"YRP Sales Order": ("read", "create", "write"),
@@ -203,6 +203,9 @@ def allowed_action(doc, ptype, user=None):
 		return status == 0 and cint(doc.docstatus) == 0 or (
 			doc.doctype in ORDER_DOCUMENTS and status == 0 and cint(doc.docstatus) == 1
 			and allowed_action(doc, "submit", user))
+	if ptype == "delete":
+		# A draft summary may go; its on_trash releases the claimed orders.
+		return doc.doctype == "YRP Retail Order Summary" and status == 0
 	return False
 
 

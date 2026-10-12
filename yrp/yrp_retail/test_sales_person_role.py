@@ -64,6 +64,26 @@ class TestSalesPersonRole(unittest.TestCase):
 		self.assertEqual(api.cancel_summary(name)["docstatus"], 2)
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
 
+	def test_only_an_assigned_draft_summary_can_be_deleted(self):
+		f = self.fixture
+		order = f.order()
+		draft, kept = (api.create_summary([name])["name"] for name in (order, f.order()))
+		submitted = api.create_summary([f.order()])["name"]
+		api.submit_summary(submitted)
+
+		frappe.delete_doc("YRP Retail Order Summary", draft)
+		self.assertFalse(frappe.db.exists("YRP Retail Order Summary", draft))
+		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
+		with self.assertRaises(frappe.PermissionError):
+			frappe.delete_doc("YRP Retail Order Summary", submitted)
+
+		frappe.set_user("Administrator")
+		f.person.set("yrp_customers", [])
+		f.person.save()
+		frappe.set_user(f.user.name)
+		with self.assertRaises(frappe.PermissionError):
+			frappe.delete_doc("YRP Retail Order Summary", kept)
+
 	def test_shared_retailer_edit_preserves_original_person_after_assignment_revoked(self):
 		f = self.fixture
 		shop = f.retailer()
