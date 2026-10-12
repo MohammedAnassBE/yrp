@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import frappe
 
+from yrp.patches import own_partner_prepared_report_files
 from yrp.yrp_partner import customer_access as access
 from yrp.yrp_partner.member_roles import MEMBER_ROLES
 from yrp.yrp_partner.permissions import prevent_partner_write
@@ -69,6 +70,19 @@ class TestCustomerAccess(unittest.TestCase):
 		condition = access.customer_query_condition(doctype, user or self.user.name)
 		return set(frappe.db.sql(
 			f"SELECT name FROM `tab{doctype}` WHERE {condition}", pluck=True))
+
+	def test_patch_gives_partners_existing_prepared_result_files_to_administrator(self):
+		staff = self.make_user("Accounts User")
+		owners = {self.user.name: "Administrator", staff.name: staff.name}
+		files = {}
+		for owner in owners:
+			file = self.row("File", file_name="result.json.gz", is_private=1,
+				attached_to_doctype="Prepared Report", attached_to_name="Fictional prepared")
+			frappe.db.set_value("File", file.name, "owner", owner)
+			files[file.name] = owner
+		own_partner_prepared_report_files.execute()
+		for name, owner in files.items():
+			self.assertEqual(frappe.db.get_value("File", name, ["owner", "is_private"]), (owners[owner], 1))
 
 	def test_direct_customer_and_multiple_memberships_are_unioned(self):
 		self.link(self.user, "Customer", self.foreign.name)

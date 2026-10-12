@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import frappe
 
 from yrp.yrp_partner import customer_reports as reports
+from yrp.yrp_partner.customer_access import is_partner_user
 
 
 class _NativeReport:
@@ -33,9 +34,25 @@ class _Report(reports.CustomerReportMixin, _NativeReport):
 	pass
 
 
+class _NativePreparedReport:
+	def is_new(self):
+		return False
+
+	def before_insert(self):
+		return "native insert"
+
+	def get_prepared_data(self, with_file_name=False):
+		return "native data"
+
+
+class _PreparedReport(reports.CustomerPreparedReportMixin, _NativePreparedReport):
+	pass
+
+
 class TestCustomerReports(unittest.TestCase):
 	def setUp(self):
 		self.scoped = self.enterContext(patch.object(reports, "is_customer_report_user", return_value=True))
+		self.partner = self.enterContext(patch.object(reports, "is_partner_user", return_value=True))
 		self.memberships = self.enterContext(patch.object(reports, "customer_names", return_value=["Customer A", "Customer B"]))
 		self.companies = self.enterContext(patch.object(reports, "company_names", return_value={"Company"}))
 		self.local = SimpleNamespace(form_dict={})
@@ -201,16 +218,104 @@ class TestCustomerReports(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			reports._request_options()
 
+	def prepared(self, report_name, owner="customer@example.invalid"):
+		doc = _PreparedReport()
+		doc.name, doc.report_name, doc.owner = "Fictional prepared", report_name, owner
+		self.enterContext(patch.object(frappe, "get_doc", side_effect=lambda doctype, name: _Report(name)))
+		return doc
+
 	def test_prepared_creation_and_download_denied_even_without_membership(self):
 		self.memberships.return_value = []
-		doc = reports.CustomerPreparedReportMixin()
+		doc = self.prepared("Itemwise Pending")
+		self.roles.return_value = ["YRP Sales Partner"]
 		with self.assertRaises(frappe.PermissionError):
 			doc.before_insert()
 		with self.assertRaises(frappe.PermissionError):
 			doc.get_prepared_data(with_file_name=True)
 
-	def test_unscoped_users_retain_native_behavior(self):
+	def test_receivable_caches_stay_denied(self):
+		for name in ("Accounts Receivable", "Accounts Receivable Summary"):
+			doc = self.prepared(name)
+			with self.subTest(report=name), self.assertRaises(frappe.PermissionError):
+				doc.before_insert()
+			with self.subTest(report=name), self.assertRaises(frappe.PermissionError):
+				doc.get_prepared_data()
+
+	def test_partners_never_read_a_prepared_result(self):
+		"""Customer, processing and retailer partners alike; the partner portal reads results server-side."""
+		self.roles.return_value = ["YRP Sales Partner"]
+		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
+		for name in ("Itemwise Pending", "General Ledger"):
+			doc = self.prepared(name)
+			with self.subTest(report=name):
+				self.assertEqual(doc.before_insert(), "native insert")
+				with self.assertRaises(frappe.PermissionError):
+					doc.get_prepared_data()
+		self.scoped.return_value = self.partner.return_value = False
+		self.assertEqual(self.prepared("Itemwise Pending").get_prepared_data(), "native data")
+
+	def test_every_partner_login_is_a_partner_user(self):
+		for roles, expected in (
+			(["YRP Partner"], True),
+			(["YRP Partner", "Sales User"], True),
+			(["YRP Customer"], True),
+			(["YRP Partner", "System Manager"], False),
+			(["Sales User"], False),
+		):
+			self.roles.return_value = roles
+			with self.subTest(roles=roles):
+				self.assertEqual(is_partner_user("user@example.invalid"), expected)
+
+	def test_desk_runs_a_non_customer_partners_report_live(self):
 		self.scoped.return_value = False
+		doc = _Report("Itemwise Pending")
+		self.assertEqual(doc.is_permitted(), "native permission")
+		self.assertEqual((doc.prepared_report, doc.disable_prepared_report_automation), (0, 1))
+
+	def test_partners_write_only_their_own_portal_prepared_reports(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		doc = self.prepared("Itemwise Pending")
+		self.assertTrue(doc.is_partner_report())
+		doc.owner = "another@example.invalid"
+		self.assertFalse(doc.is_partner_report())
+		self.assertTrue(self.prepared("General Ledger").is_partner_report())
+		self.assertFalse(self.prepared("Accounts Receivable").is_partner_report())
+
+	def test_portal_report_needs_the_portal_role(self):
+		doc = self.prepared("Itemwise Pending")
+		with self.assertRaises(frappe.PermissionError):
+			doc.before_insert()
+
+	def test_too_many_queued_prepared_reports_are_refused(self):
+		self.roles.return_value = ["YRP Sales Partner"]
+		queued = [("PR-1",), ("PR-2",), ("PR-3",)][: reports.MAX_QUEUED_PREPARED_REPORTS]
+		self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=queued))))
+		with self.assertRaises(frappe.PermissionError):
+			self.prepared("YRP Retail Demand").before_insert()
+
+	def test_queued_limit_counts_after_locking_the_users_row(self):
+		"""Parallel inserts wait on the user's row lock, then a locking read sees committed reports."""
+		db = self.enterContext(patch.object(frappe, "db", Mock(get_values=Mock(return_value=[]))))
+		self.prepared("YRP Retail Demand").check_queued_limit()
+		self.assertEqual([call[0] for call in db.method_calls], ["get_value", "get_values"])
+		self.assertEqual(db.get_value.call_args.args, ("User", "customer@example.invalid", "name"))
+		self.assertTrue(db.get_value.call_args.kwargs["for_update"])
+		self.assertTrue(db.get_values.call_args.kwargs["for_update"])
+
+	def test_partners_prepared_result_file_is_not_theirs(self):
+		for attached_to, scoped, owner in (
+			("Prepared Report", True, "Administrator"),
+			("Prepared Report", False, "user@example.invalid"),
+			("Sales Invoice", True, "user@example.invalid"),
+		):
+			self.partner.return_value = scoped
+			file = frappe._dict(attached_to_doctype=attached_to, owner="user@example.invalid")
+			reports.own_prepared_result_file(file)
+			with self.subTest(attached_to=attached_to, scoped=scoped):
+				self.assertEqual(file.owner, owner)
+
+	def test_unscoped_users_retain_native_behavior(self):
+		self.scoped.return_value = self.partner.return_value = False
 		doc = _Report("Unrelated report")
 		self.assertEqual(doc.is_permitted(), "native permission")
 		self.assertEqual(doc.execute_module({}), ("native execution", {}))

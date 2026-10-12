@@ -37,4 +37,5 @@ yrp.patches.add_classification_variant_fields
 yrp.patches.drop_variant_master_template_links
 yrp.patches.remove_native_sales_partner_permissions
 yrp.patches.grant_partner_member_roles
+yrp.patches.own_partner_prepared_report_files
 yrp.patches.grant_sales_person_summary_delete
