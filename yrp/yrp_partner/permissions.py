@@ -14,6 +14,23 @@ CORE_DOCTYPES = {"Sales Partner", "Sales Person", "Customer", "Employee", "YRP R
 PROCESSING_DOCTYPES = {"Sales Order", "Delivery Note", "Sales Invoice", "Packing Slip", "Stock Reservation Entry", "Delivery Schedule Item"}
 
 
+# Partner-app DocTypes that scope their own rows (they used the "YRP " prefix before the EYP rename).
+SELF_SCOPED_PARTNER_DOCTYPES = frozenset({
+	"EYP Scheme",
+	"EYP Scheme Item Group",
+	"EYP Scheme Item Group Detail",
+	"EYP Scheme Item Group Item",
+	"EYP Scheme Sales Partner",
+	"EYP Scheme Select",
+	"EYP Salesman Product",
+	"EYP Salesman Product Item",
+})
+
+
+def is_self_scoped(doctype: str) -> bool:
+	return doctype.startswith("YRP ") or doctype in SELF_SCOPED_PARTNER_DOCTYPES
+
+
 def is_partner(user=None):
 	"""Internal administrators bypass partner scope; ordinary partner users do not."""
 	user = user or frappe.session.user
@@ -127,7 +144,7 @@ def _condition(doctype, user, table=None, include_assigned_customers=True, inclu
 			"YRP Packing Slip", "GL Entry", "Payment Entry", "Quotation", "Account",
 		}:
 			return customer_query_condition(doctype, user, table)
-		if customer_links(doctype) and (is_customer_user(user) or not doctype.startswith("YRP ")):
+		if customer_links(doctype) and (is_customer_user(user) or not is_self_scoped(doctype)):
 			return customer_query_condition(doctype, user, table)
 		if is_customer_user(user) and doctype in {"Company", "Contact", "Address", "YRP Customer Stock"}:
 			customer_condition = customer_query_condition(doctype, user, table)

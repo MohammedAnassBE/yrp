@@ -32,6 +32,35 @@ class TestPartnerPermissions(unittest.TestCase):
 		}).insert()
 		set_member(self.user.name, "YRP Retailer", self.allowed.name)
 
+	def test_self_scoped_doctypes(self):
+		from yrp.yrp_partner import permissions
+
+		for doctype in ("YRP Retailer", "YRP Custom Document", *sorted(permissions.SELF_SCOPED_PARTNER_DOCTYPES)):
+			with self.subTest(doctype=doctype):
+				self.assertTrue(permissions.is_self_scoped(doctype))
+		for doctype in ("EYP Return Goods", "EYP Custom Document", "Customer", "Sales Order"):
+			with self.subTest(doctype=doctype):
+				self.assertFalse(permissions.is_self_scoped(doctype))
+
+	def test_non_self_scoped_eyp_doctype_keeps_customer_condition_for_sales_partner(self):
+		from yrp.yrp_partner import customer_access, permissions
+
+		self.user.append("roles", {"role": "YRP Sales Partner"})
+		self.user.save()
+		self.assertTrue(customer_access.is_customer_report_user(self.user.name))
+		self.assertFalse(customer_access.is_customer_user(self.user.name))
+		# Model an extension's Customer link without depending on that app being installed.
+		with (
+			patch.object(customer_access, "customer_links", return_value=(("customer", None),)),
+			patch.object(customer_access, "customer_query_condition", return_value="customer_scope") as condition,
+		):
+			for table in (None, "return_goods"):
+				with self.subTest(table=table):
+					self.assertEqual(
+						permissions._condition("EYP Return Goods", self.user.name, table), "customer_scope"
+					)
+					condition.assert_called_with("EYP Return Goods", self.user.name, table or "`tabEYP Return Goods`")
+
 	def test_list_and_direct_read_match(self):
 		# Desk entry must not expand the records this Partner can read.
 		self.assertTrue(self.user.has_desk_access())

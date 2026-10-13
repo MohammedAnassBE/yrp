@@ -48,8 +48,8 @@ PORTAL_REPORTS = {
 	"Party-wise Total Sales": "Sales Invoice",
 	"Essdee LR Entry Report": "Sales Invoice",
 	"Essdee Party Outstanding": "Sales Invoice",
-	"Agent Customer Points": "Points Entry",
-	"Agent Retailer Points": "Points Entry",
+	"Agent Customer Points": "EYP Points Entry",
+	"Agent Retailer Points": "EYP Points Entry",
 }
 PORTAL_REPORT_ROLES = {"YRP Sales Partner"}
 CUSTOMER_REPORTS = {
