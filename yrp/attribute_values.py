@@ -62,28 +62,43 @@ def normalize_mapping(doc):
 			row.attribute_value = ensure_value_master(doc.attribute_name, value)
 
 
-def get_mapping_document(name, *, cached=False):
+def get_mapping_document(name, *, cached=False, for_update=False):
 	"""Return a detached mapping with actual values for existing business APIs.
 
 	Never mutate Frappe's cached document. The mapping controller translates this
 	view back to Links if an internal workflow saves it.
 	"""
-	doc = (frappe.get_cached_doc if cached else frappe.get_doc)(MAPPING, name)
+	if cached and for_update:
+		raise ValueError("A locking mapping read cannot use the document cache.")
+	doc = (
+		frappe.get_doc(MAPPING, name, for_update=True)
+		if for_update
+		else (frappe.get_cached_doc if cached else frappe.get_doc)(MAPPING, name)
+	)
+	if for_update:
+		mapping_value = frappe.qb.DocType("YRP Item Item Attribute Mapping Value")
+		rows = (
+			frappe.qb.from_(mapping_value)
+			.select(mapping_value.star)
+			.where(mapping_value.parent == name)
+			.where(mapping_value.parenttype == MAPPING)
+			.where(mapping_value.parentfield == "values")
+			.orderby(mapping_value.idx)
+			.for_update()
+			.run(as_dict=True)
+		)
+		doc.set("values", rows)
 	data = copy.deepcopy(doc.as_dict())
 	links = [row.get("attribute_value") for row in data.get("values") or []]
-	values = (
-		{
-			row.name: row
-			for row in frappe.get_all(
-				MASTER,
-				filters={"name": ["in", links]},
-				fields=["name", "attribute_name", "attribute_value"],
-				limit_page_length=0,
-			)
-		}
-		if links
-		else {}
-	)
+	values = {}
+	if links:
+		value_rows = frappe.get_all(
+			MASTER,
+			filters={"name": ["in", links]},
+			fields=["name", "attribute_name", "attribute_value"],
+			limit_page_length=0,
+		)
+		values = {row.name: row for row in value_rows}
 	for row in data.get("values") or []:
 		if not row.get("attribute_value"):
 			continue

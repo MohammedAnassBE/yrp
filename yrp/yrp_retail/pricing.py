@@ -20,11 +20,18 @@ FREE_ZERO_FIELDS = (
 
 
 def lock_pricing_policy(doc=None, method=None):
-	"""Transaction-scoped mutex on a stable metadata row; never commits.
+	"""Take the first lock in the template/pricing-policy order; never commit.
 
-	Wire before_validate on Item, Item Price, Price List and the template, before
-	other hooks acquire Item/template locks. Current reads below avoid stale
-	REPEATABLE READ snapshots after a concurrent policy change has committed.
+	Item, mapping, and variant mutation paths use: this mutex, template Item rows
+	in sorted name order, then mapping/child rows. Mapping saves discover owners
+	before the mutex and do not rediscover a mapping concurrently attached to a
+	different Item; Item creation clones mappings, so that is not a supported flow.
+	Public ``get_variant`` retains its legacy tuple-backfill UPDATE, while the
+	unlocked lookups used before variant creation explicitly skip that write.
+
+	YRP purchase Item Price lifecycle paths use a separate native-Frappe order:
+	their own YRP Item Price row, the Item row, then competing YRP Item Price rows.
+	They never acquire this mutex.
 	"""
 	frappe.db.sql("select name from `tabDocType` where name='YRP Item Master Template' for update")
 

@@ -149,6 +149,7 @@ PARENT_CHILD_MAP = {
 		"qty_field": "qty",
 		"value_fields": [
 			"rate",
+			"tax",
 			"pending_quantity",
 			"received_qty",
 			"cancelled_quantity",
@@ -255,6 +256,15 @@ def _copy_supported_fields(source, fieldnames, child_doctype=None):
 				continue
 			value = json.dumps(value)
 		out[fn] = value
+	return out
+
+
+def _copy_value_fields(source, fieldnames, child_doctype, parent_doctype):
+	out = _copy_supported_fields(source, fieldnames, child_doctype)
+	# Purchase Order tax belongs to each emitted variant row. An explicit blank
+	# means untaxed and must override the logical row's fallback tax.
+	if parent_doctype == "Purchase Order" and "tax" in source:
+		out["tax"] = source.get("tax") or ""
 	return out
 
 
@@ -432,11 +442,13 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 				pv = v_attrs.get(primary, "")
 				if pv and pv in item_entry["values"]:
 					value_detail = {"qty": variant_row.get(qty_field) or 0}
-					value_detail.update(_copy_supported_fields(variant_row, value_fields, child_doctype))
+					value_detail.update(
+						_copy_value_fields(variant_row, value_fields, child_doctype, parent_doctype)
+					)
 					item_entry["values"][pv] = value_detail
 		else:
 			value_detail = {"qty": first.get(qty_field) or 0}
-			value_detail.update(_copy_supported_fields(first, value_fields, child_doctype))
+			value_detail.update(_copy_value_fields(first, value_fields, child_doctype, parent_doctype))
 			item_entry["values"]["default"] = value_detail
 
 		# Find or create a matching attribute-group
@@ -577,7 +589,9 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, conf
 						"row_index": row_index,  # SAME for all variants of this item
 						**extra_fields,
 					}
-					row.update(_copy_supported_fields(vals or {}, value_fields, child_doctype))
+					row.update(
+						_copy_value_fields(vals or {}, value_fields, child_doctype, parent_doctype)
+					)
 					for fn in dim_fields:
 						if dimensions.get(fn) and _child_has_field(child_doctype, fn):
 							row[fn] = dimensions[fn]
@@ -600,7 +614,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, conf
 					"row_index": row_index,
 					**extra_fields,
 				}
-				row.update(_copy_supported_fields(vals, value_fields, child_doctype))
+				row.update(_copy_value_fields(vals, value_fields, child_doctype, parent_doctype))
 				for fn in dim_fields:
 					if dimensions.get(fn) and _child_has_field(child_doctype, fn):
 						row[fn] = dimensions[fn]
@@ -648,6 +662,8 @@ def _resolve_or_create_variant(parent_item, attributes):
 
 	try:
 		new_doc = create_variant(parent_item, attrs)
+		if not new_doc.is_new():
+			return new_doc.name
 		new_doc.insert(ignore_permissions=True)
 		return new_doc.name
 	except frappe.DuplicateEntryError:

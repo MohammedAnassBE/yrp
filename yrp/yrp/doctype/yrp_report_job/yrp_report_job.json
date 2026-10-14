@@ -1,0 +1,130 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-13 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "report_key",
+  "kind",
+  "filters",
+  "status",
+  "progress",
+  "rq_job_id",
+  "active_key",
+  "auth_stamp",
+  "stamp_doctypes",
+  "started_at",
+  "finished_at",
+  "error_kind",
+  "error_message"
+ ],
+ "fields": [
+  {
+   "fieldname": "report_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Report Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "frappe_report\ncallable",
+   "reqd": 1
+  },
+  {
+   "fieldname": "filters",
+   "fieldtype": "Code",
+   "label": "Filters",
+   "options": "JSON",
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Queued\nStarted\nCompleted\nError\nExpired",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "progress",
+   "fieldtype": "Percent",
+   "label": "Progress"
+  },
+  {
+   "fieldname": "rq_job_id",
+   "fieldtype": "Data",
+   "label": "RQ Job ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "active_key",
+   "fieldtype": "Data",
+   "label": "Active Key",
+   "unique": 1
+  },
+  {
+   "fieldname": "auth_stamp",
+   "fieldtype": "Data",
+   "label": "Authorization Stamp",
+   "reqd": 1
+  },
+  {
+   "fieldname": "stamp_doctypes",
+   "fieldtype": "JSON",
+   "label": "Stamp DocTypes",
+   "reqd": 1
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "label": "Started At"
+  },
+  {
+   "fieldname": "finished_at",
+   "fieldtype": "Datetime",
+   "label": "Finished At"
+  },
+  {
+   "fieldname": "error_kind",
+   "fieldtype": "Select",
+   "label": "Error Kind",
+   "options": "failed\nlost\nexpired"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Code",
+   "label": "Error Message",
+   "permlevel": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "links": [],
+ "modified": "2026-10-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP Report Job",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 0
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 0
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

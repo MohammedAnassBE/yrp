@@ -5,6 +5,8 @@ app_description = "Your Resource Planning"
 app_email = "mohammedanasman123@gmail.com"
 app_license = "mit"
 
+yrp_web_reports = ["yrp.yrp_stock.web_reports.get_reports"]
+
 fixtures = [
 	{"dt": "Role", "prefix": "00", "filters": [["name", "in", [
 		"YRP Customer", "YRP Partner", "YRP Partner Manager", "YRP Retail User",
@@ -219,8 +221,16 @@ boot_session = [
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
-permission_query_conditions = {"*": "yrp.yrp_partner.permissions.query_conditions"}
-has_permission = {"*": "yrp.yrp_partner.permissions.has_permission"}
+permission_query_conditions = {
+	"*": "yrp.yrp_partner.permissions.query_conditions",
+	"YRP Report Job": "yrp.web_reports.permissions.manager_only_query_conditions",
+	"YRP User Report Layout": "yrp.web_reports.permissions.manager_only_query_conditions",
+}
+has_permission = {
+	"*": "yrp.yrp_partner.permissions.has_permission",
+	"YRP Report Job": "yrp.web_reports.permissions.has_manager_permission",
+	"YRP User Report Layout": "yrp.web_reports.permissions.has_manager_permission",
+}
 
 # Document Events
 # ---------------
@@ -241,6 +251,7 @@ scheduler_events = {
 	"daily": [
 		"yrp.yrp_stock.doctype.yrp_stock_integrity_check.yrp_stock_integrity_check.run_daily_check",
 		"yrp.whatsapp_templates.sync_templates_from_hub",
+		"yrp.web_reports.cleanup.clear_old_jobs",
 	],
 	"hourly": [
 		"yrp.yrp_stock.doctype.yrp_repost_item_valuation.yrp_repost_item_valuation.repost_entries",
@@ -470,9 +481,7 @@ override_whitelisted_methods = {
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True
 
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
+default_log_clearing_doctypes = {"YRP Report Job": 14}
 
 # Translation
 # ------------
