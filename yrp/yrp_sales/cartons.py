@@ -5,6 +5,7 @@ from frappe import _
 from frappe.utils import flt, nowdate
 
 from yrp.yrp_retail.logic import require
+from yrp.yrp_sales.historical import reject_historical
 from yrp.yrp_sales.invoicing import get_delivery_note_rows, lock_delivery_note
 
 PACKING_SLIP = "YRP Packing Slip"
@@ -74,6 +75,7 @@ def build_packing_slips(delivery_note, cartons):
 
 	`cartons` is a list of cartons, each a list of `{dn_detail, qty}`; together they must hold every row's
 	whole quantity. Callers check permissions."""
+	reject_historical(delivery_note, "YRP Delivery Note")
 	cartons = frappe.parse_json(cartons) if isinstance(cartons, str) else cartons
 	note = lock_delivery_note(delivery_note)
 	require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(delivery_note))
@@ -124,6 +126,7 @@ def validate_cartons(delivery_note, cartons):
 
 def cancel_packing_slips(delivery_note):
 	"""Cancel submitted and delete draft Packing Slips; delivered ones cannot change."""
+	reject_historical(delivery_note, "YRP Delivery Note")
 	slips = frappe.get_all(
 		PACKING_SLIP,
 		filters={"delivery_note": delivery_note, "docstatus": ["<", 2]},

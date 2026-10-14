@@ -9,6 +9,7 @@ from yrp.stock.stock_ledger import _lock_entry_buckets
 from yrp.stock.uom import resolve_item_uom
 from yrp.stock.utils import consume_voucher_reservation
 from yrp.yrp_retail.logic import require
+from yrp.yrp_sales.historical import is_historical, reject_historical
 
 DELIVERY_NOTE = "YRP Delivery Note"
 DELIVERY_NOTE_ITEM = "YRP Delivery Note Item"
@@ -37,6 +38,7 @@ def get_sales_invoice(delivery_note, items=None):
 
 	Apps adjust it through `yrp_sales_invoice_mappers` hooks, called as `handler(invoice, note)`."""
 	note = frappe.get_doc(DELIVERY_NOTE, delivery_note)
+	reject_historical(note)
 	require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(note.name))
 	requested = get_requested_qty(note, items)
 	invoice = frappe.new_doc("Sales Invoice")
@@ -103,7 +105,9 @@ def get_invoice_status(delivery_note):
 def refresh_delivery_note_billing(doc, method=None):
 	"""Keep the Delivery Note's invoice status in step when a draft invoice is made or deleted."""
 	if doc.get("yrp_delivery_note") and frappe.db.exists(DELIVERY_NOTE, doc.yrp_delivery_note):
-		frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note).update_billing()
+		note = frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note)
+		if not is_historical(note):
+			note.update_billing()
 
 
 def get_requested_qty(note, items):
@@ -132,6 +136,7 @@ def get_invoiced_qty(delivery_note, exclude=None, submitted_only=False):
 
 def validate_sales_invoice(doc, method=None):
 	"""Keep a Delivery Note invoice on matching rows and within each row's unbilled quantity."""
+	reject_historical(doc.get("yrp_delivery_note"), DELIVERY_NOTE)
 	if doc.docstatus == 0:
 		# Only submit records issued entries; server-side copies keep no_copy values.
 		doc.yrp_stock_entries = None
@@ -205,6 +210,8 @@ def issue_delivery_note_stock(doc, method=None):
 	if not doc.get("yrp_delivery_note"):
 		return
 	note = frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note)
+	if is_historical(note):
+		return
 	if note.skip_stock:
 		note.update_billing()
 		return
@@ -226,6 +233,8 @@ def reverse_delivery_note_stock(doc, method=None):
 	if not doc.get("yrp_delivery_note"):
 		return
 	note = frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note, for_update=True)
+	if is_historical(note):
+		return
 	require(not flt(note.per_delivered),
 		_("Delivery Note {0} has deliveries, so its invoices cannot be cancelled.").format(note.name))
 	if note.skip_stock:

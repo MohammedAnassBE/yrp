@@ -10,6 +10,7 @@ from frappe.utils import flt, get_datetime, now_datetime
 
 from yrp.yrp_retail.logic import require, validate_uom_quantity
 from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import get_packed_qty
+from yrp.yrp_sales.historical import reject_historical
 from yrp.yrp_sales.invoicing import get_delivery_note_rows, lock_delivery_note
 
 DELIVERY_NOTE = "YRP Delivery Note"
@@ -20,12 +21,16 @@ class YRPPackingSlip(Document):
 	"""Optional package (box, cover, courier) for part of a submitted YRP Delivery Note."""
 
 	def _save(self, *args, **kwargs):
+		reject_historical(self)
+		reject_historical(self.delivery_note, DELIVERY_NOTE)
 		# The Delivery Note is locked before Frappe locks this document.
 		if self.delivery_note:
 			lock_delivery_note(self.delivery_note)
 		return super()._save(*args, **kwargs)
 
 	def validate(self):
+		reject_historical(self)
+		reject_historical(self.delivery_note, DELIVERY_NOTE)
 		require(self.items, "A Packing Slip requires items.")
 		note = lock_delivery_note(self.delivery_note)
 		require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(note.name))
@@ -79,18 +84,22 @@ class YRPPackingSlip(Document):
 		return "Delivered" if self.delivered_at else "Packed"
 
 	def on_submit(self):
+		reject_historical(self)
 		self.db_set("status", self.get_status(), update_modified=False)
 		frappe.get_doc(DELIVERY_NOTE, self.delivery_note).update_packing()
 
 	def before_update_after_submit(self):
+		reject_historical(self)
 		before = self.get_doc_before_save()
 		require(get_optional_datetime(self.delivered_at) == get_optional_datetime(before.delivered_at),
 			"Use Mark Delivered to deliver a Packing Slip.")
 
 	def before_cancel(self):
+		reject_historical(self)
 		require(not self.delivered_at, _("Delivered Packing Slip {0} cannot be cancelled.").format(self.name))
 
 	def on_cancel(self):
+		reject_historical(self)
 		self.db_set("status", "Cancelled", update_modified=False)
 		frappe.get_doc(DELIVERY_NOTE, self.delivery_note).update_packing()
 
@@ -98,7 +107,9 @@ class YRPPackingSlip(Document):
 	def mark_delivered(self):
 		"""Deliver this slip's saved rows, within each row's invoiced quantity."""
 		# run_doc_method builds this document from the request; only the saved slip counts.
+		reject_historical(self)
 		self.reload()
+		reject_historical(self)
 		self.check_permission("write")
 		note = frappe.get_doc(DELIVERY_NOTE, self.delivery_note)
 		rows = note.lock_for_delivery()
@@ -113,7 +124,15 @@ class YRPPackingSlip(Document):
 		self.set_delivered(now_datetime())
 		note.update_delivery()
 
+	def on_trash(self):
+		reject_historical(self)
+
+	def before_discard(self):
+		reject_historical(self)
+
 	def set_delivered(self, delivered_at):
+		reject_historical(self)
+		reject_historical(self.delivery_note, DELIVERY_NOTE)
 		self.db_set({"delivered_at": delivered_at, "status": "Delivered"})
 
 
@@ -126,6 +145,7 @@ def make_packing_slip(delivery_note):
 	"""Return an unsaved Packing Slip for the unpacked quantity of a submitted Delivery Note."""
 	frappe.has_permission("YRP Packing Slip", "create", throw=True)
 	note = frappe.get_doc(DELIVERY_NOTE, delivery_note)
+	reject_historical(note)
 	note.check_permission("read")
 	require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(note.name))
 	require(not note.delivered_at, _("Delivery Note {0} is already delivered.").format(note.name))

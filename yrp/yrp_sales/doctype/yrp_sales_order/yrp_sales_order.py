@@ -9,12 +9,24 @@ from frappe.utils import flt, getdate
 from yrp.yrp_retail import sales_sources
 from yrp.yrp_retail.logic import finite_number, require
 from yrp.yrp_retail.pricing import check_rate, get_free_items
+from yrp.yrp_sales.historical import is_historical, reject_historical
 
 
 class YRPSalesOrder(Document):
 	"""Customer order; delivery quantities are owned by YRP Delivery Notes."""
 
+	def _save(self, *args, **kwargs):
+		reject_historical(self)
+		return super()._save(*args, **kwargs)
+
+	def before_update_after_submit(self):
+		reject_historical(self)
+
+	def before_discard(self):
+		reject_historical(self)
+
 	def validate(self):
+		reject_historical(self)
 		require(self.items, "A Sales Order requires items.")
 		if self.delivery_date:
 			require(getdate(self.delivery_date) >= getdate(self.transaction_date), "Delivery Date cannot be before the order date.")
@@ -47,6 +59,8 @@ class YRPSalesOrder(Document):
 			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
 
 	def get_status(self):
+		if is_historical(self):
+			return self.status
 		if self.docstatus == 0:
 			return "Draft"
 		if self.docstatus == 2:
@@ -58,13 +72,17 @@ class YRPSalesOrder(Document):
 		return "To Deliver"
 
 	def on_update(self):
+		if is_historical(self):
+			return
 		sales_sources.refresh_progress(self, "on_update")
 
 	def on_submit(self):
+		reject_historical(self)
 		self.db_set("status", self.get_status(), update_modified=False)
 		sales_sources.refresh_progress(self, "on_submit")
 
 	def before_cancel(self):
+		reject_historical(self)
 		notes = frappe.db.sql_list(
 			"""select distinct dni.parent from `tabYRP Delivery Note Item` dni
 			join `tabYRP Delivery Note` dn on dn.name = dni.parent
@@ -74,20 +92,25 @@ class YRPSalesOrder(Document):
 		require(not notes, _("Cancel or delete Delivery Notes {0} first.").format(", ".join(notes)))
 
 	def on_cancel(self):
+		reject_historical(self)
 		self.db_set("status", "Cancelled", update_modified=False)
 		sales_sources.refresh_progress(self, "on_cancel")
 
 	def on_discard(self):
+		reject_historical(self)
 		self.db_set("status", "Cancelled", update_modified=False)
 		sales_sources.refresh_progress(self, "on_discard")
 
 	def on_trash(self):
+		reject_historical(self)
 		sales_sources.refresh_progress(self, "on_trash")
 
 	def update_delivered_qty(self, update_modified=False):
 		"""Recompute delivery caches from the delivered quantity of submitted YRP Delivery Note rows.
 
 		Cancelled quantity is no longer due: an order whose rest is cancelled is fully delivered."""
+		if is_historical(self):
+			return
 		delivered = dict(frappe.db.sql(
 			"""select dni.so_detail, sum(dni.delivered_qty) from `tabYRP Delivery Note Item` dni
 			join `tabYRP Delivery Note` dn on dn.name = dni.parent
@@ -108,6 +131,7 @@ class YRPSalesOrder(Document):
 		"""Cancel open quantity per row, `{so_detail: qty}` in the row UOM; callers check permissions.
 
 		Only quantity on no non-cancelled Delivery Note can be cancelled. Rows are read under lock."""
+		reject_historical(self)
 		self.flags.for_update = True
 		self.load_from_db()
 		self.flags.for_update = False
