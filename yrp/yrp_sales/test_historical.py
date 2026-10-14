@@ -1,4 +1,4 @@
-"""Historical boundaries plus real local sales workflows, without installing Custom Fields."""
+"""Historical boundaries plus real local sales workflows using existing Custom Fields."""
 
 import unittest
 from contextlib import contextmanager
@@ -28,8 +28,14 @@ class TestHistoricalBoundaries(unittest.TestCase):
 			with self.subTest(value=value):
 				doc = frappe._dict(doctype=NOTE, is_historical=value)
 				self.assertEqual(is_historical(doc), expected)
-				with patch.object(frappe, "get_doc", return_value=doc):
+				with (
+					patch.object(frappe, "get_meta", return_value=Mock(has_field=Mock(return_value=True))),
+					patch.object(frappe.db, "get_value", return_value=value) as read,
+					patch.object(frappe, "get_doc") as load,
+				):
 					self.assertEqual(is_historical("Test Historical Note", NOTE), expected)
+					read.assert_called_once_with(NOTE, "Test Historical Note", "is_historical")
+					load.assert_not_called()
 		self.assertFalse(is_historical(None, NOTE))
 		self.assertFalse(is_historical(frappe._dict(doctype=ORDER)))
 
@@ -40,6 +46,7 @@ class TestHistoricalBoundaries(unittest.TestCase):
 			patch.object(frappe.db, "get_value") as read,
 		):
 			self.assertFalse(is_historical(doc))
+			self.assertFalse(is_historical(doc.name, ORDER))
 			read.assert_not_called()
 
 	def test_clearing_marker_cannot_bypass_stored_history(self):
@@ -190,7 +197,11 @@ class TestHistoricalBoundaries(unittest.TestCase):
 				"items": [{"qty": 6, "rate": 25}],
 			}
 		)
-		with patch.object(frappe, "get_doc", return_value=note), patch.object(frappe, "new_doc") as create:
+		with (
+			patch.object(frappe, "get_doc", return_value=note),
+			patch.object(frappe.db, "get_value", return_value=1),
+			patch.object(frappe, "new_doc") as create,
+		):
 			for action in (
 				lambda: invoicing.get_sales_invoice(note.name),
 				lambda: invoicing.make_sales_invoice(note.name),
@@ -219,7 +230,9 @@ class TestHistoricalBoundaries(unittest.TestCase):
 		]
 		with (
 			patch.object(frappe.db, "sql", return_value=rows),
-			patch.object(frappe, "get_doc", side_effect=lambda doctype, name: orders[name]),
+			patch.object(
+				frappe.db, "get_value", side_effect=lambda doctype, name, field: orders[name].get(field)
+			),
 		):
 			pending = delivery.get_pending_rows("Test Customer")
 			self.assertEqual(
@@ -260,7 +273,7 @@ class TestHistoricalBoundaries(unittest.TestCase):
 		order = frappe._dict(name="Test Historical Order", is_historical=1)
 		with (
 			patch.object(delivery, "lock_sales_orders", return_value={order.name: order}),
-			patch.object(frappe, "get_doc", return_value=order),
+			patch.object(frappe.db, "get_value", return_value=1),
 		):
 			with self.assertRaisesRegex(frappe.ValidationError, MESSAGE):
 				note.get_source_rows()
@@ -269,7 +282,11 @@ class TestHistoricalBoundaries(unittest.TestCase):
 		note = frappe.get_doc({"doctype": NOTE, "name": "Test Historical Note", "is_historical": 1})
 		slip = frappe.get_doc({"doctype": SLIP, "delivery_note": note.name, "items": [{"qty": 6}]})
 		amended = frappe.get_doc({"doctype": NOTE, "amended_from": note.name, "items": [{"qty": 6}]})
-		with patch.object(frappe, "get_doc", return_value=note), patch.object(frappe, "new_doc") as create:
+		with (
+			patch.object(frappe, "get_doc", return_value=note),
+			patch.object(frappe.db, "get_value", return_value=1),
+			patch.object(frappe, "new_doc") as create,
+		):
 			for action in (
 				lambda: delivery.amend_delivery_note(note.name, "Test Customer"),
 				lambda: packing.make_packing_slip(note.name),
@@ -288,40 +305,28 @@ class TestHistoricalSalesFlows(DeliveryNoteFixtures):
 	def label(self, label):
 		return "_Test Historical " + label + " " + frappe.generate_hash(length=10)
 
+	def setUp(self):
+		super().setUp()
+		# Frappe omits this attribute in test mode; installed invoice hooks require it.
+		self.enterContext(
+			patch.object(frappe.get_user(), "doc", frappe.get_doc("User", frappe.session.user), create=True)
+		)
+
 	@contextmanager
 	def historical(self, *documents):
-		"""Supply only the migration marker; real records and all business methods remain active.
-
-		The local site need not have the partner app's staged Custom Fields installed.
-		"""
-		keys = {(doc.doctype, doc.name) for doc in documents}
-		get_doc = frappe.get_doc
-		sql = frappe.db.sql
-
-		def read(*args, **kwargs):
-			doc = get_doc(*args, **kwargs)
-			if (doc.doctype, doc.name) in keys:
-				doc.is_historical = 1
-			return doc
-
-		def query(*args, **kwargs):
-			rows = sql(*args, **kwargs)
-			for row in rows or []:
-				if (
-					isinstance(row, dict)
-					and "is_historical" in row
-					and (ORDER, row.get("sales_order")) in keys
-				):
-					row["is_historical"] = 1
-			return rows
-
+		"""Mark real local records using existing fields; fixture rollback removes all test data."""
+		markers = []
 		for doc in documents:
-			doc.is_historical = 1
-		with (
-			patch.object(frappe, "get_doc", side_effect=read),
-			patch.object(frappe.db, "sql", side_effect=query),
-		):
+			self.assertTrue(
+				doc.meta.has_field("is_historical"), "Historical flow tests require is_historical"
+			)
+			markers.append(doc.get("is_historical"))
+			doc.db_set("is_historical", 1, update_modified=False)
+		try:
 			yield
+		finally:
+			for doc, marker in zip(documents, markers, strict=True):
+				doc.db_set("is_historical", marker, update_modified=False)
 
 	def test_document_save_submit_cancel_delete_paths(self):
 		note = self.make_note(6)
@@ -336,7 +341,9 @@ class TestHistoricalSalesFlows(DeliveryNoteFixtures):
 					):
 						method()
 				# Frappe rejects deleting submitted documents before invoking on_trash.
-				with self.assertRaises(frappe.ValidationError):
+				submitted = frappe.db.get_value(doc.doctype, doc.name, "docstatus") == 1
+				message = "Submitted Record cannot be deleted" if submitted else MESSAGE
+				with self.assertRaisesRegex(frappe.ValidationError, message):
 					doc.delete()
 		self.assertEqual(self.get_bin(), (10, 6))
 		self.assertEqual(frappe.db.get_value(NOTE, note.name, "docstatus"), 1)
@@ -375,7 +382,10 @@ class TestHistoricalSalesFlows(DeliveryNoteFixtures):
 
 	def test_historical_draft_deletion_uses_the_shared_error(self):
 		note = self.make_note(3, submit=False)
-		order = frappe.copy_doc(frappe.get_doc(ORDER, note.items[0].sales_order)).insert()
+		order = frappe.copy_doc(frappe.get_doc(ORDER, note.items[0].sales_order))
+		order.docstatus = 0
+		order.insert()
+		self.assertEqual(order.docstatus, 0)
 		for doc in (order, note):
 			with self.subTest(doctype=doc.doctype), self.historical(doc):
 				with self.assertRaisesRegex(frappe.ValidationError, MESSAGE):
@@ -392,8 +402,8 @@ class TestHistoricalSalesFlows(DeliveryNoteFixtures):
 				lambda: invoicing.make_sales_invoice(note.name),
 				lambda: invoicing.preview_sales_invoice(note.name),
 				lambda: invoicing.validate_sales_invoice(frappe._dict(yrp_delivery_note=note.name)),
-				invoice.save,
-				invoice.submit,
+				lambda: invoice.reload().save(),
+				lambda: invoice.reload().submit(),
 			):
 				with self.assertRaisesRegex(frappe.ValidationError, MESSAGE):
 					action()

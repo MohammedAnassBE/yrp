@@ -8,15 +8,18 @@ from frappe.utils import cint
 def is_historical(doc_or_name, doctype=None):
 	if not doc_or_name:
 		return False
-	doc = frappe.get_doc(doctype, doc_or_name) if isinstance(doc_or_name, str) else doc_or_name
-	if cint(doc.get("is_historical")):
-		return True
-	# A request must not bypass the guard by clearing the stored marker.
-	doctype = doctype or doc.get("doctype")
+	if isinstance(doc_or_name, str):
+		name = doc_or_name
+	else:
+		if cint(doc_or_name.get("is_historical")):
+			return True
+		# A request must not bypass the guard by clearing the stored marker.
+		doctype = doctype or doc_or_name.get("doctype")
+		name = doc_or_name.get("name")
 	return bool(
-		doc.get("name")
+		name
 		and frappe.get_meta(doctype).has_field("is_historical")
-		and cint(frappe.db.get_value(doctype, doc.name, "is_historical"))
+		and cint(frappe.db.get_value(doctype, name, "is_historical"))
 	)
 
 
