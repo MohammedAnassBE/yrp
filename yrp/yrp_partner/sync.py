@@ -31,3 +31,28 @@ def sync_document(doc, method=None):
 		"YRP Partner Type", filters={"reference_doctype": doc.doctype}, pluck="name"
 	):
 		ensure_partner(partner_type, doc.doctype, doc.name)
+
+
+def ensure_historical_partner(name, partner_type, reference_doctype):
+	"""Preserve an unbound historical identity without inventing a source record.
+
+	This internal import path retains an explicit name, validates the configured
+	type and never overwrites an existing identity or grants membership roles.
+	Unbound references use NULL so the business-binding unique index stays valid.
+	"""
+	if not name or not partner_type or not reference_doctype:
+		raise frappe.ValidationError("Historical Partner requires a name, type and reference DocType")
+	if frappe.db.get_value("YRP Partner Type", partner_type, "reference_doctype") != reference_doctype:
+		raise frappe.ValidationError("Historical Partner type does not match its reference DocType")
+	if existing := frappe.db.get_value(
+		"YRP Partner", name, ["partner_type", "reference_doctype", "reference_name"], as_dict=True
+	):
+		if (existing.partner_type, existing.reference_doctype) != (partner_type, reference_doctype) or existing.reference_name:
+			raise frappe.ValidationError(f"Historical Partner name conflicts with an existing identity: {name}")
+		return
+	partner = frappe.get_doc({
+		"doctype": "YRP Partner", "partner_type": partner_type,
+		"reference_doctype": reference_doctype, "reference_name": None,
+	})
+	partner.flags.generation_token = _GENERATION_TOKEN
+	partner.insert(ignore_permissions=True, ignore_mandatory=True, set_name=name)

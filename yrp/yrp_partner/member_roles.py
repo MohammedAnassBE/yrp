@@ -42,9 +42,9 @@ def sync_member_roles(users, removable: set[str]):
 		current = {row.role for row in doc.roles}
 		missing = needed - current
 		extra = (removable & current) - needed
-		if not missing and not extra:
-			continue
-
 		doc.set("roles", [row for row in doc.roles if row.role not in extra])
 		doc.append_roles(*sorted(missing))
-		doc.save(ignore_permissions=True)
+		user_type = doc.user_type
+		doc.set_system_user()
+		if missing or extra or doc.user_type != user_type:
+			doc.save(ignore_permissions=True)

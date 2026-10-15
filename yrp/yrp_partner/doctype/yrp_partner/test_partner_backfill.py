@@ -161,3 +161,24 @@ class TestPartnerBackfill(unittest.TestCase):
 		with self.assertRaisesRegex(frappe.PermissionError, "disabled"):
 			backfill.run_batch(partner_type.name, str(partner_type.modified), requested_by=user.name)
 		self.assertFalse(frappe.db.exists("YRP Partner", {"partner_type": partner_type.name}))
+
+	def test_historical_identities_are_unbound_idempotent_and_cannot_overwrite(self):
+		from yrp.yrp_partner.sync import ensure_historical_partner
+
+		kind = self.make_type()
+		for _ in range(2):
+			name = "_LOCAL_HISTORY_" + frappe.generate_hash(length=10)
+			ensure_historical_partner(name, kind.name, "UOM")
+			doc = frappe.get_doc("YRP Partner", name)
+			self.assertIsNone(doc.reference_name)
+			self.assertEqual(doc.users, [])
+			before = doc.as_dict()
+			ensure_historical_partner(name, kind.name, "UOM")
+			self.assertEqual(doc.reload().as_dict(), before)
+		with self.assertRaises(frappe.ValidationError):
+			ensure_historical_partner(name, kind.name, "Customer")
+		bound = frappe.db.get_value("YRP Partner", {
+			"partner_type": kind.name, "reference_name": self.source.name,
+		}, "name")
+		with self.assertRaises(frappe.ValidationError):
+			ensure_historical_partner(bound, kind.name, "UOM")

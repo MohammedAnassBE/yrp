@@ -71,3 +71,18 @@ class TestPartnerUsers(PartnerTestCase):
 		with patch("frappe.core.doctype.user.user.User.after_rename", new=persist_renamed_email):
 			frappe.rename_doc("User", user.name, new_email, force=True, show_alert=False)
 		self.assertEqual(self.members(), [new_email])
+
+	def test_role_sync_repairs_matching_roles_user_type_idempotently(self):
+		from yrp.yrp_partner.member_roles import MEMBER_ROLES, sync_member_roles
+
+		user = self.make_user(partner_role=False)
+		self.add_member(user)
+		frappe.db.set_value("User", user.name, "user_type", "Website User")
+		with patch.dict(frappe.flags, in_import=True, mute_emails=True), patch.object(
+			frappe, "sendmail", side_effect=AssertionError("Unexpected email")
+		):
+			sync_member_roles({user.name}, MEMBER_ROLES)
+			self.assertEqual(user.reload().user_type, "System User")
+			before = user.as_dict()
+			sync_member_roles({user.name}, MEMBER_ROLES)
+			self.assertEqual(user.reload().as_dict(), before)
