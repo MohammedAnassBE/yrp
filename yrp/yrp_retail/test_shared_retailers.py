@@ -76,3 +76,25 @@ class TestSharedRetailers(TestRetailFlow):
 			self.assertFalse(api.list_records("YRP Retailer"))
 			with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
 				api.create_visit("Secondary", str(now_datetime()), 12.5, 77.5, retailer=retailer)
+
+	def test_actor_follows_live_membership_and_retailers_follow_live_assignment(self):
+		retailer = self.retailer()
+		self.assertEqual(api.salesperson().name, self.person.name)
+		self.assertIn(retailer, [row.name for row in api.list_records("YRP Retailer")])
+
+		# A saved assignment row is no grant after its Customer moves to another partner.
+		frappe.set_user("Administrator")
+		other = frappe.get_doc(dict(doctype="Sales Partner", partner_name=self.label("Partner"),
+			territory=self.customer.territory, commission_rate=1)).insert()
+		frappe.db.set_value("Customer", self.customer.name, "default_sales_partner", other.name)
+		frappe.set_user(self.user.name)
+		self.assertTrue(frappe.get_doc("Sales Person", self.person.name).yrp_customers)
+		self.assertEqual(api.list_records("YRP Retailer"), [])
+
+		# Membership needs an enabled login with the scope role, like every other partner scope.
+		frappe.set_user("Administrator")
+		frappe.db.delete("Has Role", {"parent": self.user.name, "role": "YRP Partner"})
+		frappe.clear_cache(user=self.user.name)
+		frappe.set_user(self.user.name)
+		with self.assertRaises(frappe.PermissionError):
+			api.salesperson()

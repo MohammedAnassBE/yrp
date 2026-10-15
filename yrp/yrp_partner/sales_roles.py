@@ -31,9 +31,10 @@ ROLE_PERMISSIONS = {
 
 
 def references(doctype, user):
-	"""Resolve current memberships only for enabled logins with the scope role."""
+	"""Resolve current memberships only for enabled logins with the scope role; business roles select actions."""
 	from yrp.yrp_partner.customer_access import _source_references
-	return set(frappe.db.sql(_source_references(doctype, user, {"YRP Partner"}), pluck=True))
+
+	return set(frappe.db.sql(_source_references(doctype, user), pluck=True))
 
 
 def _retail_scope(doc, user):
@@ -80,7 +81,8 @@ def registered_processing_customer_query(user):
 
 def registered_manager_customer_query(user):
     """Compatibility for manager-only callers; shared processing scope is broader."""
-    if 'Sales Manager' not in frappe.get_roles(user):return None
+    if 'Sales Manager' not in frappe.get_roles(user):
+        return None
     return registered_processing_customer_query(user)
 
 
@@ -112,34 +114,45 @@ def extension_action(doc, ptype, user):
 	if ptype not in ("create","write","submit","cancel","delete"):
 		return False
 	parent_links=frappe.get_hooks('yrp_partner_action_parent_links',{}).get(doc.doctype,[])
-	if isinstance(parent_links,str):parent_links=[parent_links]
+	if isinstance(parent_links,str):
+		parent_links=[parent_links]
 	if parent_links:
-		if len(parent_links) != 1:return False
+		if len(parent_links) != 1:
+			return False
 		target,separator,fieldname=parent_links[0].rpartition('.')
 		field=doc.meta.get_field(fieldname) if separator else None
-		if not field or field.fieldtype != 'Link' or field.options != target:return False
+		if not field or field.fieldtype != 'Link' or field.options != target:
+			return False
 	else:
 		for name,target in (('customer','Customer'),('company','Company')):
 			field=doc.meta.get_field(name)
-			if not field or field.fieldtype != 'Link' or field.options != target:return False
+			if not field or field.fieldtype != 'Link' or field.options != target:
+				return False
 	stored=None if doc.is_new() or not doc.get('name') else frappe.get_doc(doc.doctype,doc.name)
 	from frappe.permissions import get_role_permissions
 	permissions=get_role_permissions(frappe.get_meta(doc.doctype),user=user,
 		is_owner=((stored or doc).get("owner") or "").lower() == user.lower())
 	if not (permissions.get(ptype) or permissions.get("if_owner",{}).get(ptype)):
 		return False
-	if parent_links and stored and doc.get(fieldname) != stored.get(fieldname):return False
+	if parent_links and stored and doc.get(fieldname) != stored.get(fieldname):
+		return False
 	for candidate in (doc,stored):
-		if candidate is None:continue
+		if candidate is None:
+			continue
 		if parent_links:
-			if not candidate.get(fieldname):return False
+			if not candidate.get(fieldname):
+				return False
 			parent=frappe.get_doc(target,candidate.get(fieldname))
 			if not all(parent.meta.get_field(name) and parent.meta.get_field(name).fieldtype == 'Link' and parent.meta.get_field(name).options == kind
-			           for name,kind in (('customer','Customer'),('company','Company'))):return False
-			if not parent.has_permission('read',user=user):return False
+			           for name,kind in (('customer','Customer'),('company','Company'))):
+				return False
+			if not parent.has_permission('read',user=user):
+				return False
 			candidate=parent
-		if not candidate.get('company') or candidate.get('customer') not in processing_customer_names(user,company=candidate.company):return False
-	if not parent_links and stored and any(doc.get(field) != stored.get(field) for field in ('customer','company')):return False
+		if not candidate.get('company') or candidate.get('customer') not in processing_customer_names(user,company=candidate.company):
+			return False
+	if not parent_links and stored and any(doc.get(field) != stored.get(field) for field in ('customer','company')):
+		return False
 	for handler in handlers:
 		answer=frappe.get_attr(handler)(doc,ptype,user,stored)
 		if answer is not None:
@@ -200,7 +213,7 @@ def allowed_action(doc, ptype, user=None):
 		# gate; before_submit/before_cancel check the action separately below.
 		if doc.doctype in ORDER_DOCUMENTS and status == 1 and cint(doc.docstatus) == 2:
 			return allowed_action(doc, "cancel", user)
-		return status == 0 and cint(doc.docstatus) == 0 or (
+		return (status == 0 and cint(doc.docstatus) == 0) or (
 			doc.doctype in ORDER_DOCUMENTS and status == 0 and cint(doc.docstatus) == 1
 			and allowed_action(doc, "submit", user))
 	if ptype == "delete":

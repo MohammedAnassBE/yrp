@@ -63,7 +63,7 @@ def protected(doctype):
 def _references(doctype, user):
 	"""Build a subquery from current membership, never from a cached list of IDs."""
 	from yrp.yrp_partner.customer_access import _source_references
-	return _source_references(doctype, user, {"YRP Partner"})
+	return _source_references(doctype, user)
 
 
 def _processing_account_condition(customers, table):
@@ -85,16 +85,27 @@ def _processing_account_condition(customers, table):
 		OR {table}.name=COALESCE(NULLIF(processing_default.advance_account,''), NULLIF(processing_group.advance_account,''), processing_company.default_advance_received_account)))"""
 
 
-def _condition(doctype, user, table=None, include_assigned_customers=True, include_customer_scope=True):
+def _condition(doctype, user, table=None, include_customer_scope=True):
 	"""Scope direct links plus Customer -> Retailer and linked Address/Contact rows."""
 	table = table or f"`tab{doctype.replace('`', '``')}`"
 	# Action roles never create record membership by themselves.
 	if "YRP Partner" not in frappe.get_roles(user):
 		return "1=0"
 	from yrp.yrp_partner.customer_access import (
-		customer_links, customer_query_condition, document_company_condition, warehouse_company_condition,
-		is_customer_report_user, is_customer_user,
+		customer_links,
+		customer_query_condition,
+		document_company_condition,
+		is_customer_report_user,
+		is_customer_user,
+		warehouse_company_condition,
 	)
+	if doctype == "YRP Partner":
+		from yrp.yrp_partner.customer_access import membership_query
+		return f"{table}.name IN (SELECT membership.name FROM ({membership_query(user)}) membership)"
+	if doctype in {"Customer", "YRP Retailer"}:
+		return customer_query_condition(doctype, user, table)
+	if doctype in source_types():
+		return f"{table}.name IN ({_references(doctype, user)})"
 	if include_customer_scope:
 		from yrp.yrp_partner.sales_roles import registered_processing_customer_query
 		manager_customers=registered_processing_customer_query(user)
@@ -111,15 +122,19 @@ def _condition(doctype, user, table=None, include_assigned_customers=True, inclu
 			# Processing read scope does not itself grant native actions;
 			# registered callbacks and native DocPerm still constrain writes.
 			parent_links=frappe.get_hooks('yrp_partner_action_parent_links',{}).get(doctype,[])
-			if isinstance(parent_links,str):parent_links=[parent_links]
+			if isinstance(parent_links,str):
+				parent_links=[parent_links]
 			if parent_links:
-				if len(parent_links) != 1:return '1=0'
+				if len(parent_links) != 1:
+					return '1=0'
 				target,separator,fieldname=parent_links[0].rpartition('.')
 				field=frappe.get_meta(doctype).get_field(fieldname) if separator else None
-				if not field or field.fieldtype != 'Link' or field.options != target:return '1=0'
+				if not field or field.fieldtype != 'Link' or field.options != target:
+					return '1=0'
 				parent_meta=frappe.get_meta(target)
 				if not all(parent_meta.get_field(name) and parent_meta.get_field(name).fieldtype == 'Link' and parent_meta.get_field(name).options == kind
-				           for name,kind in (('customer','Customer'),('company','Company'))):return '1=0'
+				           for name,kind in (('customer','Customer'),('company','Company'))):
+					return '1=0'
 				parent_table=f"`tab{target.replace('`','``')}`"
 				parent_condition=_condition(target,user,'processing_parent')
 				return f"{table}.`{fieldname}` IN (SELECT processing_parent.name FROM {parent_table} processing_parent WHERE {parent_condition})"
@@ -157,36 +172,12 @@ def _condition(doctype, user, table=None, include_assigned_customers=True, inclu
 		return f"{table}.delivery_note IN (SELECT dn.name FROM `tabYRP Delivery Note` dn WHERE {_condition('YRP Delivery Note', user, 'dn')})"
 	if doctype == "YRP Partner Type":
 		return "1=0"
-	if doctype == "YRP Partner":
-		return f"{table}.name IN (SELECT parent FROM `tabYRP Partner User` WHERE parenttype='YRP Partner' AND user={frappe.db.escape(user)})"
 	conditions = [f"{table}.name IN ({_references(doctype, user)})"]
 	sources = source_types()
 	for field in frappe.get_meta(doctype).fields:
-		# Customer assignment grants salesperson access. The registering person's
-		# link must not keep access alive after that assignment is revoked.
-		if doctype == "YRP Retailer" and field.fieldname in ("sales_partner", "sales_person"):
-			continue
 		if field.fieldtype == "Link" and field.options in sources:
 			conditions.append(f"{table}.`{field.fieldname}` IN ({_references(field.options, user)})")
-	if (doctype == "Customer" and include_assigned_customers
-		and frappe.db.table_exists("YRP Sales Person Customers")
-		and frappe.get_meta("Sales Person").has_field("yrp_sales_partner")):
-		# A saved child row alone is not a grant: reassignment of either master
-		# must revoke inherited access immediately, before any cleanup/backfill.
-		conditions.append(f"""{table}.name IN (
-			SELECT a.customer FROM `tabYRP Sales Person Customers` a
-			JOIN `tabSales Person` sp ON sp.name=a.parent
-			WHERE a.parenttype='Sales Person' AND a.parentfield='yrp_customers'
-			AND sp.name IN ({_references('Sales Person', user)})
-			AND sp.enabled=1 AND sp.is_group=0
-			AND COALESCE(sp.yrp_sales_partner, '') != ''
-			AND sp.yrp_sales_partner={table}.default_sales_partner
-		)""")
 	if doctype == "YRP Customer Stock":
-		conditions.append(f"{table}.customer IN (SELECT c.name FROM `tabCustomer` c WHERE {_condition('Customer', user, 'c')})")
-	if doctype == "YRP Retailer":
-		# Retailers are shared by every salesperson assigned to their Customer;
-		# sales_partner remains an audit/partner field, not the access boundary.
 		conditions.append(f"{table}.customer IN (SELECT c.name FROM `tabCustomer` c WHERE {_condition('Customer', user, 'c')})")
 	if doctype in ("Contact", "Address"):
 		if doctype == "Address" and is_customer_report_user(user):

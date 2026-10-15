@@ -7,10 +7,9 @@ def salesperson(selected=None):
 	"""Resolve an enabled leaf Sales Person from the current user's memberships."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Please log in."), frappe.PermissionError)
-	rows = frappe.db.sql("""SELECT DISTINCT p.reference_name FROM `tabYRP Partner` p
-		JOIN `tabYRP Partner User` u ON u.parent=p.name
-		WHERE p.reference_doctype='Sales Person' AND u.parenttype='YRP Partner'
-		AND u.parentfield='users' AND u.user=%s""", frappe.session.user, pluck=True)
+	from yrp.yrp_partner.sales_roles import references
+
+	rows = sorted(references("Sales Person", frappe.session.user))
 	if selected and selected not in rows:
 		frappe.throw(_("This Sales Person is not assigned to your login."), frappe.PermissionError)
 	if not selected:

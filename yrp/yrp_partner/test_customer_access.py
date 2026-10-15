@@ -11,7 +11,7 @@ import frappe
 
 from yrp.patches import own_partner_prepared_report_files
 from yrp.yrp_partner import customer_access as access
-from yrp.yrp_partner.member_roles import MEMBER_ROLES
+from yrp.yrp_partner.member_roles import MEMBER_ROLES, get_needed_roles
 from yrp.yrp_partner.permissions import prevent_partner_write
 from yrp.yrp_retail.tests.fixtures import customer, sales_person, set_member
 
@@ -114,7 +114,7 @@ class TestCustomerAccess(unittest.TestCase):
 		frappe.db.set_value("User", self.user.name, "enabled", 0)
 		self.assertEqual(access.customer_names(self.user.name), set())
 		frappe.db.set_value("User", self.user.name, "enabled", 1)
-		for role in ("YRP Partner", "YRP Customer"):
+		for role in ("YRP Partner",):
 			with self.subTest(role=role):
 				role_row = frappe.db.get_value("Has Role", {"parent": self.user.name, "role": role}, "name")
 				frappe.db.set_value("Has Role", role_row, "role", "All")
@@ -141,6 +141,14 @@ class TestCustomerAccess(unittest.TestCase):
 		self.assertEqual(roles(), set())
 		self.assertIn("Sales User", frappe.get_roles(user.name))
 
+	def test_membership_without_a_source_record_needs_no_roles(self):
+		user = self.make_user("Sales User")
+		set_member(user.name, "Customer", self.own.name)
+		self.assertEqual(get_needed_roles(user.name), {"YRP Partner", "YRP Customer"})
+		frappe.db.sql("""UPDATE `tabYRP Partner` SET reference_name=NULL
+			WHERE reference_doctype='Customer' AND reference_name=%s""", self.own.name)
+		self.assertEqual(get_needed_roles(user.name), set())
+
 	def test_membership_keeps_roles_it_did_not_give(self):
 		user = self.make_user("YRP Sales Person")
 		set_member(user.name, "Customer", self.own.name)
@@ -153,9 +161,10 @@ class TestCustomerAccess(unittest.TestCase):
 		self.contact.save()
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
 
-	def test_disabled_customer_retains_history_but_mismatched_partner_type_fails_closed(self):
+	def test_disabled_customer_and_mismatched_partner_type_fail_closed(self):
 		frappe.db.set_value("Customer", self.own.name, "disabled", 1)
-		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
+		self.assertEqual(access.customer_names(self.user.name), set())
+		frappe.db.set_value("Customer", self.own.name, "disabled", 0)
 		# The generated source must still agree with its live configuration.
 		frappe.db.sql("""UPDATE `tabYRP Partner` SET reference_doctype='Sales Partner'
 			WHERE reference_doctype='Customer' AND reference_name=%s""", self.own.name)
@@ -183,18 +192,34 @@ class TestCustomerAccess(unittest.TestCase):
 		frappe.db.set_value("Customer", additional.name, "default_sales_partner", "")
 		self.assertEqual(access.customer_names(user.name), {self.own.name, self.foreign.name})
 
-	def test_customer_role_does_not_use_sales_sources_without_the_matching_role(self):
+	def test_membership_uses_sales_sources_without_the_copied_business_roles(self):
 		person = sales_person(self.foreign)
 		self.link(self.user, "Sales Person", person.name)
 		self.link(self.user, "Sales Partner", self.foreign.default_sales_partner)
-		# Membership adds the sales roles; remove them to check the role boundary.
+		# Business role drift must not change the reference records of membership.
 		frappe.db.delete("Has Role", {"parent": self.user.name, "role": ["in", ["YRP Sales Person", "YRP Sales Partner"]]})
 		frappe.clear_cache(user=self.user.name)
-		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
+		self.assertEqual(access.customer_names(self.user.name), {self.own.name, self.foreign.name})
+		from yrp.yrp_partner.permissions import _condition
+		self.assertEqual(set(frappe.db.sql(
+			"SELECT name FROM `tabCustomer` WHERE " + _condition("Customer", self.user.name), pluck=True
+		)), access.customer_names(self.user.name))
 		self.user.reload()
 		self.user.append("roles", {"role": "YRP Sales Person"})
 		self.user.save()
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name, self.foreign.name})
+
+	def test_source_records_do_not_inherit_membership_through_other_source_links(self):
+		from yrp.yrp_partner.permissions import _condition
+		own_person = sales_person(self.own)
+		other_person = sales_person(self.foreign)
+		self.link(self.user, "Sales Person", own_person.name)
+		self.link(self.user, "Sales Partner", self.foreign.default_sales_partner)
+		visible = set(frappe.db.sql(
+			"SELECT name FROM `tabSales Person` WHERE " + _condition("Sales Person", self.user.name),
+			pluck=True))
+		self.assertEqual(visible, {own_person.name})
+		self.assertNotIn(other_person.name, visible)
 
 	def test_financial_lists_and_direct_reads_agree_for_all_three_roles(self):
 		own = self.row("Sales Invoice", customer=self.own.name, docstatus=1)
@@ -355,8 +380,8 @@ class TestCustomerAccess(unittest.TestCase):
 		self.assertEqual(access.customer_names(), {self.own.name})
 
 	def test_sidebar_reports_include_native_routing_metadata(self):
-		from yrp.yrp_partner.workspace import SIDEBAR, add_partner_navigation
 		from yrp.yrp_partner.customer_reports import CUSTOMER_REPORTS, PORTAL_REPORTS, SALES_REP_REPORTS
+		from yrp.yrp_partner.workspace import SIDEBAR, add_partner_navigation
 		frappe.set_user(self.user.name)
 		boot = frappe._dict(workspace_sidebar_item={SIDEBAR.lower(): {"items": []}})
 		add_partner_navigation(boot)

@@ -27,7 +27,7 @@ def get_needed_roles(user: str) -> set[str]:
 		"""select distinct p.reference_doctype from `tabYRP Partner` p
 		join `tabYRP Partner User` m on m.parent = p.name
 			and m.parenttype = 'YRP Partner' and m.parentfield = 'users'
-		where m.user = %s""",
+		where m.user = %s and coalesce(p.reference_name, '') != ''""",
 		user,
 	))
 

@@ -1,6 +1,6 @@
 """Live Customer scope for customer-facing records and financial reports.
 
-Roles select which sources can grant access; roles alone grant no records.
+Membership selects the reference records; roles alone grant no records.
 Every grant needs an enabled login listed in the source's Partner `users`
 table. Retailer memberships never grant Customer ledgers.
 No result is cached, so reassignment and identity revocation apply immediately.
@@ -44,37 +44,79 @@ def is_partner_user(user=None):
 	return _has_scoped_role(user or frappe.session.user, FINANCIAL_ROLES | {"YRP Partner"})
 
 
-def _source_references(doctype, user, roles):
-	"""Recheck explicit membership against its current source, login and roles."""
-	role_values = ", ".join(frappe.db.escape(role) for role in sorted(roles))
-	return f"""SELECT DISTINCT p.reference_name FROM `tabYRP Partner` p
-		JOIN `tab{doctype.replace('`', '``')}` source_record ON source_record.name=p.reference_name
+def membership_query(user, require_scope_role=True):
+	"""One live membership list; roles enable scoped access, never select sources."""
+	role_condition = (
+		"""AND EXISTS (SELECT 1 FROM `tabHas Role` scope_role
+		WHERE scope_role.parent=actor.name AND scope_role.parenttype='User'
+		AND scope_role.parentfield='roles' AND scope_role.role='YRP Partner')"""
+		if require_scope_role
+		else ""
+	)
+	return f"""SELECT DISTINCT p.name, p.partner_type, p.reference_doctype,
+		p.reference_name, p.creation FROM `tabYRP Partner` p
 		JOIN `tabYRP Partner Type` pt ON pt.name=p.partner_type
-			AND pt.reference_doctype=p.reference_doctype
+			AND COALESCE(pt.reference_doctype, '')=COALESCE(p.reference_doctype, '')
 		JOIN `tabYRP Partner User` m ON m.parent=p.name
 			AND m.parenttype='YRP Partner' AND m.parentfield='users'
 		JOIN `tabUser` actor ON actor.name=m.user AND actor.enabled=1
-		WHERE actor.name={frappe.db.escape(user)}
+		WHERE actor.name={frappe.db.escape(user)} AND p.disabled=0
 		AND actor.name NOT IN ('Administrator', 'Guest')
-		AND p.reference_doctype={frappe.db.escape(doctype)}
-		AND EXISTS (SELECT 1 FROM `tabHas Role` scope_role
-			WHERE scope_role.parent=actor.name AND scope_role.parenttype='User'
-			AND scope_role.parentfield='roles' AND scope_role.role='YRP Partner')
-		AND EXISTS (SELECT 1 FROM `tabHas Role` action_role
-			WHERE action_role.parent=actor.name AND action_role.parenttype='User'
-			AND action_role.parentfield='roles' AND action_role.role IN ({role_values}))"""
+		{role_condition}"""
 
 
-def _customer_references(user):
-	direct = _source_references("Customer", user, {CUSTOMER_ROLE})
-	partners = _source_references("Sales Partner", user, {"YRP Sales Partner"})
+def source_is_active(doctype, alias):
+	meta = frappe.get_meta(doctype)
+	conditions = []
+	if meta.has_field("disabled"):
+		conditions.append(f"COALESCE({alias}.disabled, 0)=0")
+	if meta.has_field("enabled"):
+		conditions.append(f"{alias}.enabled=1")
+	if doctype == "Sales Person":
+		conditions.append(f"{alias}.is_group=0")
+	return " AND ".join(conditions) or "1=1"
+
+
+def _source_references(doctype, user, partner=None):
+	"""Reference records of live memberships, independent of copied business roles."""
+	selected = f" AND membership.name={frappe.db.escape(partner)}" if partner else ""
+	return f"""SELECT DISTINCT membership.reference_name FROM ({membership_query(user)}) membership
+		JOIN `tab{doctype.replace("`", "``")}` source_record ON source_record.name=membership.reference_name
+		WHERE membership.reference_doctype={frappe.db.escape(doctype)}
+		AND {source_is_active(doctype, "source_record")}{selected}"""
+
+
+def get_memberships(user, require_scope_role=True):
+	"""Live reference memberships, ordered as the Partner list; sourceless types remain members."""
+	rows = frappe.db.sql(
+		membership_query(user, require_scope_role) + " ORDER BY p.creation, p.name", as_dict=True
+	)
+	return [
+		row
+		for row in rows
+		if not row.reference_doctype
+		or (
+			row.reference_name
+			and frappe.db.sql(
+				f"SELECT name FROM `tab{row.reference_doctype.replace('`', '``')}` source_record "
+				f"WHERE name=%s AND {source_is_active(row.reference_doctype, 'source_record')}",
+				row.reference_name,
+			)
+		)
+	]
+
+
+def _customer_references(user, partner=None):
+	direct = _source_references("Customer", user, partner=partner)
+	partners = _source_references("Sales Partner", user, partner=partner)
 	conditions = [
 		f"customer_scope.name IN ({direct})",
 		f"customer_scope.default_sales_partner IN ({partners})",
 	]
-	if (frappe.db.table_exists("YRP Sales Person Customers")
-		and frappe.get_meta("Sales Person").has_field("yrp_sales_partner")):
-		people = _source_references("Sales Person", user, {"YRP Sales Person"})
+	if frappe.db.table_exists("YRP Sales Person Customers") and frappe.get_meta("Sales Person").has_field(
+		"yrp_sales_partner"
+	):
+		people = _source_references("Sales Person", user, partner=partner)
 		conditions.append(f"""EXISTS (SELECT 1 FROM `tabYRP Sales Person Customers` assignment
 			JOIN `tabSales Person` person ON person.name=assignment.parent
 			WHERE assignment.parenttype='Sales Person' AND assignment.parentfield='yrp_customers'
@@ -83,7 +125,7 @@ def _customer_references(user):
 			AND COALESCE(person.yrp_sales_partner, '') != ''
 			AND person.yrp_sales_partner=customer_scope.default_sales_partner)""")
 	return f"""SELECT customer_scope.name FROM `tabCustomer` customer_scope
-		WHERE ({' OR '.join(conditions)})"""
+		WHERE ({" OR ".join(conditions)}) AND COALESCE(customer_scope.disabled, 0)=0"""
 
 
 def customer_company_condition(customer_field, company_field):
@@ -99,12 +141,10 @@ def customer_company_condition(customer_field, company_field):
 		AND customer_company_default.company={company_field})"""
 
 
-def customer_names(user=None, company=None):
+def customer_names(user=None, company=None, partner=None):
 	"""Union current Customers, optionally narrowed to their configured Company."""
 	user = user or frappe.session.user
-	if not is_customer_report_user(user):
-		return set()
-	query = _customer_references(user)
+	query = _customer_references(user, partner=partner)
 	if company is not None:
 		query += " AND " + customer_company_condition("customer_scope.name", frappe.db.escape(company))
 	return set(frappe.db.sql(query, pluck=True))
@@ -246,7 +286,7 @@ def _customer_query_condition(doctype, user=None, table=None):
 	if doctype in {"YRP Customer Stock", "YRP Retail Order Summary"}:
 		return f"{table}.customer IN ({customers})"
 	if doctype == "YRP Retailer":
-		direct = _source_references("YRP Retailer", user, {"YRP Partner"})
+		direct = _source_references("YRP Retailer", user)
 		return f"({table}.name IN ({direct}) OR {table}.customer IN ({customers}))"
 	if doctype in {"YRP Visit", "YRP Retail Order"}:
 		retailers = customer_query_condition("YRP Retailer", user, "retailer_scope")
@@ -291,9 +331,7 @@ def _customer_query_condition(doctype, user=None, table=None):
 			AND ledger_account.party_type='Customer' AND ledger_account.party IN ({customer_values})
 			AND {customer_company_condition('ledger_account.party', 'ledger_account.company')}))"""
 	if doctype == "YRP Partner":
-		# Show only Customer memberships; non-Customer source memberships must
-		# not open another customer's ledger or unrelated staff/source records.
-		return f"({table}.reference_doctype='Customer' AND {table}.reference_name IN ({customers}))"
+		return f"{table}.name IN (SELECT membership.name FROM ({membership_query(user)}) membership)"
 	conditions = []
 	for fieldname, discriminator in customer_links(doctype):
 		field = f"{table}.`{fieldname.replace('`', '``')}`"

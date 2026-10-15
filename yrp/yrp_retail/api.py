@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import getdate
 
 from yrp.yrp_retail.access import require_customer, require_owned, salesperson
+from yrp.yrp_retail.setup import assigned_customers
 
 
 @contextmanager
@@ -131,7 +132,7 @@ def list_records(doctype, sales_person=None, start=0, page_length=20):
 		frappe.throw(_("Pagination must use integers."))
 	if start < 0 or not 1 <= page_length <= 100:
 		frappe.throw(_("Page length must be between 1 and 100."))
-	filters = {"customer": ["in", [row.customer for row in actor.get("yrp_customers", [])]]} if doctype == "YRP Retailer" else {"sales_person": actor.name}
+	filters = {"customer": ["in", sorted(assigned_customers(actor.name)) or [""]]} if doctype == "YRP Retailer" else {"sales_person": actor.name}
 	return frappe.get_list(doctype, filters=filters, fields=["name", "modified", "docstatus"],
 		start=start, page_length=page_length, order_by="modified desc, name desc")
 
