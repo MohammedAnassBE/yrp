@@ -2,6 +2,7 @@ import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 from frappe.tests import IntegrationTestCase
 
+from yrp.api import web_reports as api
 from yrp.web_reports.fields import EXCLUDED_FIELDTYPES, report_field_policy
 from yrp.web_reports.filters import authorize_filters
 from yrp.web_reports.layouts import (
@@ -12,6 +13,7 @@ from yrp.web_reports.layouts import (
 )
 from yrp.web_reports.link_columns import get_link_field_options, get_linked_values
 from yrp.web_reports.registry import clear_web_report_cache, get_web_reports
+from yrp.web_reports.test_support import ReportAccessTestCase, report_access_entries
 
 
 class TestLinkColumns(IntegrationTestCase):
@@ -181,6 +183,37 @@ class TestLinkColumns(IntegrationTestCase):
 		self.assertEqual(get_report_layout("stock-balance")["layout"][0].column_key, "base:item")
 		self.assertEqual(frappe.get_list(LAYOUT_DOCTYPE, pluck="name"), [])
 		self.assertFalse(layout.has_permission("read", user=self.ai_bot_user))
+
+
+class TestLinkReportAccess(ReportAccessTestCase):
+	def test_report_access_is_required_before_link_validation(self):
+		with report_access_entries() as fixture:
+			frappe.set_user(fixture.denied_user)
+			self.assertTrue(frappe.has_permission("Item", "read"))
+			for kind, entry in fixture.entries.items():
+				for source in ("item", "forged"):
+					with self.subTest(kind=kind, endpoint="options", source=source):
+						with self.assertRaises(frappe.PermissionError):
+							api.get_link_field_options(entry.key, source)
+				valid_requests = [
+					{"source_column": "item", "fields": ["item_name"], "names": [fixture.item.name]}
+				]
+				for requests in ([], "invalid json", valid_requests):
+					with self.subTest(kind=kind, endpoint="values", requests=requests):
+						with self.assertRaises(frappe.PermissionError):
+							api.get_linked_values(entry.key, requests)
+
+	def test_authorized_link_options_and_values_are_unchanged(self):
+		with report_access_entries() as fixture:
+			frappe.set_user(self.permitted_user)
+			requests = [{"source_column": "item", "fields": ["item_name"], "names": [fixture.item.name]}]
+			for kind, entry in fixture.entries.items():
+				with self.subTest(kind=kind):
+					self.assertEqual(api.get_link_field_options(entry.key, "item"), report_field_policy("Item"))
+					self.assertEqual(
+						api.get_linked_values(entry.key, requests),
+						{"item": {fixture.item.name: {"item_name": fixture.item.item_name}}},
+					)
 
 
 def _make_user(prefix, roles=("Stock User",)):

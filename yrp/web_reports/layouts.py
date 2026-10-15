@@ -4,6 +4,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from yrp.web_reports.access import check_report_access
 from yrp.web_reports.fields import report_field_policy
 from yrp.web_reports.registry import get_web_report
 
@@ -15,6 +16,7 @@ MAX_LINKED_COLUMNS = 20
 
 def get_report_layout(report_key: str) -> dict:
 	entry = get_web_report(report_key)
+	check_report_access(entry)
 	name = _layout_name(frappe.session.user, report_key)
 	layout = None
 	if name:
@@ -29,6 +31,7 @@ def get_report_layout(report_key: str) -> dict:
 
 def save_report_layout(report_key: str, columns=None) -> dict:
 	entry = get_web_report(report_key)
+	check_report_access(entry)
 	validated = _validate_columns(entry, _parse_columns(columns))
 	user = frappe.session.user
 	name = _layout_name(user, report_key)
@@ -43,7 +46,8 @@ def save_report_layout(report_key: str, columns=None) -> dict:
 
 
 def reset_report_layout(report_key: str) -> dict:
-	get_web_report(report_key)
+	entry = get_web_report(report_key)
+	check_report_access(entry)
 	name = _layout_name(frappe.session.user, report_key)
 	if name:
 		frappe.delete_doc(LAYOUT_DOCTYPE, name, ignore_permissions=True, force=True)

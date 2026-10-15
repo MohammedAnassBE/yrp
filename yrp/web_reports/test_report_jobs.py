@@ -27,7 +27,45 @@ from yrp.web_reports.jobs import (
 	run_web_report,
 )
 from yrp.web_reports.registry import WebReport, clear_web_report_cache, get_web_report
+from yrp.web_reports.test_support import report_access_entries
 from yrp.yrp.doctype.yrp_report_job.yrp_report_job import YRPReportJob
+
+
+class TestReportJobAccess(IntegrationTestCase):
+	def test_run_checks_access_before_invalid_filters(self):
+		with report_access_entries() as fixture:
+			frappe.set_user(fixture.denied_user)
+			for kind, entry in fixture.entries.items():
+				with self.subTest(kind=kind):
+					with self.assertRaises(frappe.PermissionError):
+						run_web_report(entry.key, {"based_on": "WO Status"})
+
+	def test_poll_and_download_check_access_before_job_lookup_and_filters(self):
+		with report_access_entries() as fixture:
+			for kind, entry in fixture.entries.items():
+				frappe.set_user("Administrator")
+				job = frappe.get_doc(
+					{
+						"doctype": "YRP Report Job",
+						"name": frappe.generate_hash(length=20),
+						"report_key": entry.key,
+						"kind": kind,
+						"owner": fixture.denied_user,
+						"filters": frappe.as_json({"based_on": "WO Status"}),
+						"status": "Queued",
+					}
+				)
+				job.db_insert()
+				try:
+					frappe.set_user(fixture.denied_user)
+					for endpoint in (get_report_job, download_report_job):
+						for name in (job.name, f"missing-{job.name}"):
+							with self.subTest(kind=kind, endpoint=endpoint.__name__, job=name):
+								with self.assertRaises(frappe.PermissionError):
+									endpoint(entry.key, name)
+				finally:
+					frappe.set_user("Administrator")
+					frappe.delete_doc("YRP Report Job", job.name, ignore_permissions=True, force=True)
 
 
 class TestReportJobs(IntegrationTestCase):

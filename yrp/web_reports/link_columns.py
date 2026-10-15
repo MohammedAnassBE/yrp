@@ -3,6 +3,7 @@ from collections.abc import Mapping
 import frappe
 from frappe import _
 
+from yrp.web_reports.access import check_report_access
 from yrp.web_reports.fields import report_field_policy
 from yrp.web_reports.registry import get_web_report
 
@@ -12,12 +13,14 @@ QUERY_CHUNK_SIZE = 500
 
 def get_link_field_options(report_key: str, source_column: str) -> list[dict]:
 	entry = get_web_report(report_key)
+	check_report_access(entry)
 	doctype = _source_doctype(entry, source_column)
 	return report_field_policy(doctype)
 
 
 def get_linked_values(report_key: str, requests=None) -> dict:
 	entry = get_web_report(report_key)
+	check_report_access(entry)
 	grouped = _group_requests(entry, _parse_requests(requests))
 	return {
 		source: _fetch_values(entry.link_sources[source], values["fields"], values["names"])

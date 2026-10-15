@@ -72,7 +72,7 @@ class TestSynchronousWebReports(IntegrationTestCase):
 		clear_web_report_cache()
 		payload = {"columns": [], "result": [], "report_summary": None, "message": None}
 		with (
-			patch("yrp.web_reports.jobs.get_report_doc"),
+			patch("yrp.web_reports.access.get_report_doc"),
 			patch("yrp.web_reports.jobs.run_query_report", return_value=payload) as report_run,
 		):
 			result = run_web_report("test-frappe", {})

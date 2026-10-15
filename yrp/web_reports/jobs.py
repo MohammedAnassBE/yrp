@@ -18,6 +18,7 @@ from frappe.desk.query_report import run as run_query_report
 from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hours
 from frappe.utils.background_jobs import get_job_status, get_queue, get_workers
 
+from yrp.web_reports.access import check_report_access
 from yrp.web_reports.background import needs_background
 from yrp.web_reports.filters import authorize_filters
 from yrp.web_reports.registry import get_web_report, resolve_entry_path
@@ -36,8 +37,8 @@ def run_web_report(report_key: str, filters=None, refresh=0) -> dict:
 	"""Validate and run an allow-listed report."""
 
 	entry = get_web_report(report_key)
+	check_report_access(entry)
 	filters = authorize_filters(entry.filters, filters)
-	_check_access(entry)
 	_enqueue_lazy_cleanup()
 	if not needs_background(entry, filters):
 		return _sync_envelope(_run_sync(entry, filters))
@@ -82,7 +83,7 @@ def execute_report_job(job: str) -> None:
 	try:
 		entry = get_web_report(job_doc.report_key)
 		filters = authorize_filters(entry.filters, job_doc.filters)
-		_check_access(entry)
+		check_report_access(entry)
 		payload = _build_payload(job_doc, entry, filters)
 		_validate_dependency_coverage(payload, _stamp_doctypes(job_doc))
 		frappe.db.commit()
@@ -345,6 +346,7 @@ def _transition_completed(job_name, **values) -> bool:
 
 def _authorized_job(report_key: str, job_name: str):
 	entry = get_web_report(report_key)
+	check_report_access(entry)
 	if not frappe.db.exists(JOB_DOCTYPE, job_name):
 		frappe.throw(_("This report result is no longer available. Please rebuild it."), frappe.DoesNotExistError)
 	job = frappe.get_doc(JOB_DOCTYPE, job_name)
@@ -352,7 +354,6 @@ def _authorized_job(report_key: str, job_name: str):
 	if job.report_key != report_key or (job.owner != user and "System Manager" not in frappe.get_roles(user)):
 		frappe.throw(_("You do not have access to this report job."), frappe.PermissionError)
 	filters = authorize_filters(entry.filters, job.filters)
-	_check_access(entry)
 	return job, entry, filters
 
 
@@ -441,13 +442,6 @@ def _is_gzip(attachment) -> bool:
 		file_name = str(attachment.get("file_name") or "").lower()
 		path = urlsplit(str(attachment.get("file_url") or "")).path.lower()
 		return file_name.endswith(".gz") or path.endswith(".gz")
-
-
-def _check_access(entry) -> None:
-	if entry.kind == "frappe_report":
-		get_report_doc(entry.report)
-		return
-	resolve_entry_path(entry, "access")()
 
 
 def _run_sync(entry, filters):
