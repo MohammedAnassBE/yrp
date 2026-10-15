@@ -7,7 +7,7 @@ editing Partner Types does not rewrite/export standard workspace JSON files.
 
 import frappe
 from frappe.desk.desk_views import DeskViews
-
+from frappe.desk.utils import is_item_allowed
 
 WORKSPACE = "YRP Partner Management"
 SIDEBAR = "YRP Partner"
@@ -66,10 +66,6 @@ def add_partner_navigation(bootinfo):
 	if not sidebar:
 		return
 	views = DeskViews()
-	user = frappe.get_user()
-	if not user.can_read:
-		user.build_permissions()
-	views.can_read = user.can_read
 	# Preserve Home only if native boot filtering already allowed the workspace.
 	home = [
 		item for item in sidebar["items"]
@@ -77,7 +73,7 @@ def add_partner_navigation(bootinfo):
 	]
 	links = []
 	for link in get_partner_links():
-		if not views.is_item_allowed(link.link_to, link.link_type):
+		if not is_item_allowed(link.link_to, link.link_type, views):
 			continue
 		if link.link_type == "Report":
 			# Native sidebar routing requires this object, not the legacy

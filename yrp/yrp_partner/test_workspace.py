@@ -1,6 +1,5 @@
 """Synthetic navigation tests: no Customer, Contact, User or Partner records."""
 
-from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
@@ -66,11 +65,10 @@ class TestPartnerWorkspace(TestCase):
 		}
 		links = [frappe._dict(link_to=name, link_type="DocType") for name in ("Allowed", "Restricted")]
 		views = Mock()
-		views.is_item_allowed.side_effect = lambda name, kind: name == "Allowed"
 		with (
 			patch.object(workspace, "get_partner_links", return_value=links),
 			patch.object(workspace, "DeskViews", return_value=views),
-			patch.object(workspace.frappe, "get_user", return_value=SimpleNamespace(can_read=["Allowed"])),
+			patch.object(workspace, "is_item_allowed", side_effect=lambda name, kind, ctx: name == "Allowed"),
 		):
 			workspace.add_partner_navigation(boot)
 		self.assertEqual(boot["workspace_sidebar_item"]["yrp partner"]["items"], [home, links[0]])
