@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import flt
 
 from yrp import attribute_links as attribute_db
 
@@ -48,10 +49,33 @@ def approve_debit(name):
 
 
 @frappe.whitelist()
-def create_debit(work_order, debit_no=None, debit_value=None, reason=None, on_close=0):
-	required_role = "work_order_closing_approver_role" if int(on_close or 0) else "debit_request_role"
-	if not _user_has_settings_role(required_role):
-		frappe.throw(_("You do not have permission to request a Debit."))
+def has_debit_request_permission() -> bool:
+	return bool(
+		_user_has_settings_role("debit_request_role")
+		and frappe.has_permission("YRP Debit", "create")
+		and frappe.has_permission("YRP Debit", "submit")
+	)
+
+
+@frappe.whitelist()
+def create_debit(work_order, debit_no=None, debit_value=None, reason=None, on_close=0, debit_document=None):
+	if int(on_close or 0):
+		if not _user_has_settings_role("work_order_closing_approver_role"):
+			frappe.throw(_("You do not have permission to request a Debit."))
+	else:
+		if not has_debit_request_permission():
+			frappe.throw(_("You do not have permission to request a Debit."), frappe.PermissionError)
+		work_order_state = frappe.db.get_value(
+			"YRP Work Order", work_order, ["docstatus", "open_status"], as_dict=True
+		)
+		if not work_order_state or work_order_state.docstatus != 1 or work_order_state.open_status != "Open":
+			frappe.throw(_("Debit can only be created for an open submitted Work Order."))
+
+	if flt(debit_value) <= 0:
+		frappe.throw(_("Debit Value must be greater than zero."))
+	if not (reason or "").strip():
+		frappe.throw(_("Reason is required."))
+
 	doc = frappe.get_doc(
 		{
 			"doctype": "YRP Debit",
@@ -60,6 +84,7 @@ def create_debit(work_order, debit_no=None, debit_value=None, reason=None, on_cl
 			"debit_no": debit_no,
 			"debit_value": debit_value,
 			"reason": reason,
+			"debit_document": debit_document,
 			"on_close": on_close,
 		}
 	)

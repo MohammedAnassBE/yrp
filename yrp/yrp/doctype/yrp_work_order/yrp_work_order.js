@@ -94,9 +94,44 @@ function add_close_button(frm) {
 
 function add_create_debit_button(frm) {
 	if (frm.doc.docstatus !== 1 || frm.doc.open_status !== "Open") return;
-	if (!frappe.model.can_create("YRP Debit")) return;
-	frm.add_custom_button(__("Create Debit"), () => {
-		frappe.new_doc("YRP Debit", { work_order: frm.doc.name });
+	frappe.call({
+		method: "yrp.yrp.doctype.yrp_debit.yrp_debit.has_debit_request_permission",
+		callback(r) {
+			if (!r.message || frm.doc.docstatus !== 1 || frm.doc.open_status !== "Open") return;
+			frm.add_custom_button(__("Create Debit"), () => {
+				const d = new frappe.ui.Dialog({
+					title: __("Create Debit"),
+					fields: [
+						{ fieldname: "debit_no", fieldtype: "Data", label: __("Debit No"), reqd: 1 },
+						{ fieldname: "debit_value", fieldtype: "Currency", label: __("Debit Value"), reqd: 1 },
+						{ fieldname: "reason", fieldtype: "Small Text", label: __("Reason"), reqd: 1 },
+						{ fieldname: "debit_document", fieldtype: "Attach", label: __("Debit Document") },
+					],
+					primary_action_label: __("Create"),
+					primary_action(values) {
+						if (values.debit_value <= 0) {
+							frappe.msgprint(__("Debit Value must be greater than zero."));
+							return;
+						}
+						frappe.call({
+							method: "yrp.yrp.doctype.yrp_debit.yrp_debit.create_debit",
+							args: { work_order: frm.doc.name, ...values, on_close: 0 },
+							freeze: true,
+							callback(r) {
+								if (r.message) {
+									frappe.show_alert({
+										message: __("Debit {0} created and submitted", [r.message.name]),
+										indicator: "green",
+									});
+									d.hide();
+								}
+							},
+						});
+					},
+				});
+				d.show();
+			});
+		},
 	});
 }
 
