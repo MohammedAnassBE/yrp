@@ -42,7 +42,8 @@ def is_partner(user=None):
 
 
 def source_types():
-	return set(frappe.get_all("YRP Partner Type", pluck="reference_doctype"))
+	"""Reference doctypes of partner types; a type without one, such as "Others", has no source."""
+	return set(frappe.get_all("YRP Partner Type", pluck="reference_doctype")) - {None, ""}
 
 
 def protected(doctype):

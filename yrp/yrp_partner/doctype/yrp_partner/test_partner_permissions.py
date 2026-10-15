@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import frappe
+
 from yrp.yrp_retail.tests.fixtures import customer, sales_person, set_member
 
 
@@ -109,6 +110,17 @@ class TestPartnerPermissions(unittest.TestCase):
 		frappe.set_user(self.user.name)
 		self.assertTrue(frappe.has_permission("YRP Retailer", "write", self.denied))
 		self.assertIn(self.denied.name, frappe.get_list("YRP Retailer", pluck="name"))
+
+	def test_contact_condition_skips_partner_type_without_source(self):
+		from yrp.yrp_partner import permissions
+
+		# Migrated types such as "Others" skip validation and have no reference doctype.
+		name = "Test No Source " + frappe.generate_hash(length=10)
+		frappe.get_doc({"doctype": "YRP Partner Type", "name": name, "partner_type_name": name}).db_insert()
+		self.assertNotIn(None, permissions.source_types())
+		self.user.append("roles", {"role": "YRP Sales Partner"})
+		self.user.save()
+		self.assertIn("tabDynamic Link", permissions.query_conditions(self.user.name, doctype="Contact"))
 
 	def test_processing_stays_read_only_with_sales_and_stock_roles(self):
 		from yrp.yrp_partner import permissions
