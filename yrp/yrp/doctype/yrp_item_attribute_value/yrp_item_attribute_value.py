@@ -4,6 +4,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from yrp.attribute_value_identity import MASTER, clear_name_cache
+
 
 class YRPItemAttributeValue(Document):
 	def before_insert(self):
@@ -12,9 +14,10 @@ class YRPItemAttributeValue(Document):
 		)
 
 	def autoname(self):
-		from yrp.attribute_values import attribute_value_name
+		from yrp.attribute_value_identity import get_attribute_value_names
 
-		self.name = attribute_value_name(self.attribute_name, self.attribute_value)
+		pair = (self.attribute_name, self.attribute_value)
+		self.name = get_attribute_value_names([pair])[pair]
 
 	def validate(self):
 		old = self.get_doc_before_save()
@@ -26,6 +29,7 @@ class YRPItemAttributeValue(Document):
 			frappe.get_doc("Item Attribute", self.attribute_name).check_permission("write")
 
 	def after_insert(self):
+		clear_name_cache()
 		if not self.flags.from_item_attribute:
 			from yrp.yrp.doctype.yrp_item.yrp_item import ensure_global_attribute_values
 
@@ -41,12 +45,18 @@ class YRPItemAttributeValue(Document):
 			else:
 				ensure_global_attribute_values(self.attribute_name, [self.attribute_value])
 
+	def after_rename(self, old, new, merge=False):
+		clear_name_cache()
+
 	def on_trash(self):
+		clear_name_cache()
 		# ERPNext remains the domain authority. Removing its child value triggers
 		# deletion here; a direct delete would leave an incomplete Link catalogue.
+		# A duplicate master of the same pair may go, e.g. when merged into its twin.
+		pair = {"attribute_name": self.attribute_name, "attribute_value": self.attribute_value}
 		if frappe.db.exists(
 			"Item Attribute Value", {"parent": self.attribute_name, "attribute_value": self.attribute_value}
-		):
+		) and not frappe.db.exists(MASTER, {**pair, "name": ["!=", self.name]}):
 			frappe.throw(
 				_("Remove this value from Item Attribute {0}; used values cannot be removed.").format(
 					self.attribute_name

@@ -4,6 +4,7 @@ from unittest import TestCase
 
 import frappe
 
+from yrp.attribute_value_identity import attribute_value_name
 from yrp.attribute_values import MASTER, get_mapping_values
 
 
@@ -52,7 +53,8 @@ class TestYRPItemItemAttributeMapping(TestCase):
 	def test_valid_mapping_stores_links_and_preserves_business_order(self):
 		doc = self.mapping(["Green", "Blue"]).insert()
 		doc.reload()
-		self.assertTrue(all(row.attribute_value.startswith("IAV-") for row in doc.values))
+		self.assertEqual([row.attribute_value for row in doc.values],
+			[attribute_value_name(self.attribute.name, value) for value in ("Green", "Blue")])
 		self.assertEqual(get_mapping_values(doc.name), ["Green", "Blue"])
 
 	def test_invalid_value_rejects_insert_and_update(self):

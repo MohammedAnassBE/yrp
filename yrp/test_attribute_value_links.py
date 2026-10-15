@@ -4,6 +4,7 @@ import unittest
 
 import frappe
 
+from yrp import attribute_links
 from yrp.attribute_values import (
 	MASTER,
 	attribute_value_name,
@@ -131,4 +132,39 @@ class AttributeValueLinksTest(unittest.TestCase):
 			),
 			expected,
 		)
+		self.assertEqual(get_mapping_values(mapping.name), ["XL"])
+
+	def test_free_value_is_the_name_and_a_taken_value_is_scoped(self):
+		value = "_Free-" + frappe.generate_hash(length=8)
+		self.native.append("item_attribute_values", {"attribute_value": value, "abbr": value})
+		self.native.save()
+		self.assertTrue(frappe.db.exists(MASTER, value))
+		other = frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": self.attribute + "-Other",
+				"item_attribute_values": [{"attribute_value": value, "abbr": value + "-O"}],
+			}
+		).insert()
+		self.assertEqual(attribute_value_name(other.name, value), f"{value} ({other.name})")
+		self.assertEqual(attribute_links.value(f"{value} ({other.name})"), value)
+		self.assertEqual(attribute_links.link(value, other.name), f"{value} ({other.name})")
+
+	def test_hash_name_patch_renames_and_merges_twins(self):
+		from frappe.model.rename_doc import rename_doc
+
+		from yrp.patches.rename_attribute_value_hash_names import get_target
+
+		mapping = self.mapping()
+		rename_doc(MASTER, self.link, "IAV-test-" + frappe.generate_hash(length=8), force=True)
+		row = frappe.get_all(MASTER, filters={"attribute_name": self.attribute}, fields=["*"])[0]
+		self.assertEqual(get_target(row), (self.link, False))
+		twin = frappe.get_doc(
+			{"doctype": MASTER, "attribute_name": self.attribute, "attribute_value": "XL"}
+		)
+		twin.flags.from_item_attribute = True
+		twin.insert(set_name=self.link)
+		self.assertEqual(get_target(row), (twin.name, True))
+		rename_doc(MASTER, row.name, twin.name, force=True, merge=True)
+		self.assertFalse(frappe.db.exists(MASTER, row.name))
 		self.assertEqual(get_mapping_values(mapping.name), ["XL"])

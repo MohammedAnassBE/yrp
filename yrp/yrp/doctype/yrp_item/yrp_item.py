@@ -844,9 +844,10 @@ def get_item_attribute_values(doctype=None, txt="", searchfield=None, start=0, p
 	needle = (txt or "").lower()
 	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	if doctype == "YRP Item Attribute Value":
-		from yrp.attribute_value_identity import attribute_value_name
+		from yrp.attribute_value_identity import get_attribute_value_names
 
-		return [[attribute_value_name(attribute, value), value] for value in matched]
+		names = get_attribute_value_names([(attribute, value) for value in matched])
+		return [[names[(attribute, cstr(value))], value] for value in matched]
 	return [[value] for value in matched]
 
 
