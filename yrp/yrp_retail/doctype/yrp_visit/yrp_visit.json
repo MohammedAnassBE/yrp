@@ -67,8 +67,7 @@
   {
    "fieldname": "location",
    "fieldtype": "Geolocation",
-   "label": "Location",
-   "reqd": 1
+   "label": "Location"
   },
   {
    "default": "0",
@@ -82,7 +81,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-10 15:21:20.118281",
+ "modified": "2026-10-15 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP Retail",
  "name": "YRP Visit",

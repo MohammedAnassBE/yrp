@@ -70,6 +70,16 @@ class TestRetailFlow(unittest.TestCase):
 			with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
 				api.create_visit(visit_datetime=str(now_datetime()), **kwargs)
 
+	def test_retailer_without_shop_name_and_visit_without_location_save(self):
+		retailer = api.create_retailer(self.label("Retailer"), self.customer.name)["name"]
+		self.assertFalse(frappe.db.get_value("YRP Retailer", retailer, "shop_name"))
+		visit = frappe.get_doc({"doctype": "YRP Visit", "sales_person": self.person.name, "visit_type": "Secondary",
+			"visit_datetime": now_datetime(), "retailer": retailer}).insert()
+		self.assertFalse(visit.location)
+		visit.location = '{"type": "Point", "coordinates": [77.5, 100]}'
+		with self.assertRaises(frappe.ValidationError):
+			visit.save()
+
 	def test_create_order_updates_visit_and_rejects_duplicate(self):
 		visit = self.visit()
 		name = api.create_retail_order(visit, self.items(7))["name"]

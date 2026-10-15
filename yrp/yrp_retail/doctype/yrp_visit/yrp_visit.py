@@ -18,7 +18,8 @@ class YRPVisit(Document):
 			require(not self.customer or self.customer == customer, "Customer conflicts with the Retailer's Customer.")
 			self.customer = customer
 		validate_assignment(self.sales_person, self.customer, self.retailer)
-		validate_location(self.location)
+		if self.location:
+			validate_location(self.location)
 		if not self.is_new():
 			frappe.db.sql("select name from `tabYRP Visit` where name=%s for update", self.name)
 		old = self.get_doc_before_save()
