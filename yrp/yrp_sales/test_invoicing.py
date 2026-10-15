@@ -11,6 +11,22 @@ from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import make_deliv
 from yrp.yrp_sales.invoicing import make_sales_invoice
 
 
+def get_dimension_values():
+	"""Each stock dimension's default or first record, created when the site has none."""
+	values = {}
+	for dimension in get_stock_dimensions():
+		doctype = dimension["dimension_doctype"]
+		value = frappe.db.get_value(doctype, {}, "name")
+		if dimension["fieldname"] == "received_type":
+			value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type") or value
+		value = value or "Test " + doctype
+		if not frappe.db.exists(doctype, value):
+			name_field = frappe.get_meta(doctype).autoname.removeprefix("field:")
+			frappe.get_doc({"doctype": doctype, name_field: value}).insert()
+		values[dimension["fieldname"]] = value
+	return values
+
+
 class DeliveryNoteFixtures(unittest.TestCase):
 	"""Company, item, stock and Delivery Note fixtures shared by YRP Sales tests."""
 
@@ -27,7 +43,7 @@ class DeliveryNoteFixtures(unittest.TestCase):
 		self.item = self.make_item()
 		self.customer = self.make_customer()
 		self.warehouse = self.make_warehouse()
-		self.dimensions = self.get_dimension_values()
+		self.dimensions = get_dimension_values()
 		self.receive(10)
 
 	def label(self, label):
@@ -63,15 +79,6 @@ class DeliveryNoteFixtures(unittest.TestCase):
 	def make_warehouse(self):
 		return frappe.get_doc({"doctype": "Warehouse", "warehouse_name": self.label("Store"),
 			"company": self.company}).insert().name
-
-	def get_dimension_values(self):
-		values = {}
-		for dimension in get_stock_dimensions():
-			value = frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
-			if dimension["fieldname"] == "received_type":
-				value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type") or value
-			values[dimension["fieldname"]] = value
-		return values
 
 	def receive(self, qty, warehouse=None):
 		entry = frappe.get_doc({"doctype": "YRP Stock Entry", "purpose": "Material Receipt",

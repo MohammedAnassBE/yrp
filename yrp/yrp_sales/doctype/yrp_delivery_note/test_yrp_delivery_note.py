@@ -8,7 +8,7 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import nowdate
 
-from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
+from yrp.stock.dimensions import get_dimension_fieldnames
 from yrp.stock.utils import get_or_make_bin
 from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import (
 	create_delivery_note,
@@ -16,6 +16,7 @@ from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import (
 	get_pending_rows,
 	make_delivery_note,
 )
+from yrp.yrp_sales.test_invoicing import get_dimension_values
 
 
 class TestYRPDeliveryNote(unittest.TestCase):
@@ -31,7 +32,7 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		self.customer = self.make_customer()
 		self.warehouse = frappe.get_doc({"doctype": "Warehouse", "warehouse_name": self.label("Store"),
 			"company": self.company}).insert().name
-		self.dimensions = self.get_dimension_values()
+		self.dimensions = get_dimension_values()
 		self.receive(10)
 
 	def label(self, label):
@@ -53,15 +54,6 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		return frappe.get_doc({"doctype": "Customer", "customer_name": self.label("Customer"),
 			"customer_type": "Individual", "customer_group": customer_group.name,
 			"territory": territory.name}).insert().name
-
-	def get_dimension_values(self):
-		values = {}
-		for dimension in get_stock_dimensions():
-			value = frappe.db.get_value(dimension["dimension_doctype"], {}, "name")
-			if dimension["fieldname"] == "received_type":
-				value = frappe.db.get_single_value("YRP Stock Settings", "default_received_type") or value
-			values[dimension["fieldname"]] = value
-		return values
 
 	def receive(self, qty):
 		entry = frappe.get_doc({"doctype": "YRP Stock Entry", "purpose": "Material Receipt",
