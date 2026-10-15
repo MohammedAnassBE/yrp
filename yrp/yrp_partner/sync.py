@@ -81,14 +81,17 @@ def ensure_historical_partner(name, partner_type, reference_doctype):
 	type and never overwrites an existing identity or grants membership roles.
 	Unbound references use NULL so the business-binding unique index stays valid.
 	"""
-	if not name or not partner_type or not reference_doctype:
-		raise frappe.ValidationError("Historical Partner requires a name, type and reference DocType")
-	if frappe.db.get_value("YRP Partner Type", partner_type, "reference_doctype") != reference_doctype:
+	if not name or not partner_type:
+		raise frappe.ValidationError("Historical Partner requires a name and type")
+	if not frappe.db.exists("YRP Partner Type", partner_type):
+		raise frappe.ValidationError("Historical Partner requires an existing Partner Type")
+	reference_doctype = reference_doctype or None
+	if (frappe.db.get_value("YRP Partner Type", partner_type, "reference_doctype") or None) != reference_doctype:
 		raise frappe.ValidationError("Historical Partner type does not match its reference DocType")
 	if existing := frappe.db.get_value(
 		"YRP Partner", name, ["partner_type", "reference_doctype", "reference_name"], as_dict=True
 	):
-		if (existing.partner_type, existing.reference_doctype) != (partner_type, reference_doctype) or existing.reference_name:
+		if (existing.partner_type, existing.reference_doctype or None) != (partner_type, reference_doctype) or existing.reference_name:
 			raise frappe.ValidationError(f"Historical Partner name conflicts with an existing identity: {name}")
 		return
 	partner = frappe.get_doc({

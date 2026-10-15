@@ -14,7 +14,7 @@ class YRPPartner(Document):
 
 	def validate(self):
 		expected = frappe.db.get_value("YRP Partner Type", self.partner_type, "reference_doctype")
-		if expected != self.reference_doctype:
+		if (expected or None) != (self.reference_doctype or None):
 			frappe.throw(_("Reference DocType must match the Partner Type."))
 		previous = self.get_doc_before_save()
 		if previous and any(previous.get(f) != self.get(f) for f in ("partner_type", "reference_doctype", "reference_name")):

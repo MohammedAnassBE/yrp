@@ -182,3 +182,38 @@ class TestPartnerBackfill(unittest.TestCase):
 		}, "name")
 		with self.assertRaises(frappe.ValidationError):
 			ensure_historical_partner(bound, kind.name, "UOM")
+
+	def test_historical_blank_doctype_requires_an_existing_unconfigured_type(self):
+		from yrp.yrp_partner.member_roles import get_needed_roles
+		from yrp.yrp_partner.sync import ensure_historical_partner
+
+		kind = "_LOCAL_HISTORY_TYPE_" + frappe.generate_hash(length=10)
+		frappe.get_doc({
+			"doctype": "YRP Partner Type", "partner_type_name": kind,
+			"reference_doctype": "",
+		}).db_insert()
+		user = self.make_user(partner_role=False)
+		for value in (None, ""):
+			name = "_LOCAL_OTHERS_" + frappe.generate_hash(length=10)
+			ensure_historical_partner(name, kind, value)
+			doc = frappe.get_doc("YRP Partner", name)
+			self.assertIsNone(doc.reference_doctype)
+			self.assertIsNone(doc.reference_name)
+			doc.append("users", {"user": user.name})
+			doc.flags.ignore_mandatory = True
+			doc.save()
+			before = doc.reload().as_dict()
+			ensure_historical_partner(name, kind, "")
+			self.assertEqual(doc.reload().as_dict(), before)
+			self.assertEqual(get_needed_roles(user.name), set())
+			self.assertNotIn("YRP Partner", frappe.get_roles(user.name))
+		configured = self.make_type()
+		for value in (None, ""):
+			with self.assertRaises(frappe.ValidationError):
+				ensure_historical_partner(name, configured.name, value)
+		with self.assertRaises(frappe.ValidationError):
+			ensure_historical_partner(name, kind, "Customer")
+		with self.assertRaisesRegex(frappe.ValidationError, "conflicts"):
+			ensure_historical_partner(name, configured.name, "UOM")
+		with self.assertRaisesRegex(frappe.ValidationError, "existing Partner Type"):
+			ensure_historical_partner(name, kind + "_MISSING", None)
