@@ -978,11 +978,13 @@ def get_item_attribute_values(doctype=None, txt="", searchfield=None, start=0, p
 	if not values:
 		values = get_global_attribute_values(attribute)
 	needle = (txt or "").lower()
-	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	if doctype == "YRP Item Attribute Value":
 		from yrp.attribute_value_identity import attribute_value_name
 
-		return [[attribute_value_name(attribute, value), value] for value in matched]
+		# Link validation re-runs this query with the stored name as txt.
+		rows = [[attribute_value_name(attribute, value), value] for value in values]
+		return [row for row in rows if row[0] == txt or needle in cstr(row[1]).lower()][start : start + page_len]
+	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	return [[value] for value in matched]
 
 

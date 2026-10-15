@@ -208,6 +208,22 @@ class TestItemPrice(TestCase):
 		self.assertIn("PRICE-B", str(log_error.call_args_list[1]))
 
 
+class TestItemPriceAttributeValueQuery(TestCase):
+	def test_link_validation_finds_the_stored_attribute_value_name(self):
+		from yrp.attribute_value_identity import attribute_value_name
+		from yrp.yrp.doctype.yrp_item import yrp_item
+
+		filters = {"attribute": "_Test Price Size"}
+		stored = attribute_value_name("_Test Price Size", "28")
+
+		def search(txt):
+			return yrp_item.get_item_attribute_values("YRP Item Attribute Value", txt, "name", 0, 10, filters)
+
+		with patch.object(yrp_item, "get_global_attribute_values", return_value=["28", "30"]):
+			self.assertEqual(search(stored), [[stored, "28"]])
+			self.assertEqual(search("3"), [[attribute_value_name("_Test Price Size", "30"), "30"]])
+
+
 class TestItemPriceNativePaths(TestCase):
 	@classmethod
 	def setUpClass(cls):
