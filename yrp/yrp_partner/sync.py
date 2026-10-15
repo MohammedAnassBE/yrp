@@ -9,6 +9,47 @@ import frappe
 _GENERATION_TOKEN = object()
 
 
+def is_source_active(doctype, name):
+	"""Read standard business offboarding flags without app-specific identities."""
+	if not frappe.db.exists(doctype, name):
+		return False
+	meta = frappe.get_meta(doctype)
+	fields = [field for field in ("disabled", "enabled", "status", "docstatus") if meta.has_field(field)]
+	values = frappe.db.get_value(doctype, name, fields, as_dict=True) if fields else {}
+	return not (
+		values.get("disabled") or values.get("enabled") == 0
+		or values.get("status") == "Left" or values.get("docstatus") == 2
+	)
+
+
+def ensure_source_membership(doctype, name, user):
+	"""Bind an existing login to an active source; never create or enable Users.
+
+	The caller owns identity resolution. This internal repair uses the same Partner
+	creation and membership controller as ordinary document saves.
+	"""
+	from yrp.yrp_partner.member_roles import MEMBER_ROLES, sync_member_roles
+
+	frappe.only_for("System Manager")
+	if not is_source_active(doctype, name):
+		raise frappe.ValidationError(f"Inactive partner source: {doctype} {name}")
+	account = frappe.get_doc("User", user)
+	if user in {"Administrator", "Guest"} or {r.role for r in account.roles} - MEMBER_ROLES - {"All", "Guest", "Desk User"}:
+		raise frappe.ValidationError(f"Cannot repair staff membership: {user}")
+	types = frappe.get_all("YRP Partner Type", {"reference_doctype": doctype}, pluck="name")
+	if not types:
+		raise frappe.ValidationError(f"No Partner Type for {doctype}")
+	for partner_type in types:
+		ensure_partner(partner_type, doctype, name)
+		partner = frappe.get_doc("YRP Partner", {"partner_type": partner_type, "reference_name": name}, for_update=True)
+		if partner.disabled:
+			raise frappe.ValidationError(f"Partner is disabled: {partner.name}")
+		if user not in {row.user for row in partner.users}:
+			partner.append("users", {"user": user})
+			partner.save(ignore_permissions=True)
+	sync_member_roles({user}, set())
+
+
 def ensure_partner(partner_type, reference_doctype, reference_name):
 	"""Create the source's Partner when it is missing; existing members are never changed."""
 	filters = {"partner_type": partner_type, "reference_name": reference_name}
