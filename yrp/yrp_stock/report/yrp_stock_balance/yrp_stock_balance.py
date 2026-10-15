@@ -215,6 +215,13 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 			query = query.where(sle.warehouse.isin(list(warehouses)))
 		else:
 			query = query.where(sle.warehouse == warehouses)
+	if suppliers := filters.get("supplier"):
+		suppliers = [suppliers] if isinstance(suppliers, str) else list(suppliers)
+		warehouse = frappe.qb.DocType("Warehouse")
+		supplier_warehouses = (
+			frappe.qb.from_(warehouse).select(warehouse.name).where(warehouse.supplier.isin(suppliers))
+		)
+		query = query.where(sle.warehouse.isin(supplier_warehouses))
 	if items:
 		query = query.where(sle.item.isin(items))
 	for fn in dim_fields:
@@ -308,10 +315,10 @@ def get_opening_vouchers(to_date):
 def get_items(filters):
 	if item := filters.get("item"):
 		return [item] if isinstance(item, str) else item
-	item_filters = {}
-	if parent_item := filters.get("parent_item"):
-		item_filters["variant_of"] = parent_item
-	return frappe.get_all("Item", filters=item_filters, pluck="name", order_by=None)
+	if not (parent_item := filters.get("parent_item")):
+		# Every item: the ledger query needs no item list, item details come from its rows.
+		return []
+	return frappe.get_all("Item", filters={"variant_of": parent_item}, pluck="name", order_by=None)
 
 
 def get_item_details(items, sle, filters):

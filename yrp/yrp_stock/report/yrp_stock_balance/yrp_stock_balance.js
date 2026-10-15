@@ -33,6 +33,12 @@ frappe.query_reports["YRP Stock Balance"] = {
 			options: "Warehouse",
 		},
 		{
+			fieldname: "supplier",
+			label: __("Supplier"),
+			fieldtype: "Link",
+			options: "Supplier",
+		},
+		{
 			fieldname: "show_stock_ageing_data",
 			label: __("Show Stock Ageing Data"),
 			fieldtype: "Check",
