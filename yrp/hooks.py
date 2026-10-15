@@ -63,7 +63,7 @@ fixtures = [
 	},
 	{
 		"dt": "Workflow Action Master",
-		"filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired"]]],
+		"filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired", "Revise"]]],
 		"prefix": "01",
 	},
 	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},

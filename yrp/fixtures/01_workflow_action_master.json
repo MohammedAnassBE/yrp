@@ -26,5 +26,12 @@
   "modified": "2024-07-22 18:00:33.745345",
   "name": "Expired",
   "workflow_action_name": "Expired"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-10-15 18:00:00.000000",
+  "name": "Revise",
+  "workflow_action_name": "Revise"
  }
 ]
