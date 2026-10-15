@@ -52,6 +52,12 @@ PORTAL_REPORTS = {
 	"Agent Retailer Points": "EYP Points Entry",
 }
 PORTAL_REPORT_ROLES = {"YRP Sales Partner"}
+# Visit reports read permission-checked YRP Visit lists; the Report's own roles
+# (YRP Sales Partner, YRP Sales Person) decide access.
+SALES_REP_REPORTS = {
+	"Sales Rep Visit Details": "YRP Visit",
+	"Sales Rep Performance": "YRP Visit",
+}
 CUSTOMER_REPORTS = {
 	"General Ledger": "GL Entry",
 	"Accounts Receivable": "Sales Invoice",
@@ -59,13 +65,16 @@ CUSTOMER_REPORTS = {
 	"YRP Retail Demand": "YRP Retail Order",
 	"YRP Retail Summary Allocation": "YRP Retail Order Summary",
 	**PORTAL_REPORTS,
+	**SALES_REP_REPORTS,
 }
 _RETAIL_KINDS = {
 	"YRP Retail Demand": "demand",
 	"YRP Retail Summary Allocation": "allocation",
 }
 # The partner portal and app run these through Frappe's Prepared Report.
-PREPARED_REPORTS = frozenset(PORTAL_REPORTS) | frozenset(_RETAIL_KINDS) | {"General Ledger"}
+PREPARED_REPORTS = (
+	frozenset(PORTAL_REPORTS) | frozenset(SALES_REP_REPORTS) | frozenset(_RETAIL_KINDS) | {"General Ledger"}
+)
 MAX_QUEUED_PREPARED_REPORTS = 3
 
 _ACCOUNTING_REFERENCES = {
@@ -350,7 +359,7 @@ class CustomerReportMixin:
 			return super().execute_module(filters)
 		if not self.is_permitted():
 			_deny()
-		if self.name in PORTAL_REPORTS:
+		if self.name in PORTAL_REPORTS or self.name in SALES_REP_REPORTS:
 			return super().execute_module(portal_filters(filters))
 		return _project(self.name, _execute(self.name, scoped_filters(
 			filters, require_company=self.name not in _RETAIL_KINDS,

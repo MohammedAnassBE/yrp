@@ -388,6 +388,18 @@ class TestCustomerReports(unittest.TestCase):
 		self.assertEqual(_Report("Itemwise Pending").is_permitted(), "native permission")
 		self.assertFalse(_Report("Order Survey", ref_doctype="YRP Sales Order").is_permitted())
 
+	def test_sales_rep_reports_follow_the_reports_own_roles(self):
+		"""Agents and sales persons run the visit reports; rows come from permission-checked YRP Visit lists."""
+		for roles in (["YRP Sales Partner"], ["YRP Sales Person"], ["YRP Customer"]):
+			self.roles.return_value = roles
+			for name in reports.SALES_REP_REPORTS:
+				with self.subTest(roles=roles, name=name):
+					self.assertEqual(_Report(name).is_permitted(), "native permission")
+		self.assertIn("Sales Rep Visit Details", reports.PREPARED_REPORTS)
+		self.assertEqual(
+			_Report("Sales Rep Visit Details").execute_module({}), ("native execution", {})
+		)
+
 	def test_portal_reports_run_natively_with_only_owned_customer_and_partner(self):
 		self.roles.return_value = ["YRP Sales Partner"]
 		self.enterContext(patch.object(frappe, "db", Mock(exists=Mock(return_value=True))))
