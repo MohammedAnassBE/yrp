@@ -2,9 +2,16 @@
 # See license.txt
 
 import frappe
+from frappe.model.meta import get_field_precision
+from frappe.utils import flt
 
 from yrp.yrp_sales.doctype.yrp_packing_slip.yrp_packing_slip import make_packing_slip
 from yrp.yrp_sales.test_invoicing import DeliveryNoteFixtures
+
+
+def percent(value):
+	"""The value rounded like the site stores Percent fields."""
+	return flt(value, get_field_precision(frappe.get_meta("YRP Delivery Note").get_field("per_delivered")))
 
 
 class TestYRPPackingSlip(DeliveryNoteFixtures):
@@ -73,7 +80,7 @@ class TestYRPPackingSlip(DeliveryNoteFixtures):
 		first, second = self.pack(note, 2), self.pack(note, 4)
 		self.deliver(first)
 		self.assertEqual((first.status, bool(first.delivered_at)), ("Delivered", True))
-		self.assertEqual(self.get_delivery(note), ("Partially Delivered", 33.333, [2], "Partially Delivered", 2))
+		self.assertEqual(self.get_delivery(note), ("Partially Delivered", percent(100 / 3), [2], "Partially Delivered", 2))
 		self.assertFalse(note.delivered_at)
 		self.deliver(second)
 		self.assertEqual(self.get_delivery(note), ("Delivered", 100, [6], "Delivered", 6))
@@ -163,7 +170,7 @@ class TestYRPPackingSlip(DeliveryNoteFixtures):
 			self.deliver(second)
 		self.invoice(note)
 		self.deliver(second)
-		self.assertEqual(self.get_delivery(note)[:3], ("Partially Delivered", 66.667, [4]))
+		self.assertEqual(self.get_delivery(note)[:3], ("Partially Delivered", percent(200 / 3), [4]))
 
 	def test_delivery_uses_the_saved_slip_not_the_client_copy(self):
 		"""run_doc_method builds the slip from the request; its quantities must not decide delivery."""
