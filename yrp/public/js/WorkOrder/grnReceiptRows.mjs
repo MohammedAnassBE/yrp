@@ -49,8 +49,9 @@ function receiptReferences(entry, columns) {
 	]);
 }
 
-export function buildReceiptRowKey(group, entry) {
+export function buildReceiptRowKey(group, entry, { lotFieldname = '' } = {}) {
 	const dimensions = stripReceivedType(entry.dimensions || {});
+	if (lotFieldname) delete dimensions[lotFieldname];
 	const columns = getColumns(group, entry);
 	return stableKey({
 		name: entry.name,
@@ -74,16 +75,17 @@ function stableKey(value) {
 	return JSON.stringify(sortObject(value));
 }
 
-export function buildLogicalReceiptRows(items, { aggregatePhysicalRows = false } = {}) {
+export function buildLogicalReceiptRows(items, { aggregatePhysicalRows = false, lotFieldname = '' } = {}) {
 	const rows = [];
 	const byKey = new Map();
 	for (const group of items || []) {
 		for (const entry of group.items || []) {
 			const dimensions = stripReceivedType(entry.dimensions || {});
+			if (lotFieldname) delete dimensions[lotFieldname];
 			const attributes = entry.attributes || {};
 			const columns = getColumns(group, entry);
 			const setCombination = normalizedSetCombination(entry.set_combination);
-			const key = buildReceiptRowKey(group, entry);
+			const key = buildReceiptRowKey(group, entry, { lotFieldname });
 			if (!byKey.has(key)) {
 				const row = {
 					key,
@@ -104,11 +106,12 @@ export function buildLogicalReceiptRows(items, { aggregatePhysicalRows = false }
 			const row = byKey.get(key);
 			const type = receivedType(entry);
 			let split = aggregatePhysicalRows
-				? row.splits.find((candidate) => candidate.receivedType === type)
+				? row.splits.find((candidate) => candidate.receivedType === type
+					&& (!lotFieldname || candidate.entry.dimensions?.[lotFieldname] === entry.dimensions?.[lotFieldname]))
 				: null;
 			if (!split) {
 				split = {
-					key: `${key}::${type}`,
+					key: `${key}::${type}${lotFieldname ? `::${entry.dimensions?.[lotFieldname] || ''}` : ''}`,
 					receivedType: type,
 					entry: aggregatePhysicalRows
 						? JSON.parse(JSON.stringify(entry))

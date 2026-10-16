@@ -10,6 +10,7 @@
                         <th class="grn-sno">S.No.</th>
                         <th class="grn-item">Item</th>
                         <th class="grn-type">Received Type</th>
+						<th v-if="lotFieldname">Lot</th>
                         <th v-for="col in row.columns" :key="col.key" class="grn-qty-col">
                             {{ col.label }}
                         </th>
@@ -40,9 +41,19 @@
                             <button v-if="edit && canRemoveSplit(row, split)"
                                     type="button"
                                     class="grn-rt-remove"
-                                    title="Remove this Received Type row"
+                                    :title="lotFieldname ? 'Remove this empty split' : 'Remove this Received Type row'"
                                     @click="removeSplit(row, split)">×</button>
                         </td>
+						<td v-if="lotFieldname">
+							<select v-if="edit && !returnMode && lotOptions.length > 1" class="form-control form-control-sm"
+								:value="split.entry.dimensions?.[lotFieldname]" aria-label="Receipt lot"
+								@change="setLot(split, $event.target.value)">
+								<option v-for="lot in lotOptions" :key="lot" :value="lot">{{ lot }}</option>
+							</select>
+							<span v-else>{{ split.entry.dimensions?.[lotFieldname] }}</span>
+							<button v-if="edit && !returnMode && unusedLots(row, split).length" type="button"
+								class="btn btn-xs btn-default" @click="addLot(row, split)">Add lot</button>
+						</td>
                         <td v-for="col in row.columns" :key="col.key">
                             <input v-if="edit"
                                    class="form-control form-control-sm grn-qty-input"
@@ -53,6 +64,13 @@
                                    :value="qty(split.entry, col.key)"
                                    @input="onQtyInput(row, split, col.key, $event)">
                             <span v-else>{{ formatQty(qty(split.entry, col.key)) }}</span>
+							<div v-if="lotFieldname && valueDetail(split.entry, col.key).secondary_uom">
+								<input v-if="edit" v-model.number="valueDetail(split.entry, col.key).secondary_qty"
+									type="number" min="0" step="0.001" aria-label="Secondary quantity"
+									class="form-control form-control-sm grn-qty-input" @input="emit('itemupdated', true)">
+								<span v-else>{{ valueDetail(split.entry, col.key).secondary_qty }}</span>
+								<small>{{ valueDetail(split.entry, col.key).secondary_uom }}</small>
+							</div>
                         </td>
                         <td>{{ formatQty(splitTotal(split, row.columns)) }}</td>
 						<td v-if="returnMode && splitIndex === 0" :rowspan="row.splits.length">
@@ -78,7 +96,7 @@
 					<tr v-if="edit && !returnMode && unusedRTs(row).length" class="grn-rt-add-row">
                         <td></td>
                         <td></td>
-                        <td :colspan="row.columns.length + 5">
+                        <td :colspan="row.columns.length + 5 + (lotFieldname ? 1 : 0)">
                             <span class="text-muted small mr-2">Add Received Type:</span>
                             <button v-for="rt in unusedRTs(row)"
                                     :key="rt"
@@ -108,6 +126,8 @@ const props = defineProps({
 	returnMode: { type: Boolean, default: false },
 	allowExcess: { type: Boolean, default: false },
 	aggregatePhysicalRows: { type: Boolean, default: false },
+	lotOptions: { type: Array, default: () => [] },
+	lotFieldname: { type: String, default: '' },
 });
 const emit = defineEmits(['itemupdated']);
 
@@ -143,7 +163,34 @@ const dimensionLabels = computed(() => {
 
 const logicalRows = computed(() => buildLogicalReceiptRows(props.items, {
 	aggregatePhysicalRows: props.aggregatePhysicalRows,
+	lotFieldname: props.lotFieldname,
 }));
+
+function unusedLots(row, split) {
+	const used = new Set(row.splits.filter((entry) => entry.receivedType === split.receivedType)
+		.map((entry) => entry.entry.dimensions?.[props.lotFieldname]));
+	return props.lotOptions.filter((lot) => !used.has(lot));
+}
+
+function setLot(split, lot) {
+	for (const entry of split.sourceEntries || [split.entry]) entry.dimensions[props.lotFieldname] = lot;
+	emit('itemupdated', true);
+}
+
+function addLot(row, split) {
+	const source = split.sourceEntries?.[0] || split.entry;
+	const group = props.items.find((group) => group.items.includes(source));
+	if (!group) return;
+	const clone = JSON.parse(JSON.stringify(source));
+	clone.dimensions[props.lotFieldname] = unusedLots(row, split)[0];
+	for (const value of Object.values(clone.values || {})) {
+		value.qty = 0;
+		value.secondary_qty = 0;
+		value.freight_amount = 0;
+	}
+	group.items.push(clone);
+	emit('itemupdated', true);
+}
 
 function stripReceivedType(dimensionsIn) {
     const out = {};
@@ -300,6 +347,7 @@ function unusedRTs(row) {
 function canRemoveSplit(row, split) {
     // Only allow removing a split that has no qty entered, and keep at least one split per row.
     if (!row.splits || row.splits.length <= 1) return false;
+	if (props.lotFieldname && Object.values(split.entry.values || {}).some((value) => toNumber(value.secondary_qty))) return false;
     return splitTotal(split, row.columns) === 0;
 }
 
@@ -308,7 +356,7 @@ function addSplit(row, rt) {
     for (const group of props.items || []) {
         for (const entry of (group.items || [])) {
             const stripped = stripReceivedType(entry.dimensions || {});
-			const dimsWithoutTypeKey = buildReceiptRowKey(group, entry);
+			const dimsWithoutTypeKey = buildReceiptRowKey(group, entry, { lotFieldname: props.lotFieldname });
             if (dimsWithoutTypeKey !== row.key) continue;
             const clone = JSON.parse(JSON.stringify(entry));
             clone.dimensions = { ...stripped, received_type: rt };
@@ -317,6 +365,10 @@ function addSplit(row, rt) {
             for (const col of cols) {
                 const src = (entry.values || {})[col.key] || {};
                 clone.values[col.key] = { ...src, qty: 0 };
+				if (props.lotFieldname) {
+					clone.values[col.key].secondary_qty = 0;
+					clone.values[col.key].freight_amount = 0;
+				}
             }
             group.items.push(clone);
             emit('itemupdated', true);

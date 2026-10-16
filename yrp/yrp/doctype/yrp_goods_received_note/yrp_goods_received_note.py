@@ -22,6 +22,31 @@ from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import (
 QTY_TOLERANCE = 0.0001
 
 
+def get_purchase_order_lot_fieldname():
+	from yrp.stock.dimensions import get_production_group
+
+	dimension = get_production_group()
+	return dimension["fieldname"] if dimension else None
+
+
+def get_purchase_order_lot_options(purchase_order):
+	"""Return source and explicitly linked lots in display order."""
+	fieldname = get_purchase_order_lot_fieldname()
+	values = [row.get(fieldname) for row in [purchase_order, *(purchase_order.get("items") or [])]]
+	for hook in frappe.get_hooks("yrp_purchase_order_lot_options"):
+		values.extend(frappe.get_attr(hook)(purchase_order))
+	return list(dict.fromkeys(value for value in values if value))
+
+
+def validate_purchase_order_lot(row, fieldname, lot_options, purchase_order, row_number):
+	if fieldname and lot_options and row.get(fieldname) not in lot_options:
+		frappe.throw(
+			_("Row {0}: Lot {1} is not allowed for Purchase Order {2}.").format(
+				row_number, row.get(fieldname) or _("(empty)"), purchase_order
+			)
+		)
+
+
 def _strip_zero_entries(item_details):
 	"""Drop entries whose every cell qty is 0 from the grouped item_details JSON.
 
@@ -56,6 +81,10 @@ class YRPGoodsReceivedNote(Document):
 		from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
 
 		rows = self.get("items") or []
+		if self.against == "Purchase Order" and self.against_id:
+			po = frappe.get_doc("Purchase Order", self.against_id)
+			self.set_onload("lot_options", get_purchase_order_lot_options(po))
+			self.set_onload("lot_fieldname", get_purchase_order_lot_fieldname())
 		if (
 			self.docstatus == 0
 			and self.against == "YRP Work Order"
@@ -101,8 +130,18 @@ class YRPGoodsReceivedNote(Document):
 
 	def validate(self):
 		self.validate_against()
+		self.validate_purchase_order_lots()
 		self.validate_items()
 		self.calculate_totals()
+
+	def validate_purchase_order_lots(self):
+		if self.against != "Purchase Order" or not self.against_id or self.get("is_return"):
+			return
+		po = frappe.get_doc("Purchase Order", self.against_id)
+		lot_options = get_purchase_order_lot_options(po)
+		fieldname = get_purchase_order_lot_fieldname()
+		for index, row in enumerate(self.get("items") or [], 1):
+			validate_purchase_order_lot(row, fieldname, lot_options, po.name, index)
 
 	def before_submit(self):
 		self.validate_against()
@@ -1869,6 +1908,8 @@ def get_purchase_order_defaults(purchase_order):
 		"to_warehouse": po.set_warehouse,
 		"items": items,
 		"item_details": group_items_for_ui(items, "YRP Goods Received Note"),
+		"lot_options": get_purchase_order_lot_options(po),
+		"lot_fieldname": get_purchase_order_lot_fieldname(),
 	}
 	defaults.update(dimensions)
 	return defaults
@@ -2091,9 +2132,7 @@ def _aggregate_rework_receivable_rows(rows):
 def _pending_purchase_order_rows(po, existing_rows=None):
 	from yrp.stock.dimensions import get_dimension_fieldnames
 
-	existing_quantities = (
-		_existing_purchase_receipt_quantities(po, existing_rows) if existing_rows is not None else {}
-	)
+	existing_by_item = _existing_purchase_receipt_rows(po, existing_rows)
 	rows = []
 	for row in po.get("items") or []:
 		pending = flt(row.pending_quantity)
@@ -2102,11 +2141,9 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			flt(_remaining_receivable_allowance(row.qty, pending, excess_pct)),
 			0,
 		)
-		if existing_rows is None:
-			quantity = pending if pending > 0 else 0
-		else:
-			quantity = existing_quantities.get(row.name, pending if pending > 0 else 0)
-		if max_receivable <= 0 and flt(quantity) <= 0:
+		quantity = max(pending, 0)
+		splits = existing_by_item.get(row.name)
+		if max_receivable <= 0 and not splits:
 			continue
 		out = {
 			"item_variant": row.item_code,
@@ -2127,7 +2164,23 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 		for fieldname in get_dimension_fieldnames():
 			if row.get(fieldname):
 				out[fieldname] = row.get(fieldname)
-		rows.append(out)
+		rows.extend(_purchase_receipt_splits(out, existing_by_item.get(row.name)))
+	return rows
+
+
+def _purchase_receipt_splits(source, existing_rows):
+	"""Retain each saved split while refreshing source-owned receipt values."""
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	if not existing_rows:
+		return [source]
+	fieldnames = [*get_dimension_fieldnames(), "secondary_qty", "secondary_uom", "freight_amount"]
+	rows = []
+	for existing in existing_rows:
+		row = {**source, "quantity": flt(existing.get("quantity"))}
+		row.update({fieldname: existing.get(fieldname) for fieldname in fieldnames})
+		row["stock_qty"] = row["quantity"] * flt(source.get("conversion_factor") or 1)
+		rows.append(row)
 	return rows
 
 
@@ -2142,14 +2195,26 @@ def _purchase_order_item_net_rate(row):
 	return flt(row.get("rate")) * (1 - discount_percentage / 100)
 
 
-def _existing_purchase_receipt_quantities(po, existing_rows):
-	quantities = defaultdict(float)
+def _existing_purchase_receipt_rows(po, existing_rows):
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dimensions = get_dimension_fieldnames()
+	rows = defaultdict(dict)
 	for row in existing_rows or []:
 		target = _find_matching_purchase_order_item(po.items, row)
 		if not target:
 			continue
-		quantities[target.name] += flt(row.get("quantity"))
-	return quantities
+		key = tuple(row.get(fieldname) or "" for fieldname in dimensions)
+		if key not in rows[target.name]:
+			rows[target.name][key] = {
+				**(dict(row) if isinstance(row, dict) else row.as_dict()),
+				"quantity": 0,
+				"secondary_qty": 0,
+				"freight_amount": 0,
+			}
+		for fieldname in ("quantity", "secondary_qty", "freight_amount"):
+			rows[target.name][key][fieldname] += flt(row.get(fieldname))
+	return {name: list(splits.values()) for name, splits in rows.items()}
 
 
 def _get_received_type_options(existing_rows=None):

@@ -113,6 +113,9 @@ function load_source_defaults(frm) {
 			}
 			frm.refresh_field("items");
 			frm.doc.item_details = JSON.stringify(r.message.item_details || []);
+			frm.doc.__onload ||= {};
+			frm.doc.__onload.lot_options = r.message.lot_options || [];
+			frm.doc.__onload.lot_fieldname = r.message.lot_fieldname || '';
 			if (frm.itemEditor) {
 				frm.itemEditor.load_data(r.message.item_details || []);
 			}
