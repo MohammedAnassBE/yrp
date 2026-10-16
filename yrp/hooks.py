@@ -132,6 +132,7 @@ doctype_list_js = {
 after_install = [
 	# Patches are marked done on install without running.
 	"yrp.patches.seed_role_settings.execute",
+	"yrp.permissions.ensure_permissions",
 ]
 
 # Static configuration is synchronized from the fixtures declared above.

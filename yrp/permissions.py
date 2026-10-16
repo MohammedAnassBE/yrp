@@ -1,8 +1,4 @@
-"""Permissions yrp grants on other apps' doctypes, kept as standard DocPerm rows.
-
-yrp's own doctypes keep their permissions in their DocType JSON. Site changes
-made in the Role Permission Manager stay in Custom DocPerm.
-"""
+"""Standard grants, with YRP role grants mirrored into existing custom permission sets."""
 import frappe
 
 # (doctype, role, permlevel, rights) with if_owner 0.
@@ -125,7 +121,11 @@ def ensure_permissions() -> None:
 
 def ensure_partner_source_permission(doctype: str) -> None:
 	"""Let YRP Partner read a Partner Type source; record rules narrow the rows."""
-	if ensure_permission(doctype, "YRP Partner", 0, {"read": 1}):
+	rights = {"read": 1}
+	for grant_doctype, role, permlevel, grant_rights in PERMISSIONS:
+		if (grant_doctype, role, permlevel) == (doctype, "YRP Partner", 0):
+			rights.update(grant_rights)
+	if ensure_permission(doctype, "YRP Partner", 0, rights):
 		frappe.clear_cache(doctype=doctype)
 
 
@@ -142,6 +142,9 @@ def ensure_permission(doctype: str, role: str, permlevel: int, rights: dict[str,
 		"permlevel": permlevel,
 		"if_owner": 0,
 	}
+	custom_changed = False
+	if role.startswith("YRP ") and frappe.db.exists("Custom DocPerm", {"parent": doctype}):
+		custom_changed = _ensure_custom_permission(filters, rights)
 	name = frappe.db.get_value("DocPerm", filters)
 	if not name:
 		idx = frappe.db.count("DocPerm", {"parent": doctype}) + 1
@@ -152,4 +155,28 @@ def ensure_permission(doctype: str, role: str, permlevel: int, rights: dict[str,
 	missing = {right: 1 for right in rights if not current[right]}
 	if missing:
 		frappe.db.set_value("DocPerm", name, missing, update_modified=False)
-	return bool(missing)
+	return bool(missing) or custom_changed
+
+
+def _ensure_custom_permission(filters: dict, rights: dict[str, int]) -> bool:
+	"""Reconcile only the matching YRP rows, including clearing unrequested rights."""
+	# Custom DocPerm is a regular DocType, unlike the standard DocPerm child table.
+	filters = {key: filters[key] for key in ("parent", "role", "permlevel", "if_owner")}
+	values = {
+		field.fieldname: rights.get(field.fieldname, 0)
+		for field in frappe.get_meta("Custom DocPerm").fields
+		if field.fieldtype == "Check" and field.fieldname != "if_owner"
+	}
+	rows = frappe.get_all("Custom DocPerm", filters, ["name", *values])
+	if not rows:
+		idx = frappe.db.count("Custom DocPerm", {"parent": filters["parent"]}) + 1
+		frappe.get_doc({"doctype": "Custom DocPerm", "idx": idx, **filters, **values}).db_insert()
+		return True
+
+	changed = False
+	for row in rows:
+		updates = {right: value for right, value in values.items() if row[right] != value}
+		if updates:
+			frappe.db.set_value("Custom DocPerm", row.name, updates, update_modified=False)
+			changed = True
+	return changed

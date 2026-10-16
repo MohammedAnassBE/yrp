@@ -3,7 +3,12 @@ import json
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from yrp.permissions import PERMISSIONS, ensure_permission, ensure_permissions
+from yrp.permissions import (
+	PERMISSIONS,
+	ensure_partner_source_permission,
+	ensure_permission,
+	ensure_permissions,
+)
 
 
 def get_docperm(doctype, role, permlevel=0):
@@ -45,10 +50,51 @@ class TestPermissions(IntegrationTestCase):
 		self.assertFalse(ensure_permission("Dunning", self.role, 0, {"read": 1}))
 		self.assertEqual(len(get_docperm("Dunning", self.role)), 1)
 
+		self.add_custom_permission("Dunning", self.role, read=1)
 		ensure_permissions()
 		before = frappe.get_all("DocPerm", fields=["name", "modified", "read", "select", "export"], order_by="name")
+		custom_before = frappe.get_all("Custom DocPerm", fields=["*"], order_by="name")
 		ensure_permissions()
 		self.assertEqual(before, frappe.get_all("DocPerm", fields=["name", "modified", "read", "select", "export"], order_by="name"))
+		self.assertEqual(custom_before, frappe.get_all("Custom DocPerm", fields=["*"], order_by="name"))
+
+	def add_custom_permission(self, doctype, role, **rights):
+		return frappe.get_doc({
+			"doctype": "Custom DocPerm", "parent": doctype, "parenttype": "DocType",
+			"parentfield": "permissions", "role": role, "permlevel": 0, "if_owner": 0, **rights,
+		}).db_insert()
+
+	def test_custom_permissions_get_exact_yrp_grants_and_keep_other_roles(self):
+		self.add_custom_permission("Dunning", self.role, read=1, write=1)
+		self.add_custom_permission("Dunning", "YRP Customer", write=1, create=1, mask=1)
+		before = frappe.get_all("Custom DocPerm", {"role": ["not like", "YRP %"]}, ["*"], order_by="name")
+		# Prime the effective permissions cache before reconciliation.
+		frappe.clear_cache(doctype="Dunning")
+		frappe.get_meta("Dunning")
+
+		ensure_permissions()
+
+		self.assertEqual(before, frappe.get_all("Custom DocPerm", {"role": ["not like", "YRP %"]}, ["*"], order_by="name"))
+		effective = frappe.get_meta("Dunning").permissions
+		checks = [field.fieldname for field in frappe.get_meta("Custom DocPerm").fields
+			if field.fieldtype == "Check" and field.fieldname != "if_owner"]
+		for doctype, role, permlevel, rights in PERMISSIONS:
+			if doctype != "Dunning" or not role.startswith("YRP "):
+				continue
+			rows = [row for row in effective if (row.role, row.permlevel, row.if_owner) == (role, permlevel, 0)]
+			self.assertTrue(rows, role)
+			for row in rows:
+				self.assertEqual({right: row.get(right) for right in checks}, {right: rights.get(right, 0) for right in checks})
+
+	def test_partner_source_keeps_full_declared_grant(self):
+		self.add_custom_permission("Customer", self.role, read=1)
+		ensure_permissions()
+
+		ensure_partner_source_permission("Customer")
+
+		rows = frappe.get_all("Custom DocPerm", {"parent": "Customer", "role": "YRP Partner", "permlevel": 0, "if_owner": 0}, ["read", "export"])
+		self.assertTrue(rows)
+		self.assertTrue(all(row.read == row.export == 1 for row in rows))
 
 	def test_fresh_site_gets_yrp_grants_and_keeps_standard_permissions(self):
 		doctypes = ["Customer", "GL Entry"]
@@ -56,6 +102,7 @@ class TestPermissions(IntegrationTestCase):
 		ensure_permissions()
 
 		for doctype in doctypes:
+			self.assertFalse(frappe.db.exists("Custom DocPerm", {"parent": doctype}))
 			frappe.clear_cache(doctype=doctype)
 			effective = {(row.role, row.permlevel, row.if_owner): row for row in frappe.get_meta(doctype).permissions}
 			for standard in get_standard_permissions(doctype):
