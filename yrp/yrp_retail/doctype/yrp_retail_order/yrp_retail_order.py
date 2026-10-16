@@ -39,6 +39,9 @@ class YRPRetailOrder(Document):
 			self._refresh_visit(old.visit)
 
 	def on_trash(self):
+		from yrp.yrp_retail.sales_sources import lock_source_deletion
+		# Guard before updating the Visit; doc_events run after this controller.
+		lock_source_deletion()
 		self._ensure_unclaimed()
 		require(not self.summary, "An order included in a summary cannot be deleted.")
 		self._refresh_visit(self.visit, exclude=self.name)

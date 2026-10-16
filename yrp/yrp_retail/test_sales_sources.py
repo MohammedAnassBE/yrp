@@ -42,9 +42,10 @@ class TestSalesSources(TestRetailFlow):
 		add_permission("YRP Customer Stock", "YRP Sales Person")
 		update_permission_property("YRP Customer Stock", "YRP Sales Person", 0, "write", 1)
 		suffix = frappe.generate_hash(length=8)
+		# Keep fictional companies outside the installed GST integration.
 		self.company = frappe.get_doc({
 			"doctype": "Company", "company_name": "Test Source Company " + suffix,
-			"abbr": "SC" + suffix[:3], "country": "India", "default_currency": "INR",
+			"abbr": "SC" + suffix[:3], "country": "United States", "default_currency": "INR",
 			"chart_of_accounts": "Standard", "enable_perpetual_inventory": 0,
 		}).insert()
 		year = getdate(today()).year
@@ -334,3 +335,197 @@ class TestSalesSources(TestRetailFlow):
 for _name in dir(TestRetailFlow):
 	if _name.startswith("test_") and _name not in TestSalesSources.__dict__:
 		setattr(TestSalesSources, _name, None)
+
+
+class RetailWriterConnection:
+	def writer(self, doc, action, raw=False):
+		from contextvars import Context
+		from queue import Queue
+		from threading import Thread
+
+		site, sites_path = frappe.local.site, frappe.local.sites_path
+		values = doc.as_dict()
+		results = Queue()
+
+		def run():
+			queries = []
+			try:
+				frappe.init(site, sites_path=sites_path)
+				frappe.connect()
+				frappe.flags.in_test = True
+				frappe.db.sql("set session innodb_lock_wait_timeout=1")
+				other = frappe.get_doc(values)
+				if raw or action == "invoice":
+					# A private, uncommitted clone lets this connection own its
+					# parent while the fixture owns pricing. No fixture commits.
+					other.name = "Test Lock Contender " + frappe.generate_hash(length=10)
+					if other.doctype == "YRP Retail Order":
+						other.visit = None
+					other.db_insert()
+					other.set_parent_in_children()
+					for child in other.get_all_children():
+						child.name = None
+						child.db_insert()
+				original_sql = frappe.db.sql
+
+				def observe(query, *args, **kwargs):
+					if "for update" in str(query).lower():
+						queries.append(str(query))
+					return original_sql(query, *args, **kwargs)
+
+				with patch.object(frappe.db, "sql", side_effect=observe):
+					if action == "invoice":
+						from yrp.yrp_sales.invoicing import get_sales_invoice
+						get_sales_invoice(other.name)
+					elif raw:
+						frappe.delete_doc(other.doctype, other.name)
+					else:
+						getattr(other, action)()
+			except Exception as error:
+				results.put((queries, error))
+			else:
+				results.put((queries, None))
+			finally:
+				if frappe.local.db:
+					frappe.db.rollback()
+				frappe.destroy()
+
+		thread = Thread(target=Context().run, args=(run,), daemon=True)
+		thread.start()
+		# This is the opposing summary operation: it owns pricing and must
+		# still reach the linked Sales Order and reject the live reservation.
+		if self.summary:
+			with self.assertRaisesRegex(frappe.ValidationError, "linked Sales Orders"):
+				frappe.get_doc("YRP Retail Order Summary", self.summary).cancel()
+		thread.join(timeout=10)
+		self.assertFalse(thread.is_alive(), "Writer did not finish within its lock timeout")
+		queries, error = results.get_nowait()
+		self.assertIsInstance(error, frappe.QueryTimeoutError)
+		return queries, error
+
+
+class TestRetailWriterLocks(RetailWriterConnection, unittest.TestCase):
+	"""Two real transactions; all fictional rows and failed writes roll back.
+
+	The fixture transaction holds pricing and the source/order rows. A second
+	writer must wait on pricing before attempting a parent lock. Observing SQL
+	keeps this deterministic without committing fixtures or relying on sleeps.
+	"""
+
+	def setUp(self):
+		self.fixture = TestSalesSources()
+		self.addCleanup(self.fixture.doCleanups)
+		self.fixture.setUp()
+		frappe.set_user(self.fixture.user.name)
+		secondary = self.fixture.order(10)
+		self.visit = frappe.get_doc("YRP Retail Order", secondary).visit
+		self.summary = api.create_summary([secondary])["name"]
+		api.submit_summary(self.summary)
+		frappe.set_user("Administrator")
+		self.order = self.fixture.make_so(source=self.summary, doctype="YRP Retail Order Summary")
+
+	def test_linked_sales_order_lifecycle_waits_on_pricing_before_parent(self):
+		for action in ("save", "submit", "discard", "delete"):
+			with self.subTest(action=action):
+				queries, _ = self.writer(self.order, action)
+				self.assertEqual(len(queries), 1, queries)
+				self.assertIn("tabDocType", queries[0])
+				self.assertIn("YRP Item Master Template", queries[0])
+		self.order.submit()
+		queries, _ = self.writer(self.order, "cancel")
+		self.assertEqual(len(queries), 1, queries)
+		self.assertIn("tabDocType", queries[0])
+
+	def test_other_retail_writers_wait_on_pricing_before_parent(self):
+		fixture = self.fixture
+		for doc, action in (
+			(frappe.get_doc("YRP Retail Order", fixture.primary), "discard"),
+			(frappe.get_doc("YRP Retail Order", fixture.primary), "delete"),
+			(frappe.get_doc("YRP Visit", self.visit), "save"),
+		):
+			with self.subTest(doctype=doc.doctype, action=action):
+				queries, _ = self.writer(doc, action)
+				self.assertEqual(len(queries), 1, queries)
+				self.assertIn("tabDocType", queries[0])
+
+	def test_summary_discard_and_delete_use_shared_pricing_lock(self):
+		fixture = self.fixture
+		frappe.set_user(fixture.user.name)
+		secondary = fixture.order(3)
+		name = api.create_summary([secondary])["name"]
+		frappe.set_user("Administrator")
+		doc = frappe.get_doc("YRP Retail Order Summary", name)
+		for action in ("discard", "delete"):
+			with self.subTest(action=action):
+				queries, _ = self.writer(doc, action)
+				self.assertEqual(len(queries), 1, queries)
+				self.assertIn("tabDocType", queries[0])
+				getattr(doc, action)()
+				self.assertFalse(frappe.db.get_value("YRP Retail Order", secondary, "summary"))
+		self.assertFalse(frappe.db.exists("YRP Retail Order Summary", name))
+
+	def test_sales_invoice_save_waits_on_pricing_before_parent(self):
+		# Persist just the invoice rows: this regression stops at the first
+		# mutex, before accounting validation or any integration can run.
+		invoice = frappe.get_doc({
+			"doctype": "Sales Invoice", "name": self.fixture.label("Lock Invoice"),
+			"company": self.fixture.company.name, "customer": self.fixture.customer.name,
+			"currency": "INR", "conversion_rate": 1, "grand_total": 40,
+			"items": [{"item_code": self.fixture.item.name, "qty": 2, "rate": 20,
+				"uom": self.fixture.uom.name, "conversion_factor": 1, "amount": 40}],
+		})
+		invoice.db_insert()
+		for row in invoice.items:
+			row.db_insert()
+		queries, _ = self.writer(invoice, "save")
+		self.assertEqual(len(queries), 1, queries)
+		self.assertIn("tabDocType", queries[0])
+
+	def test_invoice_mapping_waits_on_pricing_before_existing_invoice_rows(self):
+		note = frappe.get_doc({
+			"doctype": "YRP Delivery Note", "name": self.fixture.label("Lock Note"),
+			"docstatus": 1, "company": self.fixture.company.name,
+			"customer": self.fixture.customer.name, "total_qty": 2, "total": 40,
+			"items": [{"sales_order": self.order.name, "so_detail": self.order.items[0].name,
+				"item_code": self.fixture.item.name, "qty": 2, "rate": 20, "amount": 40,
+				"uom": self.fixture.uom.name, "conversion_factor": 1, "stock_qty": 2}],
+		})
+		queries, _ = self.writer(note, "invoice")
+		self.assertEqual(len(queries), 1, queries)
+		self.assertIn("tabDocType", queries[0])
+
+
+class TestRawSalesOrderDeletionLocks(RetailWriterConnection, unittest.TestCase):
+	def setUp(self):
+		# Do not allocate a Sales Order here: that would gap-lock the very
+		# index into which the second connection needs to insert its clone.
+		self.fixture = TestRetailFlow()
+		self.addCleanup(self.fixture.doCleanups)
+		self.fixture.setUp()
+		primary = api.create_retail_order(self.fixture.visit(secondary=False), self.fixture.items(10))["name"]
+		frappe.set_user("Administrator")
+		self.summary = None
+		self.order = frappe.get_doc({
+			"doctype": "YRP Sales Order", "name": self.fixture.label("Raw Order"),
+			"customer": self.fixture.customer.name, "retail_order": primary,
+			"items": [{"item_code": self.fixture.item.name, "qty": 2, "rate": 20,
+				"uom": self.fixture.uom.name, "retail_order_item":
+				frappe.get_doc("YRP Retail Order", primary).items[0].name}],
+		})
+
+	def test_raw_linked_sales_order_delete_refuses_pricing_contention(self):
+		queries, error = self.writer(self.order, "delete", raw=True)
+		self.assertIn("retail document cannot be deleted", str(error))
+		self.assertEqual(len(queries), 2, queries)
+		self.assertIn("tabYRP Sales Order", queries[0])
+		self.assertIn("tabDocType", queries[1])
+		self.assertIn("nowait", queries[1].lower())
+
+	def test_raw_retail_order_delete_guards_before_touching_visit(self):
+		self.order = frappe.get_doc("YRP Retail Order", self.order.retail_order)
+		queries, error = self.writer(self.order, "delete", raw=True)
+		self.assertIn("retail document cannot be deleted", str(error))
+		self.assertEqual(len(queries), 2, queries)
+		self.assertIn("tabYRP Retail Order", queries[0])
+		self.assertIn("tabDocType", queries[1])
+		self.assertIn("nowait", queries[1].lower())

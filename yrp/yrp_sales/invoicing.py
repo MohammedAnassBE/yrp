@@ -9,6 +9,7 @@ from yrp.stock.stock_ledger import _lock_entry_buckets
 from yrp.stock.uom import resolve_item_uom
 from yrp.stock.utils import consume_voucher_reservation
 from yrp.yrp_retail.logic import require
+from yrp.yrp_retail.pricing import lock_pricing_policy
 from yrp.yrp_sales.historical import is_historical, reject_historical
 
 DELIVERY_NOTE = "YRP Delivery Note"
@@ -40,6 +41,9 @@ def get_sales_invoice(delivery_note, items=None):
 	note = frappe.get_doc(DELIVERY_NOTE, delivery_note)
 	reject_historical(note)
 	require(note.docstatus == 1, _("Delivery Note {0} must be submitted.").format(note.name))
+	# get_requested_qty locks existing invoices; native price calculation below
+	# takes pricing too. Match ordinary invoice saves before either row lock.
+	lock_pricing_policy()
 	requested = get_requested_qty(note, items)
 	invoice = frappe.new_doc("Sales Invoice")
 	invoice.update({

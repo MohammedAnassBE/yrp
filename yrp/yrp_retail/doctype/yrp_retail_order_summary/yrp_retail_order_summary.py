@@ -13,15 +13,6 @@ from yrp.yrp_retail.source_quantities import order_conversion_factors, validate_
 
 
 class YRPRetailOrderSummary(Document):
-	@frappe.whitelist()
-	def discard(self):
-		lock_pricing_policy()
-		return super().discard()
-
-	def delete(self, *args, **kwargs):
-		lock_pricing_policy()
-		return super().delete(*args, **kwargs)
-
 	def before_validate(self):
 		# insert() does not pass through PricingLockMixin._save(). Keep the
 		# pricing -> source order -> Item lock order identical on both paths.
