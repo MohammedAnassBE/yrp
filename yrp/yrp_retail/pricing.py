@@ -186,7 +186,16 @@ def validate_price_list(doc, method=None):
 
 
 class PricingLockMixin:
-	"""Acquire policy mutex before Frappe locks an existing document for save."""
+	"""Acquire policy mutex before Frappe locks an existing document."""
 	def _save(self, *args, **kwargs):
 		lock_pricing_policy()
 		return super()._save(*args, **kwargs)
+
+	@frappe.whitelist()
+	def discard(self):
+		lock_pricing_policy()
+		return super().discard()
+
+	def delete(self, *args, **kwargs):
+		lock_pricing_policy()
+		return super().delete(*args, **kwargs)

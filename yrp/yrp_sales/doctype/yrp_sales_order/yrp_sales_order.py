@@ -8,11 +8,11 @@ from frappe.utils import flt, getdate
 
 from yrp.yrp_retail import sales_sources
 from yrp.yrp_retail.logic import finite_number, require
-from yrp.yrp_retail.pricing import check_rate, get_free_items
+from yrp.yrp_retail.pricing import PricingLockMixin, check_rate, get_free_items
 from yrp.yrp_sales.historical import is_historical, reject_historical
 
 
-class YRPSalesOrder(Document):
+class YRPSalesOrder(PricingLockMixin, Document):
 	"""Customer order; delivery quantities are owned by YRP Delivery Notes."""
 
 	def _save(self, *args, **kwargs):

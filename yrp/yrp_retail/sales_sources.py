@@ -141,6 +141,9 @@ def refresh_progress(doc, method=None):
 		keys += _source_keys(old)
 	if not keys:
 		return
+	if method == "on_trash":
+		# Raw delete_doc bypasses PricingLockMixin.delete and owns the order.
+		lock_source_deletion()
 	_lock_sources(keys)
 	for doctype, name in sorted(set(keys)):
 		source = _source(doctype, name)
@@ -161,7 +164,7 @@ def lock_source_deletion():
 		frappe.db.get_value("DocType", "YRP Item Master Template", for_update=True, wait=False)
 	except (frappe.QueryTimeoutError, frappe.QueryDeadlockError) as error:
 		raise frappe.QueryTimeoutError(
-			"This retail source cannot be deleted while pricing or a summary is being modified. Please try again."
+			"This retail document cannot be deleted while pricing or a summary is being modified. Please try again."
 		) from error
 
 
