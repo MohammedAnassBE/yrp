@@ -91,6 +91,8 @@ def validate_order_items(rows):
 	for row in rows:
 		if retail_uom:
 			require(row.uom == retail_uom, "Use the configured Retail UOM for retail orders.")
+		dealer = row.get("dealer_stock", 0)
+		require(isinstance(dealer, (int, float)) and dealer in (0, 1), "Dealer stock must be 0 or 1.")
 		key = (row.item_code, row.uom)
 		require(key not in seen, "Duplicate Item and UOM rows are not allowed.")
 		seen.add(key)

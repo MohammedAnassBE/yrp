@@ -6,12 +6,22 @@ from frappe.model.document import Document
 from frappe.model.meta import get_field_precision
 from frappe.utils import flt, getdate
 
+from yrp.yrp_retail.access import require_owned
 from yrp.yrp_retail.logic import aggregate_orders, finite_number, require, same_date, validate_uom_quantity
 from yrp.yrp_retail.pricing import lock_pricing_policy
 from yrp.yrp_retail.source_quantities import order_conversion_factors, validate_current_conversion
 
 
 class YRPRetailOrderSummary(Document):
+	@frappe.whitelist()
+	def discard(self):
+		lock_pricing_policy()
+		return super().discard()
+
+	def delete(self, *args, **kwargs):
+		lock_pricing_policy()
+		return super().delete(*args, **kwargs)
+
 	def before_validate(self):
 		# insert() does not pass through PricingLockMixin._save(). Keep the
 		# pricing -> source order -> Item lock order identical on both paths.
@@ -30,7 +40,7 @@ class YRPRetailOrderSummary(Document):
 			for field in ("customer", "sales_person", "order_type", "from_date", "to_date"):
 				unchanged = same_date(self.get(field), old.get(field)) if field.endswith("date") else self.get(field) == old.get(field)
 				require(unchanged, "Summary headers cannot change after creation.")
-			require(set(names) == {row.order for row in old.source_orders}, "Summary source orders cannot change after creation.")
+			require(self.flags.editing_sources or set(names) == {row.order for row in old.source_orders}, "Summary source orders cannot change after creation.")
 		orders = []
 		for name in sorted(names):
 			# All summary writers take these locks in the same order.
@@ -90,6 +100,37 @@ class YRPRetailOrderSummary(Document):
 		self.total_customer_stock_qty = finite_number(sum(row.customer_stock_qty for row in self.items), "Total customer stock quantity")
 		self.total_company_qty = finite_number(sum(row.company_qty for row in self.items), "Total company quantity")
 
+	def edit_sources(self, actor, rows, stock):
+		"""Called only by the atomic API after taking pricing then the summary lock.
+
+		Release this summary's claims under source locks so normal order saves
+		validate every replacement. A failure restores both claims and rows.
+		"""
+		require(self.docstatus == 0, "Only a draft summary can be changed.")
+		self.check_permission("write")
+		previous = {row.order for row in self.source_orders}
+		for name in sorted(previous | set(rows)):
+			order = frappe.get_doc("YRP Retail Order", name, for_update=True)
+			require_owned(actor, order)
+			require(not order.summary or order.summary == self.name,
+				"A source order already belongs to another summary.")
+			require(order.docstatus == 0, "Only draft Retail Orders can be edited in a summary.")
+			for field in ("customer", "sales_person", "order_type"):
+				require(order.get(field) == self.get(field), "All source orders must match the summary header.")
+		for name in sorted(previous):
+			frappe.db.set_value("YRP Retail Order", name, "summary", None, update_modified=False)
+		for name, items in sorted(rows.items()):
+			order = frappe.get_doc("YRP Retail Order", name)
+			order.set("items", items)
+			order.save()
+		self.set("source_orders", [{"order": name} for name in rows])
+		self.set("items", stock)
+		self.flags.editing_sources = True
+		try:
+			self.save()
+		finally:
+			self.flags.editing_sources = False
+
 	def on_update(self):
 		if self.docstatus == 2:
 			return
@@ -107,6 +148,9 @@ class YRPRetailOrderSummary(Document):
 		self._release_orders()
 
 	def on_trash(self):
+		from yrp.yrp_retail.sales_sources import lock_source_deletion
+		# The controller runs before doc_events: guard before releasing sources.
+		lock_source_deletion()
 		self._release_orders()
 
 	def _release_orders(self):

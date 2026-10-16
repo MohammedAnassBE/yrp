@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import getdate
 
 from yrp.yrp_retail.access import require_customer, require_owned, salesperson
+from yrp.yrp_retail.pricing import lock_pricing_policy
 from yrp.yrp_retail.setup import assigned_customers
 
 
@@ -30,8 +31,8 @@ def _items(value):
 	if not isinstance(rows, list) or not rows:
 		frappe.throw(_("Provide at least one item."))
 	for row in rows:
-		if not isinstance(row, dict) or set(row) != {"item_code", "qty", "uom"}:
-			frappe.throw(_("Each item must contain only item_code, qty and uom."))
+		if not isinstance(row, dict) or (not {"item_code", "qty", "uom"} <= set(row) or set(row) - {"item_code", "qty", "uom", "dealer_stock"}):
+			frappe.throw(_("Each item must contain item_code, qty and uom, with optional dealer_stock."))
 	return rows
 
 
@@ -150,6 +151,28 @@ def update_summary(name, customer_stock, sales_person=None):
 		frappe.throw(_("Stock allocations must contain only item_code, uom and customer_stock_qty."))
 	doc.set("items", rows)
 	return _save(doc, actor)
+
+
+@frappe.whitelist(methods=["POST"])
+def edit_draft_summary(name, orders, customer_stock, sales_person=None):
+	"""Replace a draft's source rows and allocations, preserving its identity atomically.
+
+	The caller owns the transaction. Take pricing before the summary, matching
+	normal document save/submit, and use current reads after waiting for locks.
+	"""
+	actor = salesperson(sales_person)
+	lock_pricing_policy()
+	doc = frappe.get_doc("YRP Retail Order Summary", name, for_update=True)
+	require_owned(actor, doc)
+	rows = frappe.parse_json(orders) if isinstance(orders, str) else orders
+	stock = frappe.parse_json(customer_stock) if isinstance(customer_stock, str) else customer_stock
+	if not isinstance(rows, dict) or not rows or any(not isinstance(key, str) for key in rows):
+		frappe.throw(_("Provide retail orders with their items."))
+	if not isinstance(stock, list) or any(not isinstance(row, dict) or set(row) != {"item_code", "uom", "customer_stock_qty"} for row in stock):
+		frappe.throw(_("Stock allocations must contain only item_code, uom and customer_stock_qty."))
+	with atomic():
+		doc.edit_sources(actor, {key: _items(value) for key, value in rows.items()}, stock)
+	return {"doctype": doc.doctype, "name": doc.name}
 
 
 @frappe.whitelist(methods=["POST"])

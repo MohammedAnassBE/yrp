@@ -154,7 +154,7 @@ class TestRetailFlow(unittest.TestCase):
 	def test_visit_time_is_frozen_and_order_date_is_derived(self):
 		visit = self.visit()
 		order = api.create_retail_order(visit, self.items())["name"]
-		from frappe.utils import getdate, add_days
+		from frappe.utils import add_days, getdate
 		self.assertEqual(getdate(frappe.db.get_value("YRP Retail Order", order, "order_date")), getdate(frappe.db.get_value("YRP Visit", visit, "visit_datetime")))
 		frappe.set_user("Administrator")
 		doc = frappe.get_doc("YRP Visit", visit)
@@ -235,3 +235,60 @@ class TestRetailFlow(unittest.TestCase):
 		from yrp.yrp_retail.logic import validate_assignment
 		validate_assignment(second.name, self.customer.name, retailer)
 		frappe.set_user(self.user.name)
+
+	def test_dealer_stock_round_trip_and_invalid_flag(self):
+		rows = self.items(3)
+		rows[0]["dealer_stock"] = 1
+		name = api.create_retail_order(self.visit(), rows)["name"]
+		self.assertEqual(frappe.get_doc("YRP Retail Order", name).items[0].dealer_stock, 1)
+		rows = self.items(3)
+		rows[0]["dealer_stock"] = 0
+		api.update_retail_order(name, rows)
+		self.assertEqual(frappe.get_doc("YRP Retail Order", name).items[0].dealer_stock, 0)
+		for flag in (-1, 2, "yes"):
+			rows = self.items(3)
+			rows[0]["dealer_stock"] = flag
+			with self.assertRaises(frappe.ValidationError):
+				api.update_retail_order(name, rows)
+
+	def test_edit_draft_summary_preserves_identity_and_releases_removed_order(self):
+		first, removed, added = self.order(2), self.order(3), self.order(4)
+		name = api.create_summary([first, removed])["name"]
+		result = api.edit_draft_summary(name, {first: self.items(6), added: self.items(4)}, [])
+		self.assertEqual(result["name"], name)
+		doc = frappe.get_doc("YRP Retail Order Summary", name)
+		self.assertEqual({row.order for row in doc.source_orders}, {first, added})
+		self.assertEqual(doc.total_requested_qty, 10)
+		self.assertEqual(frappe.db.get_value("YRP Retail Order", first, "summary"), name)
+		self.assertFalse(frappe.db.get_value("YRP Retail Order", removed, "summary"))
+
+	def test_edit_draft_summary_denials_and_atomic_rollback(self):
+		first, second, claimed = self.order(2), self.order(3), self.order(4)
+		name = api.create_summary([first, second])["name"]
+		other = api.create_summary([claimed])["name"]
+		bad_uom = self.items(5)
+		bad_uom[0]["uom"] = "LOCAL Missing UOM"
+		excess = [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 99}]
+		# A caller write and savepoint must survive a failed native operation.
+		frappe.db.set_value("YRP Retail Order", first, "notes", "LOCAL caller write")
+		point = "before_native_edit"
+		frappe.db.savepoint(point)
+		for rows, stock in (({}, []), ({first: self.items(6), second: bad_uom}, []),
+			({first: self.items(6), claimed: self.items(4)}, []), ({first: self.items(6)}, excess)):
+			with self.assertRaises(frappe.ValidationError):
+				api.edit_draft_summary(name, rows, stock)
+			self.assertEqual(frappe.get_doc("YRP Retail Order", first).total_qty, 2)
+			self.assertEqual(frappe.db.get_value("YRP Retail Order", second, "summary"), name)
+			self.assertEqual(frappe.db.get_value("YRP Retail Order", claimed, "summary"), other)
+			self.assertEqual(frappe.db.get_value("YRP Retail Order", first, "notes"), "LOCAL caller write")
+		frappe.db.rollback(save_point=point)
+		with self.assertRaises(frappe.PermissionError):
+			api.edit_draft_summary(name, {first: self.items(6)}, [], sales_person="LOCAL Not owner")
+		api.submit_summary(name)
+		with self.assertRaisesRegex(frappe.ValidationError, "Only a draft"):
+			api.edit_draft_summary(name, {first: self.items(6)}, [])
+		frappe.set_user("Administrator")
+		frappe.get_doc("YRP Retail Order Summary", name).cancel()
+		frappe.set_user(self.user.name)
+		with self.assertRaisesRegex(frappe.ValidationError, "Only a draft"):
+			api.edit_draft_summary(name, {first: self.items(6)}, [])

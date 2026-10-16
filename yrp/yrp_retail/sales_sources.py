@@ -3,8 +3,8 @@
 Draft and submitted Sales Orders reserve capacity; cancellation/deletion release
 it. Quantities remain in each source row's UOM.
 """
-from collections import defaultdict
 import math
+from collections import defaultdict
 
 import frappe
 from frappe import _
@@ -155,9 +155,23 @@ def refresh_progress(doc, method=None):
 		frappe.db.set_value(doctype, name, {"ordered_qty": total, "per_ordered": total / capacity * 100 if capacity > 0 else 0}, update_modified=False)
 
 
+def lock_source_deletion():
+	"""Raw Frappe deletion already owns the parent: never wait in reverse order."""
+	try:
+		frappe.db.get_value("DocType", "YRP Item Master Template", for_update=True, wait=False)
+	except (frappe.QueryTimeoutError, frappe.QueryDeadlockError) as error:
+		raise frappe.QueryTimeoutError(
+			"This retail source cannot be deleted while pricing or a summary is being modified. Please try again."
+		) from error
+
+
 def protect_retail_source(doc, method=None):
 	if doc.doctype not in SOURCES:
 		return
+	if method == "on_trash":
+		# Native delete_doc has no document hook before its parent lock.
+		# As with packing deletion, refuse contention instead of inverting waits.
+		lock_source_deletion()
 	spec = SOURCES[doc.doctype]
 	allocated = defaultdict(float)
 	if not doc.is_new():
@@ -184,7 +198,8 @@ def protect_retail_source(doc, method=None):
 	for field in ("customer", "sales_person", "order_type", "visit", "summary", "order_date", "from_date", "to_date"):
 		require(str(doc.get(field) or "") == str(old.get(field) or ""), "A retail source used by a Sales Order cannot change its header.")
 	fields = ("name", "item_code", "uom", "qty", "conversion_factor", "stock_qty", "requested_qty", "customer_stock_qty", "company_qty")
-	fingerprint = lambda document: sorted(tuple(str(row.get(field) or "") for field in fields) for row in document.items)
+	def fingerprint(document):
+		return sorted(tuple(str(row.get(field) or "") for field in fields) for row in document.items)
 	require(fingerprint(doc) == fingerprint(old), "A retail source used by a Sales Order cannot change its items.")
 
 
