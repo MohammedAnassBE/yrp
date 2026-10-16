@@ -55,6 +55,7 @@ def get_reports() -> list[WebReport]:
 			link_sources=link_sources,
 			base_columns=base_columns,
 			permission_doctypes=("YRP Stock Ledger Entry",),
+			background="always",
 			dependency_doctypes="yrp.yrp_stock.web_reports.stock_balance_dependency_doctypes",
 		)
 	]

@@ -3,6 +3,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import IntegrationTestCase
 
+from yrp.web_reports.background import needs_background
 from yrp.web_reports.filters import authorize_filters
 from yrp.web_reports.registry import (
 	WebReport,
@@ -119,6 +120,11 @@ class TestWebReportRegistry(IntegrationTestCase):
 			"show_inward_date_split": 0,
 		}
 		self.assertEqual(authorize_filters(entry.filters, payload), payload)
+
+	def test_stock_balance_always_runs_in_background_like_prepared_desk_report(self):
+		entry = get_web_reports()["stock-balance"]
+		self.assertTrue(needs_background(entry, {"from_date": "2026-09-15", "to_date": "2026-10-15"}))
+		self.assertTrue(needs_background(entry, {"from_date": "2026-10-15", "to_date": "2026-10-15"}))
 
 	def test_unknown_filter_is_rejected(self):
 		entry = get_web_reports()["stock-balance"]
