@@ -204,6 +204,31 @@ class TestGetOrCreateVariant(TestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
 			mapping.save(ignore_permissions=True)
 
+	def test_clearing_the_dependent_attribute_deletes_its_mapping(self):
+		suffix = frappe.generate_hash(length=8)
+		size = f"_Test Dependent Size {suffix}"
+		stage = f"_Test Dependent Stage {suffix}"
+		template = _item(
+			f"_Test Dependent Template {suffix}",
+			has_variants=1,
+			primary_attribute=size,
+			attributes=[
+				{"attribute": size, "mapping": _attribute(size, "Small")},
+				{"attribute": stage, "mapping": _attribute(stage, "Cut")},
+			],
+		)
+		doc = frappe.get_doc("Item", template)
+		doc.dependent_attribute = stage
+		doc.save(ignore_permissions=True)
+		mapping = doc.dependent_attribute_mapping
+		self.assertTrue(frappe.db.exists("YRP Item Dependent Attribute Mapping", mapping))
+
+		doc.dependent_attribute = None
+		doc.save(ignore_permissions=True)
+
+		self.assertIsNone(frappe.db.get_value("Item", template, "dependent_attribute_mapping"))
+		self.assertFalse(frappe.db.exists("YRP Item Dependent Attribute Mapping", mapping))
+
 	def test_native_item_and_mapping_attribute_changes_are_allowed_without_variants(self):
 		suffix = frappe.generate_hash(length=8)
 		first_attribute = f"_Test Editable Colour {suffix}"

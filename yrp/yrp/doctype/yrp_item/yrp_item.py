@@ -332,8 +332,7 @@ class YRPItemMixin:
 	def _validate_dependent_attribute(self):
 		if not self.dependent_attribute:
 			if self.dependent_attribute_mapping:
-				frappe.delete_doc("YRP Item Dependent Attribute Mapping", self.dependent_attribute_mapping)
-				self.dependent_attribute_mapping = None
+				self._delete_dependent_attribute_mapping()
 			return
 
 		dependent_values = []
@@ -354,6 +353,14 @@ class YRPItemMixin:
 			frappe.throw(_("Please set Primary Attribute for this Item."))
 		if not self.dependent_attribute_mapping:
 			self.dependent_attribute_mapping = _create_dependent_attribute_mapping(self, dependent_values)
+
+	def _delete_dependent_attribute_mapping(self):
+		"""The stored Item still links the mapping, so unlink it before the delete's link check."""
+		mapping = self.dependent_attribute_mapping
+		self.dependent_attribute_mapping = None
+		if not self.is_new():
+			frappe.db.set_value(self.doctype, self.name, "dependent_attribute_mapping", None, update_modified=False)
+		frappe.delete_doc("YRP Item Dependent Attribute Mapping", mapping)
 
 	def _validate_yrp_stock_mutation(self):
 		if self.is_new():
