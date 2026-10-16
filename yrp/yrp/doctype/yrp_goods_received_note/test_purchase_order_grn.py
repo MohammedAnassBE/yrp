@@ -695,6 +695,138 @@ class TestPurchaseOrderLotValidation(TestCase):
 
 
 class TestPurchaseOrderLotSplits(FrappeTestCase):
+	def test_single_lot_header_is_derived_on_insert(self):
+		po, fieldname, first_lot, _other_lot = self.order_with_two_lots()
+		frappe.db.set_value("Purchase Order", po.name, fieldname, None)
+		po.reload()
+		base = _purchase_order_grn(po, qty=4, dimensions={fieldname: first_lot})
+		grn = frappe.copy_doc(base)
+		grn.append("items", {**grn.items[0].as_dict(), "name": None, "quantity": 2})
+		grn.insert(ignore_permissions=True)
+		grn.reload()
+		self.assertEqual(grn.get(fieldname), first_lot)
+
+	def test_wrong_header_is_corrected_to_single_row_lot(self):
+		po, fieldname, first_lot, other_lot = self.order_with_two_lots()
+		grn = _purchase_order_grn(po, qty=4, dimensions={fieldname: first_lot})
+		grn.set(fieldname, other_lot)
+		grn.save()
+		grn.reload()
+		self.assertEqual(grn.get(fieldname), first_lot)
+		self.assertEqual(grn.items[0].get(fieldname), first_lot)
+
+	def test_mixed_lot_and_blank_row_stay_blank_on_resave(self):
+		from yrp.stock.dimensions import get_production_group
+
+		dimension = get_production_group()
+		if not dimension:
+			self.skipTest("A production-group dimension is required.")
+		warehouse = _warehouse(f"_Test_PO_BLANK_LOT_{frappe.generate_hash(length=6)}")
+		po = _purchase_order(qty=10, warehouse=warehouse)
+		fieldname = dimension["fieldname"]
+		first_lot = po.items[0].get(fieldname) or po.get(fieldname)
+		self.assertTrue(first_lot)
+		po.append("items", {**po.items[0].as_dict(), "name": None, fieldname: None}).db_insert()
+		frappe.db.set_value("Purchase Order Item", po.items[0].name, fieldname, first_lot)
+		frappe.db.set_value("Purchase Order", po.name, fieldname, None)
+		po.reload()
+		get_hooks = frappe.get_hooks
+
+		def without_linked_lots(hook=None, *args, **kwargs):
+			if hook == "yrp_purchase_order_lot_options":
+				return []
+			return get_hooks(hook, *args, **kwargs)
+
+		with patch("frappe.get_hooks", side_effect=without_linked_lots):
+			self.assertEqual(get_purchase_order_lot_options(po)[po.items[1].name], [])
+			grn = _purchase_order_grn(po, qty=4, dimensions={fieldname: first_lot})
+			grn.reload()
+			self.assertEqual(grn.get(fieldname), first_lot)
+			grn.append(
+				"items",
+				{
+					**grn.items[0].as_dict(),
+					"name": None,
+					fieldname: None,
+					"quantity": 6,
+					"ref_docname": po.items[1].name,
+				},
+			)
+			for _ in range(2):
+				grn.save()
+				grn.reload()
+				self.assertEqual(grn.docstatus, 0)
+				self.assertFalse(grn.get(fieldname))
+				self.assertEqual(grn.items[0].get(fieldname), first_lot)
+				self.assertFalse(grn.items[1].get(fieldname))
+
+	def multi_lot_receipt(self, *, legacy_header=False):
+		po, fieldname, first_lot, other_lot = self.order_with_two_lots()
+		po.append("items", {**po.items[0].as_dict(), "name": None, fieldname: other_lot}).db_insert()
+		if not legacy_header:
+			frappe.db.set_value("Purchase Order", po.name, fieldname, None)
+		po.reload()
+		base = _purchase_order_grn(po, qty=4, dimensions={fieldname: first_lot})
+		grn = frappe.copy_doc(base)
+		grn.append(
+			"items",
+			{
+				**grn.items[0].as_dict(),
+				"name": None,
+				fieldname: other_lot,
+				"quantity": 6,
+				"ref_docname": po.items[1].name,
+			},
+		)
+		grn.flags.ignore_permissions = True
+		grn.insert(ignore_permissions=True)
+		return grn, fieldname, first_lot, other_lot
+
+	def test_multi_lot_header_stays_blank_on_insert_and_submit(self):
+		for legacy_header in (False, True):
+			with self.subTest(legacy_header=legacy_header):
+				grn, fieldname, first_lot, other_lot = self.multi_lot_receipt(legacy_header=legacy_header)
+				grn.reload()
+				self.assertFalse(grn.get(fieldname))
+				grn.submit()
+				grn.reload()
+				self.assertEqual(grn.docstatus, 1)
+				self.assertFalse(grn.get(fieldname))
+				self.assert_ledger_lots(grn, fieldname, {first_lot: 4, other_lot: 6})
+
+	def test_migrated_blank_header_load_save_submit_cancel(self):
+		grn, fieldname, _first_lot, _other_lot = self.multi_lot_receipt()
+		frappe.db.set_value(grn.doctype, grn.name, fieldname, None)
+		grn = frappe.get_doc(grn.doctype, grn.name)
+		grn.flags.ignore_permissions = True
+		grn.onload()
+		grn.save()
+		self.assertFalse(grn.get(fieldname))
+		grn.submit()
+		frappe.db.set_value(grn.doctype, grn.name, fieldname, None)
+		grn.reload()
+		grn.cancel()
+		grn.reload()
+		self.assertEqual(grn.docstatus, 2)
+		self.assertFalse(grn.get(fieldname))
+
+	def test_work_order_blank_header_is_still_mandatory(self):
+		from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
+			get_purchase_order_lot_fieldname,
+		)
+
+		fieldname = get_purchase_order_lot_fieldname()
+		if not fieldname:
+			self.skipTest("A production-group dimension is required.")
+		wo = _work_order(6, f"_Test_WO_LOT_{frappe.generate_hash(length=6)}")
+		grn = frappe.get_doc(
+			{"doctype": "YRP Goods Received Note", "against": wo.doctype, "against_id": wo.name}
+		)
+		grn.before_validate()
+		grn.set(fieldname, None)
+		with self.assertRaises(frappe.MandatoryError):
+			grn.validate()
+
 	def order_with_two_lots(self):
 		from yrp.stock.dimensions import get_production_group
 

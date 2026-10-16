@@ -7,6 +7,30 @@ from yrp.stock import dimensions
 
 
 class TestStockDimensionDDL(TestCase):
+	def test_grn_header_lot_is_conditionally_mandatory(self):
+		dimension = {
+			"fieldname": "lot",
+			"dimension_doctype": "SD YRP Lot",
+			"label": "Lot",
+			"is_production_group": 1,
+		}
+		with (
+			patch.object(dimensions, "get_stock_dimensions", return_value=[dimension]),
+			patch.object(dimensions.frappe, "db", Mock()),
+			patch.object(dimensions, "_get_insert_after", return_value="name"),
+			patch.object(dimensions, "_ensure_bin_unique_constraint"),
+			patch.object(dimensions, "_delete_orphan_dimension_fields"),
+			patch.object(dimensions, "create_custom_fields") as create_fields,
+		):
+			dimensions.create_dimension_fields()
+		fields = create_fields.call_args.args[0]
+		grn_field = fields["YRP Goods Received Note"][0]
+		self.assertEqual(grn_field["reqd"], 0)
+		self.assertEqual(grn_field["mandatory_depends_on"], "eval:doc.against!='Purchase Order'")
+		for doctype in ("YRP Work Order", "YRP Delivery Challan", "YRP Process Cost"):
+			self.assertEqual(fields[doctype][0]["reqd"], 1)
+		self.assertEqual(fields["Purchase Order"][0]["reqd"], 0)
+
 	def test_dimension_reads_are_scoped_to_the_namespaced_single(self):
 		cache = Mock()
 		cache.get_value.return_value = None

@@ -132,16 +132,48 @@ class YRPGoodsReceivedNote(Document):
 	def before_validate(self):
 		self.sync_vue_item_details()
 		self.sync_vue_correction_item_details()
+		self.clear_purchase_order_header_lot()
 		self.set_missing_values()
 		self.apply_dimensions()
+		self.derive_purchase_order_header_lot()
 		self.set_item_defaults()
 		self.compute_internal_unit()
 
 	def validate(self):
 		self.validate_against()
+		self.validate_header_lot()
 		self.validate_purchase_order_lots()
 		self.validate_items()
 		self.calculate_totals()
+
+	def clear_purchase_order_header_lot(self):
+		"""Prevent a derived GRN header from filling blank PO receipt rows."""
+		if self.against != "Purchase Order" or self.get("is_return"):
+			return
+		fieldname = get_purchase_order_lot_fieldname()
+		if fieldname:
+			self.set(fieldname, None)
+
+	def derive_purchase_order_header_lot(self):
+		"""Derive the PO receipt header from its stock rows."""
+		if self.against != "Purchase Order" or self.get("is_return"):
+			return
+		fieldname = get_purchase_order_lot_fieldname()
+		if not fieldname:
+			return
+		lots = {row.get(fieldname) for row in self.get("items") or []}
+		self.set(fieldname, next(iter(lots)) if len(lots) == 1 and all(lots) else None)
+
+	def validate_header_lot(self):
+		if self.against == "Purchase Order":
+			return
+		fieldname = get_purchase_order_lot_fieldname()
+		df = self.meta.get_field(fieldname) if fieldname else None
+		if df and not self.get(fieldname):
+			frappe.throw(
+				_("Value missing for {0}: {1}").format(_(self.doctype), _(df.label)),
+				frappe.MandatoryError,
+			)
 
 	def validate_purchase_order_lots(self):
 		if self.against != "Purchase Order" or not self.against_id or self.get("is_return"):
