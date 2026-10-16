@@ -11,6 +11,7 @@ from yrp.stock.utils import get_stock_balance
 from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
 	_pending_purchase_order_rows,
 	_validate_defaults_source,
+	get_purchase_order_lot_options,
 	validate_purchase_order_lot,
 )
 from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
@@ -624,10 +625,73 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 
 
 class TestPurchaseOrderLotValidation(TestCase):
-	def test_empty_lot_options_are_unrestricted(self):
-		for fieldname, lot in (("lot", "ANY-LOT"), ("lot", None), (None, None)):
-			with self.subTest(fieldname=fieldname, lot=lot):
-				validate_purchase_order_lot({"lot": lot}, fieldname, [], "PO-1", 1)
+	def test_lot_options_are_per_row_and_exclude_header(self):
+		po = frappe._dict(
+			lot="HEADER",
+			items=[
+				frappe._dict(name="ROW-1", lot="OWN"),
+				frappe._dict(name="ROW-2", lot="OTHER"),
+				frappe._dict(name="ROW-3", lot=None),
+			],
+		)
+		with (
+			patch(
+				"yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note.get_purchase_order_lot_fieldname",
+				return_value="lot",
+			),
+			patch("frappe.get_hooks", return_value=["hook-one", "hook-two"]),
+			patch(
+				"frappe.get_attr", side_effect=[lambda po: ["LINKED", "OWN", ""], lambda po: ["LINKED", None]]
+			),
+		):
+			self.assertEqual(
+				get_purchase_order_lot_options(po),
+				{"ROW-1": ["OWN", "LINKED"], "ROW-2": ["OTHER", "LINKED", "OWN"], "ROW-3": ["LINKED", "OWN"]},
+			)
+
+	def test_no_linked_lots_keeps_only_own_lot(self):
+		po = frappe._dict(items=[frappe._dict(name="ROW-1", lot="OWN"), frappe._dict(name="ROW-2")])
+		with (
+			patch(
+				"yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note.get_purchase_order_lot_fieldname",
+				return_value="lot",
+			),
+			patch("frappe.get_hooks", return_value=[]),
+		):
+			self.assertEqual(get_purchase_order_lot_options(po), {"ROW-1": ["OWN"], "ROW-2": []})
+
+	def test_own_and_linked_lots_are_allowed_per_row(self):
+		options = {"ROW-1": ["OWN", "LINKED"], "ROW-2": ["OTHER", "LINKED"]}
+		for reference, lot in (
+			("ROW-1", "OWN"),
+			("ROW-1", "LINKED"),
+			("ROW-2", "OTHER"),
+			("ROW-2", "LINKED"),
+		):
+			with self.subTest(reference=reference, lot=lot):
+				validate_purchase_order_lot({"ref_docname": reference, "lot": lot}, "lot", options, "PO-1", 1)
+
+	def test_unlinked_and_empty_lots_are_rejected(self):
+		options = {"ROW-1": ["OWN", "LINKED"], "ROW-2": ["OTHER", "LINKED"]}
+		for lot in ("OTHER", "HEADER", "DEFAULT", None, ""):
+			with self.subTest(lot=lot), self.assertRaises(frappe.ValidationError):
+				validate_purchase_order_lot({"ref_docname": "ROW-1", "lot": lot}, "lot", options, "PO-1", 1)
+
+	def test_empty_options_allow_only_empty_lot(self):
+		for lot in (None, ""):
+			validate_purchase_order_lot({"ref_docname": "ROW-1", "lot": lot}, "lot", {"ROW-1": []}, "PO-1", 1)
+		with self.assertRaises(frappe.ValidationError):
+			validate_purchase_order_lot(
+				{"ref_docname": "ROW-1", "lot": "ANY"}, "lot", {"ROW-1": []}, "PO-1", 1
+			)
+
+	def test_missing_po_row_is_rejected(self):
+		for reference in (None, "", "UNKNOWN"):
+			with self.subTest(reference=reference), self.assertRaises(frappe.ValidationError):
+				validate_purchase_order_lot({"ref_docname": reference}, "lot", {"ROW-1": []}, "PO-1", 1)
+
+	def test_no_lot_dimension_does_not_restrict(self):
+		validate_purchase_order_lot({"lot": "ANY"}, None, {}, "PO-1", 1)
 
 
 class TestPurchaseOrderLotSplits(FrappeTestCase):
@@ -644,7 +708,7 @@ class TestPurchaseOrderLotSplits(FrappeTestCase):
 		other_lot = frappe.db.get_value(dimension["dimension_doctype"], {"name": ["!=", first_lot]}, "name")
 		if not other_lot:
 			self.skipTest("Two production groups are required.")
-		# Keep the original item lot and make the other lot a header option.
+		# The second lot is allowed through the linked-lot hook, not the header.
 		frappe.db.set_value("Purchase Order Item", po.items[0].name, fieldname, first_lot)
 		frappe.db.set_value("Purchase Order", po.name, fieldname, other_lot)
 		if po.meta.has_field("sd_lot"):
@@ -737,6 +801,45 @@ class TestPurchaseOrderLotSplits(FrappeTestCase):
 		self.assertIn(invalid_lot, str(error.exception))
 		self.assertIn(po.name, str(error.exception))
 
+	def test_other_po_rows_unlinked_lot_is_rejected_on_save(self):
+		po, fieldname, first_lot, other_lot = self.order_with_two_lots()
+		frappe.db.delete(
+			po.meta.get_field("sd_lot").options, {"parent": po.name, "parenttype": "Purchase Order"}
+		)
+		po.append("items", {**po.items[0].as_dict(), "name": None, fieldname: other_lot}).db_insert()
+		po.reload()
+		grn = _purchase_order_grn(po, qty=1, dimensions={fieldname: first_lot})
+		grn.items[0].set(fieldname, other_lot)
+		with self.assertRaisesRegex(frappe.ValidationError, "not allowed for Purchase Order"):
+			grn.save()
+
+	def test_submit_revalidates_changed_lot_links(self):
+		po, fieldname, _first_lot, other_lot = self.order_with_two_lots()
+		grn = _purchase_order_grn(po, qty=1, dimensions={fieldname: other_lot})
+		frappe.db.delete(
+			po.meta.get_field("sd_lot").options, {"parent": po.name, "parenttype": "Purchase Order"}
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "not allowed for Purchase Order"):
+			grn.submit()
+
+	def test_cancel_skips_lot_revalidation_but_amend_checks_new_draft(self):
+		po, fieldname, _first_lot, other_lot = self.order_with_two_lots()
+		grn = _purchase_order_grn(po, qty=1, dimensions={fieldname: other_lot})
+		grn.submit()
+		frappe.db.delete(
+			po.meta.get_field("sd_lot").options, {"parent": po.name, "parenttype": "Purchase Order"}
+		)
+		grn.cancel()
+		self.assertEqual(grn.docstatus, 2)
+		amended = frappe.copy_doc(grn)
+		amended.docstatus = 0
+		for row in amended.get_all_children():
+			row.docstatus = 0
+		amended.amended_from = grn.name
+		amended.flags.ignore_permissions = True
+		with self.assertRaisesRegex(frappe.ValidationError, "not allowed for Purchase Order"):
+			amended.insert(ignore_permissions=True)
+
 	def test_pending_rows_preserve_lot_and_received_type_splits(self):
 		warehouse = _warehouse(f"_Test_PO_LOTS_{frappe.generate_hash(length=6)}")
 		po = _purchase_order(qty=10, warehouse=warehouse)
@@ -771,9 +874,13 @@ class TestPurchaseOrderLotSplits(FrappeTestCase):
 		po = _purchase_order(qty=10, warehouse=warehouse)
 		fieldname = dimension["fieldname"]
 		defaults = get_purchase_order_defaults(po.name)
-		self.assertEqual(defaults["lot_options"], [po.items[0].get(fieldname) or po.get(fieldname)])
+		self.assertEqual(
+			defaults["lot_options"],
+			{po.items[0].name: [po.items[0].get(fieldname) or po.get(fieldname)]},
+		)
 		grn = _purchase_order_grn(po, qty=4)
 		grn.onload()
+		self.assertEqual(grn.get_onload()["lot_options"], defaults["lot_options"])
 		rows = ungroup_items_from_ui(grn.get_onload()["item_details"], grn.doctype)
 		self.assertEqual(len(rows), 1)
 		self.assertEqual(rows[0]["quantity"], 4)

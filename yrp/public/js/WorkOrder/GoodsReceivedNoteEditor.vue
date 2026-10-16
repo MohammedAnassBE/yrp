@@ -45,10 +45,11 @@
                                     @click="removeSplit(row, split)">×</button>
                         </td>
 						<td v-if="lotFieldname">
-							<select v-if="edit && !returnMode && lotOptions.length > 1" class="form-control form-control-sm"
-								:value="split.entry.dimensions?.[lotFieldname]" aria-label="Receipt lot"
+							<select v-if="edit && !returnMode && canEditLotForEntry(split.entry, lotOptions, lotFieldname)" class="form-control form-control-sm"
+								:value="split.entry.dimensions?.[lotFieldname] || ''" aria-label="Receipt lot"
 								@change="setLot(split, $event.target.value)">
-								<option v-for="lot in lotOptions" :key="lot" :value="lot">{{ lot }}</option>
+								<option v-if="!split.entry.dimensions?.[lotFieldname]" value="" disabled hidden>Choose lot</option>
+								<option v-for="lot in lotChoicesForEntry(split.entry, lotOptions, lotFieldname)" :key="lot.value" :value="lot.value" :disabled="lot.disabled">{{ lot.label }}</option>
 							</select>
 							<span v-else>{{ split.entry.dimensions?.[lotFieldname] }}</span>
 							<button v-if="edit && !returnMode && unusedLots(row, split).length" type="button"
@@ -114,6 +115,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import {
+	canEditLotForEntry,
+	unusedLotsForEntry,
+	lotChoicesForEntry,
 	buildLogicalReceiptRows,
 	buildReceiptRowKey,
 	removeSplitSources,
@@ -126,7 +130,7 @@ const props = defineProps({
 	returnMode: { type: Boolean, default: false },
 	allowExcess: { type: Boolean, default: false },
 	aggregatePhysicalRows: { type: Boolean, default: false },
-	lotOptions: { type: Array, default: () => [] },
+	lotOptions: { type: Object, default: () => ({}) },
 	lotFieldname: { type: String, default: '' },
 });
 const emit = defineEmits(['itemupdated']);
@@ -169,7 +173,7 @@ const logicalRows = computed(() => buildLogicalReceiptRows(props.items, {
 function unusedLots(row, split) {
 	const used = new Set(row.splits.filter((entry) => entry.receivedType === split.receivedType)
 		.map((entry) => entry.entry.dimensions?.[props.lotFieldname]));
-	return props.lotOptions.filter((lot) => !used.has(lot));
+	return unusedLotsForEntry(split.entry, props.lotOptions, used);
 }
 
 function setLot(split, lot) {

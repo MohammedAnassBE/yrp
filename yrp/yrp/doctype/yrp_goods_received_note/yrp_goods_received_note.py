@@ -30,21 +30,30 @@ def get_purchase_order_lot_fieldname():
 
 
 def get_purchase_order_lot_options(purchase_order):
-	"""Return source and explicitly linked lots in display order."""
+	"""Return each PO row's own lot followed by explicitly linked lots."""
 	fieldname = get_purchase_order_lot_fieldname()
-	values = [row.get(fieldname) for row in [purchase_order, *(purchase_order.get("items") or [])]]
+	linked = []
 	for hook in frappe.get_hooks("yrp_purchase_order_lot_options"):
-		values.extend(frappe.get_attr(hook)(purchase_order))
-	return list(dict.fromkeys(value for value in values if value))
+		linked.extend(frappe.get_attr(hook)(purchase_order))
+	options = {}
+	for row in purchase_order.get("items") or []:
+		values = [row.get(fieldname), *linked]
+		options[row.get("name")] = list(dict.fromkeys(value for value in values if value))
+	return options
 
 
 def validate_purchase_order_lot(row, fieldname, lot_options, purchase_order, row_number):
-	if fieldname and lot_options and row.get(fieldname) not in lot_options:
-		frappe.throw(
-			_("Row {0}: Lot {1} is not allowed for Purchase Order {2}.").format(
-				row_number, row.get(fieldname) or _("(empty)"), purchase_order
-			)
+	if not fieldname:
+		return
+	allowed = lot_options.get(row.get("ref_docname"))
+	lot = row.get(fieldname)
+	if allowed is not None and (lot in allowed or (not allowed and lot in (None, ""))):
+		return
+	frappe.throw(
+		_("Row {0}: Lot {1} is not allowed for Purchase Order {2}.").format(
+			row_number, lot or _("(empty)"), purchase_order
 		)
+	)
 
 
 def _strip_zero_entries(item_details):
