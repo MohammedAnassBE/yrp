@@ -25,6 +25,7 @@ def field_rules():
 	A rule names where the field's Item Attribute comes from, tried in order:
 	``context`` (fieldnames on the document, its ancestors or linked documents),
 	``settings`` ([Single DocType, fieldname]) and ``attribute`` (a fixed name).
+	``parentfield_context`` ({parentfield: fieldnames}) replaces ``context`` for rows of that table.
 	"""
 	cached = getattr(frappe.local, "attribute_link_rules", None)
 	if cached is not None:
@@ -74,6 +75,8 @@ def get_context_fieldnames():
 	for rules in field_rules().values():
 		for rule in rules.values():
 			names.update(rule.get("context", ()))
+			for fieldnames in (rule.get("parentfield_context") or {}).values():
+				names.update(fieldnames)
 	return ["doctype", "name", *sorted(names)]
 
 
@@ -108,9 +111,11 @@ def attribute_for(doc, field, ancestors=()):
 	rule = field_rules().get(doc.get("doctype"), {}).get(field)
 	if not rule:
 		return None
-	if rule.get("context"):
+	table_context = rule.get("parentfield_context") or {}
+	context_fields = table_context.get(doc.get("parentfield")) or rule.get("context")
+	if context_fields:
 		context = _context_nodes(doc, ancestors)
-		for fieldname in rule["context"]:
+		for fieldname in context_fields:
 			for node in context:
 				if node.get(fieldname):
 					return node.get(fieldname)
