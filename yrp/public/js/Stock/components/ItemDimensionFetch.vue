@@ -1,128 +1,130 @@
 <template>
     <div ref="root">
-        <table class="table table-sm table-bordered">
-            <tr v-for="(i, item_index) in items" :key="item_index">
-                <td v-if="i.primary_attribute && i.primary_attribute_values && i.primary_attribute_values.length">
-                    <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0">
-                        <tr>
-                            <th>S.No.</th>
-                            <th>Item</th>
-                            <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
-                            <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
-                            <th v-for="attr in i.primary_attribute_values" :key="attr">{{ attr }}</th>
-                            <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
-                            <th v-if="show_row_actions"></th>
-                        </tr>
-                        <tr v-for="(j, item1_index) in i.items" :key="item1_index">
-                            <td>{{ item1_index + 1 }}</td>
-                            <td>{{ j.name }}</td>
-                            <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
-                            <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
-                            <td v-for="(attr, key) in j.values" :key="key">
-                                <div v-if="attr">
-                                    <input v-if="inline_qty_edit && edit"
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <tr v-for="(i, item_index) in items" :key="item_index">
+                    <td v-if="i.primary_attribute && i.primary_attribute_values && i.primary_attribute_values.length">
+                        <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0">
+                            <tr>
+                                <th>S.No.</th>
+                                <th>Item</th>
+                                <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
+                                <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
+                                <th v-for="attr in i.primary_attribute_values" :key="attr">{{ attr }}</th>
+                                <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
+                                <th v-if="show_row_actions"></th>
+                            </tr>
+                            <tr v-for="(j, item1_index) in i.items" :key="item1_index">
+                                <td>{{ item1_index + 1 }}</td>
+                                <td>{{ j.name }}</td>
+                                <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
+                                <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
+                                <td v-for="(attr, key) in j.values" :key="key">
+                                    <div v-if="attr">
+                                        <input v-if="inline_qty_edit && edit"
+                                               class="form-control form-control-sm"
+                                               type="number"
+                                               min="0"
+                                               step="0.001"
+                                               :max="get_inline_qty_max(attr)"
+                                               v-model.number="attr.qty"
+                                               @input="on_inline_qty_change(attr)">
+                                        <span v-else-if="attr.qty">
+                                            {{ attr.qty }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
+                                        </span>
+                                        <span v-else>0<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span></span>
+                                        <span v-for="a in table_qty_fields" :key="a.name">
+                                            <br>
+                                            <span v-if="a.inline_edit && edit" class="d-inline-flex align-items-center" style="gap: 0.35rem; min-width: 9rem;">
+                                                <span class="text-muted text-nowrap">{{ a.label }}:</span>
+                                                <input
+                                                    class="form-control form-control-sm"
+                                                    type="number"
+                                                    :min="a.min ?? 0"
+                                                    :max="a.max ?? null"
+                                                    :step="a.step ?? 0.001"
+                                                    v-model.number="attr[a.name]"
+                                                    @input="on_inline_table_field_change(attr, a)"
+                                                >
+                                                <span v-if="a.uom_field && attr[a.uom_field]" class="text-muted text-nowrap">
+                                                    {{ attr[a.uom_field] }}
+                                                </span>
+                                            </span>
+                                            <span v-else>
+                                                {{ a.label }}: {{ a.format ? a.format(attr[a.name]) : attr[a.name] }}
+                                                <span v-if="a.uom_field && attr[a.uom_field]"> {{ attr[a.uom_field] }}</span>
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div v-else class="text-center">---</div>
+                                </td>
+                                <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
+                                <td v-if="show_row_actions">
+                                    <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
+                                    <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td v-else>
+                        <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0">
+                            <tr>
+                                <th>S.No.</th>
+                                <th>Item</th>
+                                <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
+                                <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
+                                <th>Quantity</th>
+                                <th v-for="a in table_qty_fields" :key="a.name">{{ a.label }}</th>
+                                <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
+                                <th v-if="show_row_actions"></th>
+                            </tr>
+                            <tr v-for="(j, item1_index) in i.items" :key="item1_index">
+                                <td>{{ item1_index + 1 }}</td>
+                                <td>{{ j.name }}</td>
+                                <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
+                                <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
+                                <td>
+                                    <input v-if="inline_qty_edit && edit && j.values && j.values['default']"
                                            class="form-control form-control-sm"
                                            type="number"
                                            min="0"
                                            step="0.001"
-                                           :max="get_inline_qty_max(attr)"
-                                           v-model.number="attr.qty"
-                                           @input="on_inline_qty_change(attr)">
-                                    <span v-else-if="attr.qty">
-                                        {{ attr.qty }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
+                                           :max="get_inline_qty_max(j.values['default'])"
+                                           v-model.number="j.values['default'].qty"
+                                           @input="on_inline_qty_change(j.values['default'])">
+                                    <span v-else>
+                                        {{ (j.values && j.values['default'] && j.values['default'].qty) || 0 }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
                                     </span>
-                                    <span v-else>0<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span></span>
-                                    <span v-for="a in table_qty_fields" :key="a.name">
-                                        <br>
-                                        <span v-if="a.inline_edit && edit" class="d-inline-flex align-items-center" style="gap: 0.35rem; min-width: 9rem;">
-                                            <span class="text-muted text-nowrap">{{ a.label }}:</span>
-                                            <input
-                                                class="form-control form-control-sm"
-                                                type="number"
-                                                :min="a.min ?? 0"
-                                                :max="a.max ?? null"
-                                                :step="a.step ?? 0.001"
-                                                v-model.number="attr[a.name]"
-                                                @input="on_inline_table_field_change(attr, a)"
-                                            >
-                                            <span v-if="a.uom_field && attr[a.uom_field]" class="text-muted text-nowrap">
-                                                {{ attr[a.uom_field] }}
-                                            </span>
-                                        </span>
-                                        <span v-else>
-                                            {{ a.label }}: {{ a.format ? a.format(attr[a.name]) : attr[a.name] }}
-                                            <span v-if="a.uom_field && attr[a.uom_field]"> {{ attr[a.uom_field] }}</span>
+                                </td>
+                                <td v-for="a in table_qty_fields" :key="a.name">
+                                    <input
+                                        v-if="a.inline_edit && edit && j.values && j.values['default']"
+                                        class="form-control form-control-sm"
+                                        type="number"
+                                        :min="a.min ?? 0"
+                                        :max="a.max ?? null"
+                                        :step="a.step ?? 0.001"
+                                        v-model.number="j.values['default'][a.name]"
+                                        @input="on_inline_table_field_change(j.values['default'], a)"
+                                    >
+                                    <span v-else>
+                                        {{ (j.values && j.values['default']) ? (a.format ? a.format(j.values['default'][a.name]) : j.values['default'][a.name]) : '' }}
+                                        <span v-if="a.uom_field && j.values && j.values['default'] && j.values['default'][a.uom_field]">
+                                            {{ j.values['default'][a.uom_field] }}
                                         </span>
                                     </span>
-                                </div>
-                                <div v-else class="text-center">---</div>
-                            </td>
-                            <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
-                            <td v-if="show_row_actions">
-                                <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
-                                <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-                <td v-else>
-                    <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0">
-                        <tr>
-                            <th>S.No.</th>
-                            <th>Item</th>
-                            <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
-                            <th v-for="attr in i.attributes" :key="attr">{{ attr }}</th>
-                            <th>Quantity</th>
-                            <th v-for="a in table_qty_fields" :key="a.name">{{ a.label }}</th>
-                            <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
-                            <th v-if="show_row_actions"></th>
-                        </tr>
-                        <tr v-for="(j, item1_index) in i.items" :key="item1_index">
-                            <td>{{ item1_index + 1 }}</td>
-                            <td>{{ j.name }}</td>
-                            <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
-                            <td v-for="attr in i.attributes" :key="attr">{{ j.attributes[attr] }}</td>
-                            <td>
-                                <input v-if="inline_qty_edit && edit && j.values && j.values['default']"
-                                       class="form-control form-control-sm"
-                                       type="number"
-                                       min="0"
-                                       step="0.001"
-                                       :max="get_inline_qty_max(j.values['default'])"
-                                       v-model.number="j.values['default'].qty"
-                                       @input="on_inline_qty_change(j.values['default'])">
-                                <span v-else>
-                                    {{ (j.values && j.values['default'] && j.values['default'].qty) || 0 }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
-                                </span>
-                            </td>
-                            <td v-for="a in table_qty_fields" :key="a.name">
-                                <input
-                                    v-if="a.inline_edit && edit && j.values && j.values['default']"
-                                    class="form-control form-control-sm"
-                                    type="number"
-                                    :min="a.min ?? 0"
-                                    :max="a.max ?? null"
-                                    :step="a.step ?? 0.001"
-                                    v-model.number="j.values['default'][a.name]"
-                                    @input="on_inline_table_field_change(j.values['default'], a)"
-                                >
-                                <span v-else>
-                                    {{ (j.values && j.values['default']) ? (a.format ? a.format(j.values['default'][a.name]) : j.values['default'][a.name]) : '' }}
-                                    <span v-if="a.uom_field && j.values && j.values['default'] && j.values['default'][a.uom_field]">
-                                        {{ j.values['default'][a.uom_field] }}
-                                    </span>
-                                </span>
-                            </td>
-                            <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
-                            <td v-if="show_row_actions">
-                                <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
-                                <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
-                            </td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
+                                </td>
+                                <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
+                                <td v-if="show_row_actions">
+                                    <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
+                                    <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </div>
 
         <form v-show="can_create && edit && dimensions_loaded" name="formp" class="form-horizontal" autocomplete="off" @submit.prevent="get_item_details()">
             <div class="row">

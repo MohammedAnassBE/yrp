@@ -64,6 +64,7 @@
   },
   {
    "allow_in_quick_entry": 1,
+   "fetch_if_empty": 1,
    "fetch_from": "item_name.stock_uom",
    "fieldname": "uom",
    "fieldtype": "Link",

@@ -162,6 +162,7 @@ class YRPItemMixin:
 
 	def validate(self):
 		_call_super(self, "validate")
+		self._validate_variant_attribute_mutation()
 		if self.has_variants and not self.variant_of:
 			self._validate_primary_attribute()
 			if not self.flags.get("last_updated_by_sd_yrp_sync"):
@@ -171,6 +172,34 @@ class YRPItemMixin:
 		self._validate_secondary_uom()
 		self._validate_yrp_stock_mutation()
 		self._validate_tuple_uniqueness()
+
+	def _validate_variant_attribute_mutation(self):
+		if (
+			self.is_new()
+			or self.flags.get("last_updated_by_sd_yrp_sync")
+			or frappe.flags.get("in_migrate")
+			or frappe.flags.get("in_patch")
+		):
+			return
+		before = self.get_doc_before_save()
+		if not before or not template_has_variants(self.name):
+			return
+		before_attributes = [
+			(row.attribute, row.get("mapping")) for row in before.get("attributes") or []
+		]
+		current_attributes = [
+			(row.attribute, row.get("mapping")) for row in self.get("attributes") or []
+		]
+		if (
+			before_attributes != current_attributes
+			or before.get("has_variants") != self.get("has_variants")
+			or before.get("primary_attribute") != self.get("primary_attribute")
+		):
+			frappe.throw(
+				_("Item attributes cannot be changed after variants exist for Item {0}.").format(
+					self.name
+				)
+			)
 
 	def on_trash(self):
 		if frappe.db.exists("YRP Stock Ledger Entry", {"item": self.name}):
@@ -303,8 +332,7 @@ class YRPItemMixin:
 	def _validate_dependent_attribute(self):
 		if not self.dependent_attribute:
 			if self.dependent_attribute_mapping:
-				frappe.delete_doc("YRP Item Dependent Attribute Mapping", self.dependent_attribute_mapping)
-				self.dependent_attribute_mapping = None
+				self._delete_dependent_attribute_mapping()
 			return
 
 		dependent_values = []
@@ -325,6 +353,14 @@ class YRPItemMixin:
 			frappe.throw(_("Please set Primary Attribute for this Item."))
 		if not self.dependent_attribute_mapping:
 			self.dependent_attribute_mapping = _create_dependent_attribute_mapping(self, dependent_values)
+
+	def _delete_dependent_attribute_mapping(self):
+		"""The stored Item still links the mapping, so unlink it before the delete's link check."""
+		mapping = self.dependent_attribute_mapping
+		self.dependent_attribute_mapping = None
+		if not self.is_new():
+			frappe.db.set_value(self.doctype, self.name, "dependent_attribute_mapping", None, update_modified=False)
+		frappe.delete_doc("YRP Item Dependent Attribute Mapping", mapping)
 
 	def _validate_yrp_stock_mutation(self):
 		if self.is_new():
@@ -491,12 +527,18 @@ def update_dependent_attribute_details(dependent_attribute_mapping, detail):
 	return mapping
 
 
-def _mapping_values(attribute_row):
+def _mapping_values(attribute_row, *, for_update=False, allow_unrestricted_numeric=False):
 	if attribute_row.get("mapping"):
-		mapping = get_mapping_document(attribute_row.mapping, cached=True)
+		mapping = get_mapping_document(
+			attribute_row.mapping, cached=not for_update, for_update=for_update
+		)
 		values = [_attribute_value(row.attribute_value) for row in mapping.get("values") or []]
 		if values:
 			return values
+	if allow_unrestricted_numeric and frappe.db.get_value(
+		"Item Attribute", attribute_row.attribute, "numeric_values"
+	):
+		return None
 	return get_global_attribute_values(attribute_row.attribute)
 
 
@@ -675,10 +717,28 @@ def _copy_template_fields(template, variant):
 
 
 def create_variant(template, args, dependent_attr=None):
+	from yrp.yrp_retail.pricing import lock_pricing_policy
+
 	if isinstance(args, str):
 		args = json.loads(args)
-	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
-	template_doc = frappe.get_cached_doc("Item", template)
+	original_args = {key: _attribute_value(val) for key, val in (args or {}).items()}
+	lookup_template = frappe.get_cached_doc("Item", template)
+	lookup_args = _prepare_variant_args(lookup_template, original_args, dependent_attr)
+	existing = _lookup_variant(template, lookup_args, backfill_tuple=False)
+	if existing:
+		return frappe.get_doc("Item", existing)
+
+	lock_pricing_policy()
+	template_doc = frappe.get_doc("Item", template, for_update=True)
+	current_args = _prepare_variant_args(template_doc, original_args, dependent_attr)
+	existing = _get_variant_for_creation(template, current_args)
+	if existing:
+		return frappe.get_doc("Item", existing, for_update=True)
+	return _create_variant(template_doc, current_args, dependent_attr=dependent_attr)
+
+
+def _create_variant(template_doc, args, dependent_attr=None):
+	template = template_doc.name
 	if not args and not template_doc.has_variants:
 		return template_doc
 	if not template_doc.has_variants or template_doc.variant_of:
@@ -697,7 +757,12 @@ def create_variant(template, args, dependent_attr=None):
 		value = args.get(attribute)
 		if not value:
 			frappe.throw(_("Please mention {0} attribute in {1}.").format(attribute, template))
-		if value not in _mapping_values(template_attribute):
+		allowed = _mapping_values(
+			template_attribute,
+			for_update=True,
+			allow_unrestricted_numeric=True,
+		)
+		if allowed is not None and value not in allowed:
 			frappe.throw(_("{0} is not allowed for {1} on Item {2}.").format(value, attribute, template))
 		validate_attribute_value(attribute, value)
 		rows.append({"attribute": attribute, "attribute_value": cstr(value), "display_name": cstr(value)})
@@ -733,36 +798,54 @@ def get_dependent_attribute_value(attributes, dependent_attribute):
 
 
 def get_or_create_variant(template, args, dependent_attr=None):
+	from yrp.yrp_retail.pricing import lock_pricing_policy
+
 	if isinstance(args, str):
 		args = json.loads(args)
-	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
-	template_doc = frappe.get_cached_doc("Item", template)
-	if not args and not template_doc.has_variants and not template_doc.variant_of:
-		return template_doc.name
-	stage = args.get(template_doc.dependent_attribute) if template_doc.dependent_attribute else None
-	if stage:
-		source = (
-			frappe._dict(name=template, dependent_attribute_mapping=dependent_attr)
-			if dependent_attr
-			else template_doc
-		)
-		args = build_variant_attributes(args, stage, source)
-	existing = get_variant(template, args)
+	original_args = {key: _attribute_value(val) for key, val in (args or {}).items()}
+	lookup_template = frappe.get_cached_doc("Item", template)
+	lookup_args = _prepare_variant_args(lookup_template, original_args, dependent_attr)
+	existing = _lookup_variant(template, lookup_args, backfill_tuple=False)
 	if existing:
 		return existing
-	variant = create_variant(template, args, dependent_attr=dependent_attr)
+
+	lock_pricing_policy()
+	template_doc = frappe.get_doc("Item", template, for_update=True)
+	current_args = _prepare_variant_args(template_doc, original_args, dependent_attr)
+	existing = _get_variant_for_creation(template, current_args)
+	if existing:
+		return existing
+	variant = _create_variant(template_doc, current_args, dependent_attr=dependent_attr)
 	try:
 		# Variants of an existing template are system records; callers authorize the business document.
 		variant.insert(ignore_permissions=True)
 	except frappe.DuplicateEntryError:
-		existing = get_variant(template, args)
+		existing = _get_variant_for_creation(template, current_args)
 		if not existing:
 			raise
 		return existing
 	return variant.name
 
 
+def _prepare_variant_args(template_doc, args, dependent_attr):
+	if not args and not template_doc.has_variants and not template_doc.variant_of:
+		return args
+	stage = args.get(template_doc.dependent_attribute) if template_doc.dependent_attribute else None
+	if not stage:
+		return args
+	source = (
+		frappe._dict(name=template_doc.name, dependent_attribute_mapping=dependent_attr)
+		if dependent_attr
+		else template_doc
+	)
+	return build_variant_attributes(args, stage, source)
+
+
 def get_variant(template, args):
+	return _lookup_variant(template, args, backfill_tuple=True)
+
+
+def _lookup_variant(template, args, *, backfill_tuple):
 	if isinstance(args, str):
 		args = json.loads(args)
 	args = {key: _attribute_value(val) for key, val in (args or {}).items()}
@@ -772,17 +855,76 @@ def get_variant(template, args):
 			return template_doc.name
 		frappe.throw(_("Please specify at least one attribute."))
 	tuple_value = str(tuple(sorted((key, cstr(value)) for key, value in args.items())))
-	name = frappe.db.get_value("Item", {"variant_of": template, "item_tuple_attribute": tuple_value}, "name")
+	name = frappe.db.get_value(
+		"Item",
+		{"variant_of": template, "item_tuple_attribute": tuple_value},
+		"name",
+	)
 	if name:
 		return name
 	name = _find_variant_by_attributes(template, args)
-	if name:
+	if name and backfill_tuple:
 		frappe.db.set_value("Item", name, "item_tuple_attribute", tuple_value, update_modified=False)
 	return name
 
 
-def _find_variant_by_attributes(template, args):
-	for variant_name in _get_variants_by_attributes(args, template):
+def _get_variant_for_creation(template, args):
+	"""Use current reads after the mutex and template lock, scoped to this tuple."""
+	if not args:
+		return get_variant(template, args)
+	tuple_value = str(tuple(sorted((key, cstr(value)) for key, value in args.items())))
+	name = frappe.db.get_value(
+		"Item",
+		{"variant_of": template, "item_tuple_attribute": tuple_value},
+		"name",
+		for_update=True,
+	)
+	if name:
+		return name
+	return _find_variant_by_attributes(template, args, for_update=True)
+
+
+def template_has_variants(template):
+	item = frappe.qb.DocType("Item")
+	return bool(
+		frappe.qb.from_(item)
+		.select(item.name)
+		.where(item.variant_of == template)
+		.limit(1)
+		.for_update()
+		.run()
+	)
+
+
+def _find_variant_by_attributes(template, args, *, for_update=False):
+	candidates = _get_variants_by_attributes(args, template, for_update=for_update)
+	if for_update and candidates:
+		variant_attribute = frappe.qb.DocType("Item Variant Attribute")
+		rows = (
+			frappe.qb.from_(variant_attribute)
+			.select(
+				variant_attribute.parent,
+				variant_attribute.attribute,
+				variant_attribute.attribute_value,
+			)
+			.where(variant_attribute.parent.isin(candidates))
+			.where(variant_attribute.parenttype == "Item")
+			.where(variant_attribute.parentfield == "attributes")
+			.orderby(variant_attribute.parent, variant_attribute.idx)
+			.for_update()
+			.run(as_dict=True)
+		)
+		expected = {key: cstr(value) for key, value in args.items()}
+		actual_by_variant = {name: {} for name in candidates}
+		for row in rows:
+			actual_by_variant[row.parent][row.attribute] = cstr(
+				_attribute_value(row.attribute_value)
+			)
+		return next(
+			(name for name in candidates if actual_by_variant[name] == expected),
+			None,
+		)
+	for variant_name in candidates:
 		variant = frappe.get_cached_doc("Item", variant_name)
 		actual = {row.attribute: cstr(_attribute_value(row.attribute_value)) for row in variant.attributes}
 		if actual == {key: cstr(value) for key, value in args.items()}:
@@ -790,39 +932,40 @@ def _find_variant_by_attributes(template, args):
 	return None
 
 
-def _get_variants_by_attributes(args, template=None):
+def _get_variants_by_attributes(args, template=None, *, for_update=False):
 	if not args:
-		return frappe.get_all("Item", {"variant_of": template}, pluck="name") if template else []
-	# Bound the child lookup to this template before searching common values
-	# such as Stage=Cut; otherwise every missing variant scans the whole catalogue.
+		return []
+	item = frappe.qb.DocType("Item")
+	variant_attribute = frappe.qb.DocType("Item Variant Attribute")
 	candidates = None
-	if template:
-		candidates = set(frappe.get_all("Item", {"variant_of": template}, pluck="name"))
-		if not candidates:
-			return []
 	matching_sets = []
 	for attribute, values in args.items():
 		values = values if isinstance(values, list) else [values]
-		filters = {
-			"parenttype": "Item",
-			"parentfield": "attributes",
-			"attribute": attribute,
-			"attribute_value": ["in", values],
-		}
-		if candidates is not None:
-			filters["parent"] = ["in", list(candidates)]
-		parents = frappe.get_all(
-			"Item Variant Attribute",
-			filters=filters,
-			pluck="parent",
-			order_by="",
+		query = frappe.qb.from_(variant_attribute).select(variant_attribute.parent)
+		if template:
+			query = (
+				query.inner_join(item)
+				.on(item.name == variant_attribute.parent)
+				.where(item.variant_of == template)
+			)
+		query = (
+			query
+			.where(variant_attribute.parenttype == "Item")
+			.where(variant_attribute.parentfield == "attributes")
+			.where(variant_attribute.attribute == attribute)
+			.where(variant_attribute.attribute_value.isin(values))
+			.orderby(variant_attribute.parent)
 		)
+		if candidates is not None:
+			query = query.where(variant_attribute.parent.isin(sorted(candidates)))
+		if for_update:
+			query = query.for_update()
+		parents = query.run(pluck=True)
 		if not parents:
 			return []
-		if candidates is not None:
-			candidates.intersection_update(parents)
+		candidates = set(parents)
 		matching_sets.append(set(parents))
-	return list(set.intersection(*matching_sets)) if matching_sets else []
+	return sorted(set.intersection(*matching_sets)) if matching_sets else []
 
 
 @frappe.whitelist()
@@ -842,12 +985,14 @@ def get_item_attribute_values(doctype=None, txt="", searchfield=None, start=0, p
 	if not values:
 		values = get_global_attribute_values(attribute)
 	needle = (txt or "").lower()
-	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	if doctype == "YRP Item Attribute Value":
 		from yrp.attribute_value_identity import get_attribute_value_names
 
-		names = get_attribute_value_names([(attribute, value) for value in matched])
-		return [[names[(attribute, cstr(value))], value] for value in matched]
+		names = get_attribute_value_names([(attribute, value) for value in values])
+		# Link validation re-runs this query with the stored name as txt.
+		rows = [[names[(attribute, cstr(value))], value] for value in values]
+		return [row for row in rows if row[0] == txt or needle in cstr(row[1]).lower()][start : start + page_len]
+	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	return [[value] for value in matched]
 
 

@@ -451,38 +451,64 @@ def _resolve_party_address(supplier, address):
 
 
 def validate_price_details(rows, supplier=None, strict=True):
-	if not rows:
-		return []
+	"""Apply authoritative prices and retain the legacy warnings-only contract."""
+	return apply_price_details(rows, supplier=supplier, strict=strict)["warnings"]
 
-	from yrp.yrp.doctype.yrp_item_price.yrp_item_price import get_active_price
+
+def apply_price_details(rows, supplier=None, strict=True, *, preview_context=None):
+	"""Apply grouped Item Prices and report the outcome for every input row."""
+	rows = list(rows or [])
+	contexts = list(preview_context or [])
+	if preview_context is not None and len(contexts) != len(rows):
+		raise ValueError("Preview pricing context must match the pricing rows.")
+	results = [_empty_price_result() for _row in rows]
+	if not rows:
+		return {"warnings": [], "rows": results}
 
 	rows_by_item = defaultdict(list)
 	warnings = []
-	for row in rows:
-		parent_item = _get_parent_item(row.item_code)
+	for index, row in enumerate(rows):
+		context = contexts[index] if preview_context is not None else None
+		item_code = row.get("item_code") or row.get("item_variant")
+		parent_item = context.get("parent_item") if context is not None else _get_parent_item(item_code)
 		if parent_item:
-			rows_by_item[parent_item].append(row)
+			attributes = context.get("attributes") if context is not None else None
+			rows_by_item[parent_item].append((index, row, attributes))
 
 	for parent_item, item_rows in rows_by_item.items():
-		item_price = get_active_price(parent_item, supplier, raise_error=strict)
+		item_price, status = _resolve_active_price(parent_item, supplier, strict=strict)
 		if not item_price:
-			warnings.append(
-				_(
-					"No active Item Price was found for {0} and {1}. "
-					"This draft can be saved, but it cannot be submitted until the price is configured."
-				).format(parent_item, supplier)
-			)
+			for index, _row, _attributes in item_rows:
+				results[index]["status"] = status
+			if status == "ambiguous":
+				warnings.append(
+					_(
+						"Multiple active Item Prices were found for {0} and {1}. "
+						"This draft can be saved, but it cannot be submitted until the duplicates are expired."
+					).format(parent_item, supplier)
+				)
+			else:
+				warnings.append(
+					_(
+						"No active Item Price was found for {0} and {1}. "
+						"This draft can be saved, but it cannot be submitted until the price is configured."
+					).format(parent_item, supplier)
+				)
 			continue
 		if item_price.depends_on_attribute:
-			warnings.extend(_apply_attribute_price(item_price, item_rows, strict=strict))
+			warnings.extend(
+				_apply_attribute_price(item_price, item_rows, results, strict=strict)
+			)
 		else:
-			qty = sum(flt(row.qty) for row in item_rows)
-			price = item_price.validate_attribute_values(qty=qty)
-			if price is None:
+			qty = sum(flt(row.qty) for _index, row, _attributes in item_rows)
+			tier = _get_price_tier(item_price, qty=qty)
+			if tier is None:
 				if strict:
 					frappe.throw(
 						_("No matching price slab for {0} at quantity {1}.").format(parent_item, flt(qty))
 					)
+				for index, _row, _attributes in item_rows:
+					results[index].update(_price_result(item_price, status="no_slab"))
 				warnings.append(
 					_(
 						"No matching Item Price slab was found for {0} at quantity {1}. "
@@ -490,24 +516,26 @@ def validate_price_details(rows, supplier=None, strict=True):
 					).format(parent_item, flt(qty))
 				)
 				continue
-			for row in item_rows:
-				row.rate = flt(price)
-				row.tax = item_price.tax
-	return warnings
+			for index, row, _attributes in item_rows:
+				_apply_price_tier(row, results[index], item_price, tier)
+	return {"warnings": warnings, "rows": results}
 
 
-def _apply_attribute_price(item_price, rows, strict=True):
+def _apply_attribute_price(item_price, rows, results, strict=True):
 	rows_by_value = defaultdict(list)
 	warnings = []
-	for row in rows:
-		attribute_value = _get_variant_attribute_value(row.item_code, item_price.attribute)
+	for index, row, attributes in rows:
+		attribute_value = attributes.get(item_price.attribute) if attributes is not None else None
+		if attributes is None:
+			attribute_value = _get_variant_attribute_value(row.item_code, item_price.attribute)
 		if attribute_value:
-			rows_by_value[attribute_value].append(row)
+			rows_by_value[attribute_value].append((index, row))
 		elif strict:
 			frappe.throw(
 				_("Item Variant {0} does not have attribute {1}.").format(row.item_code, item_price.attribute)
 			)
 		else:
+			results[index].update(_price_result(item_price, status="no_slab"))
 			warnings.append(
 				_(
 					"Item Variant {0} does not have price attribute {1}. "
@@ -516,19 +544,22 @@ def _apply_attribute_price(item_price, rows, strict=True):
 			)
 
 	for attribute_value, value_rows in rows_by_value.items():
-		qty = sum(flt(row.qty) for row in value_rows)
-		price = item_price.validate_attribute_values(
+		qty = sum(flt(row.qty) for _index, row in value_rows)
+		tier = _get_price_tier(
+			item_price,
 			qty=qty,
 			attribute=item_price.attribute,
 			attribute_value=attribute_value,
 		)
-		if price is None:
+		if tier is None:
 			if strict:
 				frappe.throw(
 					_("No matching price slab for {0} {1} at quantity {2}.").format(
 						item_price.attribute, attribute_value, flt(qty)
 					)
 				)
+			for index, _row in value_rows:
+				results[index].update(_price_result(item_price, status="no_slab"))
 			warnings.append(
 				_(
 					"No matching Item Price slab was found for {0} {1} at quantity {2}. "
@@ -536,10 +567,120 @@ def _apply_attribute_price(item_price, rows, strict=True):
 				).format(item_price.attribute, attribute_value, flt(qty))
 			)
 			continue
-		for row in value_rows:
-			row.rate = flt(price)
-			row.tax = item_price.tax
+		for index, row in value_rows:
+			_apply_price_tier(row, results[index], item_price, tier)
 	return warnings
+
+
+def _resolve_active_price(item, supplier, *, strict):
+	from yrp.yrp.doctype.yrp_item_price.yrp_item_price import get_active_price
+
+	item_price = get_active_price(item, supplier, raise_error=strict)
+	if item_price:
+		return item_price, "ok"
+	if strict:
+		return None, "missing"
+	return None, "ambiguous" if len(_active_price_names(item, supplier)) > 1 else "missing"
+
+
+def _active_price_names(item, supplier):
+	from yrp.yrp.doctype.yrp_item_price.yrp_item_price import (
+		get_active_workflow_state_field,
+	)
+
+	filters = {
+		"item_name": item,
+		"supplier": supplier,
+		"from_date": ["<=", today()],
+		"docstatus": 1,
+	}
+	workflow_state_field = get_active_workflow_state_field("YRP Item Price")
+	if workflow_state_field:
+		filters[workflow_state_field] = "Approved"
+	rows = frappe.db.get_list(
+		"YRP Item Price",
+		filters={**filters, "to_date": ["is", "not set"]},
+		pluck="name",
+	) + frappe.db.get_list(
+		"YRP Item Price",
+		filters={**filters, "to_date": [">=", today()]},
+		pluck="name",
+	)
+	return list(dict.fromkeys(rows))
+
+
+def _get_price_tier(item_price, *, qty, attribute=None, attribute_value=None):
+	rate = item_price.validate_attribute_values(
+		qty=qty,
+		attribute=attribute,
+		attribute_value=attribute_value,
+	)
+	if rate is None:
+		return None
+	lead_time = item_price.validate_attribute_values(
+		qty=qty,
+		attribute=attribute,
+		attribute_value=attribute_value,
+		get_lead_time=True,
+	)
+	normalized_value = _normalized_price_attribute_value(attribute_value)
+	matching_tiers = [
+		row
+		for row in item_price.get("item_price_values") or []
+		if _normalized_price_attribute_value(row.get("attribute_value")) == normalized_value
+		and flt(row.get("moq")) <= flt(qty)
+	]
+	selected = max(matching_tiers, key=lambda row: flt(row.get("moq")), default=None)
+	return {
+		"rate": flt(rate),
+		"lead_time_days": (
+			flt(lead_time) if lead_time is not None and flt(lead_time) >= 0 else None
+		),
+		"moq": flt(selected.get("moq")) if selected else None,
+	}
+
+
+def _normalized_price_attribute_value(value):
+	value = _attribute_value(value)
+	if isinstance(value, str) and not value.strip():
+		return None
+	return value
+
+
+def _empty_price_result():
+	return {
+		"status": "missing",
+		"rate": None,
+		"tax": None,
+		"tax_rate": 0,
+		"lead_time_days": None,
+		"tier": None,
+	}
+
+
+def _price_result(item_price, *, status, tier=None):
+	return {
+		"status": status,
+		"rate": tier["rate"] if tier else None,
+		"tax": item_price.tax,
+		"tax_rate": flt(item_price.tax),
+		"lead_time_days": tier["lead_time_days"] if tier else None,
+		"tier": (
+			{
+				"moq": tier["moq"],
+				"rate": tier["rate"],
+				"lead_time_days": tier["lead_time_days"],
+			}
+			if tier
+			else None
+		),
+	}
+
+
+def _apply_price_tier(row, result, item_price, tier):
+	row.rate = tier["rate"]
+	row.tax = item_price.tax
+	result.update(_price_result(item_price, status="ok", tier=tier))
 
 
 def _get_parent_item(item_variant):

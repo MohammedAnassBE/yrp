@@ -20,8 +20,8 @@ from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 class YRPBin(Document):
 	def before_save(self):
-		# Auto-fill stock_uom from the parent Item if not set
-		if not self.stock_uom and self.item_code:
+		# Always overwrite: new_doc pre-fills stock_uom from the global "stock_uom" default.
+		if self.item_code:
 			parent = get_parent_item(self.item_code)
 			if parent:
 				self.stock_uom = frappe.db.get_value("Item", parent, "stock_uom")

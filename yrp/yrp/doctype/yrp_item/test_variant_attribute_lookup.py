@@ -3,51 +3,37 @@
 import unittest
 from unittest.mock import patch
 
-from yrp.yrp.doctype.yrp_item.yrp_item import _get_variants_by_attributes
+import frappe
 
-MODULE = "yrp.yrp.doctype.yrp_item.yrp_item"
+from yrp.yrp.doctype.yrp_item.yrp_item import _get_variants_by_attributes
 
 
 class VariantAttributeLookupTest(unittest.TestCase):
 	def test_intersects_attributes_within_template_and_multiple_values(self):
-		attributes = {
-			"A": {"Colour": "Wine", "Size": "S"},
-			"B": {"Colour": "Black", "Size": "M"},
-			"C": {"Colour": "White", "Size": "S"},
-			"OTHER": {"Colour": "Wine", "Size": "S"},
-		}
-		queries = []
-
-		def get_all(doctype, filters=None, **kwargs):
-			if doctype == "Item":
-				self.assertEqual(filters, {"variant_of": "Template"})
-				return ["A", "B", "C"]
-			self.assertEqual(doctype, "Item Variant Attribute")
-			self.assertEqual(filters["parenttype"], "Item")
-			self.assertEqual(filters["parentfield"], "attributes")
-			candidates = set(filters["parent"][1])
-			queries.append(candidates)
-			return [
-				name
-				for name in candidates
-				if attributes[name][filters["attribute"]] in filters["attribute_value"][1]
-			]
-
-		with patch(f"{MODULE}.frappe.get_all", side_effect=get_all):
+		with patch.object(frappe.db, "sql", side_effect=[["A", "B"], ["A"]]) as query:
 			result = _get_variants_by_attributes({"Colour": ["Wine", "Black"], "Size": "S"}, "Template")
 		self.assertEqual(result, ["A"])
-		self.assertEqual(queries, [{"A", "B", "C"}, {"A", "B"}])
+		self.assertEqual(query.call_count, 2)
+		for call in query.call_args_list:
+			self.assertIn("JOIN `tabItem`", str(call.args[0]))
+			self.assertNotIn("FOR UPDATE", str(call.args[0]))
+			self.assertIn("Template", call.args[1].values())
+		self.assertIn("A", query.call_args_list[1].args[1].values())
+		self.assertIn("B", query.call_args_list[1].args[1].values())
 
 	def test_empty_template_does_not_scan_global_attributes(self):
-		with patch(f"{MODULE}.frappe.get_all", return_value=[]) as query:
+		with patch.object(frappe.db, "sql", return_value=[]) as query:
 			self.assertEqual(_get_variants_by_attributes({"Stage": "Cut"}, "Empty"), [])
-		query.assert_called_once_with("Item", {"variant_of": "Empty"}, pluck="name")
+		self.assertEqual(query.call_count, 1)
+		self.assertIn("JOIN `tabItem`", str(query.call_args.args[0]))
 
 	def test_no_matching_attribute_stops_early(self):
-		with patch(f"{MODULE}.frappe.get_all", side_effect=[["A"], []]) as query:
+		with patch.object(frappe.db, "sql", return_value=[]) as query:
 			self.assertEqual(_get_variants_by_attributes({"Colour": "Missing", "Size": "S"}, "Template"), [])
-		self.assertEqual(query.call_count, 2)
+		self.assertEqual(query.call_count, 1)
 
 	def test_unscoped_search_keeps_intersection_semantics(self):
-		with patch(f"{MODULE}.frappe.get_all", side_effect=[["A", "B"], ["B", "C"]]):
+		with patch.object(frappe.db, "sql", side_effect=[["A", "B"], ["B", "C"]]) as query:
 			self.assertEqual(_get_variants_by_attributes({"Colour": "Wine", "Size": "S"}), ["B"])
+		for call in query.call_args_list:
+			self.assertNotIn("JOIN `tabItem`", str(call.args[0]))

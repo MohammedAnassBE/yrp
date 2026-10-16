@@ -230,7 +230,15 @@ def normalize(doc, ancestors=()):
 class AttributeLinkStorageMixin:
 	"""Normalize internal plain-value writes before Frappe validates Links."""
 
+	def _attribute_link_validation_is_bypassed(self):
+		bypass = getattr(self, "_bypass_attribute_link_validation", None)
+		if not bypass and self.meta.istable and self.parent_doc:
+			bypass = getattr(self.parent_doc, "_bypass_attribute_link_validation", None)
+		return bool(bypass and bypass())
+
 	def _validate_links(self):
+		if self._attribute_link_validation_is_bypassed():
+			return
 		normalize(self)
 		return super()._validate_links()
 
@@ -239,7 +247,8 @@ class AttributeLinkStorageMixin:
 		return super().db_insert(*args, **kwargs)
 
 	def db_update(self, *args, **kwargs):
-		normalize(self)
+		if not self._attribute_link_validation_is_bypassed():
+			normalize(self)
 		return super().db_update(*args, **kwargs)
 
 

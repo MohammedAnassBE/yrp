@@ -98,8 +98,7 @@ def get_columns(filters, dims):
 		{
 			"label": _("Item Name"),
 			"fieldname": "item_name",
-			"fieldtype": "Link",
-			"options": "Item",
+			"fieldtype": "Data",
 			"width": 150,
 		},
 		{

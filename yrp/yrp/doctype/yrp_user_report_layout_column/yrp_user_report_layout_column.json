@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-13 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "column_key",
+  "kind",
+  "source_column",
+  "target_field",
+  "visible",
+  "align",
+  "width"
+ ],
+ "fields": [
+  {
+   "fieldname": "column_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Column Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind",
+   "options": "base\nlinked",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_column",
+   "fieldtype": "Data",
+   "label": "Source Column"
+  },
+  {
+   "fieldname": "target_field",
+   "fieldtype": "Data",
+   "label": "Target Field"
+  },
+  {
+   "default": "1",
+   "fieldname": "visible",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Visible"
+  },
+  {
+   "default": "auto",
+   "fieldname": "align",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Align",
+   "options": "auto\nleft\ncenter\nright",
+   "reqd": 1
+  },
+  {
+   "default": "100",
+   "fieldname": "width",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Width",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-13 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "YRP",
+ "name": "YRP User Report Layout Column",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

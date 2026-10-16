@@ -49,8 +49,9 @@ function receiptReferences(entry, columns) {
 	]);
 }
 
-export function buildReceiptRowKey(group, entry) {
+export function buildReceiptRowKey(group, entry, { lotFieldname = '' } = {}) {
 	const dimensions = stripReceivedType(entry.dimensions || {});
+	if (lotFieldname) delete dimensions[lotFieldname];
 	const columns = getColumns(group, entry);
 	return stableKey({
 		name: entry.name,
@@ -74,16 +75,17 @@ function stableKey(value) {
 	return JSON.stringify(sortObject(value));
 }
 
-export function buildLogicalReceiptRows(items, { aggregatePhysicalRows = false } = {}) {
+export function buildLogicalReceiptRows(items, { aggregatePhysicalRows = false, lotFieldname = '' } = {}) {
 	const rows = [];
 	const byKey = new Map();
 	for (const group of items || []) {
 		for (const entry of group.items || []) {
 			const dimensions = stripReceivedType(entry.dimensions || {});
+			if (lotFieldname) delete dimensions[lotFieldname];
 			const attributes = entry.attributes || {};
 			const columns = getColumns(group, entry);
 			const setCombination = normalizedSetCombination(entry.set_combination);
-			const key = buildReceiptRowKey(group, entry);
+			const key = buildReceiptRowKey(group, entry, { lotFieldname });
 			if (!byKey.has(key)) {
 				const row = {
 					key,
@@ -104,11 +106,12 @@ export function buildLogicalReceiptRows(items, { aggregatePhysicalRows = false }
 			const row = byKey.get(key);
 			const type = receivedType(entry);
 			let split = aggregatePhysicalRows
-				? row.splits.find((candidate) => candidate.receivedType === type)
+				? row.splits.find((candidate) => candidate.receivedType === type
+					&& (!lotFieldname || candidate.entry.dimensions?.[lotFieldname] === entry.dimensions?.[lotFieldname]))
 				: null;
 			if (!split) {
 				split = {
-					key: `${key}::${type}`,
+					key: `${key}::${type}${lotFieldname ? `::${entry.dimensions?.[lotFieldname] || ''}` : ''}`,
 					receivedType: type,
 					entry: aggregatePhysicalRows
 						? JSON.parse(JSON.stringify(entry))
@@ -156,4 +159,35 @@ export function removeSplitSources(items, split) {
 		if (group.items.length !== before) return true;
 	}
 	return false;
+}
+
+export function allowedLotsForEntry(entry, lotOptions) {
+	const references = Object.values(entry.values || {}).map((cell) => cell.ref_docname).filter(Boolean);
+	if (!references.length && entry.ref_docname) references.push(entry.ref_docname);
+	if (!references.length) return [];
+	const allowed = references.map((reference) => Array.isArray(lotOptions?.[reference]) ? lotOptions[reference] : []);
+	return [...new Set(allowed[0])].filter((lot) => lot && allowed.every((lots) => lots.includes(lot)));
+}
+
+export function lotChoicesForEntry(entry, lotOptions, lotFieldname) {
+	const allowed = allowedLotsForEntry(entry, lotOptions);
+	const choices = allowed.map((lot) => ({ label: lot, value: lot, disabled: false }));
+	const current = entry.dimensions?.[lotFieldname];
+	if (current && !allowed.includes(current)) choices.push({ label: current, value: current, disabled: true });
+	return choices;
+}
+
+export function canEditLotForEntry(entry, lotOptions, lotFieldname) {
+	const allowed = allowedLotsForEntry(entry, lotOptions);
+	const current = entry.dimensions?.[lotFieldname];
+	return allowed.length > 1 || (current ? !allowed.includes(current) : allowed.length > 0);
+}
+
+export function itemsNeedLotEditor(items, lotOptions, lotFieldname) {
+	return Boolean(lotFieldname) && (items || []).some((group) =>
+		(group.items || []).some((entry) => canEditLotForEntry(entry, lotOptions, lotFieldname)));
+}
+
+export function unusedLotsForEntry(entry, lotOptions, usedLots) {
+	return allowedLotsForEntry(entry, lotOptions).filter((lot) => !usedLots.has(lot));
 }

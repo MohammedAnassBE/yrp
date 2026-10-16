@@ -9,6 +9,8 @@
 			:return-mode="returnMode"
 			:allow-excess="allowExcess"
 			:aggregate-physical-rows="aggregatePhysicalRows"
+			:lot-options="lotOptions"
+			:lot-fieldname="lotFieldname"
             @itemupdated="updated">
         </goods-received-note-editor>
         <item-dimension-fetcher
@@ -38,6 +40,7 @@ import { groupItemsForDisplay } from '../Stock/groupItemsForDisplay.js';
 import EventBus from '../Stock/bus.js';
 import ItemDimensionFetcher from '../Stock/components/ItemDimensionFetch.vue';
 import GoodsReceivedNoteEditor from './GoodsReceivedNoteEditor.vue';
+import { itemsNeedLotEditor } from './grnReceiptRows.mjs';
 
 const props = defineProps({
     title: { type: String, default: '' },
@@ -70,6 +73,8 @@ const SECONDARY_COLUMNS = [
 
 const docstatus = ref(cur_frm.doc.docstatus || 0);
 const items = ref([]);
+const lotOptions = ref({});
+const lotFieldname = ref('');
 const allowedItems = ref([]);
 const displayItems = computed(() => (
     props.aggregateDisplay
@@ -138,7 +143,10 @@ const grnSourceType = computed(() => {
     return '';
 });
 const useReceivedTypeGrnEditor = computed(() => (
-    props.editorType === 'goods_received_note' && grnSourceType.value === 'YRP Work Order'
+    props.editorType === 'goods_received_note' && (
+		grnSourceType.value === 'YRP Work Order'
+		|| (grnSourceType.value === 'Purchase Order' && itemsNeedLotEditor(items.value, lotOptions.value, lotFieldname.value))
+	)
 ));
 
 // Empty-state message for the source-derived, read-only editors (DC / GRN,
@@ -220,6 +228,9 @@ function _set_allowed_items(data) {
 }
 
 function load_data(data) {
+	const onload = cur_frm.doc.__onload || {};
+	lotOptions.value = grnSourceType.value === 'Purchase Order' ? (onload.lot_options || {}) : {};
+	lotFieldname.value = grnSourceType.value === 'Purchase Order' ? (onload.lot_fieldname || '') : '';
     const rows = data || [];
     items.value = rows;
     _set_allowed_items(rows);
