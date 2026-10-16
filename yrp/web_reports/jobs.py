@@ -15,7 +15,7 @@ from frappe.core.doctype.prepared_report.prepared_report import (
 from frappe.desk.form.load import get_attachments
 from frappe.desk.query_report import generate_report_result, get_report_doc
 from frappe.desk.query_report import run as run_query_report
-from frappe.utils import cint, flt, get_datetime, now_datetime, time_diff_in_hours
+from frappe.utils import cint, flt, get_datetime, now_datetime, strip_html_tags, time_diff_in_hours
 from frappe.utils.background_jobs import get_job_status, get_queue, get_workers
 
 from yrp.web_reports.access import check_report_access
@@ -31,6 +31,7 @@ PROGRESS_INTERVAL_SECONDS = 2
 TERMINAL_STATUSES = {"Completed", "Error", "Expired"}
 HEALTHY_RQ_STATUSES = {"queued", "deferred", "started"}
 LOST_RQ_STATUSES = {"failed", "stopped", "canceled", "cancelled"}
+USER_ERROR_KINDS = {"invalid", "lost"}
 
 
 def run_web_report(report_key: str, filters=None, refresh=0) -> dict:
@@ -91,8 +92,8 @@ def execute_report_job(job: str) -> None:
 			_expire_started_job(job_doc)
 			return
 		_store_completed_result(job_doc, payload)
-	except Exception:
-		_finish_error(job_doc)
+	except Exception as exception:
+		_finish_error(job_doc, exception)
 
 
 def reconcile_report_job(job):
@@ -288,14 +289,17 @@ def _store_completed_result(job, payload) -> None:
 	_publish_done(job.owner, job.name, "Completed")
 
 
-def _finish_error(job) -> None:
+def _finish_error(job, exception=None) -> None:
 	frappe.db.rollback()
-	error = frappe.get_traceback(with_context=True)
+	if isinstance(exception, frappe.ValidationError):
+		error_kind, error = "invalid", strip_html_tags(str(exception))
+	else:
+		error_kind, error = "failed", frappe.get_traceback(with_context=True)
 	if _transition(
 		job.name,
 		("Started",),
 		"Error",
-		error_kind="failed",
+		error_kind=error_kind,
 		error_message=error,
 		finished_at=now_datetime(),
 		active_key=None,
@@ -474,13 +478,19 @@ def _result_envelope(mode, job, payload, reused) -> dict:
 			"columns": values.get("columns") or [],
 			"result": values.get("result") or [],
 			"report_summary": values.get("report_summary"),
-			"message": values.get("message"),
+			"message": values.get("message") or _user_error_message(job),
 			"generated_at": job.finished_at if job else now_datetime(),
 			"reused": bool(reused),
 			"expired": bool(job and job.status == "Expired"),
 		}
 	)
 	return values
+
+
+def _user_error_message(job) -> str | None:
+	if job and job.error_kind in USER_ERROR_KINDS:
+		return job.error_message
+	return None
 
 
 def _job_payload(job) -> dict:

@@ -399,6 +399,7 @@ class TestReportJobs(IntegrationTestCase):
 		job = frappe.get_doc("YRP Report Job", job_name)
 		self.assertEqual((job.status, job.error_kind), ("Error", "failed"))
 		self.assertIn("after file insert", job.error_message)
+		self.assertIsNone(get_report_job("stock-balance-job-test", job_name)["message"])
 		self.assertFalse(
 			frappe.db.exists("File", {"attached_to_doctype": "YRP Report Job", "attached_to_name": job_name})
 		)
@@ -547,7 +548,7 @@ class TestReportJobs(IntegrationTestCase):
 		execute_report_job(job_name)
 
 		job = frappe.get_doc("YRP Report Job", job_name)
-		self.assertEqual((job.status, job.error_kind), ("Error", "failed"))
+		self.assertEqual((job.status, job.error_kind), ("Error", "invalid"))
 		self.assertIn("report dependency set incomplete: User", job.error_message)
 		self.assertFalse(frappe.db.exists("File", {"attached_to_name": job_name}))
 
@@ -626,7 +627,10 @@ class TestReportJobs(IntegrationTestCase):
 			execute_report_job(job_name)
 
 		job = frappe.get_doc("YRP Report Job", job_name)
-		self.assertEqual((job.status, job.error_kind), ("Error", "failed"))
+		self.assertEqual((job.status, job.error_kind), ("Error", "invalid"))
+		self.assertEqual(job.error_message, "Intentional web report test failure")
+		envelope = get_report_job("web-report--test-failing", job_name)
+		self.assertEqual(envelope["message"], "Intentional web report test failure")
 		publish.assert_called_with(
 			"yrp_report_done",
 			{"job": job_name, "status": "Error"},
