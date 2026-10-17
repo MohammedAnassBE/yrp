@@ -1,8 +1,9 @@
 frappe.provide('frappe.yrp');
 frappe.yrp.attribute_value = function (value) {
-    if (typeof value !== 'string') return value;
+    if (typeof value !== 'string' || !value.startsWith('IAV-')) return value;
     const row = (frappe.boot.yrp_attribute_values || {})[value];
-    return row ? row[1] : value;
+    if (!row) frappe.throw(__('Attribute Value information changed. Reload this page before continuing.'));
+    return row[1];
 };
 
 // Standard Desk controls store scoped IDs. Existing item-specific queries take

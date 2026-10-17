@@ -37,9 +37,7 @@ def _committed_fixture_leftovers(token):
 		"YRP Item Item Attribute Mapping": _fixture_names(
 			"YRP Item Item Attribute Mapping", "attribute_name", token
 		),
-		"YRP Item Attribute Value": _fixture_names(
-			"YRP Item Attribute Value", "attribute_name", token
-		),
+		"YRP Item Attribute Value": _fixture_names("YRP Item Attribute Value", "attribute_name", token),
 		"YRP Item Price": _fixture_names("YRP Item Price", "item_name", token),
 	}
 
@@ -71,15 +69,11 @@ def _cleanup_committed_fixtures(token):
 		)
 
 	variants = (
-		frappe.get_all("Item", filters={"variant_of": ["in", items]}, pluck="name", limit=0)
-		if items
-		else []
+		frappe.get_all("Item", filters={"variant_of": ["in", items]}, pluck="name", limit=0) if items else []
 	)
 	for name in [*variants, *items]:
 		if frappe.db.exists("Item", name):
-			frappe.delete_doc(
-				"Item", name, force=True, ignore_permissions=True, delete_permanently=True
-			)
+			frappe.delete_doc("Item", name, force=True, ignore_permissions=True, delete_permanently=True)
 
 	attributes = _fixture_names("Item Attribute", "name", token)
 	for attribute in attributes:
@@ -91,16 +85,12 @@ def _cleanup_committed_fixtures(token):
 	):
 		for name in _fixture_names(doctype, fieldname, token):
 			if frappe.db.exists(doctype, name):
-				frappe.delete_doc(
-					doctype, name, force=True, ignore_permissions=True, delete_permanently=True
-				)
+				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True, delete_permanently=True)
 
 	for doctype in ("Supplier", "UOM", "User", "Brand", "Item Group"):
 		for name in _fixture_names(doctype, "name", token):
 			if frappe.db.exists(doctype, name):
-				frappe.delete_doc(
-					doctype, name, force=True, ignore_permissions=True, delete_permanently=True
-				)
+				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True, delete_permanently=True)
 	commit_connection()
 	return {doctype: names for doctype, names in _committed_fixture_leftovers(token).items() if names}
 
@@ -223,25 +213,19 @@ class TestItemPriceAttributeValueQuery(TestCase):
 			self.assertEqual(search(stored), [[stored, "28"]])
 			self.assertEqual(search("3"), [[attribute_value_name("_Test Price Size", "30"), "30"]])
 
-	def test_link_validation_resolves_scoped_and_legacy_names_before_filtering(self):
+	def test_link_validation_filters_hash_names_before_pagination(self):
+		from yrp.attribute_value_identity import attribute_value_name
 		from yrp.yrp.doctype.yrp_item import yrp_item
 
 		attribute = "_Test Price Size"
-		for stored in ("28 (_Test Price Size)", "IAV-legacy-size-28"):
-			with (
-				self.subTest(stored=stored),
-				patch.object(yrp_item, "get_global_attribute_values", return_value=["30", "28"]),
-				patch(
-					"yrp.attribute_value_identity.get_attribute_value_names",
-					return_value={(attribute, "28"): stored, (attribute, "30"): "30"},
+		stored = attribute_value_name(attribute, "28")
+		with patch.object(yrp_item, "get_global_attribute_values", return_value=["30", "28"]):
+			self.assertEqual(
+				yrp_item.get_item_attribute_values(
+					"YRP Item Attribute Value", stored, "name", 0, 1, {"attribute": attribute}
 				),
-			):
-				self.assertEqual(
-					yrp_item.get_item_attribute_values(
-						"YRP Item Attribute Value", stored, "name", 0, 1, {"attribute": attribute}
-					),
-					[[stored, "28"]],
-				)
+				[[stored, "28"]],
+			)
 
 
 class TestItemPriceNativePaths(TestCase):
@@ -261,9 +245,7 @@ class TestItemPriceNativePaths(TestCase):
 		cls.suppliers = [cls._make_supplier(label) for label in ("A", "B", "C")]
 		cls.tax = cls._make_tax()
 		cls.purchase_user = cls._make_user("purchase-user", ["Purchase User"])
-		cls.purchase_manager = cls._make_user(
-			"purchase-manager", ["Purchase User", "Purchase Manager"]
-		)
+		cls.purchase_manager = cls._make_user("purchase-manager", ["Purchase User", "Purchase Manager"])
 
 	@classmethod
 	def tearDownClass(cls):
@@ -283,55 +265,67 @@ class TestItemPriceNativePaths(TestCase):
 
 	@classmethod
 	def _make_item(cls, name):
-		return frappe.get_doc(
-			{
-				"doctype": "Item",
-				"item_code": name,
-				"item_name": name,
-				"item_group": _item_group(),
-				"stock_uom": cls.stock_uom,
-				"is_stock_item": 1,
-				"is_purchase_item": 1,
-				**_india_compliance_item_fields(),
-			}
-		).insert(ignore_permissions=True).name
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "Item",
+					"item_code": name,
+					"item_name": name,
+					"item_group": _item_group(),
+					"stock_uom": cls.stock_uom,
+					"is_stock_item": 1,
+					"is_purchase_item": 1,
+					**_india_compliance_item_fields(),
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	@classmethod
 	def _make_supplier(cls, label):
 		name = f"_Test Price Supplier {label} {cls.suffix}"
-		return frappe.get_doc(
-			{
-				"doctype": "Supplier",
-				"supplier_name": name,
-				"supplier_group": frappe.db.get_value(
-					"Supplier Group", {"is_group": 0}, "name"
-				),
-			}
-		).insert(ignore_permissions=True).name
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "Supplier",
+					"supplier_name": name,
+					"supplier_group": frappe.db.get_value("Supplier Group", {"is_group": 0}, "name"),
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	@classmethod
 	def _make_tax(cls):
 		if existing := frappe.db.get_value("YRP Tax Slab", {}, "name"):
 			return existing
 		percentage = f"0.{frappe.utils.now_datetime().strftime('%f')}"
-		return frappe.get_doc(
-			{"doctype": "YRP Tax Slab", "percentage": percentage, "enabled": 1}
-		).insert(ignore_permissions=True).name
+		return (
+			frappe.get_doc({"doctype": "YRP Tax Slab", "percentage": percentage, "enabled": 1})
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	@classmethod
 	def _make_user(cls, label, roles):
 		email = f"{label}-{cls.suffix}@example.test"
-		return frappe.get_doc(
-			{
-				"doctype": "User",
-				"email": email,
-				"first_name": label,
-				"enabled": 1,
-				"user_type": "System User",
-				"send_welcome_email": 0,
-				"roles": [{"role": role} for role in roles],
-			}
-		).insert(ignore_permissions=True).name
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": label,
+					"enabled": 1,
+					"user_type": "System User",
+					"send_welcome_email": 0,
+					"roles": [{"role": role} for role in roles],
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	def setUp(self):
 		self.previous_user = frappe.session.user
@@ -403,9 +397,7 @@ class TestItemPriceNativePaths(TestCase):
 		item_doc.has_variants = 1
 		item_doc.append("attributes", {"attribute": attribute, "mapping": mapping})
 		item_doc.save(ignore_permissions=True)
-		doc = self.make_price(
-			tiers=[{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Blue"}]
-		)
+		doc = self.make_price(tiers=[{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Blue"}])
 		doc.item_name = item
 		doc.depends_on_attribute = 1
 		doc.attribute = attribute
@@ -430,9 +422,7 @@ class TestItemPriceNativePaths(TestCase):
 			],
 		)
 		item_doc.save(ignore_permissions=True)
-		doc = self.make_price(
-			tiers=[{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Red"}]
-		)
+		doc = self.make_price(tiers=[{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Red"}])
 		doc.item_name = item
 		doc.depends_on_attribute = 1
 		doc.attribute = colour
@@ -710,9 +700,7 @@ class TestItemPriceConcurrency(TestCase):
 				{
 					"doctype": "Supplier",
 					"supplier_name": f"_Test Price Race Supplier {suffix}",
-					"supplier_group": frappe.db.get_value(
-						"Supplier Group", {"is_group": 0}, "name"
-					),
+					"supplier_group": frappe.db.get_value("Supplier Group", {"is_group": 0}, "name"),
 				}
 			).insert(ignore_permissions=True)
 			tax = frappe.db.get_value("YRP Tax Slab", {}, "name")
@@ -725,11 +713,11 @@ class TestItemPriceConcurrency(TestCase):
 						"uom": uom,
 						"from_date": from_date,
 						"tax": tax,
-						"item_price_values": [
-							{"moq": 0, "price": 10 + index, "lead_time": 1}
-						],
+						"item_price_values": [{"moq": 0, "price": 10 + index, "lead_time": 1}],
 					}
-				).insert(ignore_permissions=True).name
+				)
+				.insert(ignore_permissions=True)
+				.name
 				for index, from_date in enumerate(from_dates)
 			]
 			commit_connection()
@@ -899,10 +887,7 @@ class TestItemPriceConcurrency(TestCase):
 			with result_lock:
 				results.append(outcome)
 
-		threads = [
-			threading.Thread(target=approve, args=(name,), daemon=True)
-			for name in fixture["prices"]
-		]
+		threads = [threading.Thread(target=approve, args=(name,), daemon=True) for name in fixture["prices"]]
 		try:
 			for thread in threads:
 				thread.start()
@@ -1022,9 +1007,7 @@ class TestItemPriceConcurrency(TestCase):
 			finally:
 				approval_finished.set()
 
-		threads, results = self._start_workers(
-			{"pending": hold_pending, "approval": approve_other}
-		)
+		threads, results = self._start_workers({"pending": hold_pending, "approval": approve_other})
 		try:
 			self._assert_threads_finished(threads, results)
 			self.assertEqual(results.get("pending", (None,))[0], "ok", results)
@@ -1110,9 +1093,7 @@ class TestItemPriceConcurrency(TestCase):
 			self.assertEqual(results.get("expiry", (None,))[0], "ok", results)
 			self.assertEqual(results.get("approval", (None,))[0], "ok", results)
 			rows = self._read_prices(fixture["prices"])
-			self.assertEqual(
-				(rows[1].workflow_state, rows[1].docstatus), ("Approved", 1), rows
-			)
+			self.assertEqual((rows[1].workflow_state, rows[1].docstatus), ("Approved", 1), rows)
 			self.assertIn(
 				(rows[0].workflow_state, rows[0].docstatus, rows[0].to_date),
 				{
@@ -1200,9 +1181,7 @@ class TestItemPriceConcurrency(TestCase):
 		def approve_new():
 			if not predecessor_locked.wait(10):
 				raise TimeoutError("Expire did not lock the predecessor")
-			modified = frappe.db.get_value(
-				"YRP Item Price", fixture["prices"][1], "modified"
-			)
+			modified = frappe.db.get_value("YRP Item Price", fixture["prices"][1], "modified")
 			payload = item_price_workspace.execute_item_price_action(
 				fixture["prices"][1], "Approve", modified
 			)

@@ -1,16 +1,18 @@
 """Integration tests: Link storage, native ERPNext domain and semantic readers."""
 
 import unittest
+from unittest.mock import patch
 
 import frappe
 
-from yrp import attribute_links
+from yrp.attribute_value_identity import clear_name_cache, get_attribute_value_names
 from yrp.attribute_values import (
 	MASTER,
 	attribute_value_name,
 	get_mapping_document,
 	get_mapping_values,
 )
+from yrp.patches import rename_attribute_value_names_to_hash as hash_patch
 
 
 class AttributeValueLinksTest(unittest.TestCase):
@@ -134,37 +136,70 @@ class AttributeValueLinksTest(unittest.TestCase):
 		)
 		self.assertEqual(get_mapping_values(mapping.name), ["XL"])
 
-	def test_free_value_is_the_name_and_a_taken_value_is_scoped(self):
-		value = "_Free-" + frappe.generate_hash(length=8)
-		self.native.append("item_attribute_values", {"attribute_value": value, "abbr": value})
-		self.native.save()
-		self.assertTrue(frappe.db.exists(MASTER, value))
-		other = frappe.get_doc(
-			{
-				"doctype": "Item Attribute",
-				"attribute_name": self.attribute + "-Other",
-				"item_attribute_values": [{"attribute_value": value, "abbr": value + "-O"}],
-			}
-		).insert()
-		self.assertEqual(attribute_value_name(other.name, value), f"{value} ({other.name})")
-		self.assertEqual(attribute_links.value(f"{value} ({other.name})"), value)
-		self.assertEqual(attribute_links.link(value, other.name), f"{value} ({other.name})")
+	def test_hash_identity_and_title_display(self):
+		self.assertRegex(self.link, r"^IAV-[0-9a-f]{40}$")
+		meta = frappe.get_meta(MASTER)
+		self.assertEqual(meta.title_field, "attribute_value")
+		self.assertEqual(meta.show_title_field_in_link, 1)
+		self.assertEqual(frappe.get_doc(MASTER, self.link).get_title(), "XL")
 
-	def test_hash_name_patch_renames_and_merges_twins(self):
-		from frappe.model.rename_doc import rename_doc
+	def test_pair_lookup_is_stable_for_existing_and_missing_values(self):
+		pairs = [(self.attribute, "XL"), (self.attribute, "Missing"), ("Other", "XL"), ("Gauge", 3)]
+		expected = {
+			(attribute, str(value)): attribute_value_name(attribute, value) for attribute, value in pairs
+		}
+		self.assertEqual(get_attribute_value_names(iter(pairs)), expected)
+		clear_name_cache()
+		self.assertEqual(get_attribute_value_names(pairs), expected)
+		self.assertEqual(get_attribute_value_names([]), {})
 
-		from yrp.patches.rename_attribute_value_hash_names import get_target
-
-		mapping = self.mapping()
-		rename_doc(MASTER, self.link, "IAV-test-" + frappe.generate_hash(length=8), force=True)
-		row = frappe.get_all(MASTER, filters={"attribute_name": self.attribute}, fields=["*"])[0]
-		self.assertEqual(get_target(row), (self.link, False))
-		twin = frappe.get_doc(
-			{"doctype": MASTER, "attribute_name": self.attribute, "attribute_value": "XL"}
+	def run_hash_patch(self):
+		rows = frappe.get_all(
+			MASTER,
+			filters={"attribute_name": self.attribute},
+			fields=["name", "attribute_name", "attribute_value"],
 		)
-		twin.flags.from_item_attribute = True
-		twin.insert(set_name=self.link)
-		self.assertEqual(get_target(row), (twin.name, True))
-		rename_doc(MASTER, row.name, twin.name, force=True, merge=True)
-		self.assertFalse(frappe.db.exists(MASTER, row.name))
+		with (
+			patch.object(hash_patch.frappe, "get_all", return_value=rows),
+			patch.object(hash_patch.frappe.db, "commit") as commit,
+			patch.object(hash_patch.frappe, "logger"),
+			patch.object(hash_patch, "BATCH_SIZE", 1),
+		):
+			hash_patch.execute()
+			self.assertEqual(commit.call_count, len(rows))
+
+	def test_hash_patch_renames_links_and_is_idempotent(self):
+		mapping = self.mapping()
+		legacy = self.attribute + "-XL"
+		frappe.rename_doc(MASTER, self.link, legacy, force=True)
+		self.run_hash_patch()
+		self.run_hash_patch()
+		mapping.reload()
+		self.assertEqual(mapping.values[0].attribute_value, self.link)
+		self.assertFalse(frappe.db.exists(MASTER, legacy))
 		self.assertEqual(get_mapping_values(mapping.name), ["XL"])
+
+	def test_hash_patch_merges_identical_pair_and_updates_links(self):
+		mapping = self.mapping()
+		duplicate = frappe.copy_doc(frappe.get_doc(MASTER, self.link))
+		duplicate.name = self.attribute + "-duplicate"
+		duplicate.db_insert()
+		frappe.db.set_value(
+			"YRP Item Item Attribute Mapping Value", mapping.values[0].name, "attribute_value", duplicate.name
+		)
+		self.run_hash_patch()
+		self.run_hash_patch()
+		mapping.reload()
+		self.assertEqual(mapping.values[0].attribute_value, self.link)
+		self.assertFalse(frappe.db.exists(MASTER, duplicate.name))
+
+	def test_hash_patch_rejects_target_owned_by_another_pair(self):
+		row = frappe._dict(name="legacy", attribute_name=self.attribute, attribute_value="XL")
+		owner = frappe._dict(attribute_name="Other", attribute_value="XL")
+		with (
+			patch.object(hash_patch.frappe.db, "get_value", return_value=owner),
+			patch.object(hash_patch.frappe, "rename_doc") as rename,
+			self.assertRaises(frappe.ValidationError),
+		):
+			hash_patch._rename_value(row)
+		rename.assert_not_called()

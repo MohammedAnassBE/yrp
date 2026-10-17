@@ -184,21 +184,15 @@ class YRPItemMixin:
 		before = self.get_doc_before_save()
 		if not before or not template_has_variants(self.name):
 			return
-		before_attributes = [
-			(row.attribute, row.get("mapping")) for row in before.get("attributes") or []
-		]
-		current_attributes = [
-			(row.attribute, row.get("mapping")) for row in self.get("attributes") or []
-		]
+		before_attributes = [(row.attribute, row.get("mapping")) for row in before.get("attributes") or []]
+		current_attributes = [(row.attribute, row.get("mapping")) for row in self.get("attributes") or []]
 		if (
 			before_attributes != current_attributes
 			or before.get("has_variants") != self.get("has_variants")
 			or before.get("primary_attribute") != self.get("primary_attribute")
 		):
 			frappe.throw(
-				_("Item attributes cannot be changed after variants exist for Item {0}.").format(
-					self.name
-				)
+				_("Item attributes cannot be changed after variants exist for Item {0}.").format(self.name)
 			)
 
 	def on_trash(self):
@@ -359,7 +353,9 @@ class YRPItemMixin:
 		mapping = self.dependent_attribute_mapping
 		self.dependent_attribute_mapping = None
 		if not self.is_new():
-			frappe.db.set_value(self.doctype, self.name, "dependent_attribute_mapping", None, update_modified=False)
+			frappe.db.set_value(
+				self.doctype, self.name, "dependent_attribute_mapping", None, update_modified=False
+			)
 		frappe.delete_doc("YRP Item Dependent Attribute Mapping", mapping)
 
 	def _validate_yrp_stock_mutation(self):
@@ -407,9 +403,7 @@ class YRPItemMixin:
 			field
 			for field in restricted
 			if before.get(field) != self.get(field)
-			and not (
-				field == "item_hash_value" and not before.get(field) and self.get(field)
-			)
+			and not (field == "item_hash_value" and not before.get(field) and self.get(field))
 		]
 		before_attrs = [
 			(r.attribute, _attribute_value(r.attribute_value), r.get("mapping"))
@@ -529,9 +523,7 @@ def update_dependent_attribute_details(dependent_attribute_mapping, detail):
 
 def _mapping_values(attribute_row, *, for_update=False, allow_unrestricted_numeric=False):
 	if attribute_row.get("mapping"):
-		mapping = get_mapping_document(
-			attribute_row.mapping, cached=not for_update, for_update=for_update
-		)
+		mapping = get_mapping_document(attribute_row.mapping, cached=not for_update, for_update=for_update)
 		values = [_attribute_value(row.attribute_value) for row in mapping.get("values") or []]
 		if values:
 			return values
@@ -887,12 +879,7 @@ def _get_variant_for_creation(template, args):
 def template_has_variants(template):
 	item = frappe.qb.DocType("Item")
 	return bool(
-		frappe.qb.from_(item)
-		.select(item.name)
-		.where(item.variant_of == template)
-		.limit(1)
-		.for_update()
-		.run()
+		frappe.qb.from_(item).select(item.name).where(item.variant_of == template).limit(1).for_update().run()
 	)
 
 
@@ -917,9 +904,7 @@ def _find_variant_by_attributes(template, args, *, for_update=False):
 		expected = {key: cstr(value) for key, value in args.items()}
 		actual_by_variant = {name: {} for name in candidates}
 		for row in rows:
-			actual_by_variant[row.parent][row.attribute] = cstr(
-				_attribute_value(row.attribute_value)
-			)
+			actual_by_variant[row.parent][row.attribute] = cstr(_attribute_value(row.attribute_value))
 		return next(
 			(name for name in candidates if actual_by_variant[name] == expected),
 			None,
@@ -949,8 +934,7 @@ def _get_variants_by_attributes(args, template=None, *, for_update=False):
 				.where(item.variant_of == template)
 			)
 		query = (
-			query
-			.where(variant_attribute.parenttype == "Item")
+			query.where(variant_attribute.parenttype == "Item")
 			.where(variant_attribute.parentfield == "attributes")
 			.where(variant_attribute.attribute == attribute)
 			.where(variant_attribute.attribute_value.isin(values))
@@ -975,25 +959,27 @@ def get_item_attribute_values(doctype=None, txt="", searchfield=None, start=0, p
 	if not filters.get("attribute"):
 		return []
 	attribute = filters["attribute"]
-	values = []
-	if filters.get("item"):
-		item = frappe.get_cached_doc("Item", get_parent_item(filters["item"]))
-		for row in item.get("attributes") or []:
-			if row.attribute == attribute:
-				values = _mapping_values(row)
-				break
-	if not values:
-		values = get_global_attribute_values(attribute)
+	values = _attribute_query_values(attribute, filters.get("item"))
 	needle = (txt or "").lower()
 	if doctype == "YRP Item Attribute Value":
-		from yrp.attribute_value_identity import get_attribute_value_names
+		from yrp.attribute_value_identity import attribute_value_name
 
-		names = get_attribute_value_names([(attribute, value) for value in values])
 		# Link validation re-runs this query with the stored name as txt.
-		rows = [[names[(attribute, cstr(value))], value] for value in values]
-		return [row for row in rows if row[0] == txt or needle in cstr(row[1]).lower()][start : start + page_len]
+		rows = [[attribute_value_name(attribute, value), value] for value in values]
+		return [row for row in rows if row[0] == txt or needle in cstr(row[1]).lower()][
+			start : start + page_len
+		]
 	matched = [value for value in values if needle in cstr(value).lower()][start : start + page_len]
 	return [[value] for value in matched]
+
+
+def _attribute_query_values(attribute, item):
+	if item:
+		item_doc = frappe.get_cached_doc("Item", get_parent_item(item))
+		for row in item_doc.get("attributes") or []:
+			if row.attribute == attribute:
+				return _mapping_values(row) or get_global_attribute_values(attribute)
+	return get_global_attribute_values(attribute)
 
 
 @frappe.whitelist()

@@ -15,14 +15,16 @@ class TestYRPItemItemAttributeMapping(TestCase):
 		frappe.set_user("Administrator")
 		self.savepoint = "mapping_picker_" + frappe.generate_hash(length=8)
 		frappe.db.savepoint(self.savepoint)
-		self.attribute = frappe.get_doc({
-			"doctype": "Item Attribute",
-			"attribute_name": "_Test Mapping Colour " + frappe.generate_hash(length=8),
-			"item_attribute_values": [
-				{"attribute_value": "Blue", "abbr": "BL"},
-				{"attribute_value": "Green", "abbr": "GR"},
-			],
-		}).insert()
+		self.attribute = frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": "_Test Mapping Colour " + frappe.generate_hash(length=8),
+				"item_attribute_values": [
+					{"attribute_value": "Blue", "abbr": "BL"},
+					{"attribute_value": "Green", "abbr": "GR"},
+				],
+			}
+		).insert()
 
 	def tearDown(self):
 		frappe.db.rollback(save_point=self.savepoint)
@@ -30,31 +32,41 @@ class TestYRPItemItemAttributeMapping(TestCase):
 		super().tearDown()
 
 	def mapping(self, values, attribute=None):
-		return frappe.get_doc({
-			"doctype": "YRP Item Item Attribute Mapping",
-			"attribute_name": attribute or self.attribute.name,
-			"values": [{"attribute_value": value} for value in values],
-		})
+		return frappe.get_doc(
+			{
+				"doctype": "YRP Item Item Attribute Mapping",
+				"attribute_name": attribute or self.attribute.name,
+				"values": [{"attribute_value": value} for value in values],
+			}
+		)
 
 	def numeric_attribute(self):
-		return frappe.get_doc({
-			"doctype": "Item Attribute",
-			"attribute_name": "_Test Mapping Gauge " + frappe.generate_hash(length=8),
-			"numeric_values": 1, "from_range": 0, "to_range": 1000, "increment": 0.5,
-		}).insert()
+		return frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": "_Test Mapping Gauge " + frappe.generate_hash(length=8),
+				"numeric_values": 1,
+				"from_range": 0,
+				"to_range": 1000,
+				"increment": 0.5,
+			}
+		).insert()
 
 	def test_link_master_contains_only_selected_attribute_values(self):
 		field = frappe.get_meta("YRP Item Item Attribute Mapping Value").get_field("attribute_value")
 		self.assertEqual((field.fieldtype, field.options), ("Link", MASTER))
-		values = set(frappe.get_list(MASTER, filters={"attribute_name": self.attribute.name},
-			pluck="attribute_value"))
+		values = set(
+			frappe.get_list(MASTER, filters={"attribute_name": self.attribute.name}, pluck="attribute_value")
+		)
 		self.assertEqual(values, {"Blue", "Green"})
 
 	def test_valid_mapping_stores_links_and_preserves_business_order(self):
 		doc = self.mapping(["Green", "Blue"]).insert()
 		doc.reload()
-		self.assertEqual([row.attribute_value for row in doc.values],
-			[attribute_value_name(self.attribute.name, value) for value in ("Green", "Blue")])
+		self.assertEqual(
+			[row.attribute_value for row in doc.values],
+			[attribute_value_name(self.attribute.name, value) for value in ("Green", "Blue")],
+		)
 		self.assertEqual(get_mapping_values(doc.name), ["Green", "Blue"])
 
 	def test_invalid_value_rejects_insert_and_update(self):
@@ -68,11 +80,13 @@ class TestYRPItemItemAttributeMapping(TestCase):
 		self.assertEqual(get_mapping_values(doc.name), ["Blue"])
 
 	def test_value_from_another_attribute_is_rejected(self):
-		frappe.get_doc({
-			"doctype": "Item Attribute",
-			"attribute_name": "_Test Mapping Finish " + frappe.generate_hash(length=8),
-			"item_attribute_values": [{"attribute_value": "Polished", "abbr": "P"}],
-		}).insert()
+		frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": "_Test Mapping Finish " + frappe.generate_hash(length=8),
+				"item_attribute_values": [{"attribute_value": "Polished", "abbr": "P"}],
+			}
+		).insert()
 		with self.assertRaises(frappe.ValidationError):
 			self.mapping(["Polished"]).insert()
 

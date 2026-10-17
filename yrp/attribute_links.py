@@ -93,31 +93,17 @@ def clear_cache():
 
 def value(raw):
 	"""Resolve a stored Link without altering ordinary strings or numeric values."""
-	if not isinstance(raw, str):
+	if not isinstance(raw, str) or not raw.startswith("IAV-"):
 		return raw
-	return value_aliases().get(raw, raw)
-
-
-def value_aliases():
-	"""{name: value} for masters whose name is not the value itself; every other name is its value."""
-	cached = getattr(frappe.local, "attribute_value_aliases", None)
-	if cached is None:
-		cached = frappe.local.attribute_value_aliases = dict(
-			frappe.db.sql(
-				f"SELECT name, attribute_value FROM `tab{MASTER}` "
-				"WHERE CAST(name AS BINARY) <> CAST(attribute_value AS BINARY)"
-			)
-		)
-	return cached
-
-
-def master_row(raw):
 	cache = getattr(frappe.local, "attribute_link_values", None)
 	if cache is None:
 		cache = frappe.local.attribute_link_values = {}
 	if raw not in cache:
-		cache[raw] = frappe.db.get_value(MASTER, raw, ["name", "attribute_name"], as_dict=True)
-	return cache[raw]
+		row = frappe.db.get_value(MASTER, raw, ["attribute_name", "attribute_value"], as_dict=True)
+		if not row:
+			frappe.throw(_("Attribute Value {0} does not exist.").format(raw))
+		cache[raw] = row
+	return cache[raw].attribute_value
 
 
 def attribute_for(doc, field, ancestors=()):
@@ -186,11 +172,11 @@ def _link(raw, attribute=None):
 	if raw in (None, ""):
 		return raw
 	raw = frappe.utils.cstr(raw)
-	row = master_row(raw)
-	if row and (not attribute or row.attribute_name == attribute):
+	row = frappe.db.get_value(MASTER, raw, ["name", "attribute_name"], as_dict=True)
+	if row:
+		if attribute and row.attribute_name != attribute:
+			frappe.throw(_("Attribute Value {0} must belong to {1}.").format(raw, attribute))
 		return row.name
-	if row and value(raw) != raw:
-		frappe.throw(_("Attribute Value {0} must belong to {1}.").format(raw, attribute))
 	if not attribute:
 		# Historical source names are preserved native child IDs; prefer that
 		# explicit identity over ambiguous text matching across attributes.
@@ -223,7 +209,7 @@ def normalize(doc, ancestors=()):
 			# Preserve already-stored historical Link identities on unrelated
 			# saves, even where old source rows had inconsistent attribute labels.
 			stored = None
-			if isinstance(raw, str) and doc.get("name") and master_row(raw):
+			if isinstance(raw, str) and raw.startswith("IAV-") and doc.get("name"):
 				stored = frappe.db.get_value(doc.doctype, doc.name, field)
 			expected = None if stored == raw else attribute_for(doc, field, ancestors)
 			doc.set(field, link(raw, expected))
@@ -403,7 +389,8 @@ def backfill(*, dry_run=False):
 					f"WHERE COALESCE(`{field}`, '') != '' GROUP BY `{field}`"
 				)
 			for raw, count in rows:
-				if isinstance(raw, str) and master_row(raw):
+				if isinstance(raw, str) and raw.startswith("IAV-"):
+					link(raw)
 					continue
 				try:
 					target = link(raw, attribute)

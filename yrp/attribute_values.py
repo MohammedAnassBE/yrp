@@ -6,7 +6,7 @@ import frappe
 from frappe import _
 from frappe.utils import cstr
 
-from yrp.attribute_value_identity import attribute_value_name, scoped_name
+from yrp.attribute_value_identity import attribute_value_name
 
 MASTER = "YRP Item Attribute Value"
 MAPPING = "YRP Item Item Attribute Mapping"
@@ -40,8 +40,8 @@ def ensure_value_master(attribute, value):
 			frappe.throw(_("Value {0} does not belong to attribute {1}.").format(value, attribute))
 	doc = frappe.get_doc({"doctype": MASTER, "attribute_name": attribute, "attribute_value": value})
 	doc.flags.from_item_attribute = True
-	doc.insert(ignore_permissions=True)
-	return doc.name
+	doc.insert(ignore_permissions=True, ignore_if_duplicate=True)
+	return name
 
 
 def normalize_mapping(doc):
@@ -50,18 +50,16 @@ def normalize_mapping(doc):
 		value = row.get("attribute_value")
 		if not value:
 			continue
-		linked = frappe.db.get_value(
-			MASTER, value, ["name", "attribute_name", "attribute_value"], as_dict=True
-		)
-		if linked and linked.attribute_name == doc.attribute_name:
-			continue
-		if linked and linked.name != linked.attribute_value:
-			frappe.throw(
-				_("Attribute Value {0} belongs to {1}, not {2}.").format(
-					value, linked.attribute_name, doc.attribute_name
+		linked = frappe.db.get_value(MASTER, value, ["attribute_name", "attribute_value"], as_dict=True)
+		if linked:
+			if linked.attribute_name != doc.attribute_name:
+				frappe.throw(
+					_("Attribute Value {0} belongs to {1}, not {2}.").format(
+						value, linked.attribute_name, doc.attribute_name
+					)
 				)
-			)
-		row.attribute_value = ensure_value_master(doc.attribute_name, value)
+		else:
+			row.attribute_value = ensure_value_master(doc.attribute_name, value)
 
 
 def get_mapping_document(name, *, cached=False, for_update=False):
@@ -140,18 +138,16 @@ def sync_attribute_value_masters(doc, method=None):
 
 
 def rename_attribute_value_masters(doc, method, old, new, merge=False):
-	"""Scoped names carry the attribute, so they follow an Item Attribute rename."""
 	for row in frappe.get_all(MASTER, filters={"attribute_name": new}, fields=["name", "attribute_value"]):
-		if row.name != scoped_name(old, row.attribute_value):
-			continue
-		expected = scoped_name(new, row.attribute_value)
-		frappe.rename_doc(
-			MASTER,
-			row.name,
-			expected,
-			force=True,
-			merge=bool(merge and frappe.db.exists(MASTER, expected)),
-		)
+		expected = attribute_value_name(new, row.attribute_value)
+		if row.name != expected:
+			frappe.rename_doc(
+				MASTER,
+				row.name,
+				expected,
+				force=True,
+				merge=bool(merge and frappe.db.exists(MASTER, expected)),
+			)
 
 
 def verify_attribute_value_links():
@@ -175,6 +171,6 @@ def verify_attribute_value_links():
 	for row in frappe.get_all(
 		MASTER, fields=["name", "attribute_name", "attribute_value"], limit_page_length=0
 	):
-		if row.name not in (row.attribute_value, scoped_name(row.attribute_name, row.attribute_value)):
+		if row.name != attribute_value_name(row.attribute_name, row.attribute_value):
 			failures.append(f"Attribute value identity mismatch: {row.name}")
 	return failures
