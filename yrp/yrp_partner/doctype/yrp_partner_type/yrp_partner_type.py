@@ -7,8 +7,8 @@ from frappe.model.document import Document
 
 class YRPPartnerType(Document):
 	def validate(self):
-		meta = frappe.get_meta(self.reference_doctype)
-		if meta.issingle or meta.istable or meta.is_virtual or meta.module == "YRP Partner":
+		meta = frappe.get_meta(self.reference_doctype) if self.reference_doctype else None
+		if meta and (meta.issingle or meta.istable or meta.is_virtual or meta.module == "YRP Partner"):
 			frappe.throw(_("Select a regular document type outside YRP Partner."))
 		previous = self.get_doc_before_save()
 		if previous and previous.reference_doctype != self.reference_doctype:
@@ -18,6 +18,8 @@ class YRPPartnerType(Document):
 	def on_update(self):
 		from yrp.permissions import ensure_partner_source_permission
 
+		if not self.reference_doctype:
+			return
 		ensure_partner_source_permission(self.reference_doctype)
 		from yrp.yrp_partner.backfill import sync_partner_type
 
