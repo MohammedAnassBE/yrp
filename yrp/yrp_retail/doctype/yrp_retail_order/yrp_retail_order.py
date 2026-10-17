@@ -4,6 +4,7 @@ from frappe.model.document import Document
 from frappe.utils import getdate
 
 from yrp.yrp_retail.logic import finite_number, require, validate_assignment, validate_order_items
+from yrp.yrp_retail.summary_lifecycle import submitting_order
 
 
 def on_doctype_update():
@@ -15,7 +16,7 @@ class YRPRetailOrder(Document):
 		self._ensure_unclaimed()
 		old = self.get_doc_before_save()
 		if old:
-			require(not old.summary, "An order included in a summary cannot be edited.")
+			require(submitting_order(self) or not old.summary, "An order included in a summary cannot be edited.")
 			require((self.summary or "") == (old.summary or ""), "Summary links are managed by Retail Order Summaries.")
 		else:
 			require(not self.summary, "Summary links are managed by Retail Order Summaries.")
@@ -55,7 +56,7 @@ class YRPRetailOrder(Document):
 		self._ensure_unclaimed()
 
 	def _ensure_unclaimed(self):
-		if not self.is_new():
+		if not self.is_new() and not submitting_order(self):
 			rows = frappe.db.sql("select summary from `tabYRP Retail Order` where name=%s for update", self.name)
 			require(not rows or not rows[0][0], "An order included in a summary cannot be edited, cancelled or deleted.")
 
