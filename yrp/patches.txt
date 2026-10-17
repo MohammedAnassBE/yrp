@@ -41,3 +41,4 @@ yrp.patches.own_partner_prepared_report_files
 yrp.patches.grant_sales_person_summary_delete
 yrp.patches.rename_attribute_value_hash_names
 yrp.patches.add_item_price_supplier_index
+yrp.patches.relax_grn_header_lot_for_purchase_orders

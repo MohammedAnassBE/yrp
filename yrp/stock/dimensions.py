@@ -53,6 +53,13 @@ OPERATIONAL_DOCTYPES = [
 	"YRP Process Cost",
 ]
 
+OPERATIONAL_DIMENSION_FIELD_OVERRIDES = {
+	"YRP Goods Received Note": {
+		"reqd": 0,
+		"mandatory_depends_on": "eval:doc.against!='Purchase Order'",
+	},
+}
+
 # These child tables belong to operational documents that already carry the
 # production-group dimension on the header. The child row still may keep the
 # field for traceability/back-compat, but it must not block save when the
@@ -223,6 +230,7 @@ def create_dimension_fields():
 					continue
 				doc_field_def = field_def.copy()
 				doc_field_def["insert_after"] = _get_insert_after(dim, dt)
+				doc_field_def.update(OPERATIONAL_DIMENSION_FIELD_OVERRIDES.get(dt, {}))
 				if dt == "Purchase Order":
 					# A Purchase Order can procure the same Item for multiple
 					# production groups. Its header dimension is retained only as

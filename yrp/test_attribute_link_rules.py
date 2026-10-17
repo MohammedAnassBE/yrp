@@ -17,6 +17,10 @@ RULES = {
 		},
 		"by_attribute": {"attribute": "Fixed"},
 		"by_nothing": {"context": ["first_attribute"]},
+		"by_table": {
+			"context": ["first_attribute"],
+			"parentfield_context": {"other_rows": ["second_attribute"]},
+		},
 	}
 }
 
@@ -36,6 +40,13 @@ class TestAttributeLinkRules(IntegrationTestCase):
 
 		self.assertEqual(self.resolve("by_context", (parent,), second_attribute="Own"), "From Parent")
 		self.assertEqual(self.resolve("by_context", second_attribute="Own"), "Own")
+
+	def test_parentfield_context_replaces_context_for_that_table(self):
+		parent = frappe._dict(first_attribute="Part", second_attribute="Panel")
+
+		self.assertEqual(self.resolve("by_table", (parent,), parentfield="other_rows"), "Panel")
+		self.assertEqual(self.resolve("by_table", (parent,), parentfield="rows"), "Part")
+		self.assertIn("second_attribute", attribute_links.get_context_fieldnames())
 
 	def test_settings_rule_reads_the_single_when_context_is_empty(self):
 		frappe.db.set_single_value("YRP Settings", "po_dependent_attribute", "Stage")
@@ -102,7 +113,7 @@ class TestAttributeLinkRegistry(IntegrationTestCase):
 			attribute_links.clear_cache()
 			self.assertEqual(
 				attribute_links.fields(),
-				{"_Test Row": ["by_context", "by_settings", "by_attribute", "by_nothing"]},
+				{"_Test Row": ["by_context", "by_settings", "by_attribute", "by_nothing", "by_table"]},
 			)
 		attribute_links.clear_cache()
 
