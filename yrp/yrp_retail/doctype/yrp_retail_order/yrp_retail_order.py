@@ -1,9 +1,11 @@
 """Visit-derived demand, validated item quantities and summary claim protection."""
+
 import frappe
 from frappe.model.document import Document
 from frappe.utils import getdate
 
 from yrp.yrp_retail.logic import finite_number, require, validate_assignment, validate_order_items
+from yrp.yrp_retail.summary_lifecycle import submitting_order
 
 
 def on_doctype_update():
@@ -15,8 +17,13 @@ class YRPRetailOrder(Document):
 		self._ensure_unclaimed()
 		old = self.get_doc_before_save()
 		if old:
-			require(not old.summary, "An order included in a summary cannot be edited.")
-			require((self.summary or "") == (old.summary or ""), "Summary links are managed by Retail Order Summaries.")
+			require(
+				submitting_order(self) or not old.summary, "An order included in a summary cannot be edited."
+			)
+			require(
+				(self.summary or "") == (old.summary or ""),
+				"Summary links are managed by Retail Order Summaries.",
+			)
 		else:
 			require(not self.summary, "Summary links are managed by Retail Order Summaries.")
 		require(self.visit, "Visit is required.")
@@ -24,7 +31,12 @@ class YRPRetailOrder(Document):
 		frappe.db.sql("select name from `tabYRP Visit` where name=%s for update", self.visit)
 		visit = frappe.get_doc("YRP Visit", self.visit, for_update=True)
 		self.order_date = getdate(visit.visit_datetime)
-		for field, source in (("sales_person", "sales_person"), ("customer", "customer"), ("retailer", "retailer"), ("order_type", "visit_type")):
+		for field, source in (
+			("sales_person", "sales_person"),
+			("customer", "customer"),
+			("retailer", "retailer"),
+			("order_type", "visit_type"),
+		):
 			value = visit.get(source)
 			require(not self.get(field) or self.get(field) == value, "Order header conflicts with its Visit.")
 			self.set(field, value)
@@ -40,6 +52,7 @@ class YRPRetailOrder(Document):
 
 	def on_trash(self):
 		from yrp.yrp_retail.sales_sources import lock_source_deletion
+
 		# Guard before updating the Visit; doc_events run after this controller.
 		lock_source_deletion()
 		self._ensure_unclaimed()
@@ -55,9 +68,14 @@ class YRPRetailOrder(Document):
 		self._ensure_unclaimed()
 
 	def _ensure_unclaimed(self):
-		if not self.is_new():
-			rows = frappe.db.sql("select summary from `tabYRP Retail Order` where name=%s for update", self.name)
-			require(not rows or not rows[0][0], "An order included in a summary cannot be edited, cancelled or deleted.")
+		if not self.is_new() and not submitting_order(self):
+			rows = frappe.db.sql(
+				"select summary from `tabYRP Retail Order` where name=%s for update", self.name
+			)
+			require(
+				not rows or not rows[0][0],
+				"An order included in a summary cannot be edited, cancelled or deleted.",
+			)
 
 	def _refresh_visit(self, visit, exclude=None):
 		# A cancelled order remains the visit's historical order. Retain the
@@ -65,4 +83,6 @@ class YRPRetailOrder(Document):
 		filters = {"visit": visit}
 		if exclude:
 			filters["name"] = ["!=", exclude]
-		frappe.db.set_value("YRP Visit", visit, "has_order", int(bool(frappe.db.exists("YRP Retail Order", filters))))
+		frappe.db.set_value(
+			"YRP Visit", visit, "has_order", int(bool(frappe.db.exists("YRP Retail Order", filters)))
+		)
