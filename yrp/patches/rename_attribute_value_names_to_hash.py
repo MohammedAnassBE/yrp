@@ -1,6 +1,7 @@
 """Restore stable attribute-value names and update their Links."""
 
 import frappe
+from frappe.utils.global_search import rebuild_for_doctype
 
 from yrp.attribute_value_identity import attribute_value_name
 from yrp.attribute_values import MASTER
@@ -21,6 +22,8 @@ def execute():
 			counts[_rename_value(row)] += 1
 		frappe.db.commit()
 		frappe.logger("yrp").info("Attribute value hash migration: %s", counts)
+	if counts["renamed"] or counts["merged"]:
+		rebuild_for_doctype(MASTER)
 
 
 def _rename_value(row):
@@ -30,5 +33,7 @@ def _rename_value(row):
 	owner = frappe.db.get_value(MASTER, target, ["attribute_name", "attribute_value"], as_dict=True)
 	if owner and (owner.attribute_name, owner.attribute_value) != (row.attribute_name, row.attribute_value):
 		frappe.throw(f"Attribute value hash collision: {row.name} -> {target}")
-	frappe.rename_doc(MASTER, row.name, target, force=True, merge=bool(owner))
+	frappe.rename_doc(
+		MASTER, row.name, target, force=True, merge=bool(owner), show_alert=False, rebuild_search=False
+	)
 	return "merged" if owner else "renamed"

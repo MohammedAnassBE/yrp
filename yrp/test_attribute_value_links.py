@@ -15,6 +15,12 @@ from yrp.attribute_values import (
 from yrp.patches import rename_attribute_value_names_to_hash as hash_patch
 
 
+def master_rows(rows):
+	"""Serve the patch its master rows; every other query reaches the database."""
+	get_all = frappe.get_all
+	return lambda doctype, *args, **kwargs: rows if doctype == MASTER else get_all(doctype, *args, **kwargs)
+
+
 class AttributeValueLinksTest(unittest.TestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
@@ -160,7 +166,7 @@ class AttributeValueLinksTest(unittest.TestCase):
 			fields=["name", "attribute_name", "attribute_value"],
 		)
 		with (
-			patch.object(hash_patch.frappe, "get_all", return_value=rows),
+			patch.object(hash_patch.frappe, "get_all", side_effect=master_rows(rows)),
 			patch.object(hash_patch.frappe.db, "commit") as commit,
 			patch.object(hash_patch.frappe, "logger"),
 			patch.object(hash_patch, "BATCH_SIZE", 1),

@@ -41,7 +41,7 @@ def ensure_value_master(attribute, value):
 	doc = frappe.get_doc({"doctype": MASTER, "attribute_name": attribute, "attribute_value": value})
 	doc.flags.from_item_attribute = True
 	doc.insert(ignore_permissions=True, ignore_if_duplicate=True)
-	return name
+	return doc.name
 
 
 def normalize_mapping(doc):
