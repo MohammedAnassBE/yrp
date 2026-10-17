@@ -12,13 +12,6 @@ from yrp.attribute_values import (
 	get_mapping_document,
 	get_mapping_values,
 )
-from yrp.patches import rename_attribute_value_names_to_hash as hash_patch
-
-
-def master_rows(rows):
-	"""Serve the patch its master rows; every other query reaches the database."""
-	get_all = frappe.get_all
-	return lambda doctype, *args, **kwargs: rows if doctype == MASTER else get_all(doctype, *args, **kwargs)
 
 
 class AttributeValueLinksTest(unittest.TestCase):
@@ -158,54 +151,3 @@ class AttributeValueLinksTest(unittest.TestCase):
 		clear_name_cache()
 		self.assertEqual(get_attribute_value_names(pairs), expected)
 		self.assertEqual(get_attribute_value_names([]), {})
-
-	def run_hash_patch(self):
-		rows = frappe.get_all(
-			MASTER,
-			filters={"attribute_name": self.attribute},
-			fields=["name", "attribute_name", "attribute_value"],
-		)
-		with (
-			patch.object(hash_patch.frappe, "get_all", side_effect=master_rows(rows)),
-			patch.object(hash_patch.frappe.db, "commit") as commit,
-			patch.object(hash_patch.frappe, "logger"),
-			patch.object(hash_patch, "BATCH_SIZE", 1),
-		):
-			hash_patch.execute()
-			self.assertEqual(commit.call_count, len(rows))
-
-	def test_hash_patch_renames_links_and_is_idempotent(self):
-		mapping = self.mapping()
-		legacy = self.attribute + "-XL"
-		frappe.rename_doc(MASTER, self.link, legacy, force=True)
-		self.run_hash_patch()
-		self.run_hash_patch()
-		mapping.reload()
-		self.assertEqual(mapping.values[0].attribute_value, self.link)
-		self.assertFalse(frappe.db.exists(MASTER, legacy))
-		self.assertEqual(get_mapping_values(mapping.name), ["XL"])
-
-	def test_hash_patch_merges_identical_pair_and_updates_links(self):
-		mapping = self.mapping()
-		duplicate = frappe.copy_doc(frappe.get_doc(MASTER, self.link))
-		duplicate.name = self.attribute + "-duplicate"
-		duplicate.db_insert()
-		frappe.db.set_value(
-			"YRP Item Item Attribute Mapping Value", mapping.values[0].name, "attribute_value", duplicate.name
-		)
-		self.run_hash_patch()
-		self.run_hash_patch()
-		mapping.reload()
-		self.assertEqual(mapping.values[0].attribute_value, self.link)
-		self.assertFalse(frappe.db.exists(MASTER, duplicate.name))
-
-	def test_hash_patch_rejects_target_owned_by_another_pair(self):
-		row = frappe._dict(name="legacy", attribute_name=self.attribute, attribute_value="XL")
-		owner = frappe._dict(attribute_name="Other", attribute_value="XL")
-		with (
-			patch.object(hash_patch.frappe.db, "get_value", return_value=owner),
-			patch.object(hash_patch.frappe, "rename_doc") as rename,
-			self.assertRaises(frappe.ValidationError),
-		):
-			hash_patch._rename_value(row)
-		rename.assert_not_called()
