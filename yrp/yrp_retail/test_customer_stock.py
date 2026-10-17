@@ -1,4 +1,4 @@
-"""Synthetic Customer counts: replacement, authorization and summary consumption."""
+"""Synthetic Customer counts: replacement, authorization and summary preservation."""
 
 import frappe
 
@@ -137,10 +137,24 @@ class TestCustomerStock(TestRetailFlow):
 	def test_failed_submission_rolls_back_status_and_balance(self):
 		self.report(6)
 		name = self.summary(2)
-		frappe.db.set_single_value("YRP Retail Settings", "stock_uom", None)
-		with self.assertRaises(frappe.ValidationError):
+		frappe.db.set_value("Item", self.item.name, "disabled", 1)
+		with self.assertRaisesRegex(frappe.ValidationError, "enabled, concrete sales Items"):
 			api.submit_summary(name, submit_without_order=True)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", name, "docstatus"), 0)
+		source = frappe.get_doc("YRP Retail Order Summary", name).source_orders[0].order
+		self.assertEqual(frappe.db.get_value("YRP Retail Order", source, ["docstatus", "summary"]), (0, name))
+		self.assertEqual(
+			frappe.db.get_value(
+				"YRP Customer Stock", {"customer": self.customer.name, "item_code": self.item.name}, "qty"
+			),
+			6,
+		)
+
+	def test_submission_does_not_require_customer_stock_settings(self):
+		self.report(6)
+		name = self.summary(2)
+		frappe.db.set_single_value("YRP Retail Settings", "stock_uom", None)
+		self.assertEqual(api.submit_summary(name, submit_without_order=True)["docstatus"], 1)
 		self.assertEqual(
 			frappe.db.get_value(
 				"YRP Customer Stock", {"customer": self.customer.name, "item_code": self.item.name}, "qty"

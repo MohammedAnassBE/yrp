@@ -77,12 +77,13 @@ class YRPRetailOrderSummary(Document):
 			stock[key] = finite_number(
 				row.customer_stock_qty if row.customer_stock_qty is not None else 0, "Customer stock quantity"
 			)
-		row_names = {(row.item_code, row.uom): row.name for row in self.items}
+		rows = {(row.item_code, row.uom): row for row in self.items}
 		self.set("items", [])
 		for (item_code, uom), qty in requested.items():
-			row = self.append(
-				"items", {"name": row_names.get((item_code, uom)), "item_code": item_code, "uom": uom}
-			)
+			# Keep new-row state and extension fields through validation. Rebuilding
+			# a named child loses __islocal and can UPDATE a row never inserted.
+			row = self.append("items", rows.get((item_code, uom)) or {"item_code": item_code, "uom": uom})
+			row.idx = len(self.items)
 			qty = validate_uom_quantity(qty, uom, "Requested quantity", row.precision("requested_qty"))
 			available = validate_uom_quantity(
 				stock.get((item_code, uom), 0),

@@ -191,7 +191,12 @@ class TestRetailFlow(unittest.TestCase):
 		api.update_summary(
 			name, [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 5}]
 		)
+		summary.reload()
+		self.assertEqual(len(summary.items), 1)
+		self.assertEqual((summary.items[0].customer_stock_qty, summary.items[0].company_qty), (5, 10))
+		row_name = summary.items[0].name
 		self.assertEqual(api.submit_summary(name, submit_without_order=True)["docstatus"], 1)
+		self.assertEqual(summary.reload().items[0].name, row_name)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", name, "total_company_qty"), 10)
 
 	def test_excess_stock_rolls_back_without_claiming_orders(self):

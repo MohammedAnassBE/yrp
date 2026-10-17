@@ -16,6 +16,7 @@ class TestSalesPersonRole(unittest.TestCase):
 		# Rollback restores DocPerm rows, but not the metadata cached while an
 		# If Owner rule was active. Clear it after the fixture rollback.
 		self.addCleanup(frappe.clear_cache, doctype="YRP Retailer")
+		self.addCleanup(frappe.clear_cache, doctype="YRP Customer Stock")
 		self.addCleanup(self.fixture.doCleanups)
 		self.fixture.setUp()
 
@@ -187,8 +188,18 @@ class TestSalesPersonRole(unittest.TestCase):
 
 	def test_count_entry_requires_a_separate_permission(self):
 		f = self.fixture
+		# Installed custom apps may grant count entry. Exercise explicit denial
+		# and grant locally instead of assuming the site's permission defaults.
+		frappe.set_user("Administrator")
+		update_permission_property("YRP Customer Stock", "YRP Sales Person", 0, "write", 0)
+		frappe.set_user(f.user.name)
 		with self.assertRaises(frappe.PermissionError):
 			api.update_customer_stock(f.customer.name, f.item.name, 5)
+		self.assertFalse(frappe.db.exists("YRP Customer Stock", {"customer": f.customer.name}))
+		frappe.set_user("Administrator")
+		update_permission_property("YRP Customer Stock", "YRP Sales Person", 0, "write", 1)
+		frappe.set_user(f.user.name)
+		self.assertEqual(api.update_customer_stock(f.customer.name, f.item.name, 5)["qty"], 5)
 
 	def test_blank_desk_form_is_editable_but_unassigned_insert_is_denied(self):
 		from frappe.permissions import get_doc_permissions

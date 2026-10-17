@@ -87,9 +87,26 @@ class TestSummaryLifecycle(unittest.TestCase):
 			wraps=source_submission,
 			side_effect=frappe.ValidationError("LOCAL failure"),
 		):
-			with self.assertRaises(frappe.ValidationError):
+			with self.assertRaisesRegex(frappe.ValidationError, "LOCAL failure"):
 				api.submit_summary(self.name, self.fixture.person.name)
 		self.assertEqual(self.summary().docstatus, 0)
+		self.assert_source(0, self.name)
+
+	def test_linked_order_still_blocks_allocation_changes(self):
+		self.link_order()
+		with self.assertRaisesRegex(frappe.ValidationError, "cannot change its items"):
+			api.update_summary(
+				self.name,
+				[
+					{
+						"item_code": self.fixture.item.name,
+						"uom": self.fixture.uom.name,
+						"customer_stock_qty": 1,
+					}
+				],
+			)
+		row = self.summary().items[0]
+		self.assertEqual((row.customer_stock_qty, row.company_qty), (0, 10))
 		self.assert_source(0, self.name)
 
 	def test_draft_with_linked_order_cannot_cancel(self):
