@@ -94,9 +94,7 @@ class TestGetOrCreateVariant(TestCase):
 	def test_existing_legacy_variant_does_not_backfill_blank_tuple_on_save(self):
 		variant = get_or_create_variant(self.template, {self.attribute: self.values[1]})
 		frappe.db.set_value("Item", variant, "item_tuple_attribute", None, update_modified=False)
-		self.assertEqual(
-			get_or_create_variant(self.template, {self.attribute: self.values[1]}), variant
-		)
+		self.assertEqual(get_or_create_variant(self.template, {self.attribute: self.values[1]}), variant)
 		self.assertIsNone(frappe.db.get_value("Item", variant, "item_tuple_attribute"))
 		doc = frappe.get_doc("Item", variant)
 		doc.description = "Legacy variant edit"
@@ -179,13 +177,17 @@ class TestGetOrCreateVariant(TestCase):
 	def test_native_item_save_blocks_mapping_swap_once_variants_exist(self):
 		get_or_create_variant(self.template, {self.attribute: self.values[0]})
 		template = frappe.get_doc("Item", self.template)
-		replacement = frappe.get_doc(
-			{
-				"doctype": "YRP Item Item Attribute Mapping",
-				"attribute_name": self.attribute,
-				"values": [{"attribute_value": self.values[0]}],
-			}
-		).insert(ignore_permissions=True).name
+		replacement = (
+			frappe.get_doc(
+				{
+					"doctype": "YRP Item Item Attribute Mapping",
+					"attribute_name": self.attribute,
+					"values": [{"attribute_value": self.values[0]}],
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 		template.attributes[0].mapping = replacement
 
 		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
@@ -194,12 +196,10 @@ class TestGetOrCreateVariant(TestCase):
 	def test_native_mapping_save_blocks_value_changes_once_variants_exist(self):
 		get_or_create_variant(self.template, {self.attribute: self.values[0]})
 		template = frappe.get_doc("Item", self.template)
-		mapping = frappe.get_doc(
-			"YRP Item Item Attribute Mapping", template.attributes[0].mapping
-		)
+		mapping = frappe.get_doc("YRP Item Item Attribute Mapping", template.attributes[0].mapping)
 		new_value = f"Green {frappe.generate_hash(length=6)}"
 		ensure_global_attribute_values(self.attribute, [new_value], check_permission=False)
-		mapping.append("values", {"attribute_value": new_value})
+		mapping.values[0].attribute_value = new_value
 
 		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
 			mapping.save(ignore_permissions=True)
@@ -241,23 +241,17 @@ class TestGetOrCreateVariant(TestCase):
 		second_attribute = f"_Test Editable Size {suffix}"
 		second_mapping = _attribute(second_attribute, "Small")
 		template_doc = frappe.get_doc("Item", template)
-		template_doc.append(
-			"attributes", {"attribute": second_attribute, "mapping": second_mapping}
-		)
+		template_doc.append("attributes", {"attribute": second_attribute, "mapping": second_mapping})
 		template_doc.primary_attribute = second_attribute
 		template_doc.save(ignore_permissions=True)
 
-		stored_mapping = frappe.get_doc(
-			"YRP Item Item Attribute Mapping", template_doc.attributes[0].mapping
-		)
+		stored_mapping = frappe.get_doc("YRP Item Item Attribute Mapping", template_doc.attributes[0].mapping)
 		new_value = f"Blue {suffix}"
 		ensure_global_attribute_values(first_attribute, [new_value], check_permission=False)
 		stored_mapping.append("values", {"attribute_value": new_value})
 		stored_mapping.save(ignore_permissions=True)
 
-		self.assertEqual(
-			frappe.db.get_value("Item", template, "primary_attribute"), second_attribute
-		)
+		self.assertEqual(frappe.db.get_value("Item", template, "primary_attribute"), second_attribute)
 
 	def test_unrestricted_numeric_attribute_allows_a_valid_variant_value(self):
 		suffix = frappe.generate_hash(length=8)
@@ -342,24 +336,26 @@ class TestConcurrentItemVariants(TestCase):
 			second_values = [f"Large {suffix}", f"Small {suffix}"]
 			second_mapping = _attribute(second_attribute, second_values[0])
 			ensure_global_attribute_values(second_attribute, second_values, check_permission=False)
-			second_mapping_doc = frappe.get_doc(
-				"YRP Item Item Attribute Mapping", second_mapping
-			)
+			second_mapping_doc = frappe.get_doc("YRP Item Item Attribute Mapping", second_mapping)
 			second_mapping_doc.append("values", {"attribute_value": second_values[1]})
 			second_mapping_doc.save(ignore_permissions=True)
-			template = frappe.get_doc(
-				{
-					"doctype": "Item",
-					"item_code": f"_Test Variant Race Template {suffix}",
-					"item_name": f"_Test Variant Race Template {suffix}",
-					"item_group": _item_group(),
-					"stock_uom": uom,
-					"is_stock_item": 1,
-					"has_variants": 1,
-					"attributes": [{"attribute": attribute, "mapping": mapping}],
-					**_india_compliance_item_fields(),
-				}
-			).insert(ignore_permissions=True).name
+			template = (
+				frappe.get_doc(
+					{
+						"doctype": "Item",
+						"item_code": f"_Test Variant Race Template {suffix}",
+						"item_name": f"_Test Variant Race Template {suffix}",
+						"item_group": _item_group(),
+						"stock_uom": uom,
+						"is_stock_item": 1,
+						"has_variants": 1,
+						"attributes": [{"attribute": attribute, "mapping": mapping}],
+						**_india_compliance_item_fields(),
+					}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
 			template_doc = frappe.get_doc("Item", template)
 			fixture = {
 				"template": template,
@@ -381,10 +377,7 @@ class TestConcurrentItemVariants(TestCase):
 		def token_records(doctype, *fieldnames):
 			return frappe.get_all(
 				doctype,
-				or_filters={
-					fieldname: ["like", f"%{self.run_token}%"]
-					for fieldname in fieldnames
-				},
+				or_filters={fieldname: ["like", f"%{self.run_token}%"] for fieldname in fieldnames},
 				pluck="name",
 				limit=0,
 			)
@@ -392,9 +385,7 @@ class TestConcurrentItemVariants(TestCase):
 		def cleanup():
 			items = token_records("Item", "name", "item_name", "variant_of")
 			variants = (
-				frappe.get_all(
-					"Item", filters={"variant_of": ["in", items]}, pluck="name", limit=0
-				)
+				frappe.get_all("Item", filters={"variant_of": ["in", items]}, pluck="name", limit=0)
 				if items
 				else []
 			)
@@ -403,10 +394,7 @@ class TestConcurrentItemVariants(TestCase):
 					frappe.delete_doc(
 						"Item", name, force=True, ignore_permissions=True, delete_permanently=True
 					)
-			attributes = token_records("Item Attribute", "name", "attribute_name")
-			attribute_values = token_records(
-				"Item Attribute Value", "name", "parent", "attribute_value"
-			)
+			attribute_values = token_records("Item Attribute Value", "name", "parent", "attribute_value")
 			if attribute_values:
 				frappe.db.delete("Item Attribute Value", {"name": ["in", attribute_values]})
 			for doctype, fieldnames in (
@@ -429,18 +417,12 @@ class TestConcurrentItemVariants(TestCase):
 			commit_connection()
 			return {
 				"Item": token_records("Item", "name", "item_name", "variant_of"),
-				"Item Attribute": token_records(
-					"Item Attribute", "name", "attribute_name"
-				),
+				"Item Attribute": token_records("Item Attribute", "name", "attribute_name"),
 				"Item Attribute Value": token_records(
 					"Item Attribute Value", "name", "parent", "attribute_value"
 				),
-				"Mapping": token_records(
-					"YRP Item Item Attribute Mapping", "name", "attribute_name"
-				),
-				"IAV": token_records(
-					"YRP Item Attribute Value", "name", "attribute_name", "attribute_value"
-				),
+				"Mapping": token_records("YRP Item Item Attribute Mapping", "name", "attribute_name"),
+				"IAV": token_records("YRP Item Attribute Value", "name", "attribute_name", "attribute_value"),
 			}
 
 		leftovers = self._run_connection(cleanup)
@@ -451,9 +433,7 @@ class TestConcurrentItemVariants(TestCase):
 
 	def _cleanup_fixture(self, fixture):
 		def cleanup():
-			for variant in frappe.get_all(
-				"Item", filters={"variant_of": fixture["template"]}, pluck="name"
-			):
+			for variant in frappe.get_all("Item", filters={"variant_of": fixture["template"]}, pluck="name"):
 				frappe.delete_doc(
 					"Item", variant, force=True, ignore_permissions=True, delete_permanently=True
 				)
@@ -541,24 +521,18 @@ class TestConcurrentItemVariants(TestCase):
 		native_committed = threading.Event()
 
 		def get_or_create_from_old_snapshot():
-			frappe.get_all(
-				"Item", filters={"variant_of": fixture["template"]}, pluck="name"
-			)
+			frappe.get_all("Item", filters={"variant_of": fixture["template"]}, pluck="name")
 			snapshot_ready.set()
 			if not native_committed.wait(10):
 				raise TimeoutError("Native variant did not commit")
-			name = get_or_create_variant(
-				fixture["template"], {fixture["attribute"]: fixture["values"][0]}
-			)
+			name = get_or_create_variant(fixture["template"], {fixture["attribute"]: fixture["values"][0]})
 			commit_connection()
 			return name
 
 		def create_native():
 			if not snapshot_ready.wait(10):
 				raise TimeoutError("YRP creator did not establish its snapshot")
-			variant = create_native_variant(
-				fixture["template"], {fixture["attribute"]: fixture["values"][0]}
-			)
+			variant = create_native_variant(fixture["template"], {fixture["attribute"]: fixture["values"][0]})
 			variant.insert(ignore_permissions=True)
 			commit_connection()
 			native_committed.set()
@@ -575,9 +549,7 @@ class TestConcurrentItemVariants(TestCase):
 			self.assertEqual(results.get("yrp", (None,))[0], "ok", results)
 			self.assertEqual(results["yrp"][1], results["native"][1])
 			self.assertEqual(
-				self._run_connection(
-					lambda: frappe.db.count("Item", {"variant_of": fixture["template"]})
-				),
+				self._run_connection(lambda: frappe.db.count("Item", {"variant_of": fixture["template"]})),
 				1,
 			)
 		finally:
@@ -596,9 +568,7 @@ class TestConcurrentItemVariants(TestCase):
 		def observe_sql(database, query, *args, **kwargs):
 			lowered = query.lower() if isinstance(query, str) else ""
 			is_mutex = (
-				"tabdoctype" in lowered
-				and "yrp item master template" in lowered
-				and "for update" in lowered
+				"tabdoctype" in lowered and "yrp item master template" in lowered and "for update" in lowered
 			)
 			operation = getattr(progress, "operation", None)
 			if operation == "variant" and is_mutex:
@@ -619,9 +589,7 @@ class TestConcurrentItemVariants(TestCase):
 		def create_variant():
 			if not mapping_mutex_acquired.wait(10):
 				raise TimeoutError("Mapping removal did not acquire the pricing mutex")
-			name = get_or_create_variant(
-				fixture["template"], {fixture["attribute"]: fixture["values"][1]}
-			)
+			name = get_or_create_variant(fixture["template"], {fixture["attribute"]: fixture["values"][1]})
 			commit_connection()
 			return name
 
@@ -655,9 +623,7 @@ class TestConcurrentItemVariants(TestCase):
 		def observe_sql(database, query, *args, **kwargs):
 			lowered = query.lower() if isinstance(query, str) else ""
 			is_mutex = (
-				"tabdoctype" in lowered
-				and "yrp item master template" in lowered
-				and "for update" in lowered
+				"tabdoctype" in lowered and "yrp item master template" in lowered and "for update" in lowered
 			)
 			operation = getattr(progress, "operation", None)
 			if operation == "edit" and is_mutex:
@@ -670,9 +636,7 @@ class TestConcurrentItemVariants(TestCase):
 			return result
 
 		def create_variant():
-			name = get_or_create_variant(
-				fixture["template"], {fixture["attribute"]: fixture["values"][0]}
-			)
+			name = get_or_create_variant(fixture["template"], {fixture["attribute"]: fixture["values"][0]})
 			commit_connection()
 			return name
 
@@ -721,9 +685,7 @@ class TestConcurrentItemVariants(TestCase):
 		def observe_sql(database, query, *args, **kwargs):
 			lowered = query.lower() if isinstance(query, str) else ""
 			is_mutex = (
-				"tabdoctype" in lowered
-				and "yrp item master template" in lowered
-				and "for update" in lowered
+				"tabdoctype" in lowered and "yrp item master template" in lowered and "for update" in lowered
 			)
 			operation = getattr(progress, "operation", None)
 			if operation == "variant" and is_mutex:
@@ -737,9 +699,7 @@ class TestConcurrentItemVariants(TestCase):
 
 		def edit_template():
 			template = frappe.get_doc("Item", fixture["template"])
-			mapping = frappe.get_doc(
-				"YRP Item Item Attribute Mapping", fixture["mapping"]
-			)
+			mapping = frappe.get_doc("YRP Item Item Attribute Mapping", fixture["mapping"])
 			update_item(
 				template.name,
 				{
@@ -766,9 +726,7 @@ class TestConcurrentItemVariants(TestCase):
 		def create_removed_variant():
 			if not editor_mutex_acquired.wait(10):
 				raise TimeoutError("Item editor did not acquire the pricing mutex")
-			name = get_or_create_variant(
-				fixture["template"], {fixture["attribute"]: fixture["values"][1]}
-			)
+			name = get_or_create_variant(fixture["template"], {fixture["attribute"]: fixture["values"][1]})
 			commit_connection()
 			return name
 
