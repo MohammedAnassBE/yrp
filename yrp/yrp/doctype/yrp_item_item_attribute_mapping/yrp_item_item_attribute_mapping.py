@@ -29,7 +29,7 @@ class YRPItemItemAttributeMapping(Document):
 			validate_mapping_unlocked,
 		)
 
-		self._validate_variant_owner_values()
+		self._validate_variant_owner_values_unchanged()
 		validate_mapping_unlocked(self)
 		if not self.attribute_name:
 			frappe.throw(_("Select an Item Attribute before adding values."))
@@ -52,22 +52,20 @@ class YRPItemItemAttributeMapping(Document):
 				frappe.throw(_("Row {0}: Attribute Value {1} is repeated.").format(row.idx, value))
 			seen.add(key)
 
-	def _preserves_variant_values(self):
-		"""Allow unchanged selections or appends to an existing restriction."""
+	def _validate_variant_owner_values_unchanged(self):
+		if (
+			self.is_new()
+			or self.flags.get("last_updated_by_sd_yrp_sync")
+			or frappe.flags.get("in_migrate")
+			or frappe.flags.get("in_patch")
+		):
+			return
 		before = self.get_doc_before_save()
 		if not before:
-			return True
-		if before.attribute_name != self.attribute_name:
-			return False
+			return
 		before_values = [row.attribute_value for row in before.get("values") or []]
 		current_values = [row.attribute_value for row in self.get("values") or []]
-		# An empty mapping permits all global values; filling it would restrict them.
-		return before_values == current_values or (
-			bool(before_values) and current_values[: len(before_values)] == before_values
-		)
-
-	def _validate_variant_owner_values(self):
-		if self._skip_variant_owner_check() or self._preserves_variant_values():
+		if before_values == current_values:
 			return
 		owners = self.flags.get("yrp_locked_variant_owner_items")
 		if owners is None:
@@ -81,21 +79,18 @@ class YRPItemItemAttributeMapping(Document):
 		for owner in owners:
 			if owner.has_variants and template_has_variants(owner.name):
 				frappe.throw(
-					_(
-						"Existing attribute mapping values cannot be changed after variants exist for Item {0}."
-					).format(owner.name)
+					_("Attribute mapping values cannot be changed after variants exist for Item {0}.").format(
+						owner.name
+					)
 				)
 
-	def _skip_variant_owner_check(self):
-		return (
+	def _variant_owner_item_names(self):
+		if (
 			self.is_new()
 			or self.flags.get("last_updated_by_sd_yrp_sync")
 			or frappe.flags.get("in_migrate")
 			or frappe.flags.get("in_patch")
-		)
-
-	def _variant_owner_item_names(self):
-		if self._skip_variant_owner_check():
+		):
 			return []
 		attribute = frappe.qb.DocType("Item Variant Attribute")
 		return (
@@ -111,7 +106,10 @@ class YRPItemItemAttributeMapping(Document):
 	def _lock_variant_owner_items(self, owner_names=None):
 		if owner_names is None:
 			owner_names = self._variant_owner_item_names()
-		owners = [frappe.get_doc("Item", name, for_update=True) for name in sorted(set(owner_names))]
+		owners = [
+			frappe.get_doc("Item", name, for_update=True)
+			for name in sorted(set(owner_names))
+		]
 		owners = [
 			owner
 			for owner in owners
