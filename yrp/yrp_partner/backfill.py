@@ -50,6 +50,8 @@ def sync_partner_type(doc):
 	"""Called from the validated Partner Type save; never commit inside its hook."""
 	from yrp.yrp_partner.sync import ensure_partner
 
+	if frappe.flags.defer_partner_generation:
+		return
 	total = frappe.db.count(doc.reference_doctype)
 	if total <= INLINE_LIMIT:
 		for name in frappe.get_all(doc.reference_doctype, pluck="name", order_by="name"):
