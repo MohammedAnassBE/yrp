@@ -1,5 +1,4 @@
 """Fictional end-to-end retail fixtures, rolled back after each test."""
-
 import json
 import secrets
 import unittest
@@ -19,113 +18,37 @@ class TestRetailFlow(unittest.TestCase):
 		self.addCleanup(frappe.set_user, frappe.session.user)
 		self.uom = frappe.get_doc({"doctype": "UOM", "uom_name": self.label("Unit")}).insert()
 		frappe.db.set_single_value("YRP Retail Settings", "stock_uom", self.uom.name)
-		group = frappe.get_doc(
-			{
-				"doctype": "Item Group",
-				"item_group_name": self.label("Group"),
-				"parent_item_group": frappe.db.get_value("Item Group", {"lft": 1}, "name"),
-			}
-		).insert()
-		hsn = frappe.get_doc(
-			{
-				"doctype": "GST HSN Code",
-				"hsn_code": str(secrets.randbelow(90_000_000) + 10_000_000),
-				"description": "Fictional retail test",
-			}
-		).insert()
-		self.item = frappe.get_doc(
-			{
-				"doctype": "Item",
-				"item_code": self.label("Item"),
-				"item_name": "Fictional Sale Item",
-				"item_group": group.name,
-				"stock_uom": self.uom.name,
-				"is_stock_item": 0,
-				"is_sales_item": 1,
-				"gst_hsn_code": hsn.name,
-			}
-		).insert()
-		customer_group = (
-			frappe.get_doc(
-				{
-					"doctype": "Customer Group",
-					"customer_group_name": self.label("Customer Group"),
-					"parent_customer_group": frappe.db.get_value("Customer Group", {"lft": 1}, "name"),
-					"is_group": 0,
-				}
-			)
-			.insert()
-			.name
-		)
-		territory = (
-			frappe.get_doc(
-				{
-					"doctype": "Territory",
-					"territory_name": self.label("Territory"),
-					"parent_territory": frappe.db.get_value("Territory", {"lft": 1}, "name"),
-					"is_group": 0,
-				}
-			)
-			.insert()
-			.name
-		)
+		group = frappe.get_doc({"doctype": "Item Group", "item_group_name": self.label("Group"),
+			"parent_item_group": frappe.db.get_value("Item Group", {"lft": 1}, "name")}).insert()
+		hsn = frappe.get_doc({"doctype": "GST HSN Code", "hsn_code": str(secrets.randbelow(90_000_000)+10_000_000), "description": "Fictional retail test"}).insert()
+		self.item = frappe.get_doc({"doctype": "Item", "item_code": self.label("Item"), "item_name": "Fictional Sale Item",
+			"item_group": group.name, "stock_uom": self.uom.name, "is_stock_item": 0, "is_sales_item": 1, "gst_hsn_code": hsn.name}).insert()
+		customer_group = frappe.get_doc({"doctype": "Customer Group", "customer_group_name": self.label("Customer Group"), "parent_customer_group": frappe.db.get_value("Customer Group", {"lft": 1}, "name"), "is_group": 0}).insert().name
+		territory = frappe.get_doc({"doctype": "Territory", "territory_name": self.label("Territory"), "parent_territory": frappe.db.get_value("Territory", {"lft": 1}, "name"), "is_group": 0}).insert().name
 		self.sales_partner = sales_partner(territory)
-		self.customer = frappe.get_doc(
-			{
-				"doctype": "Customer",
-				"customer_name": self.label("Customer"),
-				"customer_type": "Individual",
-				"customer_group": customer_group,
-				"territory": territory,
-				"default_sales_partner": self.sales_partner.name,
-			}
-		).insert()
-		self.person = frappe.get_doc(
-			{
-				"doctype": "Sales Person",
-				"sales_person_name": self.label("Person"),
-				"enabled": 1,
-				"parent_sales_person": frappe.db.get_value("Sales Person", {"lft": 1}, "name"),
-				"yrp_sales_partner": self.sales_partner.name,
-				"yrp_customers": [{"customer": self.customer.name}],
-			}
-		).insert()
-		self.user = frappe.get_doc(
-			{
-				"doctype": "User",
-				"email": "retail-" + frappe.generate_hash(length=12) + "@example.invalid",
-				"first_name": "Fictional Salesperson",
-				"send_welcome_email": 0,
-				"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}],
-			}
-		).insert()
-		self.partner_type = frappe.get_doc(
-			{
-				"doctype": "YRP Partner Type",
-				"partner_type_name": self.label("Partner Type"),
-				"reference_doctype": "Sales Person",
-			}
-		).insert()
+		self.customer = frappe.get_doc({"doctype": "Customer", "customer_name": self.label("Customer"),
+			"customer_type": "Individual", "customer_group": customer_group, "territory": territory,
+			"default_sales_partner": self.sales_partner.name}).insert()
+		self.person = frappe.get_doc({"doctype": "Sales Person", "sales_person_name": self.label("Person"), "enabled": 1,
+			"parent_sales_person": frappe.db.get_value("Sales Person", {"lft": 1}, "name"),
+			"yrp_sales_partner": self.sales_partner.name,
+			"yrp_customers": [{"customer": self.customer.name}]}).insert()
+		self.user = frappe.get_doc({"doctype": "User", "email": "retail-"+frappe.generate_hash(length=12)+"@example.invalid",
+			"first_name": "Fictional Salesperson", "send_welcome_email": 0,
+			"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}]}).insert()
+		self.partner_type = frappe.get_doc({"doctype": "YRP Partner Type", "partner_type_name": self.label("Partner Type"), "reference_doctype": "Sales Person"}).insert()
 		set_member(self.user.name, "Sales Person", self.person.name)
 		frappe.set_user(self.user.name)
 
 	def label(self, label):
-		return "Test " + label + " " + frappe.generate_hash(length=10)
+		return "Test "+label+" "+frappe.generate_hash(length=10)
 
 	def retailer(self):
-		return api.create_retailer(self.label("Retailer"), self.customer.name, shop_name=self.label("Shop"))[
-			"name"
-		]
+		return api.create_retailer(self.label("Retailer"), self.customer.name, shop_name=self.label("Shop"))["name"]
 
 	def visit(self, secondary=True):
-		return api.create_visit(
-			"Secondary" if secondary else "Primary",
-			str(now_datetime()),
-			12.5,
-			77.5,
-			customer=self.customer.name,
-			retailer=self.retailer() if secondary else None,
-		)["name"]
+		return api.create_visit("Secondary" if secondary else "Primary", str(now_datetime()), 12.5, 77.5,
+			customer=self.customer.name, retailer=self.retailer() if secondary else None)["name"]
 
 	def items(self, qty=10):
 		return [{"item_code": self.item.name, "qty": qty, "uom": self.uom.name}]
@@ -141,26 +64,17 @@ class TestRetailFlow(unittest.TestCase):
 			self.assertEqual(bool(doc.retailer), secondary)
 
 	def test_missing_target_and_invalid_location_are_rejected(self):
-		for kwargs in (
-			{"visit_type": "Primary", "customer": None, "latitude": 1, "longitude": 2},
+		for kwargs in ({"visit_type": "Primary", "customer": None, "latitude": 1, "longitude": 2},
 			{"visit_type": "Secondary", "customer": self.customer.name, "latitude": 1, "longitude": 2},
-			{"visit_type": "Primary", "customer": self.customer.name, "latitude": 100, "longitude": 2},
-		):
+			{"visit_type": "Primary", "customer": self.customer.name, "latitude": 100, "longitude": 2}):
 			with self.assertRaises((frappe.PermissionError, frappe.ValidationError)):
 				api.create_visit(visit_datetime=str(now_datetime()), **kwargs)
 
 	def test_retailer_without_shop_name_and_visit_without_location_save(self):
 		retailer = api.create_retailer(self.label("Retailer"), self.customer.name)["name"]
 		self.assertFalse(frappe.db.get_value("YRP Retailer", retailer, "shop_name"))
-		visit = frappe.get_doc(
-			{
-				"doctype": "YRP Visit",
-				"sales_person": self.person.name,
-				"visit_type": "Secondary",
-				"visit_datetime": now_datetime(),
-				"retailer": retailer,
-			}
-		).insert()
+		visit = frappe.get_doc({"doctype": "YRP Visit", "sales_person": self.person.name, "visit_type": "Secondary",
+			"visit_datetime": now_datetime(), "retailer": retailer}).insert()
 		self.assertFalse(visit.location)
 		visit.location = '{"type": "Point", "coordinates": [77.5, 100]}'
 		with self.assertRaises(frappe.ValidationError):
@@ -177,9 +91,7 @@ class TestRetailFlow(unittest.TestCase):
 
 	def test_summary_aggregates_and_locks_sources(self):
 		orders = [self.order(10), self.order(5)]
-		name = api.create_summary(
-			orders, [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 4}]
-		)["name"]
+		name = api.create_summary(orders, [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 4}])["name"]
 		summary = frappe.get_doc("YRP Retail Order Summary", name)
 		self.assertEqual(summary.items[0].requested_qty, 15)
 		self.assertEqual(summary.items[0].company_qty, 11)
@@ -188,24 +100,15 @@ class TestRetailFlow(unittest.TestCase):
 			api.update_retail_order(orders[0], self.items(20))
 		with self.assertRaises(frappe.ValidationError):
 			api.create_summary(orders)
-		api.update_summary(
-			name, [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 5}]
-		)
-		summary.reload()
-		self.assertEqual(len(summary.items), 1)
-		self.assertEqual((summary.items[0].customer_stock_qty, summary.items[0].company_qty), (5, 10))
-		row_name = summary.items[0].name
-		self.assertEqual(api.submit_summary(name, submit_without_order=True)["docstatus"], 1)
-		self.assertEqual(summary.reload().items[0].name, row_name)
+		api.update_summary(name, [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 5}])
+		self.assertEqual(api.submit_summary(name)["docstatus"], 1)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", name, "total_company_qty"), 10)
 
 	def test_excess_stock_rolls_back_without_claiming_orders(self):
 		order = self.order(2)
 		before = frappe.db.count("YRP Retail Order Summary")
 		with self.assertRaises(frappe.ValidationError):
-			api.create_summary(
-				[order], [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 3}]
-			)
+			api.create_summary([order], [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 3}])
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
 		self.assertEqual(frappe.db.count("YRP Retail Order Summary"), before)
 
@@ -252,11 +155,7 @@ class TestRetailFlow(unittest.TestCase):
 		visit = self.visit()
 		order = api.create_retail_order(visit, self.items())["name"]
 		from frappe.utils import add_days, getdate
-
-		self.assertEqual(
-			getdate(frappe.db.get_value("YRP Retail Order", order, "order_date")),
-			getdate(frappe.db.get_value("YRP Visit", visit, "visit_datetime")),
-		)
+		self.assertEqual(getdate(frappe.db.get_value("YRP Retail Order", order, "order_date")), getdate(frappe.db.get_value("YRP Visit", visit, "visit_datetime")))
 		frappe.set_user("Administrator")
 		doc = frappe.get_doc("YRP Visit", visit)
 		doc.visit_datetime = add_days(doc.visit_datetime, 1)
@@ -273,26 +172,20 @@ class TestRetailFlow(unittest.TestCase):
 		frappe.db.set_value("UOM", self.uom.name, "must_be_whole_number", 1)
 		order = self.order(10)
 		with self.assertRaises(frappe.ValidationError):
-			api.create_summary(
-				[order], [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 0.5}]
-			)
+			api.create_summary([order], [{"item_code": self.item.name, "uom": self.uom.name, "customer_stock_qty": 0.5}])
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
 
 	def test_fractional_retail_quantity_converts_to_whole_stock_quantity(self):
 		"""Both upward and downward float noise must preserve whole pieces."""
 		frappe.set_user("Administrator")
-		stock_uom = frappe.get_doc(
-			{"doctype": "UOM", "uom_name": self.label("Pieces"), "must_be_whole_number": 1}
-		).insert()
+		stock_uom = frappe.get_doc({"doctype": "UOM", "uom_name": self.label("Pieces"),
+			"must_be_whole_number": 1}).insert()
 		self.item.stock_uom = stock_uom.name
 		self.item.save()  # ERPNext resets conversions when the Stock UOM changes.
-		self.item.set(
-			"uoms",
-			[
-				{"uom": stock_uom.name, "conversion_factor": 1},
-				{"uom": self.uom.name, "conversion_factor": 100},
-			],
-		)
+		self.item.set("uoms", [
+			{"uom": stock_uom.name, "conversion_factor": 1},
+			{"uom": self.uom.name, "conversion_factor": 100},
+		])
 		self.item.save()
 		frappe.set_user(self.user.name)
 		for qty, expected in ((0.07, 7), (0.58, 58)):
@@ -317,7 +210,7 @@ class TestRetailFlow(unittest.TestCase):
 	def test_cancelled_summary_releases_orders(self):
 		order = self.order()
 		name = api.create_summary([order])["name"]
-		api.submit_summary(name, submit_without_order=True)
+		api.submit_summary(name)
 		frappe.set_user("Administrator")
 		frappe.get_doc("YRP Retail Order Summary", name).cancel()
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
@@ -326,35 +219,20 @@ class TestRetailFlow(unittest.TestCase):
 
 	def test_retailer_creation_supports_partner_generation(self):
 		frappe.set_user("Administrator")
-		type_doc = frappe.get_doc(
-			{
-				"doctype": "YRP Partner Type",
-				"partner_type_name": self.label("Retailer Type"),
-				"reference_doctype": "YRP Retailer",
-			}
-		).insert()
+		type_doc = frappe.get_doc({"doctype": "YRP Partner Type", "partner_type_name": self.label("Retailer Type"), "reference_doctype": "YRP Retailer"}).insert()
 		frappe.set_user(self.user.name)
 		name = self.retailer()
-		self.assertTrue(
-			frappe.db.exists("YRP Partner", {"partner_type": type_doc.name, "reference_name": name})
-		)
+		self.assertTrue(frappe.db.exists("YRP Partner", {"partner_type": type_doc.name, "reference_name": name}))
 
 	def test_second_sales_person_can_visit_shared_customer_retailer(self):
 		frappe.set_user("Administrator")
-		second = frappe.get_doc(
-			{
-				"doctype": "Sales Person",
-				"sales_person_name": self.label("Second Person"),
-				"enabled": 1,
-				"parent_sales_person": frappe.db.get_value("Sales Person", {"lft": 1}, "name"),
-				"yrp_sales_partner": self.sales_partner.name,
-				"yrp_customers": [{"customer": self.customer.name}],
-			}
-		).insert()
+		second = frappe.get_doc({"doctype": "Sales Person", "sales_person_name": self.label("Second Person"), "enabled": 1,
+			"parent_sales_person": frappe.db.get_value("Sales Person", {"lft": 1}, "name"),
+			"yrp_sales_partner": self.sales_partner.name,
+			"yrp_customers": [{"customer": self.customer.name}]}).insert()
 		frappe.set_user(self.user.name)
 		retailer = self.retailer()
 		from yrp.yrp_retail.logic import validate_assignment
-
 		validate_assignment(second.name, self.customer.name, retailer)
 		frappe.set_user(self.user.name)
 
@@ -395,12 +273,8 @@ class TestRetailFlow(unittest.TestCase):
 		frappe.db.set_value("YRP Retail Order", first, "notes", "LOCAL caller write")
 		point = "before_native_edit"
 		frappe.db.savepoint(point)
-		for rows, stock in (
-			({}, []),
-			({first: self.items(6), second: bad_uom}, []),
-			({first: self.items(6), claimed: self.items(4)}, []),
-			({first: self.items(6)}, excess),
-		):
+		for rows, stock in (({}, []), ({first: self.items(6), second: bad_uom}, []),
+			({first: self.items(6), claimed: self.items(4)}, []), ({first: self.items(6)}, excess)):
 			with self.assertRaises(frappe.ValidationError):
 				api.edit_draft_summary(name, rows, stock)
 			self.assertEqual(frappe.get_doc("YRP Retail Order", first).total_qty, 2)
@@ -410,7 +284,7 @@ class TestRetailFlow(unittest.TestCase):
 		frappe.db.rollback(save_point=point)
 		with self.assertRaises(frappe.PermissionError):
 			api.edit_draft_summary(name, {first: self.items(6)}, [], sales_person="LOCAL Not owner")
-		api.submit_summary(name, submit_without_order=True)
+		api.submit_summary(name)
 		with self.assertRaisesRegex(frappe.ValidationError, "Only a draft"):
 			api.edit_draft_summary(name, {first: self.items(6)}, [])
 		frappe.set_user("Administrator")

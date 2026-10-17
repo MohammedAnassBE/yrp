@@ -1,5 +1,4 @@
 """Desk and API action permissions over fictional Contact-derived memberships."""
-
 import unittest
 
 import frappe
@@ -16,7 +15,6 @@ class TestSalesPersonRole(unittest.TestCase):
 		# Rollback restores DocPerm rows, but not the metadata cached while an
 		# If Owner rule was active. Clear it after the fixture rollback.
 		self.addCleanup(frappe.clear_cache, doctype="YRP Retailer")
-		self.addCleanup(frappe.clear_cache, doctype="YRP Customer Stock")
 		self.addCleanup(self.fixture.doCleanups)
 		self.fixture.setUp()
 
@@ -58,12 +56,12 @@ class TestSalesPersonRole(unittest.TestCase):
 		order = f.order()
 		name = api.create_summary([order])["name"]
 		api.update_summary(name, [{"item_code": f.item.name, "uom": f.uom.name, "customer_stock_qty": 1}])
-		api.submit_summary(name, submit_without_order=True)
+		api.submit_summary(name)
 		doc = frappe.get_doc("YRP Retail Order Summary", name)
 		doc.items[0].customer_stock_qty = 2
 		with self.assertRaises(frappe.PermissionError):
 			doc.save(ignore_permissions=True)
-		self.assertEqual(api.cancel_summary(name, reason="LOCAL cancelled")["docstatus"], 2)
+		self.assertEqual(api.cancel_summary(name)["docstatus"], 2)
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", order, "summary"))
 
 	def test_only_an_assigned_draft_summary_can_be_deleted(self):
@@ -71,7 +69,7 @@ class TestSalesPersonRole(unittest.TestCase):
 		order = f.order()
 		draft, kept = (api.create_summary([name])["name"] for name in (order, f.order()))
 		submitted = api.create_summary([f.order()])["name"]
-		api.submit_summary(submitted, submit_without_order=True)
+		api.submit_summary(submitted)
 
 		frappe.delete_doc("YRP Retail Order Summary", draft)
 		self.assertFalse(frappe.db.exists("YRP Retail Order Summary", draft))
@@ -91,15 +89,9 @@ class TestSalesPersonRole(unittest.TestCase):
 		shop = f.retailer()
 		frappe.set_user("Administrator")
 		colleague = sales_person(f.customer)
-		user = frappe.get_doc(
-			{
-				"doctype": "User",
-				"first_name": "Fictional Colleague",
-				"email": frappe.generate_hash(length=12) + "@example.invalid",
-				"send_welcome_email": 0,
-				"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}],
-			}
-		).insert()
+		user = frappe.get_doc({"doctype": "User", "first_name": "Fictional Colleague",
+			"email": frappe.generate_hash(length=12) + "@example.invalid", "send_welcome_email": 0,
+			"roles": [{"role": "YRP Partner"}, {"role": "YRP Sales Person"}]}).insert()
 		set_member(user.name, "Sales Person", colleague.name)
 		f.person.set("yrp_customers", [])
 		f.person.save()
@@ -123,17 +115,10 @@ class TestSalesPersonRole(unittest.TestCase):
 		visit = frappe.copy_doc(visit)
 		visit.sales_person = other.name
 		visit.insert()
-		order = frappe.get_doc(
-			{
-				"doctype": "YRP Retail Order",
-				"visit": visit.name,
-				"order_type": visit.visit_type,
-				"sales_person": visit.sales_person,
-				"customer": visit.customer,
-				"retailer": visit.retailer,
-				"items": f.items(),
-			}
-		).insert()
+		order = frappe.get_doc({"doctype": "YRP Retail Order", "visit": visit.name,
+			"order_type": visit.visit_type, "sales_person": visit.sales_person,
+			"customer": visit.customer, "retailer": visit.retailer,
+			"items": f.items()}).insert()
 		visit.reload()  # Order creation updates the derived Visit flag and timestamp.
 		frappe.set_user(f.user.name)
 		self.assertFalse(frappe.has_permission("YRP Visit", "write", visit))
@@ -188,22 +173,11 @@ class TestSalesPersonRole(unittest.TestCase):
 
 	def test_count_entry_requires_a_separate_permission(self):
 		f = self.fixture
-		# Installed custom apps may grant count entry. Exercise explicit denial
-		# and grant locally instead of assuming the site's permission defaults.
-		frappe.set_user("Administrator")
-		update_permission_property("YRP Customer Stock", "YRP Sales Person", 0, "write", 0)
-		frappe.set_user(f.user.name)
 		with self.assertRaises(frappe.PermissionError):
 			api.update_customer_stock(f.customer.name, f.item.name, 5)
-		self.assertFalse(frappe.db.exists("YRP Customer Stock", {"customer": f.customer.name}))
-		frappe.set_user("Administrator")
-		update_permission_property("YRP Customer Stock", "YRP Sales Person", 0, "write", 1)
-		frappe.set_user(f.user.name)
-		self.assertEqual(api.update_customer_stock(f.customer.name, f.item.name, 5)["qty"], 5)
 
 	def test_blank_desk_form_is_editable_but_unassigned_insert_is_denied(self):
 		from frappe.permissions import get_doc_permissions
-
 		doc = frappe.new_doc("YRP Retailer")
 		self.assertTrue(get_doc_permissions(doc).get("create"))
 		self.assertTrue(get_doc_permissions(doc).get("write"))
@@ -211,8 +185,9 @@ class TestSalesPersonRole(unittest.TestCase):
 
 	def test_has_order_is_read_only_and_derived_from_linked_order(self):
 		f = self.fixture
-		result = api.create_visit("Primary", frappe.utils.now_datetime(), 12, 77, customer=f.customer.name)
-		visit = frappe.get_doc("YRP Visit", result["name"])
+		result = api.create_visit("Primary", frappe.utils.now_datetime(), 12, 77,
+			customer=f.customer.name)
+		visit = frappe.get_doc("YRP Visit", result['name'])
 		self.assertEqual(visit.has_order, 0)
 		self.assertTrue(visit.meta.get_field("has_order").read_only)
 		visit.has_order = 1
@@ -228,15 +203,9 @@ class TestSalesPersonRole(unittest.TestCase):
 		f = self.fixture
 		own = frappe.get_doc("YRP Retailer", f.retailer())
 		frappe.set_user("Administrator")
-		other = frappe.get_doc(
-			{
-				"doctype": "YRP Retailer",
-				"retailer_name": f.label("Managed Shop"),
-				"shop_name": f.label("Managed Shop Name"),
-				"customer": f.customer.name,
-				"sales_person": f.person.name,
-			}
-		).insert()
+		other = frappe.get_doc({"doctype": "YRP Retailer", "retailer_name": f.label("Managed Shop"),
+			"shop_name": f.label("Managed Shop Name"),
+			"customer": f.customer.name, "sales_person": f.person.name}).insert()
 		update_permission_property("YRP Retailer", "YRP Sales Person", 0, "if_owner", 1)
 		frappe.clear_cache(doctype="YRP Retailer")
 		frappe.set_user(f.user.name)

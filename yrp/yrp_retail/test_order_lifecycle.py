@@ -1,5 +1,4 @@
 """Native retail cancellation with legacy draft demand and source protections."""
-
 import unittest
 
 import frappe
@@ -52,9 +51,9 @@ class TestOrderLifecycle(unittest.TestCase):
 		frappe.get_doc("YRP Retail Order", submitted).submit()
 		frappe.set_user(fixture.user.name)
 		name = api.create_summary([draft, submitted])["name"]
-		api.submit_summary(name, submit_without_order=True)
+		api.submit_summary(name)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", name, "total_requested_qty"), 7)
-		self.assertEqual(frappe.db.get_value("YRP Retail Order", draft, "docstatus"), 1)
+		self.assertEqual(frappe.db.get_value("YRP Retail Order", draft, "docstatus"), 0)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order", submitted, "docstatus"), 1)
 		frappe.set_user("Administrator")
 		frappe.get_doc("YRP Retail Order Summary", name).cancel()
@@ -72,14 +71,14 @@ class TestOrderLifecycle(unittest.TestCase):
 			with self.subTest(summary_docstatus=status):
 				if status:
 					frappe.set_user(fixture.user.name)
-					api.submit_summary(summary, submit_without_order=True)
+					api.submit_summary(summary)
 				frappe.set_user("Administrator")
 				with self.assertRaisesRegex(frappe.ValidationError, "included in a summary"):
 					frappe.get_doc("YRP Retail Order", name).cancel()
 				self.assertEqual(frappe.db.get_value("YRP Retail Order", name, "docstatus"), 1)
 				self.assertEqual(frappe.db.get_value("YRP Retail Order", name, "summary"), summary)
 		frappe.get_doc("YRP Retail Order Summary", summary).cancel()
-		frappe.get_doc("YRP Retail Order", name).submit().cancel()
+		frappe.get_doc("YRP Retail Order", name).cancel()
 		self.assertEqual(frappe.db.get_value("YRP Retail Order", name, "docstatus"), 2)
 
 	def test_cancelled_order_cannot_be_claimed_by_summary(self):
@@ -96,17 +95,10 @@ class TestOrderLifecycle(unittest.TestCase):
 		self.assertFalse(frappe.db.get_value("YRP Retail Order", name, "summary"))
 		# The controller's locked read must also reject cancellation independently
 		# of Frappe's earlier cached link validation.
-		summary = frappe.get_doc(
-			{
-				"doctype": "YRP Retail Order Summary",
-				"customer": order.customer,
-				"sales_person": order.sales_person,
-				"order_type": "Secondary",
-				"from_date": order.order_date,
-				"to_date": order.order_date,
-				"source_orders": [{"order": name}],
-			}
-		)
+		summary = frappe.get_doc({"doctype": "YRP Retail Order Summary",
+			"customer": order.customer, "sales_person": order.sales_person,
+			"order_type": "Secondary", "from_date": order.order_date, "to_date": order.order_date,
+			"source_orders": [{"order": name}]})
 		with self.assertRaisesRegex(frappe.ValidationError, "Cancelled Retail Orders"):
 			summary.validate()
 
