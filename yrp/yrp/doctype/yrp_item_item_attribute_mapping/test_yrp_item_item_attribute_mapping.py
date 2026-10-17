@@ -6,6 +6,8 @@ import frappe
 
 from yrp.attribute_value_identity import attribute_value_name
 from yrp.attribute_values import MASTER, get_mapping_values
+from yrp.yrp.doctype.yrp_item.test_yrp_item import _item
+from yrp.yrp.doctype.yrp_item.yrp_item import get_or_create_variant
 
 
 class TestYRPItemItemAttributeMapping(TestCase):
@@ -105,3 +107,44 @@ class TestYRPItemItemAttributeMapping(TestCase):
 				self.mapping([value], attribute.name).insert()
 		with self.assertRaises(frappe.ValidationError):
 			self.mapping(["1", "1.0"], attribute.name).insert()
+
+	def variant_mapping(self, values):
+		mapping = self.mapping(values).insert()
+		template = _item(
+			"_Test Mapping Template " + frappe.generate_hash(length=8),
+			has_variants=1,
+			attributes=[{"attribute": self.attribute.name, "mapping": mapping.name}],
+		)
+		get_or_create_variant(template, {self.attribute.name: "Blue"})
+		owner = frappe.get_doc("Item", template)
+		return frappe.get_doc(mapping.doctype, owner.attributes[0].mapping)
+
+	def test_appending_is_refused_after_variants_exist(self):
+		mapping = self.variant_mapping(["Blue"])
+		mapping.append("values", {"attribute_value": "Green"})
+		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
+			mapping.save()
+		self.assertEqual(get_mapping_values(mapping.name), ["Blue"])
+
+	def test_removing_replacing_and_reordering_are_refused_after_variants_exist(self):
+		mapping = self.variant_mapping(["Blue", "Green"])
+		for values in (["Green"], [], ["Green", "Green"], ["Green", "Blue"]):
+			with self.subTest(values=values):
+				mapping.reload()
+				mapping.set("values", [{"attribute_value": value} for value in values])
+				with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
+					mapping.save()
+		self.assertEqual(get_mapping_values(mapping.name), ["Blue", "Green"])
+
+	def test_empty_mapping_cannot_be_restricted_after_variants_exist(self):
+		mapping = self.variant_mapping([])
+		mapping.append("values", {"attribute_value": "Green"})
+		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
+			mapping.save()
+		self.assertEqual(get_mapping_values(mapping.name), [])
+
+	def test_unchanged_plain_values_normalize_to_existing_links(self):
+		mapping = self.variant_mapping(["Blue"])
+		mapping.values[0].attribute_value = "Blue"
+		mapping.save()
+		self.assertEqual(mapping.values[0].attribute_value, attribute_value_name(self.attribute.name, "Blue"))

@@ -33,7 +33,25 @@ def lock_pricing_policy(doc=None, method=None):
 	their own YRP Item Price row, the Item row, then competing YRP Item Price rows.
 	They never acquire this mutex.
 	"""
+	_enable_current_reads()
 	frappe.db.sql("select name from `tabDocType` where name='YRP Item Master Template' for update")
+
+
+def _enable_current_reads():
+	"""Allow locking reads past an old snapshot until this transaction ends."""
+	if frappe.db.db_type != "mariadb":
+		return
+	setting = frappe.db.sql("SHOW SESSION VARIABLES LIKE 'innodb_snapshot_isolation'")
+	if not setting or setting[0][1] != "ON":
+		return
+	# MariaDB 11.6+ otherwise aborts with error 1020 after a competing writer commits.
+	frappe.db.sql("SET SESSION innodb_snapshot_isolation = OFF")
+	frappe.db.after_commit.add(_restore_snapshot_isolation)
+	frappe.db.after_rollback.add(_restore_snapshot_isolation)
+
+
+def _restore_snapshot_isolation():
+	frappe.db.sql("SET SESSION innodb_snapshot_isolation = ON")
 
 
 def _current_rows(doctype, *, filters, fields=None, pluck=None):

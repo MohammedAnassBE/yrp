@@ -62,6 +62,7 @@ class TestGetOrCreateVariant(TestCase):
 		frappe.set_user("Administrator")
 
 	def test_user_without_item_create_gets_new_variant_of_template(self):
+		frappe.share.add("Item", self.template, NON_ITEM_MANAGER, read=1, notify=0)
 		frappe.set_user(NON_ITEM_MANAGER)
 		self.assertFalse(frappe.has_permission("Item", "create"))
 
@@ -403,7 +404,6 @@ class TestConcurrentItemVariants(TestCase):
 					frappe.delete_doc(
 						"Item", name, force=True, ignore_permissions=True, delete_permanently=True
 					)
-			attributes = token_records("Item Attribute", "name", "attribute_name")
 			attribute_values = token_records(
 				"Item Attribute Value", "name", "parent", "attribute_value"
 			)
@@ -534,6 +534,27 @@ class TestConcurrentItemVariants(TestCase):
 		for thread in threads.values():
 			thread.start()
 		return threads, results
+
+	def test_policy_lock_restores_snapshot_isolation_at_transaction_end(self):
+		from yrp.yrp_retail.pricing import lock_pricing_policy
+
+		def check_settings():
+			for initial in ("ON", "OFF"):
+				for finish in (commit_connection, frappe.db.rollback):
+					frappe.db.sql(f"SET SESSION innodb_snapshot_isolation = {initial}")
+					lock_pricing_policy()
+					lock_pricing_policy()
+					self.assertEqual(frappe.db.sql("SELECT @@innodb_snapshot_isolation")[0][0], 0)
+					finish()
+					self.assertEqual(
+						frappe.db.sql("SELECT @@innodb_snapshot_isolation")[0][0], int(initial == "ON")
+					)
+
+		if frappe.db.db_type != "mariadb":
+			self.skipTest("MariaDB snapshot isolation")
+		if not frappe.db.sql("SHOW SESSION VARIABLES LIKE 'innodb_snapshot_isolation'"):
+			self.skipTest("MariaDB predates snapshot isolation")
+		self._run_connection(check_settings)
 
 	def test_get_or_create_sees_native_variant_committed_after_its_snapshot(self):
 		fixture = self._make_fixture()
