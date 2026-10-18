@@ -1,6 +1,7 @@
 import json
 
 import frappe
+from yrp.attribute_read_context import read_value
 from frappe.model.document import Document
 
 from yrp.attribute_links import value as _attribute_value
@@ -132,6 +133,10 @@ def calculate_bom(ipd_name, variant_demands, process_names=None, include_outputs
 
 
 def get_ipd_primary_values(production_detail):
+	return read_value("ipd_primary", production_detail, lambda: _read_get_ipd_primary_values(production_detail))
+
+
+def _read_get_ipd_primary_values(production_detail):
 	doc = frappe.get_cached_doc("YRP Item Production Detail", production_detail)
 	primary_attr_values = []
 	mapping = None

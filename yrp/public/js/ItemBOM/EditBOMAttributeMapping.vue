@@ -51,6 +51,7 @@
 </template>
 
 <script>
+import { protectAttributeAutocomplete } from "../utils/attributeAutocomplete.js";
 export default {
     name: 'EditBomMapping',
     data() {
@@ -294,11 +295,11 @@ export default {
                     df["reqd"] = true;
                 }
             }
-            return frappe.ui.form.make_control({
+            return protectAttributeAutocomplete(frappe.ui.form.make_control({
                 parent: $(this.$el).find(parent_class).empty(),
                 df: df,
                 render_input: true,
-            });
+            }));
         },
 
         create_quantity_input: function(attribute, index) {

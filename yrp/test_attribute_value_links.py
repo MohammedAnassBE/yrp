@@ -20,14 +20,15 @@ class AttributeValueLinksTest(unittest.TestCase):
 		self.point = "attribute_link_test"
 		frappe.db.savepoint(self.point)
 		self.attribute = "_LinkTest-" + frappe.generate_hash(length=8)
+		self.value = "XL " + frappe.generate_hash(length=8)
 		self.native = frappe.get_doc(
 			{
 				"doctype": "Item Attribute",
 				"attribute_name": self.attribute,
-				"item_attribute_values": [{"attribute_value": "XL", "abbr": "XL"}],
+				"item_attribute_values": [{"attribute_value": self.value, "abbr": "XL"}],
 			}
 		).insert()
-		self.link = attribute_value_name(self.attribute, "XL")
+		self.link = attribute_value_name(self.attribute, self.value)
 
 	def tearDown(self):
 		frappe.db.rollback(save_point=self.point)
@@ -44,12 +45,12 @@ class AttributeValueLinksTest(unittest.TestCase):
 		).insert()
 
 	def test_native_insert_creates_linkable_master(self):
-		self.assertEqual(frappe.db.get_value(MASTER, self.link, "attribute_value"), "XL")
+		self.assertEqual(frappe.db.get_value(MASTER, self.link, "attribute_value"), self.value)
 
 	def test_link_storage_and_plain_value_api_do_not_mutate_cache(self):
 		doc = self.mapping()
 		self.assertEqual(frappe.get_cached_doc(doc.doctype, doc.name).values[0].attribute_value, self.link)
-		self.assertEqual(get_mapping_values(doc.name), ["XL"])
+		self.assertEqual(get_mapping_values(doc.name), [self.value])
 		self.assertEqual(frappe.get_cached_doc(doc.doctype, doc.name).values[0].attribute_value, self.link)
 		view = get_mapping_document(doc.name)
 		view.save()
@@ -61,7 +62,7 @@ class AttributeValueLinksTest(unittest.TestCase):
 		)
 
 	def test_legacy_internal_text_write_is_normalized(self):
-		doc = self.mapping("XL")
+		doc = self.mapping(self.value)
 		self.assertEqual(doc.values[0].attribute_value, self.link)
 
 	def test_same_value_in_other_attribute_has_distinct_identity(self):
@@ -69,10 +70,10 @@ class AttributeValueLinksTest(unittest.TestCase):
 			{
 				"doctype": "Item Attribute",
 				"attribute_name": self.attribute + "-Other",
-				"item_attribute_values": [{"attribute_value": "XL", "abbr": "XL"}],
+				"item_attribute_values": [{"attribute_value": self.value, "abbr": "XL"}],
 			}
 		).insert()
-		other_link = attribute_value_name(other.name, "XL")
+		other_link = attribute_value_name(other.name, self.value)
 		self.assertNotEqual(self.link, other_link)
 		with self.assertRaises(frappe.ValidationError):
 			self.mapping(other_link)
@@ -122,7 +123,7 @@ class AttributeValueLinksTest(unittest.TestCase):
 		mapping = self.mapping()
 		new = self.attribute + "-Renamed"
 		frappe.rename_doc("Item Attribute", self.attribute, new, force=True)
-		expected = attribute_value_name(new, "XL")
+		expected = attribute_value_name(new, self.value)
 		self.assertTrue(frappe.db.exists(MASTER, expected))
 		self.assertEqual(
 			frappe.db.get_value("YRP Item Item Attribute Mapping", mapping.name, "attribute_name"), new
@@ -133,14 +134,14 @@ class AttributeValueLinksTest(unittest.TestCase):
 			),
 			expected,
 		)
-		self.assertEqual(get_mapping_values(mapping.name), ["XL"])
+		self.assertEqual(get_mapping_values(mapping.name), [self.value])
 
 	def test_hash_identity_and_title_display(self):
 		self.assertRegex(self.link, r"^IAV-[0-9a-f]{40}$")
 		meta = frappe.get_meta(MASTER)
 		self.assertEqual(meta.title_field, "attribute_value")
 		self.assertEqual(meta.show_title_field_in_link, 1)
-		self.assertEqual(frappe.get_doc(MASTER, self.link).get_title(), "XL")
+		self.assertEqual(frappe.get_doc(MASTER, self.link).get_title(), self.value)
 
 	def test_pair_lookup_is_stable_for_existing_and_missing_values(self):
 		pairs = [(self.attribute, "XL"), (self.attribute, "Missing"), ("Other", "XL"), ("Gauge", 3)]

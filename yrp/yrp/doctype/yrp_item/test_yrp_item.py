@@ -13,6 +13,7 @@ from yrp.yrp.doctype.yrp_item.yrp_item import (
 	create_variant,
 	ensure_global_attribute_values,
 	get_or_create_variant,
+	get_parent_item,
 )
 
 NON_ITEM_MANAGER = "_test_variant_planner@example.com"
@@ -60,6 +61,12 @@ class TestGetOrCreateVariant(TestCase):
 	def tearDown(self):
 		frappe.db.rollback(save_point=self.savepoint)
 		frappe.set_user("Administrator")
+
+	def test_parent_of_standalone_item_preserves_supplied_casing(self):
+		supplied = self.plain_item.swapcase()
+		self.assertNotEqual(supplied, self.plain_item)
+		self.assertEqual(frappe.db.get_value("Item", supplied, "name"), self.plain_item)
+		self.assertEqual(get_parent_item(supplied), supplied)
 
 	def test_user_without_item_create_gets_new_variant_of_template(self):
 		frappe.set_user(NON_ITEM_MANAGER)
@@ -162,7 +169,7 @@ class TestGetOrCreateVariant(TestCase):
 		get_or_create_variant(self.template, {self.attribute: self.values[0]})
 		template = frappe.get_doc("Item", self.template)
 		second_attribute = f"_Test Locked Material {frappe.generate_hash(length=8)}"
-		second_mapping = _attribute(second_attribute, "Cotton")
+		second_mapping = _attribute(second_attribute, f"Cotton {frappe.generate_hash(length=8)}")
 		template.append("attributes", {"attribute": second_attribute, "mapping": second_mapping})
 
 		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
@@ -232,14 +239,14 @@ class TestGetOrCreateVariant(TestCase):
 	def test_native_item_and_mapping_attribute_changes_are_allowed_without_variants(self):
 		suffix = frappe.generate_hash(length=8)
 		first_attribute = f"_Test Editable Colour {suffix}"
-		first_mapping = _attribute(first_attribute, "Red")
+		first_mapping = _attribute(first_attribute, f"Red {suffix}")
 		template = _item(
 			f"_Test Editable Template {suffix}",
 			has_variants=1,
 			attributes=[{"attribute": first_attribute, "mapping": first_mapping}],
 		)
 		second_attribute = f"_Test Editable Size {suffix}"
-		second_mapping = _attribute(second_attribute, "Small")
+		second_mapping = _attribute(second_attribute, f"Small {suffix}")
 		template_doc = frappe.get_doc("Item", template)
 		template_doc.append(
 			"attributes", {"attribute": second_attribute, "mapping": second_mapping}

@@ -1,6 +1,7 @@
 import json
 
 import frappe
+from yrp.attribute_read_context import read_value
 from six import string_types
 
 from yrp.attribute_links import value as _attribute_value
@@ -36,6 +37,10 @@ def get_panel_colour_combination(ipd_doc):
 
 
 def get_variant_attr_details(variant):
+	return read_value("variant", variant, lambda: _read_get_variant_attr_details(variant))
+
+
+def _read_get_variant_attr_details(variant):
 	attr_details = frappe.db.sql(
 		""" SELECT attribute, attribute_value FROM `tabItem Variant Attribute` WHERE parent = %(parent)s """,
 		{"parent": variant},

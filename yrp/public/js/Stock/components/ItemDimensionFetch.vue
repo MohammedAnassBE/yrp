@@ -194,6 +194,7 @@
 </template>
 
 <script setup>
+import { protectAttributeAutocomplete } from "../../utils/attributeAutocomplete.js";
 import { ref, onMounted, computed, nextTick } from 'vue';
 
 const root = ref(null);
@@ -557,7 +558,7 @@ function set_item_details(item_details, item1) {
 
 function get_attribute_field(attribute, attribute_name, default_value, classname, on_change) {
     const $el = root.value;
-    const field = frappe.ui.form.make_control({
+    const field = protectAttributeAutocomplete(frappe.ui.form.make_control({
         parent: $($el).find(classname),
         df: {
             fieldtype: 'Autocomplete',
@@ -582,7 +583,7 @@ function get_attribute_field(attribute, attribute_name, default_value, classname
         },
         doc: sample_doc,
         render_input: true,
-    });
+    }));
     field.set_value(default_value);
     return field;
 }

@@ -41,8 +41,8 @@ def get_parent_item(item_code):
 	"""Resolve a native variant through variant_of; standalone Items resolve to themselves."""
 	if not item_code:
 		return None
-	variant_of = frappe.get_cached_value("Item", item_code, "variant_of")
-	return variant_of or (item_code if frappe.db.exists("Item", item_code) else None)
+	item = frappe.db.get_value("Item", item_code, ["name", "variant_of"], as_dict=True)
+	return (item.variant_of or item_code) if item else None
 
 
 def get_global_attribute_values(attribute):
@@ -538,6 +538,16 @@ def _mapping_values(attribute_row, *, for_update=False, allow_unrestricted_numer
 def get_attribute_details(item_name, dependent_attr_mapping=None):
 	item = frappe.get_cached_doc("Item", item_name)
 	item.check_permission("read")
+	from yrp.attribute_read_context import read_value
+
+	return read_value(
+		"attribute_details",
+		(item_name, dependent_attr_mapping),
+		lambda: _build_attribute_details(item, dependent_attr_mapping),
+	)
+
+
+def _build_attribute_details(item, dependent_attr_mapping):
 	parent = frappe.get_cached_doc("Item", item.variant_of) if item.variant_of else item
 	attributes = [row.attribute for row in parent.get("attributes") or []]
 	primary_values = []

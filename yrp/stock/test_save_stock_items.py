@@ -87,7 +87,7 @@ class TestStockItemEntryFieldExtensions(UnitTestCase):
 		]
 
 		with (
-			patch.object(frappe.db, "get_value", return_value="Test Garment"),
+			patch("yrp.yrp.doctype.yrp_item.yrp_item.get_parent_item", return_value="Test Garment"),
 			patch.object(frappe, "get_doc", return_value=variant),
 			patch(
 				"yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details",

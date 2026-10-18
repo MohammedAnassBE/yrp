@@ -123,6 +123,7 @@
 </template>
 
 <script setup>
+import { protectAttributeAutocomplete } from "../utils/attributeAutocomplete.js";
 import { ref, nextTick } from 'vue';
 
 const root = ref(null);
@@ -450,7 +451,7 @@ function create_add_row_inputs(blockIdx) {
         let item_name = block.item;
         let attr_name = ra;
 
-        let control = frappe.ui.form.make_control({
+        let control = protectAttributeAutocomplete(frappe.ui.form.make_control({
             parent: parent,
             df: {
                 fieldtype: 'Autocomplete',
@@ -464,7 +465,7 @@ function create_add_row_inputs(blockIdx) {
                 },
             },
             render_input: true,
-        });
+        }));
 
         block_inputs.value[blockIdx].add_row_attrs[ra] = control;
     }

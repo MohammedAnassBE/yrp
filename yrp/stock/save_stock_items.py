@@ -273,6 +273,40 @@ def _copy_value_fields(source, fieldnames, child_doctype, parent_doctype):
 # ====================================================================
 
 
+def _stock_variant_reader(variants):
+	"""Read fresh raw children; resolve only the attributes the caller inspects."""
+	children = None
+	names = list(dict.fromkeys(variants))
+
+	def read(name):
+		nonlocal children
+		if children is None:
+			children = {}
+			for start in range(0, len(names), 500):
+				chunk = names[start : start + 500]
+				for item in frappe.get_all(
+					"Item", filters={"name": ["in", chunk]}, pluck="name", limit_page_length=0
+				):
+					children[item] = []
+				for row in frappe.get_all(
+					"Item Variant Attribute",
+					filters={"parent": ["in", chunk], "parenttype": "Item", "parentfield": "attributes"},
+					fields=["parent", "attribute", "attribute_value", "idx"],
+					order_by="idx asc",
+					limit_page_length=0,
+				):
+					if row.parent in children:
+						children[row.parent].append(row)
+		if name not in children:
+			return frappe.get_doc("Item", name).attributes or []
+		rows = children[name]
+		if len({row.idx for row in rows}) != len(rows):
+			return frappe.get_doc("Item", name).attributes or []
+		return rows
+
+	return read
+
+
 def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	"""Convert flat child rows into the nested grouped structure the Vue editor expects.
 
@@ -379,9 +413,11 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 			_attr_cache[parent_item] = get_attribute_details(parent_item)
 		return _attr_cache[parent_item]
 
-	def _variant_attrs(variant_doc, attr_names):
+	variant_rows = _stock_variant_reader([row.get(item_field) for row in rows])
+
+	def _variant_attrs(variant, attr_names):
 		out = {}
-		for row in variant_doc.attributes or []:
+		for row in variant_rows(variant):
 			if row.attribute in attr_names:
 				out[row.attribute] = _attribute_value(row.attribute_value)
 		return out
@@ -403,7 +439,6 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		if not parent_item:
 			continue
 		attr_details = _get_attr_details(parent_item)
-		first_variant_doc = frappe.get_doc("Item", first[item_field])
 
 		# Non-primary attributes for this item entry
 		all_attrs = list(attr_details.get("attributes") or [])
@@ -412,7 +447,7 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		else:
 			all_attrs_with_primary = all_attrs
 
-		first_variant_attrs = _variant_attrs(first_variant_doc, all_attrs_with_primary)
+		first_variant_attrs = _variant_attrs(first[item_field], all_attrs_with_primary)
 
 		# Collect dimension values from the first row
 		dimensions = {fn: first.get(fn) for fn in dim_fields if _child_has_field(child_doctype, fn)}
@@ -437,8 +472,7 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 				item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
 			# Fill actual values from variants (multiple rows share same row_index)
 			for variant_row in variants:
-				variant_doc = frappe.get_doc("Item", variant_row[item_field])
-				v_attrs = _variant_attrs(variant_doc, [primary])
+				v_attrs = _variant_attrs(variant_row[item_field], [primary])
 				pv = v_attrs.get(primary, "")
 				if pv and pv in item_entry["values"]:
 					value_detail = {"qty": variant_row.get(qty_field) or 0}
