@@ -9,7 +9,8 @@
   "partner_type",
   "reference_doctype",
   "reference_name",
-  "users"
+  "users",
+  "disabled"
  ],
  "fields": [
   {
@@ -44,12 +45,19 @@
    "fieldtype": "Table",
    "label": "Users",
    "options": "YRP Partner User"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-10-11 08:24:16.234334",
+ "modified": "2026-10-19 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP Partner",
  "name": "YRP Partner",

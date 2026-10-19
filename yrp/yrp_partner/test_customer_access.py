@@ -109,6 +109,25 @@ class TestCustomerAccess(unittest.TestCase):
 		frappe.db.delete("Contact Email", {"parent": self.contact.name, "parenttype": "Contact"})
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
 
+	def test_disabled_partner_is_excluded_from_membership_query(self):
+		field = frappe.get_meta("YRP Partner").get_field("disabled")
+		self.assertEqual(field.doctype, "DocField")
+		self.assertEqual(field.default, "0")
+		self.link(self.user, "Customer", self.foreign.name)
+		partner_filters = {
+			"reference_doctype": "Customer", "reference_name": self.own.name,
+		}
+		for disabled in (0, 1, 0):
+			with self.subTest(disabled=disabled):
+				frappe.db.set_value("YRP Partner", partner_filters, "disabled", disabled)
+				expected = {self.foreign.name} if disabled else {self.own.name, self.foreign.name}
+				for require_scope_role in (True, False):
+					memberships = frappe.db.sql(
+						access.membership_query(self.user.name, require_scope_role), as_dict=True,
+					)
+					self.assertEqual({row.reference_name for row in memberships}, expected)
+				self.assertEqual(access.customer_names(self.user.name), expected)
+
 	def test_disabled_user_and_revoked_roles_invalidate_stale_memberships(self):
 		self.assertEqual(access.customer_names(self.user.name), {self.own.name})
 		frappe.db.set_value("User", self.user.name, "enabled", 0)
