@@ -236,21 +236,6 @@ class TestRetailFlow(unittest.TestCase):
 		validate_assignment(second.name, self.customer.name, retailer)
 		frappe.set_user(self.user.name)
 
-	def test_dealer_stock_round_trip_and_invalid_flag(self):
-		rows = self.items(3)
-		rows[0]["dealer_stock"] = 1
-		name = api.create_retail_order(self.visit(), rows)["name"]
-		self.assertEqual(frappe.get_doc("YRP Retail Order", name).items[0].dealer_stock, 1)
-		rows = self.items(3)
-		rows[0]["dealer_stock"] = 0
-		api.update_retail_order(name, rows)
-		self.assertEqual(frappe.get_doc("YRP Retail Order", name).items[0].dealer_stock, 0)
-		for flag in (-1, 2, "yes"):
-			rows = self.items(3)
-			rows[0]["dealer_stock"] = flag
-			with self.assertRaises(frappe.ValidationError):
-				api.update_retail_order(name, rows)
-
 	def test_edit_draft_summary_preserves_identity_and_releases_removed_order(self):
 		first, removed, added = self.order(2), self.order(3), self.order(4)
 		name = api.create_summary([first, removed])["name"]

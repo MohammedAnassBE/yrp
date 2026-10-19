@@ -17,25 +17,6 @@ def update_if_string_instance(obj):
 	return obj
 
 
-def get_panel_colour_combination(ipd_doc):
-	indexes = {}
-	comb_details = {}
-	for row in ipd_doc.stiching_item_combination_details:
-		if indexes.get(row.index):
-			major_colour = indexes[row.index]
-			comb_details[major_colour][_attribute_value(row.set_item_attribute_value)] = _attribute_value(
-				row.attribute_value
-			)
-		else:
-			indexes[row.index] = _attribute_value(row.major_attribute_value)
-			comb_details[_attribute_value(row.major_attribute_value)] = {}
-			comb_details[_attribute_value(row.major_attribute_value)][
-				_attribute_value(row.set_item_attribute_value)
-			] = _attribute_value(row.attribute_value)
-
-	return comb_details
-
-
 def get_variant_attr_details(variant):
 	return read_value("variant", variant, lambda: _read_get_variant_attr_details(variant))
 

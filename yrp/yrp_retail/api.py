@@ -30,9 +30,11 @@ def _items(value):
 	rows = frappe.parse_json(value) if isinstance(value, str) else value
 	if not isinstance(rows, list) or not rows:
 		frappe.throw(_("Provide at least one item."))
+	# Apps that add item fields declare them in the `yrp_retail_item_fields` hook.
+	allowed = {"item_code", "qty", "uom", *frappe.get_hooks("yrp_retail_item_fields")}
 	for row in rows:
-		if not isinstance(row, dict) or (not {"item_code", "qty", "uom"} <= set(row) or set(row) - {"item_code", "qty", "uom", "dealer_stock"}):
-			frappe.throw(_("Each item must contain item_code, qty and uom, with optional dealer_stock."))
+		if not isinstance(row, dict) or not {"item_code", "qty", "uom"} <= set(row) or set(row) - allowed:
+			frappe.throw(_("Each item must contain item_code, qty and uom, and only declared extra fields."))
 	return rows
 
 
