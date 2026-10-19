@@ -8,7 +8,7 @@ from frappe.utils import flt, getdate
 
 from yrp.yrp_retail import sales_sources
 from yrp.yrp_retail.logic import finite_number, require
-from yrp.yrp_retail.pricing import PricingLockMixin, check_rate, get_free_items
+from yrp.yrp_retail.pricing import PricingLockMixin, check_rate, get_free_items, get_zero_rate_items
 from yrp.yrp_sales.historical import is_historical, reject_historical
 
 
@@ -55,8 +55,9 @@ class YRPSalesOrder(PricingLockMixin, Document):
 
 	def validate_rates(self):
 		free = get_free_items(row.item_code for row in self.items)
+		zero_rate = get_zero_rate_items(row.item_code for row in self.items)
 		for row in self.items:
-			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
+			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code), row.item_code in zero_rate)
 
 	def get_status(self):
 		if is_historical(self):

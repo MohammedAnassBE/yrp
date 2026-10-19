@@ -14,7 +14,7 @@ from yrp.stock.dimensions import apply_dimension_defaults, get_dimension_fieldna
 from yrp.stock.provider import handle
 from yrp.stock.utils import close_voucher_reservations, get_available_stock
 from yrp.yrp_retail.logic import require, validate_uom_quantity
-from yrp.yrp_retail.pricing import check_rate, get_free_items
+from yrp.yrp_retail.pricing import check_rate, get_free_items, get_zero_rate_items
 from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import (
 	get_allocated_qty,
 	get_conversion_factor,
@@ -195,8 +195,9 @@ class YRPDeliveryNote(Document):
 
 	def validate_rates(self):
 		free = get_free_items(row.item_code for row in self.items)
+		zero_rate = get_zero_rate_items(row.item_code for row in self.items)
 		for row in self.items:
-			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
+			check_rate(row.rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code), row.item_code in zero_rate)
 
 	def get_status(self):
 		if is_historical(self):
@@ -342,9 +343,10 @@ class YRPDeliveryNote(Document):
 			_("Rows {0} do not belong to Delivery Note {1}.").format(", ".join(sorted(unknown)), self.name),
 		)
 		free = get_free_items(row.item_code for row in self.items)
+		zero_rate = get_zero_rate_items(row.item_code for row in self.items)
 		for name, rate in rates.items():
 			row = rows[name]
-			check_rate(rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code))
+			check_rate(rate, row.item_code in free, _("Row {0}: {1}").format(row.idx, row.item_code), row.item_code in zero_rate)
 			row.rate = flt(rate, row.precision("rate"))
 			row.amount = flt(row.rate * flt(row.qty), row.precision("amount"))
 			row.db_set({"rate": row.rate, "amount": row.amount}, update_modified=False)

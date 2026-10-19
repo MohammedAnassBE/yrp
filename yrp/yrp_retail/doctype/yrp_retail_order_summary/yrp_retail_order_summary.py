@@ -10,6 +10,7 @@ from yrp.yrp_retail.access import require_owned
 from yrp.yrp_retail.logic import aggregate_orders, finite_number, require, same_date, validate_uom_quantity
 from yrp.yrp_retail.pricing import lock_pricing_policy
 from yrp.yrp_retail.source_quantities import order_conversion_factors, validate_current_conversion
+from yrp.yrp_retail.summary_lifecycle import source_submission
 
 
 class YRPRetailOrderSummary(Document):
@@ -130,10 +131,33 @@ class YRPRetailOrderSummary(Document):
 
 	def on_submit(self):
 		from yrp.yrp_retail.customer_stock import consume_summary
+		self._submit_orders()
 		consume_summary(self)
 
+	def _submit_orders(self):
+		for name in sorted(row.order for row in self.source_orders):
+			order = frappe.get_doc("YRP Retail Order", name, for_update=True)
+			require(order.summary == self.name, "Retail Order is not part of this summary.")
+			require(order.docstatus != 2, "A source Retail Order is cancelled.")
+			if order.docstatus == 0:
+				with source_submission(order):
+					order.flags.ignore_permissions = True
+					order.submit()
+
 	def on_cancel(self):
+		self._reopen_orders()
 		self._release_orders()
+
+	def _reopen_orders(self):
+		"""Reopen only sources still claimed by this summary under row locks."""
+		lock_pricing_policy()
+		for name in sorted(row.order for row in self.source_orders):
+			order = frappe.get_doc("YRP Retail Order", name, for_update=True)
+			if order.summary != self.name or order.docstatus != 1:
+				continue
+			order.db_set("docstatus", 0)
+			for row in order.get_all_children():
+				row.db_set("docstatus", 0, update_modified=False)
 
 	def on_discard(self):
 		self._release_orders()

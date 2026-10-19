@@ -24,6 +24,9 @@ class TestRetailPricing(unittest.TestCase):
 		self.translate.start()
 		self.addCleanup(self.errors.stop)
 		self.addCleanup(self.translate.stop)
+		hooks = patch.object(pricing.frappe, "get_hooks", return_value=[])
+		self.hooks = hooks.start()
+		self.addCleanup(hooks.stop)
 
 	def changed(self, **values):
 		doc = Row(**values)
@@ -45,6 +48,67 @@ class TestRetailPricing(unittest.TestCase):
 					else:
 						with self.assertRaises(ValueError):
 							pricing.check_rate(value, free, "test")
+
+	def test_allow_zero_rate_policy_matrix(self):
+		for free in (False, True):
+			for value in (None, "bad", float("nan"), float("inf"), -float("inf"), -1, 0, 0.00001, 10):
+				with self.subTest(free=free, value=value):
+					valid = (
+						value == 0 if free else isinstance(value, (int, float)) and 0 <= value < float("inf")
+					)
+					if valid:
+						pricing.check_rate(value, free, "test", allow_zero=True)
+					else:
+						with self.assertRaises(ValueError):
+							pricing.check_rate(value, free, "test", allow_zero=True)
+
+	def test_zero_rate_hooks_resolve_each_batch_once(self):
+		self.hooks.return_value = ["app.first", "app.second"]
+		first, second = Mock(return_value={"A"}), Mock(return_value={"B"})
+		with patch.object(pricing.frappe, "get_attr", side_effect=[first, second]):
+			self.assertEqual(pricing.get_zero_rate_items(["B", None, "A", "A"]), {"A", "B"})
+		self.hooks.assert_called_once_with("yrp_zero_rate_items")
+		first.assert_called_once_with(["A", "B"])
+		second.assert_called_once_with(["A", "B"])
+
+	def test_yrp_order_and_delivery_validation_use_zero_rate_hook(self):
+		from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import YRPDeliveryNote
+		from yrp.yrp_sales.doctype.yrp_sales_order.yrp_sales_order import YRPSalesOrder
+
+		self.hooks.return_value = ["app.zero_rate_items"]
+		for controller in (YRPSalesOrder, YRPDeliveryNote):
+			with self.subTest(controller=controller.__name__):
+				doc = Mock(
+					items=[Row(item_code="SCHEME", rate=0, idx=1), Row(item_code="PAID", rate=5, idx=2)]
+				)
+				with (
+					patch.dict(controller.validate_rates.__globals__, _=lambda value: value),
+					patch.object(pricing, "get_item_policies", return_value={}),
+					patch.object(
+						pricing.frappe, "get_attr", return_value=Mock(return_value={"SCHEME"})
+					) as resolve,
+				):
+					controller.validate_rates(doc)
+					resolve.return_value.assert_called_once_with(["PAID", "SCHEME"])
+					doc.items[1].rate = 0
+					with self.assertRaises(ValueError):
+						controller.validate_rates(doc)
+
+	@patch.object(pricing, "_managed_items", return_value={"MANAGED": False})
+	def test_native_sales_allow_zero_only_for_hooked_items(self, managed):
+		self.hooks.return_value = ["app.zero_rate_items"]
+		with patch.object(pricing.frappe, "get_attr", return_value=Mock(return_value={"MANAGED"})):
+			for doctype in pricing.SALES_DOCTYPES:
+				pricing.validate_sales_document(self.document(doctype, rate=0))
+				pricing.validate_sales_document(self.document(doctype, rate=10))
+				for field in pricing.EFFECTIVE_RATES:
+					for invalid in (-1, float("inf"), float("nan")):
+						with self.assertRaises(ValueError):
+							pricing.validate_sales_document(self.document(doctype, **{field: invalid}))
+		self.hooks.return_value = []
+		for doctype in pricing.SALES_DOCTYPES:
+			with self.assertRaises(ValueError):
+				pricing.validate_sales_document(self.document(doctype, rate=0))
 
 	@patch.object(pricing, "_managed_items", return_value={"MANAGED": True})
 	def test_free_rows_clear_every_pricing_input(self, managed):

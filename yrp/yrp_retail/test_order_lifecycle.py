@@ -53,7 +53,7 @@ class TestOrderLifecycle(unittest.TestCase):
 		name = api.create_summary([draft, submitted])["name"]
 		api.submit_summary(name)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order Summary", name, "total_requested_qty"), 7)
-		self.assertEqual(frappe.db.get_value("YRP Retail Order", draft, "docstatus"), 0)
+		self.assertEqual(frappe.db.get_value("YRP Retail Order", draft, "docstatus"), 1)
 		self.assertEqual(frappe.db.get_value("YRP Retail Order", submitted, "docstatus"), 1)
 		frappe.set_user("Administrator")
 		frappe.get_doc("YRP Retail Order Summary", name).cancel()
@@ -78,7 +78,7 @@ class TestOrderLifecycle(unittest.TestCase):
 				self.assertEqual(frappe.db.get_value("YRP Retail Order", name, "docstatus"), 1)
 				self.assertEqual(frappe.db.get_value("YRP Retail Order", name, "summary"), summary)
 		frappe.get_doc("YRP Retail Order Summary", summary).cancel()
-		frappe.get_doc("YRP Retail Order", name).cancel()
+		frappe.get_doc("YRP Retail Order", name).submit().cancel()
 		self.assertEqual(frappe.db.get_value("YRP Retail Order", name, "docstatus"), 2)
 
 	def test_cancelled_order_cannot_be_claimed_by_summary(self):

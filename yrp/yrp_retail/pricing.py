@@ -33,7 +33,25 @@ def lock_pricing_policy(doc=None, method=None):
 	their own YRP Item Price row, the Item row, then competing YRP Item Price rows.
 	They never acquire this mutex.
 	"""
+	_enable_current_reads()
 	frappe.db.sql("select name from `tabDocType` where name='YRP Item Master Template' for update")
+
+
+def _enable_current_reads():
+	"""Allow locking reads past an old snapshot until this transaction ends."""
+	if frappe.db.db_type != "mariadb":
+		return
+	setting = frappe.db.sql("SHOW SESSION VARIABLES LIKE 'innodb_snapshot_isolation'")
+	if not setting or setting[0][1] != "ON":
+		return
+	# MariaDB 11.6+ otherwise aborts with error 1020 after a competing writer commits.
+	frappe.db.sql("SET SESSION innodb_snapshot_isolation = OFF")
+	frappe.db.after_commit.add(_restore_snapshot_isolation)
+	frappe.db.after_rollback.add(_restore_snapshot_isolation)
+
+
+def _restore_snapshot_isolation():
+	frappe.db.sql("SET SESSION innodb_snapshot_isolation = ON")
 
 
 def _current_rows(doctype, *, filters, fields=None, pluck=None):
@@ -43,14 +61,19 @@ def _current_rows(doctype, *, filters, fields=None, pluck=None):
 	)
 
 
-def check_rate(value, is_free, context):
-	"""Reject non-finite rates and enforce exact zero or strictly positive rates."""
+def check_rate(value, is_free, context, allow_zero=False):
+	"""Reject non-finite rates; free Items need exactly zero, `allow_zero` Items zero or more, others more."""
 	try:
 		rate = float(value)
 	except (TypeError, ValueError, OverflowError):
 		rate = float("nan")
-	if not math.isfinite(rate) or (rate != 0 if is_free else rate <= 0):
-		rule = _("exactly zero for a free Item") if is_free else _("greater than zero")
+	if is_free:
+		invalid, rule = rate != 0, _("exactly zero for a free Item")
+	elif allow_zero:
+		invalid, rule = rate < 0, _("zero or greater")
+	else:
+		invalid, rule = rate <= 0, _("greater than zero")
+	if not math.isfinite(rate) or invalid:
 		frappe.throw(_("{0}: selling rate must be {1}.").format(context, rule))
 
 
@@ -88,6 +111,15 @@ def get_free_items(item_codes):
 	return {code for code, policy in get_item_policies(item_codes).items() if policy.is_free}
 
 
+def get_zero_rate_items(item_codes):
+	"""Item codes other apps allow at zero rate, through the `yrp_zero_rate_items` hook."""
+	codes = sorted({code for code in item_codes if code})
+	allowed = set()
+	for handler in frappe.get_hooks("yrp_zero_rate_items") if codes else ():
+		allowed.update(frappe.get_attr(handler)(codes))
+	return allowed
+
+
 def _managed_items(item_codes):
 	lock_pricing_policy()
 	return {
@@ -119,11 +151,12 @@ def validate_sales_document(doc, method=None):
 	if doc.doctype not in SALES_DOCTYPES:
 		return
 	managed = _managed_items(row.item_code for row in doc.get("items", []))
+	zero_rate = get_zero_rate_items(row.item_code for row in doc.get("items", []))
 	for row in doc.get("items", []):
 		if row.item_code not in managed:
 			continue
 		for field in EFFECTIVE_RATES:
-			check_rate(row.get(field), managed[row.item_code], f"{row.item_code} ({field})")
+			check_rate(row.get(field), managed[row.item_code], f"{row.item_code} ({field})", row.item_code in zero_rate)
 
 
 class RetailSalesPricingMixin:
