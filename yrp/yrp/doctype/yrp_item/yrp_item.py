@@ -189,7 +189,6 @@ class YRPItemMixin:
 		if (
 			before_attributes != current_attributes
 			or before.get("has_variants") != self.get("has_variants")
-			or before.get("primary_attribute") != self.get("primary_attribute")
 		):
 			frappe.throw(
 				_("Item attributes cannot be changed after variants exist for Item {0}.").format(self.name)
@@ -339,7 +338,7 @@ class YRPItemMixin:
 		else:
 			frappe.throw(_("Dependent Attribute must be in the standard Variant Attributes table."))
 
-		if not dependent_values:
+		if not dependent_values and not self.dependent_attribute_mapping:
 			frappe.throw(
 				_("Please configure values for Dependent Attribute {0}.").format(self.dependent_attribute)
 			)
@@ -521,16 +520,12 @@ def update_dependent_attribute_details(dependent_attribute_mapping, detail):
 	return mapping
 
 
-def _mapping_values(attribute_row, *, for_update=False, allow_unrestricted_numeric=False):
+def _mapping_values(attribute_row):
 	if attribute_row.get("mapping"):
-		mapping = get_mapping_document(attribute_row.mapping, cached=not for_update, for_update=for_update)
+		mapping = get_mapping_document(attribute_row.mapping, cached=True)
 		values = [_attribute_value(row.attribute_value) for row in mapping.get("values") or []]
 		if values:
 			return values
-	if allow_unrestricted_numeric and frappe.db.get_value(
-		"Item Attribute", attribute_row.attribute, "numeric_values"
-	):
-		return None
 	return get_global_attribute_values(attribute_row.attribute)
 
 
@@ -759,13 +754,6 @@ def _create_variant(template_doc, args, dependent_attr=None):
 		value = args.get(attribute)
 		if not value:
 			frappe.throw(_("Please mention {0} attribute in {1}.").format(attribute, template))
-		allowed = _mapping_values(
-			template_attribute,
-			for_update=True,
-			allow_unrestricted_numeric=True,
-		)
-		if allowed is not None and value not in allowed:
-			frappe.throw(_("{0} is not allowed for {1} on Item {2}.").format(value, attribute, template))
 		validate_attribute_value(attribute, value)
 		rows.append({"attribute": attribute, "attribute_value": cstr(value), "display_name": cstr(value)})
 

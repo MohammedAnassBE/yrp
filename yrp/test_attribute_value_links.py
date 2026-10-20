@@ -78,6 +78,24 @@ class AttributeValueLinksTest(unittest.TestCase):
 		with self.assertRaises(frappe.ValidationError):
 			self.mapping(other_link)
 
+	def test_plain_value_named_like_another_attributes_legacy_master_resolves_to_own_value(self):
+		from yrp.attribute_links import link
+
+		other = frappe.get_doc(
+			{
+				"doctype": "Item Attribute",
+				"attribute_name": self.attribute + "-Legacy",
+				"item_attribute_values": [{"attribute_value": self.value, "abbr": "XL"}],
+			}
+		).insert()
+		legacy = attribute_value_name(other.name, self.value)
+		frappe.db.sql(f"update `tab{MASTER}` set name=%s where name=%s", (self.value, legacy))
+		frappe.local.attribute_link_names = {}
+		self.assertEqual(link(self.value, self.attribute), self.link)
+		self.assertEqual(self.mapping(self.value).values[0].attribute_value, self.link)
+		with self.assertRaises(frappe.ValidationError):
+			link(self.value, self.attribute + "-Unrelated")
+
 	def test_direct_master_creation_populates_native_values(self):
 		doc = frappe.get_doc(
 			{"doctype": MASTER, "attribute_name": self.attribute, "attribute_value": "XXL"}

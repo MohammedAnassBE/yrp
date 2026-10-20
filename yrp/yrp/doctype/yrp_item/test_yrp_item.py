@@ -7,6 +7,7 @@ import frappe
 from erpnext.controllers.item_variant import create_variant as create_native_variant
 from erpnext.controllers.item_variant import get_variant as get_native_variant
 
+from yrp.attribute_values import get_mapping_values
 from yrp.concurrency_test_support import commit_connection
 from yrp.stock.test_uom import _attribute, _ensure_uom, _india_compliance_item_fields, _item_group
 from yrp.yrp.doctype.yrp_item.yrp_item import (
@@ -14,6 +15,7 @@ from yrp.yrp.doctype.yrp_item.yrp_item import (
 	ensure_global_attribute_values,
 	get_or_create_variant,
 	get_parent_item,
+	get_variant,
 )
 
 NON_ITEM_MANAGER = "_test_variant_planner@example.com"
@@ -176,13 +178,13 @@ class TestGetOrCreateVariant(TestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
 			template.save(ignore_permissions=True)
 
-	def test_native_item_save_blocks_primary_attribute_change_once_variants_exist(self):
+	def test_native_item_save_allows_primary_attribute_change_without_stock(self):
 		get_or_create_variant(self.template, {self.attribute: self.values[0]})
 		template = frappe.get_doc("Item", self.template)
 		template.primary_attribute = self.attribute
 
-		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
-			template.save(ignore_permissions=True)
+		template.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Item", self.template, "primary_attribute"), self.attribute)
 
 	def test_native_item_save_blocks_mapping_swap_once_variants_exist(self):
 		get_or_create_variant(self.template, {self.attribute: self.values[0]})
@@ -199,8 +201,65 @@ class TestGetOrCreateVariant(TestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
 			template.save(ignore_permissions=True)
 
-	def test_native_mapping_save_blocks_value_changes_once_variants_exist(self):
+	def test_native_item_save_blocks_attribute_removal_once_variants_exist(self):
 		get_or_create_variant(self.template, {self.attribute: self.values[0]})
+		template = frappe.get_doc("Item", self.template)
+		template.set("attributes", [])
+		with self.assertRaises(frappe.ValidationError):
+			template.save(ignore_permissions=True)
+
+	def _add_variant_stock_state(self, variant):
+		from yrp.yrp_stock.test_engine_verification import _wh
+
+		frappe.get_doc({
+			"doctype": "YRP Bin",
+			"item_code": variant,
+			"warehouse": _wh("AttributeLock_" + frappe.generate_hash(length=8)),
+			"actual_qty": 1,
+		}).insert(ignore_permissions=True, ignore_mandatory=True)
+
+	def test_native_item_save_blocks_primary_attribute_change_with_variant_stock(self):
+		variant = get_or_create_variant(self.template, {self.attribute: self.values[0]})
+		self._add_variant_stock_state(variant)
+		template = frappe.get_doc("Item", self.template)
+		template.primary_attribute = self.attribute
+		with self.assertRaisesRegex(frappe.ValidationError, "YRP stock"):
+			template.save(ignore_permissions=True)
+
+	def _dependent_template_with_variant(self):
+		suffix = frappe.generate_hash(length=8)
+		size = f"_Test Dependent Mutable Size {suffix}"
+		stage = f"_Test Dependent Mutable Stage {suffix}"
+		template = _item(
+			f"_Test Dependent Mutable Template {suffix}",
+			has_variants=1,
+			primary_attribute=size,
+			attributes=[
+				{"attribute": size, "mapping": _attribute(size, "Small")},
+				{"attribute": stage, "mapping": _attribute(stage, "Cut")},
+			],
+		)
+		variant = get_or_create_variant(template, {size: "Small", stage: "Cut"})
+		return frappe.get_doc("Item", template), variant, stage
+
+	def test_dependent_attribute_can_change_after_variants_without_stock(self):
+		template, variant, stage = self._dependent_template_with_variant()
+		template.dependent_attribute = stage
+		template.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Item", template.name, "dependent_attribute"), stage)
+		self.assertTrue(template.dependent_attribute_mapping)
+		self.assertEqual(frappe.db.get_value("Item", variant, "variant_of"), template.name)
+
+	def test_dependent_attribute_change_is_blocked_with_variant_stock(self):
+		template, variant, stage = self._dependent_template_with_variant()
+		self._add_variant_stock_state(variant)
+		template.dependent_attribute = stage
+		with self.assertRaisesRegex(frappe.ValidationError, "YRP stock"):
+			template.save(ignore_permissions=True)
+
+	def test_native_mapping_save_allows_values_after_variants_exist(self):
+		existing = get_or_create_variant(self.template, {self.attribute: self.values[0]})
+		before = frappe.get_doc("Item", existing).as_dict()
 		template = frappe.get_doc("Item", self.template)
 		mapping = frappe.get_doc(
 			"YRP Item Item Attribute Mapping", template.attributes[0].mapping
@@ -209,8 +268,57 @@ class TestGetOrCreateVariant(TestCase):
 		ensure_global_attribute_values(self.attribute, [new_value], check_permission=False)
 		mapping.append("values", {"attribute_value": new_value})
 
-		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
-			mapping.save(ignore_permissions=True)
+		mapping.save(ignore_permissions=True)
+		self.assertEqual(get_mapping_values(mapping.name), [*self.values, new_value])
+		self.assertEqual(frappe.get_doc("Item", existing).as_dict(), before)
+		variant = get_or_create_variant(self.template, {self.attribute: new_value})
+		self.assertEqual(frappe.db.get_value("Item", variant, "variant_of"), self.template)
+
+	def test_mapping_values_remain_editable_with_variant_stock(self):
+		variant = get_or_create_variant(self.template, {self.attribute: self.values[0]})
+		self._add_variant_stock_state(variant)
+		template = frappe.get_doc("Item", self.template)
+		mapping = frappe.get_doc("YRP Item Item Attribute Mapping", template.attributes[0].mapping)
+		mapping.set("values", [mapping.values[1]])
+		mapping.save(ignore_permissions=True)
+		self.assertEqual(get_mapping_values(mapping.name), [self.values[1]])
+		self.assertEqual(get_or_create_variant(self.template, {self.attribute: self.values[0]}), variant)
+
+	def test_variant_accepts_globally_valid_value_omitted_from_item_mapping(self):
+		new_value = f"Green {frappe.generate_hash(length=6)}"
+		ensure_global_attribute_values(self.attribute, [new_value], check_permission=False)
+		variant = get_or_create_variant(self.template, {self.attribute: new_value})
+		doc = frappe.get_doc("Item", variant)
+		self.assertEqual(doc.variant_of, self.template)
+		self.assertEqual(doc.attributes[0].attribute_value, new_value)
+
+	def test_removed_mapping_value_keeps_existing_variant_accessible(self):
+		variant = get_or_create_variant(self.template, {self.attribute: self.values[0]})
+		before = frappe.get_doc("Item", variant).as_dict()
+		template = frappe.get_doc("Item", self.template)
+		mapping = frappe.get_doc("YRP Item Item Attribute Mapping", template.attributes[0].mapping)
+		mapping.set("values", [mapping.values[1]])
+		mapping.save(ignore_permissions=True)
+		self.assertEqual(get_mapping_values(mapping.name), [self.values[1]])
+		self.assertEqual(frappe.get_doc("Item", variant).as_dict(), before)
+		self.assertEqual(get_or_create_variant(self.template, {self.attribute: self.values[0]}), variant)
+		self.assertEqual(get_variant(self.template, {self.attribute: self.values[0]}), variant)
+
+	def test_unused_mapping_value_can_be_removed_after_variants_exist(self):
+		get_or_create_variant(self.template, {self.attribute: self.values[0]})
+		template = frappe.get_doc("Item", self.template)
+		mapping = frappe.get_doc("YRP Item Item Attribute Mapping", template.attributes[0].mapping)
+		mapping.set("values", [mapping.values[0]])
+		mapping.save(ignore_permissions=True)
+		self.assertEqual(get_mapping_values(mapping.name), [self.values[0]])
+
+	def test_variant_rejects_globally_invalid_value(self):
+		with self.assertRaises(frappe.ValidationError):
+			get_or_create_variant(self.template, {self.attribute: "Not globally configured"})
+
+	def test_variant_requires_missing_attribute_value(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "Please mention"):
+			get_or_create_variant(self.template, {"_Test Unrelated Attribute": "Any"})
 
 	def test_clearing_the_dependent_attribute_deletes_its_mapping(self):
 		suffix = frappe.generate_hash(length=8)
@@ -665,8 +773,11 @@ class TestConcurrentItemVariants(TestCase):
 					thread.join(timeout=20)
 			self.assertTrue(all(not thread.is_alive() for thread in threads.values()), results)
 			self.assertEqual(results.get("mapping", (None,))[0], "ok", results)
-			self.assertEqual(results.get("variant", (None,))[0], "ValidationError", results)
-			self.assertIn("not allowed", results["variant"][1])
+			self.assertEqual(results.get("variant", (None,))[0], "ok", results)
+			self.assertEqual(
+				self._run_connection(lambda: frappe.db.get_value("Item", results["variant"][1], "variant_of")),
+				fixture["template"],
+			)
 		finally:
 			release_mapping.set()
 			self._cleanup_fixture(fixture)
@@ -736,7 +847,7 @@ class TestConcurrentItemVariants(TestCase):
 			release_variant.set()
 			self._cleanup_fixture(fixture)
 
-	def test_item_editor_first_interleaving_finishes_before_variant_rechecks_mapping(self):
+	def test_item_editor_first_interleaving_allows_globally_valid_removed_value(self):
 		from essdee_yrp.purchase.item_editor import update_item
 
 		fixture = self._make_fixture()
@@ -810,8 +921,11 @@ class TestConcurrentItemVariants(TestCase):
 					thread.join(timeout=20)
 			self.assertTrue(all(not thread.is_alive() for thread in threads.values()), results)
 			self.assertEqual(results.get("editor", (None,))[0], "ok", results)
-			self.assertEqual(results.get("variant", (None,))[0], "ValidationError", results)
-			self.assertIn("not allowed", results["variant"][1])
+			self.assertEqual(results.get("variant", (None,))[0], "ok", results)
+			self.assertEqual(
+				self._run_connection(lambda: frappe.db.get_value("Item", results["variant"][1], "variant_of")),
+				fixture["template"],
+			)
 		finally:
 			self._cleanup_fixture(fixture)
 

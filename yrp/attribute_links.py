@@ -173,10 +173,10 @@ def _link(raw, attribute=None):
 		return raw
 	raw = frappe.utils.cstr(raw)
 	row = frappe.db.get_value(MASTER, raw, ["name", "attribute_name"], as_dict=True)
-	if row:
-		if attribute and row.attribute_name != attribute:
-			frappe.throw(_("Attribute Value {0} must belong to {1}.").format(raw, attribute))
+	if row and (not attribute or row.attribute_name == attribute):
 		return row.name
+	if row and raw.startswith("IAV-"):
+		frappe.throw(_("Attribute Value {0} must belong to {1}.").format(raw, attribute))
 	if not attribute:
 		# Historical source names are preserved native child IDs; prefer that
 		# explicit identity over ambiguous text matching across attributes.

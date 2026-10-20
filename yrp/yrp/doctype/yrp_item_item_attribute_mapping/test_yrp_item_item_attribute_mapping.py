@@ -119,29 +119,36 @@ class TestYRPItemItemAttributeMapping(TestCase):
 		owner = frappe.get_doc("Item", template)
 		return frappe.get_doc(mapping.doctype, owner.attributes[0].mapping)
 
-	def test_appending_is_refused_after_variants_exist(self):
+	def test_appending_is_allowed_after_variants_exist(self):
 		mapping = self.variant_mapping(["Blue"])
 		mapping.append("values", {"attribute_value": "Green"})
-		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
-			mapping.save()
-		self.assertEqual(get_mapping_values(mapping.name), ["Blue"])
+		mapping.save()
+		self.assertEqual(get_mapping_values(mapping.name), ["Blue", "Green"])
 
-	def test_removing_replacing_and_reordering_are_refused_after_variants_exist(self):
+	def test_removing_and_reordering_are_allowed_after_variants_exist(self):
 		mapping = self.variant_mapping(["Blue", "Green"])
-		for values in (["Green"], [], ["Green", "Green"], ["Green", "Blue"]):
+		for values in (["Green", "Blue"], ["Green"], []):
 			with self.subTest(values=values):
 				mapping.reload()
 				mapping.set("values", [{"attribute_value": value} for value in values])
-				with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
+				mapping.save()
+				self.assertEqual(get_mapping_values(mapping.name), values)
+
+	def test_duplicate_and_invalid_values_are_rejected_after_variants_exist(self):
+		mapping = self.variant_mapping(["Blue", "Green"])
+		for values in (["Green", "Green"], ["Not configured"]):
+			with self.subTest(values=values):
+				mapping.reload()
+				mapping.set("values", [{"attribute_value": value} for value in values])
+				with self.assertRaises(frappe.ValidationError):
 					mapping.save()
 		self.assertEqual(get_mapping_values(mapping.name), ["Blue", "Green"])
 
-	def test_empty_mapping_cannot_be_restricted_after_variants_exist(self):
+	def test_empty_mapping_can_be_restricted_after_variants_exist(self):
 		mapping = self.variant_mapping([])
 		mapping.append("values", {"attribute_value": "Green"})
-		with self.assertRaisesRegex(frappe.ValidationError, "variants exist"):
-			mapping.save()
-		self.assertEqual(get_mapping_values(mapping.name), [])
+		mapping.save()
+		self.assertEqual(get_mapping_values(mapping.name), ["Green"])
 
 	def test_unchanged_plain_values_normalize_to_existing_links(self):
 		mapping = self.variant_mapping(["Blue"])

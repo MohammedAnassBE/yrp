@@ -29,7 +29,6 @@ class YRPItemItemAttributeMapping(Document):
 			validate_mapping_unlocked,
 		)
 
-		self._validate_variant_owner_values_unchanged()
 		validate_mapping_unlocked(self)
 		if not self.attribute_name:
 			frappe.throw(_("Select an Item Attribute before adding values."))
@@ -51,38 +50,6 @@ class YRPItemItemAttributeMapping(Document):
 			if key in seen:
 				frappe.throw(_("Row {0}: Attribute Value {1} is repeated.").format(row.idx, value))
 			seen.add(key)
-
-	def _validate_variant_owner_values_unchanged(self):
-		if (
-			self.is_new()
-			or self.flags.get("last_updated_by_sd_yrp_sync")
-			or frappe.flags.get("in_migrate")
-			or frappe.flags.get("in_patch")
-		):
-			return
-		before = self.get_doc_before_save()
-		if not before:
-			return
-		before_values = [row.attribute_value for row in before.get("values") or []]
-		current_values = [row.attribute_value for row in self.get("values") or []]
-		if before_values == current_values:
-			return
-		owners = self.flags.get("yrp_locked_variant_owner_items")
-		if owners is None:
-			from yrp.yrp_retail.pricing import lock_pricing_policy
-
-			owner_names = self._variant_owner_item_names()
-			lock_pricing_policy()
-			owners = self._lock_variant_owner_items(owner_names)
-		from yrp.yrp.doctype.yrp_item.yrp_item import template_has_variants
-
-		for owner in owners:
-			if owner.has_variants and template_has_variants(owner.name):
-				frappe.throw(
-					_("Attribute mapping values cannot be changed after variants exist for Item {0}.").format(
-						owner.name
-					)
-				)
 
 	def _variant_owner_item_names(self):
 		if (

@@ -51,7 +51,7 @@ def normalize_mapping(doc):
 		if not value:
 			continue
 		linked = frappe.db.get_value(MASTER, value, ["attribute_name", "attribute_value"], as_dict=True)
-		if linked:
+		if linked and (linked.attribute_name == doc.attribute_name or value.startswith("IAV-")):
 			if linked.attribute_name != doc.attribute_name:
 				frappe.throw(
 					_("Attribute Value {0} belongs to {1}, not {2}.").format(
