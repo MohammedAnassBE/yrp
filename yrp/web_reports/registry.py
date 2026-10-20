@@ -206,7 +206,7 @@ def _validate_filter(report_key: str, fieldname: Any, specification: Any) -> Non
 		return
 	if not isinstance(specification, (tuple, list)) or len(specification) != 2:
 		frappe.throw(_("Invalid filter schema for {0}.{1}.").format(report_key, fieldname))
-	if specification[0] != "Link" or not isinstance(specification[1], str):
+	if specification[0] not in {"Link", "MultiSelectList"} or not isinstance(specification[1], str):
 		frappe.throw(_("Invalid Link filter schema for {0}.{1}.").format(report_key, fieldname))
 
 

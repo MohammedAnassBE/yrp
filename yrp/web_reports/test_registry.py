@@ -101,7 +101,9 @@ class TestWebReportRegistry(IntegrationTestCase):
 			from yrp.yrp_stock.web_reports import get_reports
 
 			entry = get_reports()[0]
-			payload = repr((entry.filters, entry.link_sources, resolve_entry_path(entry, "dependency_doctypes")()))
+			payload = repr(
+				(entry.filters, entry.link_sources, resolve_entry_path(entry, "dependency_doctypes")())
+			)
 		self.assertNotIn("SD YRP", payload)
 
 	def test_full_stock_balance_page_payload_is_allowed(self):
@@ -130,6 +132,48 @@ class TestWebReportRegistry(IntegrationTestCase):
 		entry = get_web_reports()["stock-balance"]
 		with self.assertRaisesRegex(frappe.ValidationError, "Unknown report filters"):
 			authorize_filters(entry.filters, {"forged": 1})
+
+	def test_stock_dimensions_are_multiselect_and_validate_every_link(self):
+		entry = get_web_reports()["stock-balance"]
+		self.assertEqual(entry.filters["lot"], ("MultiSelectList", "SD YRP Lot"))
+		self.assertEqual(entry.filters["received_type"], ("MultiSelectList", "YRP Received Type"))
+		with patch("yrp.web_reports.filters.frappe.has_permission", return_value=True) as permission:
+			payload = {"lot": ["A", "B"], "received_type": ["Accepted", "Rejected"]}
+			self.assertEqual(authorize_filters(entry.filters, payload), payload)
+			self.assertEqual(permission.call_count, 4)
+		with patch(
+			"yrp.web_reports.filters.frappe.has_permission", side_effect=lambda dt, ptype, doc: doc == "A"
+		):
+			with self.assertRaises(frappe.PermissionError):
+				authorize_filters(entry.filters, {"lot": ["A", "B"]})
+
+	def test_multiselect_links_reject_invalid_members_and_accept_empty(self):
+		schema = {"quality": ("MultiSelectList", "Quality")}
+		for value in ([], "", None):
+			self.assertEqual(authorize_filters(schema, {"quality": value}), {"quality": value})
+		for value in ([{"name": "A"}], [1], {"name": "A"}, 1):
+			with self.subTest(value=value), self.assertRaises(frappe.ValidationError):
+				authorize_filters(schema, {"quality": value})
+
+	def test_multiselect_empty_members_are_normalized_before_authorization(self):
+		schema = {"lot": ("MultiSelectList", "SD YRP Lot")}
+		for value in (["A", None, ""], '["A", null, ""]'):
+			with (
+				self.subTest(value=value),
+				patch("yrp.web_reports.filters.frappe.has_permission", return_value=True) as permission,
+			):
+				self.assertEqual(authorize_filters(schema, {"lot": value}), {"lot": ["A"]})
+				self.assertEqual(permission.call_count, 1)
+
+	def test_stock_item_filters_accept_lists_and_check_every_item(self):
+		entry = get_web_reports()["stock-balance"]
+		for field in ("item", "parent_item"):
+			self.assertEqual(entry.filters[field], ("MultiSelectList", "Item"))
+			with patch(
+				"yrp.web_reports.filters.frappe.has_permission", side_effect=lambda dt, ptype, doc: doc == "A"
+			):
+				with self.assertRaises(frappe.PermissionError):
+					authorize_filters(entry.filters, {field: ["A", "B"]})
 
 
 def _test_entry(key):

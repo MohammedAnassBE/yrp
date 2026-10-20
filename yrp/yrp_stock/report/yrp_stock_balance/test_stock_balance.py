@@ -1,5 +1,7 @@
 import unittest
 from datetime import date
+from itertools import product
+from unittest.mock import patch
 
 import frappe
 from frappe.desk.query_report import run
@@ -12,6 +14,7 @@ from yrp.yrp_stock.report.yrp_stock_balance.yrp_stock_balance import (
 	get_columns,
 	get_inward_date_breakdown,
 	get_items,
+	parse_list_filter,
 )
 
 
@@ -71,8 +74,277 @@ class TestStockBalanceFilters(IntegrationTestCase):
 		self.assertEqual([(row["warehouse"], row["bal_qty"]) for row in rows], [(own, 7)])
 
 	def test_no_item_filter_reads_every_item_without_an_item_list(self):
-		self.assertEqual(get_items(frappe._dict()), [])
+		self.assertIsNone(get_items(frappe._dict()))
 		self.assertEqual(get_items(frappe._dict(item="A")), ["A"])
+
+	def make_item(self, code, parent=None, template=False, attributes=False):
+		name = f"BAL-{self.fixture_key}-{code}"
+		frappe.get_doc(
+			{
+				"doctype": "Item",
+				"name": name,
+				"item_code": name,
+				"item_name": f"Name {code}",
+				"item_group": frappe.db.get_value("Item Group", {}, "name"),
+				"stock_uom": "Nos",
+				"is_stock_item": 1,
+				"has_variants": int(template),
+				"variant_of": parent,
+			}
+		).db_insert()
+		if attributes:
+			frappe.get_doc(
+				{
+					"doctype": "Item Variant Attribute",
+					"parent": name,
+					"parenttype": "Item",
+					"parentfield": "attributes",
+					"attribute": "Size",
+					"attribute_value": "M",
+				}
+			).db_insert()
+		return name
+
+	def test_item_and_variant_selections_never_broaden_an_empty_match(self):
+		self.fixture_key = frappe.generate_hash(length=8)
+		template = self.make_item("T", template=True, attributes=True)
+		variant_a = self.make_item("V1", parent=template, attributes=True)
+		variant_b = self.make_item("V2", parent=template, attributes=True)
+		standalone = self.make_item("S")
+		empty = self.make_item("EMPTY", template=True, attributes=True)
+		warehouse = self.make_warehouse(f"Balance Items {self.fixture_key}")
+		for item, qty in ((variant_a, 3), (variant_b, 5), (standalone, 7)):
+			self.add_entry(item, warehouse, qty)
+		cases = [
+			({"parent_item": template}, {variant_a, variant_b}),
+			({"parent_item": [template, standalone]}, {variant_a, variant_b, standalone}),
+			({"parent_item": f'["{standalone}"]'}, {standalone}),
+			({"item": [variant_a, variant_b]}, {variant_a, variant_b}),
+			({"parent_item": [template], "item": [variant_b]}, {variant_b}),
+			({"parent_item": standalone, "item": variant_a}, set()),
+			({"parent_item": empty}, set()),
+			({"parent_item": "NO-SUCH-BALANCE-ITEM"}, set()),
+			({"item": "NO-SUCH-BALANCE-ITEM"}, set()),
+		]
+		for extra, expected in cases:
+			with self.subTest(extra=extra):
+				_, rows = execute({"from_date": today(), "to_date": today(), "warehouse": warehouse, **extra})
+				self.assertEqual({row["item"] for row in rows}, expected)
+		_, rows = execute({"from_date": today(), "to_date": today(), "warehouse": warehouse})
+		by_item = {row["item"]: row for row in rows}
+		self.assertEqual(
+			(by_item[variant_a]["parent_item"], by_item[variant_a]["parent_item_name"]), (template, "Name T")
+		)
+		self.assertEqual(
+			(by_item[standalone]["parent_item"], by_item[standalone]["parent_item_name"]),
+			(standalone, "Name S"),
+		)
+
+	def test_item_picker_excludes_variants_and_standalones_with_attributes(self):
+		from yrp.yrp_stock.report.yrp_stock_balance.yrp_stock_balance import get_item_filter_options
+
+		self.fixture_key = frappe.generate_hash(length=8)
+		template = self.make_item("T", template=True, attributes=True)
+		standalone = self.make_item("S")
+		self.make_item("ATTR", attributes=True)
+		variant = self.make_item("V", parent=template, attributes=True)
+		self.assertEqual(
+			{r["value"] for r in get_item_filter_options(self.fixture_key)}, {template, standalone}
+		)
+		self.assertEqual(
+			{r["value"] for r in get_item_filter_options(self.fixture_key, variant=1)}, {variant}
+		)
+
+	def test_warehouse_code_and_supplier_or_location_name_are_separate(self):
+		supplier = frappe.get_doc(
+			{"doctype": "Supplier", "supplier_name": f"Balance Name {frappe.generate_hash(length=8)}"}
+		).insert()
+		own = self.make_warehouse(f"Balance Supplier {frappe.generate_hash(length=8)}", supplier.name)
+		location = f"Balance Location {frappe.generate_hash(length=8)}"
+		other = self.make_warehouse(location)
+		item = _physical_items()[0]
+		for warehouse in (own, other):
+			self.add_entry(item, warehouse, 7)
+			columns, rows = execute({"from_date": today(), "to_date": today(), "warehouse": warehouse})
+			self.assertEqual(len(rows), 1)
+			self.assertEqual(rows[0]["warehouse"], warehouse)
+			self.assertEqual(
+				rows[0]["warehouse_name"], supplier.supplier_name if warehouse == own else location
+			)
+			self.assertTrue(
+				{"parent_item", "parent_item_name", "item", "warehouse", "warehouse_name"}
+				<= {c["fieldname"] for c in columns}
+			)
+
+	def test_remove_zero_balance_preserves_current_behavior(self):
+		warehouse = self.make_warehouse(f"Balance Zero {frappe.generate_hash(length=8)}")
+		item = _physical_items()[0]
+		self.add_entry(item, warehouse, 7)
+		self.add_entry(item, warehouse, -7)
+		base = {"from_date": today(), "to_date": today(), "warehouse": warehouse}
+		self.assertEqual(execute({**base, "remove_zero_balance_item": 1})[1], [])
+		self.assertEqual(execute({**base, "remove_zero_balance_item": 0})[1][0]["bal_qty"], 0)
+		# Movements before the period leave only zero qty/value, even with a valuation rate.
+		frappe.db.sql(
+			"update `tabYRP Stock Ledger Entry` set posting_date = %s, valuation_rate = 10 where warehouse = %s",
+			(frappe.utils.add_days(today(), -1), warehouse),
+		)
+		self.assertEqual(execute({**base, "remove_zero_balance_item": 1})[1], [])
+
+	def test_dimension_metadata_is_config_driven_including_no_dimensions(self):
+		from yrp.yrp_stock.report.yrp_stock_balance import yrp_stock_balance as report
+
+		for dimensions in (
+			[],
+			[{"fieldname": "quality", "label": "Quality", "dimension_doctype": "Quality"}],
+		):
+			with (
+				self.subTest(dimensions=dimensions),
+				patch.object(report, "get_stock_dimensions", return_value=dimensions),
+			):
+				self.assertEqual(report.get_filter_dimensions(), dimensions)
+
+	def test_dimension_filter_values_match_mrp_list_semantics(self):
+		for value, expected in (
+			(None, []),
+			("", []),
+			([], []),
+			("[]", []),
+			("A", ["A"]),
+			(["A", "B", "", None], ["A", "B"]),
+			(' ["A", "B"]', ["A", "B"]),
+			("[A", ["[A"]),
+		):
+			with self.subTest(value=value):
+				self.assertEqual(parse_list_filter(value), expected)
+
+	def test_dimension_lists_restrict_ledger_balance_and_fifo_rows(self):
+		warehouse = self.make_warehouse(f"Balance Dimensions {frappe.generate_hash(length=8)}")
+		item = _physical_items()[0]
+		# Insert controlled ledger fixtures without depending on dimension master data.
+		for index, (lot, received_type) in enumerate(
+			product(("BAL-LOT-A", "BAL-LOT-B", "BAL-LOT-C"), ("Accepted", "Rejected")), 1
+		):
+			doc = frappe.get_doc(
+				{
+					"doctype": "YRP Stock Ledger Entry",
+					"item": item,
+					"warehouse": warehouse,
+					"posting_date": today(),
+					"posting_time": "01:00:00",
+					"creation": frappe.utils.now(),
+					"qty": index,
+					"qty_after_transaction": index,
+					"stock_value_difference": index * 10,
+					"stock_value": index * 10,
+					"valuation_rate": 10,
+					"voucher_type": "YRP Stock Entry",
+					"voucher_no": frappe.generate_hash(length=10),
+					"is_cancelled": 0,
+					"docstatus": 1,
+					"lot": lot,
+					"received_type": received_type,
+				}
+			)
+			doc.db_insert()
+		# A fully consumed group must survive when remove_zero is off.
+		consumed = doc.as_dict()
+		consumed.update(
+			name=frappe.generate_hash(length=10),
+			posting_time="02:00:00",
+			qty=-6,
+			qty_after_transaction=0,
+			stock_value_difference=-60,
+			stock_value=0,
+		)
+		frappe.get_doc(consumed).db_insert()
+		quantities = {
+			key: index
+			for index, key in enumerate(
+				product(("BAL-LOT-A", "BAL-LOT-B", "BAL-LOT-C"), ("Accepted", "Rejected")), 1
+			)
+		}
+		quantities[("BAL-LOT-C", "Rejected")] = 0
+		cases = [
+			(
+				{},
+				{
+					("BAL-LOT-A", "Accepted"),
+					("BAL-LOT-A", "Rejected"),
+					("BAL-LOT-B", "Accepted"),
+					("BAL-LOT-B", "Rejected"),
+					("BAL-LOT-C", "Accepted"),
+					("BAL-LOT-C", "Rejected"),
+				},
+			),
+			({"lot": ["BAL-LOT-A"]}, {("BAL-LOT-A", "Accepted"), ("BAL-LOT-A", "Rejected")}),
+			(
+				{"received_type": ["Accepted"]},
+				{("BAL-LOT-A", "Accepted"), ("BAL-LOT-B", "Accepted"), ("BAL-LOT-C", "Accepted")},
+			),
+			(
+				{"lot": ["BAL-LOT-A", "BAL-LOT-B"], "received_type": ["Accepted", "Rejected"]},
+				{
+					("BAL-LOT-A", "Accepted"),
+					("BAL-LOT-A", "Rejected"),
+					("BAL-LOT-B", "Accepted"),
+					("BAL-LOT-B", "Rejected"),
+				},
+			),
+			(
+				{"lot": '["BAL-LOT-B", "BAL-LOT-C"]', "received_type": "Accepted"},
+				{("BAL-LOT-B", "Accepted"), ("BAL-LOT-C", "Accepted")},
+			),
+			(
+				{"lot": "[]", "received_type": []},
+				{
+					("BAL-LOT-A", "Accepted"),
+					("BAL-LOT-A", "Rejected"),
+					("BAL-LOT-B", "Accepted"),
+					("BAL-LOT-B", "Rejected"),
+					("BAL-LOT-C", "Accepted"),
+					("BAL-LOT-C", "Rejected"),
+				},
+			),
+			({"lot": ["NO-MATCH"]}, set()),
+		]
+		for extra, expected in cases:
+			for ageing, split, remove_zero in product((0, 1), repeat=3):
+				with self.subTest(extra=extra, ageing=ageing, split=split, remove_zero=remove_zero):
+					_columns, rows = execute(
+						{
+							"from_date": today(),
+							"to_date": today(),
+							"warehouse": warehouse,
+							"item": item,
+							"show_stock_ageing_data": ageing,
+							"show_inward_date_split": split,
+							"remove_zero_balance_item": remove_zero,
+							**extra,
+						}
+					)
+					visible = {key for key in expected if not remove_zero or quantities[key]}
+					self.assertEqual({(row["lot"], row["received_type"]) for row in rows}, visible)
+					for row in rows:
+						self.assertEqual(row["bal_qty"], quantities[(row["lot"], row["received_type"])])
+						if split:
+							self.assertEqual(
+								sum(slot["qty"] for slot in row["inward_date_breakdown"]), row["bal_qty"]
+							)
+						if ageing:
+							self.assertEqual(row["average_age"], 0)
+		from yrp.yrp_stock.report.yrp_stock_balance import yrp_stock_balance as report
+
+		with (
+			patch.object(report, "get_dimension_fieldnames", return_value=[]),
+			patch.object(report, "get_stock_dimensions", return_value=[]),
+		):
+			columns, rows = execute(
+				{"from_date": today(), "to_date": today(), "warehouse": warehouse, "lot": "NO-MATCH"}
+			)
+			self.assertEqual(len(rows), 1)
+			self.assertEqual(rows[0]["bal_qty"], 15)
+			self.assertFalse({"lot", "received_type"} & {column["fieldname"] for column in columns})
 
 
 class TestStockBalanceItemPermissions(IntegrationTestCase):
@@ -84,29 +356,39 @@ class TestStockBalanceItemPermissions(IntegrationTestCase):
 		company = frappe.db.get_value("Company", {}, "name")
 		if not company:
 			self.skipTest("needs one Company")
-		self.warehouse = frappe.get_doc(
-			{
-				"doctype": "Warehouse",
-				"warehouse_name": f"Stock Balance Permission {frappe.generate_hash(length=8)}",
-				"company": company,
-			}
-		).insert(ignore_permissions=True).name
+		self.warehouse = (
+			frappe.get_doc(
+				{
+					"doctype": "Warehouse",
+					"warehouse_name": f"Stock Balance Permission {frappe.generate_hash(length=8)}",
+					"company": company,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 		self.dimensions = _dimension_values()
 		self.user = _make_stock_user()
 		self.ledger_entries = [_insert_ledger(item, self.warehouse, self.dimensions) for item in self.items]
-		self.user_permission = frappe.get_doc(
-			{
-				"doctype": "User Permission",
-				"user": self.user,
-				"allow": "Item",
-				"for_value": self.items[0],
-				"apply_to_all_doctypes": 1,
-			}
-		).insert(ignore_permissions=True).name
+		self.user_permission = (
+			frappe.get_doc(
+				{
+					"doctype": "User Permission",
+					"user": self.user,
+					"allow": "Item",
+					"for_value": self.items[0],
+					"apply_to_all_doctypes": 1,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
-		if getattr(self, "user_permission", None) and frappe.db.exists("User Permission", self.user_permission):
+		if getattr(self, "user_permission", None) and frappe.db.exists(
+			"User Permission", self.user_permission
+		):
 			frappe.delete_doc("User Permission", self.user_permission, ignore_permissions=True, force=True)
 		for name in getattr(self, "ledger_entries", []):
 			if frappe.db.exists("YRP Stock Ledger Entry", name):
@@ -117,7 +399,9 @@ class TestStockBalanceItemPermissions(IntegrationTestCase):
 			frappe.delete_doc("User", self.user, ignore_permissions=True, force=True)
 
 	def test_item_name_is_data_and_report_filters_by_item_permission(self):
-		item_name = next(column for column in get_columns({}, get_stock_dimensions()) if column["fieldname"] == "item_name")
+		item_name = next(
+			column for column in get_columns({}, get_stock_dimensions()) if column["fieldname"] == "item_name"
+		)
 		self.assertEqual(item_name["fieldtype"], "Data")
 
 		frappe.set_user(self.user)

@@ -729,10 +729,15 @@ class TestReportJobs(IntegrationTestCase):
 		original_cache_set = frappe.cache.set
 		responses = iter((True, False))
 
-		def cache_once(key, *args, **kwargs):
+		def cache_once(*args, **kwargs):
+			key = args[0] if args else kwargs.get("name")
 			if key == cache_key:
 				return next(responses)
-			return original_cache_set(key, *args, **kwargs)
+			return original_cache_set(*args, **kwargs)
+
+		def cache_succeed(*args, **kwargs):
+			key = args[0] if args else kwargs.get("name")
+			return True if key == cache_key else original_cache_set(*args, **kwargs)
 
 		with (
 			patch("yrp.web_reports.jobs.frappe.cache.set", side_effect=cache_once),
@@ -749,12 +754,7 @@ class TestReportJobs(IntegrationTestCase):
 		)
 
 		with (
-			patch(
-				"yrp.web_reports.jobs.frappe.cache.set",
-				side_effect=lambda key, *args, **kwargs: (
-					True if key == cache_key else original_cache_set(key, *args, **kwargs)
-				),
-			),
+			patch("yrp.web_reports.jobs.frappe.cache.set", side_effect=cache_succeed),
 			patch("yrp.web_reports.jobs.frappe.enqueue", side_effect=RuntimeError("queue unavailable")),
 			patch("yrp.web_reports.jobs.frappe.log_error") as log_error,
 		):
@@ -763,12 +763,7 @@ class TestReportJobs(IntegrationTestCase):
 
 		frappe.set_user(self.users[0])
 		with (
-			patch(
-				"yrp.web_reports.jobs.frappe.cache.set",
-				side_effect=lambda key, *args, **kwargs: (
-					True if key == cache_key else original_cache_set(key, *args, **kwargs)
-				),
-			),
+			patch("yrp.web_reports.jobs.frappe.cache.set", side_effect=cache_succeed),
 			patch("yrp.web_reports.jobs.frappe.enqueue", side_effect=RuntimeError("queue unavailable")),
 			patch("yrp.web_reports.jobs.frappe.log_error"),
 		):

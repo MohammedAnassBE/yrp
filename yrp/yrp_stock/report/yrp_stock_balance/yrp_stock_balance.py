@@ -4,6 +4,7 @@ Shows opening qty/value, in/out movement, and closing balance grouped by
 (item, warehouse, *stock_dimensions) for a given date range.
 """
 
+import json
 from typing import Any, Dict, List
 
 import frappe
@@ -18,6 +19,57 @@ from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 SLEntry = dict[str, Any]
 
 
+@frappe.whitelist()
+def get_filter_dimensions():
+	"""Dimension metadata shared by Desk and the web Stock Balance filters."""
+	return [
+		{key: dimension[key] for key in ("fieldname", "label", "dimension_doctype")}
+		for dimension in get_stock_dimensions()
+	]
+
+
+def parse_list_filter(value):
+	"""Accept MultiSelectList arrays, JSON arrays and scalar document names like MRP."""
+	if not value:
+		return []
+	if isinstance(value, str):
+		if value.lstrip().startswith("["):
+			try:
+				value = json.loads(value)
+			except ValueError:
+				value = [value]
+		else:
+			value = [value]
+	if not isinstance(value, list):
+		value = [value]
+	return [entry for entry in value if entry]
+
+
+@frappe.whitelist()
+def get_item_filter_options(txt="", variant=0):
+	"""Permission-aware options shared by the Desk and web multi-selects."""
+	search = [["name", "like", f"%{txt}%"], ["item_name", "like", f"%{txt}%"]]
+	base = {
+		"or_filters": search,
+		"fields": ["name as value", "item_name as description"],
+		"order_by": "name",
+		"limit": 20,
+	}
+	if cint(variant):
+		return frappe.get_list("Item", filters={"variant_of": ["is", "set"]}, **base)
+	templates = frappe.get_list("Item", filters={"variant_of": ["is", "not set"], "has_variants": 1}, **base)
+	standalones = frappe.get_list(
+		"Item",
+		filters=[
+			["Item", "variant_of", "is", "not set"],
+			["Item", "has_variants", "=", 0],
+			["Item Variant Attribute", "name", "is", "not set"],
+		],
+		**base,
+	)
+	return sorted(templates + standalones, key=lambda row: row["value"])[:20]
+
+
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
 	dim_fields = get_dimension_fieldnames()
@@ -25,6 +77,9 @@ def execute(filters=None):
 
 	columns = get_columns(filters, dims)
 	items = get_items(filters)
+	if items == []:
+		# An explicit selection that resolves to nothing must never mean all items.
+		return columns, []
 	sle = get_stock_ledger_entries(filters, items, dim_fields)
 
 	if not sle:
@@ -37,6 +92,7 @@ def execute(filters=None):
 
 	iwb_map = get_item_warehouse_map(filters, sle, dim_fields)
 	item_map = get_item_details(items, sle, filters)
+	warehouse_map = get_warehouse_names(sle)
 
 	data = []
 	to_date = filters.get("to_date")
@@ -51,6 +107,7 @@ def execute(filters=None):
 			continue
 
 		row = _unpack_group_key(group_key, dim_fields)
+		row["warehouse_name"] = warehouse_map.get(row["warehouse"], row["warehouse"])
 		row.update(item_map[item])
 		row.update(qty_dict)
 		fifo_queue = item_wise_fifo_queue.get(group_key, {}).get("fifo_queue", [])
@@ -94,9 +151,23 @@ def get_inward_date_breakdown(fifo_queue):
 
 def get_columns(filters, dims):
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": "Item", "width": 150},
 		{
-			"label": _("Item Name"),
+			"label": _("Item"),
+			"fieldname": "parent_item",
+			"fieldtype": "Link",
+			"options": "Item",
+			"width": 150,
+		},
+		{"label": _("Item Name"), "fieldname": "parent_item_name", "fieldtype": "Data", "width": 150},
+		{
+			"label": _("Item Variant"),
+			"fieldname": "item",
+			"fieldtype": "Link",
+			"options": "Item",
+			"width": 150,
+		},
+		{
+			"label": _("Item Variant Name"),
 			"fieldname": "item_name",
 			"fieldtype": "Data",
 			"width": 150,
@@ -107,6 +178,12 @@ def get_columns(filters, dims):
 			"fieldtype": "Link",
 			"options": "Item Group",
 			"width": 100,
+		},
+		{
+			"label": _("Warehouse Name"),
+			"fieldname": "warehouse_name",
+			"fieldtype": "Data",
+			"width": 180,
 		},
 		{
 			"label": _("Warehouse"),
@@ -181,6 +258,8 @@ def get_columns(filters, dims):
 
 
 def get_stock_ledger_entries(filters, items, dim_fields):
+	if items == []:
+		return []
 	sle = frappe.qb.DocType("YRP Stock Ledger Entry")
 
 	select_fields = [
@@ -224,8 +303,8 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 	if items:
 		query = query.where(sle.item.isin(items))
 	for fn in dim_fields:
-		if filters.get(fn):
-			query = query.where(getattr(sle, fn) == filters[fn])
+		if values := parse_list_filter(filters.get(fn)):
+			query = query.where(getattr(sle, fn).isin(values))
 
 	MAX_SLE_ROWS = 500_000
 	results = query.limit(MAX_SLE_ROWS + 1).run(as_dict=True)
@@ -312,12 +391,34 @@ def get_opening_vouchers(to_date):
 
 
 def get_items(filters):
-	if item := filters.get("item"):
-		return [item] if isinstance(item, str) else item
-	if not (parent_item := filters.get("parent_item")):
-		# Every item: the ledger query needs no item list, item details come from its rows.
-		return []
-	return frappe.get_all("Item", filters={"variant_of": parent_item}, pluck="name", order_by=None)
+	variants = parse_list_filter(filters.get("item"))
+	parents = parse_list_filter(filters.get("parent_item"))
+	if not parents:
+		# None is unrestricted; [] is a selected filter with no matches.
+		return variants or None
+	item = frappe.qb.DocType("Item")
+	query = (
+		frappe.qb.from_(item)
+		.select(item.name)
+		.where(item.variant_of.isin(parents) | (item.name.isin(parents) & (item.has_variants == 0)))
+	)
+	if variants:
+		query = query.where(item.name.isin(variants))
+	return [row[0] for row in query.run()]
+
+
+def get_warehouse_names(sle):
+	warehouse = frappe.qb.DocType("Warehouse")
+	supplier = frappe.qb.DocType("Supplier")
+	rows = (
+		frappe.qb.from_(warehouse)
+		.left_join(supplier)
+		.on(warehouse.supplier == supplier.name)
+		.select(warehouse.name, warehouse.warehouse_name, supplier.supplier_name)
+		.where(warehouse.name.isin(list({row.warehouse for row in sle})))
+		.run(as_dict=True)
+	)
+	return {row.name: row.supplier_name or row.warehouse_name or row.name for row in rows}
 
 
 def get_item_details(items, sle, filters):
@@ -328,18 +429,25 @@ def get_item_details(items, sle, filters):
 		return item_details
 
 	item_table = frappe.qb.DocType("Item")
+	parent = item_table.as_("parent_item")
 	result = (
 		frappe.qb.from_(item_table)
+		.left_join(parent)
+		.on(item_table.variant_of == parent.name)
 		.select(
 			item_table.name,
 			item_table.item_name,
 			item_table.item_group,
 			item_table.stock_uom,
+			item_table.variant_of,
+			parent.item_name.as_("parent_item_name"),
 		)
 		.where(item_table.name.isin(items))
 	).run(as_dict=True)
 
 	for row in result:
+		row.parent_item = row.variant_of or row.name
+		row.parent_item_name = row.parent_item_name or row.item_name
 		item_details[row.name] = row
 
 	if filters.get("show_variant_attributes"):

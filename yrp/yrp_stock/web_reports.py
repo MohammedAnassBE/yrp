@@ -4,10 +4,13 @@ from yrp.stock.dimensions import get_stock_dimensions
 from yrp.web_reports.registry import WebReport
 
 STATIC_COLUMNS = {
-	"item": "Item",
-	"item_name": "Item Name",
+	"parent_item": "Item",
+	"parent_item_name": "Item Name",
+	"item": "Item Variant",
+	"item_name": "Item Variant Name",
 	"item_group": "Item Group",
 	"warehouse": "Warehouse",
+	"warehouse_name": "Warehouse Name",
 	"stock_uom": "Stock UOM",
 	"bal_qty": "Balance Qty",
 	"bal_val": "Balance Value",
@@ -30,18 +33,24 @@ def get_reports() -> list[WebReport]:
 	filters = {
 		"from_date": "Date",
 		"to_date": "Date",
-		"item": ("Link", "Item"),
-		"parent_item": ("Link", "Item"),
+		"item": ("MultiSelectList", "Item"),
+		"parent_item": ("MultiSelectList", "Item"),
 		"warehouse": ("Link", "Warehouse"),
+		"supplier": ("Link", "Supplier"),
 		"remove_zero_balance_item": "Check",
 		"show_variant_attributes": "Check",
 		"show_stock_ageing_data": "Check",
 		"show_inward_date_split": "Check",
 	}
-	link_sources = {"item": "Item", "item_group": "Item Group", "warehouse": "Warehouse"}
+	link_sources = {
+		"parent_item": "Item",
+		"item": "Item",
+		"item_group": "Item Group",
+		"warehouse": "Warehouse",
+	}
 	base_columns = dict(STATIC_COLUMNS)
 	for dimension in dimensions:
-		filters[dimension["fieldname"]] = ("Link", dimension["dimension_doctype"])
+		filters[dimension["fieldname"]] = ("MultiSelectList", dimension["dimension_doctype"])
 		link_sources[dimension["fieldname"]] = dimension["dimension_doctype"]
 		base_columns[dimension["fieldname"]] = dimension["label"]
 	for attribute in frappe.get_all("Item Attribute", fields=["name", "attribute_name"]):
@@ -62,6 +71,6 @@ def get_reports() -> list[WebReport]:
 
 
 def stock_balance_dependency_doctypes(filters=None) -> list[str]:
-	doctypes = {"YRP Stock Ledger Entry", "Item", "Item Group", "Warehouse", "UOM"}
+	doctypes = {"YRP Stock Ledger Entry", "Item", "Item Group", "Warehouse", "Supplier", "UOM"}
 	doctypes.update(dimension["dimension_doctype"] for dimension in get_stock_dimensions())
 	return sorted(doctypes)

@@ -17,14 +17,22 @@ frappe.query_reports["YRP Stock Balance"] = {
 		{
 			fieldname: "item",
 			label: __("Item Variant"),
-			fieldtype: "Link",
+			fieldtype: "MultiSelectList",
 			options: "Item",
+			get_data: (txt) => frappe.call({
+				method: "yrp.yrp_stock.report.yrp_stock_balance.yrp_stock_balance.get_item_filter_options",
+				args: { txt, variant: 1 },
+			}).then((r) => r.message),
 		},
 		{
 			fieldname: "parent_item",
 			label: __("Item"),
-			fieldtype: "Link",
+			fieldtype: "MultiSelectList",
 			options: "Item",
+			get_data: (txt) => frappe.call({
+				method: "yrp.yrp_stock.report.yrp_stock_balance.yrp_stock_balance.get_item_filter_options",
+				args: { txt, variant: 0 },
+			}).then((r) => r.message),
 		},
 		{
 			fieldname: "warehouse",
@@ -76,3 +84,21 @@ frappe.query_reports["YRP Stock Balance"] = {
 		return value;
 	},
 };
+
+// QueryReport waits for script-time AJAX before setup_filters and route filters.
+frappe.call({
+	method: "yrp.yrp_stock.report.yrp_stock_balance.yrp_stock_balance.get_filter_dimensions",
+	callback: ({ message: dimensions }) => {
+		const filters = frappe.query_reports["YRP Stock Balance"].filters;
+		const dimension_filters = (dimensions || []).map((dimension) => ({
+			fieldname: dimension.fieldname,
+			label: __(dimension.label),
+			fieldtype: "MultiSelectList",
+			options: dimension.dimension_doctype,
+			get_data(txt) {
+				return frappe.db.get_link_options(dimension.dimension_doctype, txt);
+			},
+		}));
+		filters.splice(filters.findIndex((filter) => filter.fieldname === "supplier") + 1, 0, ...dimension_filters);
+	},
+});
