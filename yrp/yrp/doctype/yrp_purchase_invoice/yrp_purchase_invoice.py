@@ -487,7 +487,11 @@ def approve_invoice(name, comments=None):
 	if doc.against == "YRP Work Order" and role == "merch_manager" and not _override_pi_approve():
 		status = check_all_wo_closed(doc.name)
 		if not status["all_closed"]:
-			frappe.throw(_("Cannot approve before closing all Work Orders."))
+			frappe.throw(
+				_("Cannot approve before closing all Work Orders: {0}.").format(
+					", ".join(status["open_work_orders"] + status["close_request_wos"])
+				)
+			)
 
 	if role == "merch_manager":
 		doc.status = "Approved"
