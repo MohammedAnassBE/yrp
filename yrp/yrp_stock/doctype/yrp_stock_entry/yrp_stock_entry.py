@@ -159,7 +159,19 @@ class YRPStockEntry(Document):
 		self.update_dc_completion(cancel=False)
 		self.update_grn_completion(cancel=False)
 
+	def validate_no_submitted_transit_receipt(self):
+		if self.purpose != "Send to Warehouse":
+			return
+		receipts = frappe.get_all(
+			"YRP Stock Entry",
+			filters={"outgoing_stock_entry": self.name, "purpose": "Receive at Warehouse", "docstatus": 1},
+			pluck="name",
+		)
+		if receipts:
+			frappe.throw(_("Cancel Receive at Warehouse {0} first.").format(", ".join(receipts)))
+
 	def before_cancel(self):
+		self.validate_no_submitted_transit_receipt()
 		if self.against == "YRP Delivery Note" and not self.flags.cancel_from_sales_invoice:
 			frappe.throw(_("Stock Entry {0} was issued by a Sales Invoice; cancel that invoice instead.").format(
 				self.name))

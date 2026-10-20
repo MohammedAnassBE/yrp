@@ -49,8 +49,25 @@ class YRPStockReconciliation(Document):
 			row.stock_uom_rate = (row.rate or 0) / row.conversion_factor if row.conversion_factor else 0
 			row.amount = (row.qty or 0) * (row.rate or 0)
 
+		self.validate_unique_rows()
 		if self.purpose == "Opening Stock":
 			self.validate_no_prior_sle(dim_fields)
+
+	def validate_unique_rows(self):
+		"""A counted balance is one value per item, warehouse and stock dimensions."""
+		from yrp.stock.dimensions import get_dimension_fieldnames
+
+		dim_fields = get_dimension_fieldnames()
+		seen = {}
+		for row in self.items:
+			key = (row.item, row.warehouse, *((row.get(fn) or "") for fn in dim_fields))
+			if key in seen:
+				frappe.throw(
+					_("Row {0}: {1} is already counted in row {2} for the same warehouse and dimensions.").format(
+						row.idx, row.item, seen[key]
+					)
+				)
+			seen[key] = row.idx
 
 	def set_rate_from_last_sle(self):
 		"""Auto-fill rate from last uncancelled SLE if the user didn't enter one.

@@ -151,12 +151,14 @@ class YRPWorkOrder(Document):
 			return []
 		if self.get_receivable_process_cost():
 			return []
-		return [
-			_("No approved Process Cost for process {0} / supplier {1}.").format(
-				self.process_name or _("(not selected)"),
-				self.supplier or _("(any supplier)"),
-			)
-		]
+		scope = _("process {0} / supplier {1} / item {2}").format(
+			self.process_name or _("(not selected)"),
+			self.supplier or _("(any supplier)"),
+			self.item or _("(not selected)"),
+		)
+		if self.get("lot"):
+			scope += _(" / lot {0}").format(self.lot)
+		return [_("No approved Process Cost for {0}.").format(scope)]
 
 	def allow_draft_without_process_cost(self):
 		"""Base policy: drafts may be calculated/saved before costing is ready.

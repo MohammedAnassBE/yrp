@@ -1,3 +1,4 @@
+from unittest import TestCase
 from unittest.mock import patch
 
 import frappe
@@ -78,3 +79,23 @@ class TestWorkOrderReadiness(FrappeTestCase):
 		message = str(raised.exception)
 		self.assertIn("There are no deliverables", message)
 		self.assertIn("There are no receivables", message)
+
+
+class TestProcessCostReadinessMessage(TestCase):
+	def test_missing_process_cost_names_item_and_lot(self):
+		work_order = WorkOrder(
+			{
+				"doctype": "YRP Work Order",
+				"process_name": "Cutting",
+				"supplier": "S-0164",
+				"item": "STYLE-1",
+				"lot": "LOT-1",
+				"receivables": [{"item_variant": "STYLE-1-Front", "qty": 10}],
+			}
+		)
+		with patch.object(WorkOrder, "get_receivable_process_cost", return_value=None):
+			(issue,) = work_order.get_process_cost_readiness_issues()
+
+		self.assertEqual(
+			issue, "No approved Process Cost for process Cutting / supplier S-0164 / item STYLE-1 / lot LOT-1."
+		)
