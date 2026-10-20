@@ -336,6 +336,7 @@ class YRPDeliveryChallan(Document):
 			)
 
 	def make_stock_ledger_entries(self, cancel=False):
+		from yrp.stock.job_worker_variant import get_job_worker_stock_variant
 		from yrp.stock.stock_ledger import make_sl_entries
 
 		destination = self.to_warehouse
@@ -369,6 +370,7 @@ class YRPDeliveryChallan(Document):
 			entries.append(
 				{
 					**base,
+					"item": get_job_worker_stock_variant(self, row.item_variant),
 					"warehouse": destination,
 					"qty": qty,
 					"rate": flt(row.valuation_rate or row.rate),
@@ -874,6 +876,7 @@ def _dc_item_dimension_values(delivery_challan, row):
 @frappe.whitelist()
 def get_return_delivery_items(doc_name):
 	"""Return F15-style DC return choices with authoritative available qty."""
+	from yrp.stock.job_worker_variant import get_job_worker_stock_variant
 	from yrp.stock.utils import get_stock_balance
 
 	delivery_challan = frappe.get_doc("YRP Delivery Challan", doc_name)
@@ -898,7 +901,7 @@ def get_return_delivery_items(doc_name):
 		conversion_factor = flt(dc_item.conversion_factor) or 1
 		dimensions = _dc_item_dimension_values(delivery_challan, dc_item)
 		source_stock = get_stock_balance(
-			dc_item.item_variant,
+			get_job_worker_stock_variant(delivery_challan, dc_item.item_variant),
 			delivery_challan.to_warehouse,
 			**dimensions,
 		)

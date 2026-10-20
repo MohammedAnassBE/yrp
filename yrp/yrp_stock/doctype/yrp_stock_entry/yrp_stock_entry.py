@@ -8,6 +8,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from yrp.stock.job_worker_variant import get_job_worker_stock_variant
+
 
 class YRPStockEntry(Document):
 	def onload(self):
@@ -367,6 +369,7 @@ class YRPStockEntry(Document):
 					frappe.throw(
 						_("Transit Warehouse must be set in YRP Stock Settings for purpose DC Completion.")
 					)
+				base["item"] = get_job_worker_stock_variant(self, row.item)
 				entries.append(
 					{
 						**base,

@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, get_datetime
 
+from yrp.stock.job_worker_variant import get_job_worker_stock_variant
 from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import (
 	_apply_dimension_values_to_rows,
 	_copy_header_dimensions_to_items,
@@ -780,7 +781,7 @@ class YRPGoodsReceivedNote(Document):
 				)
 			dims = _delivery_challan_item_dimension_values(dc_item)
 			balance = get_stock_balance(
-				dc_item.item_variant,
+				get_job_worker_stock_variant(self, dc_item.item_variant),
 				self.from_warehouse,
 				posting_date=self.posting_date,
 				posting_time=self.posting_time,
@@ -1014,7 +1015,7 @@ def _get_return_source_rate(grn, row):
 		return 0
 	_dimensions = _return_source_dimension_values(grn, dc_item)
 	_stock_qty, valuation_rate = get_stock_balance(
-		dc_item.item_variant,
+		get_job_worker_stock_variant(grn, dc_item.item_variant),
 		grn.from_warehouse,
 		posting_date=grn.posting_date,
 		posting_time=grn.posting_time,
@@ -1114,11 +1115,12 @@ def _validate_return_quantities(grn):
 
 		stock_qty = flt(row.stock_qty) or flt(row.quantity)
 		dimension_key = tuple(source_dimensions.get(fieldname) for fieldname in dimension_fields)
-		bucket_key = (dc_item.item_variant, grn.from_warehouse, dimension_key)
+		stock_variant = get_job_worker_stock_variant(grn, dc_item.item_variant)
+		bucket_key = (stock_variant, grn.from_warehouse, dimension_key)
 		bucket = stock_buckets.setdefault(
 			bucket_key,
 			{
-				"item": dc_item.item_variant,
+				"item": stock_variant,
 				"stock_qty": 0.0,
 				"dimensions": source_dimensions,
 			},
@@ -1294,6 +1296,7 @@ def _return_stock_ledger_entries(grn):
 		source_dimensions = _return_source_dimension_values(grn, dc_item)
 		for fieldname in dimension_fields:
 			outgoing[fieldname] = source_dimensions.get(fieldname)
+		outgoing["item"] = get_job_worker_stock_variant(grn, outgoing["item"])
 		rate = _get_return_source_rate(grn, row)
 		transfer_key = f"Goods Received Note Return:{grn.name}:{row.name}"
 		entries.extend(
@@ -1550,9 +1553,11 @@ def _grn_receipt_stock_entries(grn, destination, with_result_keys=False):
 		# only to the WO's own returned deliverables (v1).
 		if _is_rework_work_order(grn.against_id) and not row.get("work_order_correction"):
 			dc_item = _get_delivery_challan_item(row.delivery_challan_item)
+			rework_input = _rework_input_sle_base(grn, row, dc_item)
+			rework_input["item"] = get_job_worker_stock_variant(grn, rework_input["item"])
 			entries.append(
 				{
-					**_rework_input_sle_base(grn, row, dc_item),
+					**rework_input,
 					"warehouse": grn.from_warehouse,
 					"qty": -qty,
 					"rate": 0,
@@ -1631,8 +1636,9 @@ def _group_grn_deliverable_consumption(grn):
 	groups = {}
 	for row in grn.get("grn_deliverables") or []:
 		dimensions = _grn_deliverable_dimensions(row)
+		stock_variant = get_job_worker_stock_variant(grn, row.item_variant)
 		key = (
-			row.item_variant,
+			stock_variant,
 			grn.from_warehouse,
 			row.get("stock_uom") or row.get("uom"),
 			*(dimensions.get(fieldname) for fieldname in dimension_fieldnames),
@@ -1643,6 +1649,7 @@ def _group_grn_deliverable_consumption(grn):
 				"rows": [],
 				"stock_qty": 0.0,
 				"dimensions": dimensions,
+				"item": stock_variant,
 			},
 		)
 		group["rows"].append(row)
@@ -1653,7 +1660,7 @@ def _group_grn_deliverable_consumption(grn):
 		first = group["rows"][0]
 		result_key = f"grn-consumption-{index}"
 		entry = {
-			"item": first.item_variant,
+			"item": group["item"],
 			"warehouse": grn.from_warehouse,
 			"uom": first.get("stock_uom") or first.get("uom"),
 			"voucher_type": grn.doctype,
