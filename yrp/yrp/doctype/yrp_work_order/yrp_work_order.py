@@ -947,8 +947,12 @@ def _submitted_work_order_grns(work_order):
 		"against_id": work_order,
 		"docstatus": 1,
 	}
-	if frappe.get_meta("YRP Goods Received Note").get_field("is_rework"):
-		filters["is_rework"] = 0
+	meta = frappe.get_meta("YRP Goods Received Note")
+	# Like production_api, only processed receipts are rework sources: rework
+	# and return GRNs are not.
+	for fieldname in ("is_rework", "is_return"):
+		if meta.get_field(fieldname):
+			filters[fieldname] = 0
 	return frappe.get_all(
 		"YRP Goods Received Note",
 		filters=filters,
@@ -1064,12 +1068,6 @@ def _inspection_rework_sources(grn_by_name):
 		"i.target_received_type != ''",
 	]
 	values = list(grn_names)
-	if default_rt:
-		conditions.append("i.target_received_type != %s")
-		values.append(default_rt)
-	if rejected_rt:
-		conditions.append("i.target_received_type != %s")
-		values.append(rejected_rt)
 	conditions.append("COALESCE(NULLIF(i.received_type, ''), %s) != i.target_received_type")
 	values.append(default_rt or "")
 
@@ -1113,6 +1111,8 @@ def _inspection_rework_sources(grn_by_name):
 	out = []
 	for row in rows:
 		target_rt = row.target_received_type
+		if not _is_rework_eligible_rt(target_rt, default_rt, rejected_rt):
+			continue
 		dim_values = {
 			fieldname: target_rt if fieldname == "received_type" else row.get(fieldname)
 			for fieldname in dim_fields
@@ -1155,6 +1155,11 @@ def _eligible_rt_context():
 def _is_rework_eligible_rt(received_type, default_rt, rejected_rt):
 	if not received_type:
 		return False
+	for path in frappe.get_hooks("yrp_rework_received_type") or []:
+		# An app may classify Received Types; None leaves the decision to the rule below.
+		eligible = frappe.get_attr(path)(received_type)
+		if eligible is not None:
+			return bool(eligible)
 	if received_type == default_rt:
 		return False
 	if rejected_rt and received_type == rejected_rt:
