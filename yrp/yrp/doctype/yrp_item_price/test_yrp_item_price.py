@@ -7,11 +7,13 @@ import frappe
 from frappe.model.workflow import apply_workflow, get_transitions
 from frappe.utils import add_days, nowdate
 
+from yrp.attribute_links import value as actual_attribute_value
 from yrp.concurrency_test_support import commit_connection
 from yrp.stock.test_uom import _attribute, _ensure_uom, _india_compliance_item_fields, _item_group
 from yrp.yrp.doctype.yrp_item.yrp_item import ensure_global_attribute_values
 from yrp.yrp.doctype.yrp_item_price.yrp_item_price import (
 	get_active_price,
+	get_item_supplier_price,
 	update_all_expired_item_price,
 )
 
@@ -387,23 +389,54 @@ class TestItemPriceNativePaths(TestCase):
 			with self.subTest(values=values), self.assertRaisesRegex(frappe.ValidationError, message):
 				self.make_price(**values).insert(ignore_permissions=True)
 
-	def test_attribute_price_rejects_value_outside_item_mapping(self):
+	def _attribute_item(self, values):
 		suffix = frappe.generate_hash(length=8)
 		attribute = f"_Test Price Colour {suffix}"
-		mapping = _attribute(attribute, "Red")
-		ensure_global_attribute_values(attribute, ["Blue"], check_permission=False)
+		mapping = _attribute(attribute, values[0])
+		ensure_global_attribute_values(attribute, values[1:], check_permission=False)
 		item = self._make_item(f"_Test Attribute Price Item {suffix}")
 		item_doc = frappe.get_doc("Item", item)
 		item_doc.has_variants = 1
 		item_doc.append("attributes", {"attribute": attribute, "mapping": mapping})
 		item_doc.save(ignore_permissions=True)
-		doc = self.make_price(tiers=[{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Blue"}])
+		return item, attribute, mapping
+
+	def _attribute_price(self, item, attribute, tiers):
+		doc = self.make_price(tiers=tiers)
 		doc.item_name = item
 		doc.depends_on_attribute = 1
 		doc.attribute = attribute
+		return doc
 
-		with self.assertRaisesRegex(frappe.ValidationError, "not allowed for this Item"):
-			doc.insert(ignore_permissions=True)
+	def test_attribute_price_accepts_global_value_outside_item_mapping(self):
+		item, attribute, _mapping = self._attribute_item(["Red", "Blue"])
+		tiers = [{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Blue"}]
+		doc = self._attribute_price(item, attribute, tiers).insert(ignore_permissions=True)
+		self.assertEqual([actual_attribute_value(row.attribute_value) for row in doc.item_price_values], ["Blue"])
+
+	def test_attribute_price_rejects_value_outside_global_attribute(self):
+		item, attribute, _mapping = self._attribute_item(["Red"])
+		tiers = [{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Not configured"}]
+		with self.assertRaises(frappe.ValidationError):
+			self._attribute_price(item, attribute, tiers).insert(ignore_permissions=True)
+
+	def test_priced_value_removed_from_item_mapping_keeps_price_and_po_lookup(self):
+		item, attribute, mapping = self._attribute_item(["Red", "Blue"])
+		mapping_doc = frappe.get_doc("YRP Item Item Attribute Mapping", mapping)
+		mapping_doc.append("values", {"attribute_value": "Blue"})
+		mapping_doc.save(ignore_permissions=True)
+		tiers = [{"moq": 0, "price": 10, "lead_time": 1, "attribute_value": "Blue"}]
+		doc = self._attribute_price(item, attribute, tiers).insert(ignore_permissions=True)
+		mapping_doc.reload()
+		mapping_doc.set("values", [row for row in mapping_doc.values if actual_attribute_value(row.attribute_value) == "Red"])
+		mapping_doc.save(ignore_permissions=True)
+		doc.reload()
+		doc.save(ignore_permissions=True)
+		doc.submit()
+		detail = {"name": item, "attributes": {attribute: "Blue"}, "values": {"x": {"qty": 1}}}
+		self.assertEqual(get_item_supplier_price(detail, self.suppliers[0]), 10)
+		detail["attributes"][attribute] = "Red"
+		self.assertFalse(get_item_supplier_price(detail, self.suppliers[0]))
 
 	def test_attribute_price_rejects_same_label_from_another_attribute(self):
 		suffix = frappe.generate_hash(length=8)
@@ -429,7 +462,7 @@ class TestItemPriceNativePaths(TestCase):
 		doc.insert(ignore_permissions=True)
 		doc.attribute = finish
 
-		with self.assertRaisesRegex(frappe.ValidationError, "not allowed for this Item"):
+		with self.assertRaisesRegex(frappe.ValidationError, "not a value of"):
 			doc.save(ignore_permissions=True)
 
 	def test_active_price_is_exact_supplier_only(self):

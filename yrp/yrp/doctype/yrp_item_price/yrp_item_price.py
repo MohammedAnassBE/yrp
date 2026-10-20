@@ -138,16 +138,8 @@ class YRPItemPrice(Document):
 			)
 			if not attribute_row:
 				frappe.throw(_("Price Attribute must be configured on the Item."))
-			allowed_links = set()
-			if attribute_row.get("mapping"):
-				allowed_links = set(
-					frappe.get_all(
-						"YRP Item Item Attribute Mapping Value",
-						filters={"parent": attribute_row.mapping},
-						pluck="attribute_value",
-					)
-				)
 			global_values = set(get_global_attribute_values(self.attribute))
+			numeric = frappe.get_cached_value("Item Attribute", self.attribute, "numeric_values")
 			for row in rows:
 				identity = frappe.db.get_value(
 					MASTER,
@@ -158,15 +150,11 @@ class YRPItemPrice(Document):
 				allowed = bool(
 					identity
 					and identity.attribute_name == self.attribute
-					and (
-						row.attribute_value in allowed_links
-						if allowed_links
-						else identity.attribute_value in global_values
-					)
+					and (numeric or identity.attribute_value in global_values)
 				)
 				if not allowed:
 					frappe.throw(
-						_("Row {0}: Attribute Value is not allowed for this Item.").format(row.idx)
+						_("Row {0}: Attribute Value is not a value of {1}.").format(row.idx, self.attribute)
 					)
 
 		validate_price_values(rows)
