@@ -94,3 +94,29 @@ class TestStockDimensionDDL(TestCase):
 			dimensions._ensure_bin_unique_constraint([])
 
 		db.sql_ddl.assert_not_called()
+
+
+class TestProductionGroupDimensionIndex(TestCase):
+	def test_only_the_production_group_dimension_is_indexed(self):
+		dims = [
+			{"fieldname": "lot", "dimension_doctype": "SD YRP Lot", "label": "Lot", "is_production_group": 1},
+			{
+				"fieldname": "received_type",
+				"dimension_doctype": "YRP Received Type",
+				"label": "Received Type",
+				"is_production_group": 0,
+			},
+		]
+		with (
+			patch.object(dimensions, "get_stock_dimensions", return_value=dims),
+			patch.object(dimensions.frappe, "db", Mock()),
+			patch.object(dimensions, "_get_insert_after", return_value="name"),
+			patch.object(dimensions, "_ensure_bin_unique_constraint"),
+			patch.object(dimensions, "_delete_orphan_dimension_fields"),
+			patch.object(dimensions, "create_custom_fields") as create_fields,
+		):
+			dimensions.create_dimension_fields()
+		fields = {row["fieldname"]: row for row in create_fields.call_args.args[0]["YRP Stock Ledger Entry"]}
+		self.assertEqual(fields["lot"]["search_index"], 1)
+		self.assertNotIn("search_index", fields["received_type"])
+		self.assertEqual(create_fields.call_args.args[0]["YRP Work Order"][0]["search_index"], 1)

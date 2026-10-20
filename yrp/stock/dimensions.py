@@ -208,6 +208,9 @@ def create_dimension_fields():
 			"module": "YRP Stock",
 			"description": MANAGED_DIMENSION_FIELD_MARKER,
 		}
+		if dim["is_production_group"]:
+			# Lot delete link checks and lot-wise reads filter by the production group.
+			field_def["search_index"] = 1
 
 		# All dimensions → stock DocTypes
 		for dt in STOCK_DOCTYPES:
