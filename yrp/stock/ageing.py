@@ -77,6 +77,16 @@ class FIFOSlots:
 
 			self.__update_balances(d, key)
 
+		# Normalize completed dimension queues, not transactions: transfer tracking,
+		# reconciliation and stock balances must retain their existing semantics.
+		# Dust of either sign must not determine Earliest/Latest in any caller.
+		for item in self.item_details.values():
+			item["fifo_queue"] = [
+				[qty, *slot[1:]]
+				for slot in item["fifo_queue"]
+				if (qty := flt(slot[0], 3, rounding_method="Banker's Rounding (legacy)"))
+			]
+
 		if not self.filters.get("show_warehouse_wise_stock"):
 			self.item_details = self.__aggregate_by_item(self.item_details)
 

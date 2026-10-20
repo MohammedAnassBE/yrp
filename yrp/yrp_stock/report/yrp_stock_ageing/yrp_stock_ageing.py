@@ -38,7 +38,12 @@ def execute(filters=None):
 	dim_fields = get_dimension_fieldnames()
 	columns = get_columns(filters, dims)
 
-	item_details = FIFOSlots(filters).generate()
+	# /web selects a Supplier; preserve Warehouse filters and migrated Supplier IDs.
+	fifo_filters = filters.copy()
+	if filters.get("warehouse"):
+		warehouses = frappe.get_all("Warehouse", filters={"supplier": filters.warehouse}, pluck="name")
+		fifo_filters["warehouse"] = ["in", [filters.warehouse, *warehouses]]
+	item_details = FIFOSlots(fifo_filters).generate()
 	data = format_report_data(filters, item_details, filters.get("to_date"), dim_fields)
 
 	chart_data = get_chart_data(data, filters)
@@ -48,7 +53,8 @@ def execute(filters=None):
 def format_report_data(filters, item_details, to_date, dim_fields):
 	_func = itemgetter(1)
 	data = []
-	precision = cint(frappe.db.get_single_value("System Settings", "float_precision", cache=True)) or 3
+	precision = 3
+	item_metadata = get_item_metadata(item_details)
 
 	for key, item_dict in item_details.items():
 		if not flt(item_dict.get("total_qty"), precision):
@@ -72,10 +78,8 @@ def format_report_data(filters, item_details, to_date, dim_fields):
 
 		row = {
 			"item": details.get("item") or (key[0] if isinstance(key, tuple) else key),
-			"item_name": details.get("item_name", ""),
-			"item_group": details.get("item_group", ""),
-			"stock_uom": details.get("stock_uom", ""),
 		}
+		row.update(item_metadata.get(row["item"], {}))
 
 		if filters.get("show_warehouse_wise_stock") and isinstance(key, tuple) and len(key) >= 2:
 			row["warehouse"] = key[1]
@@ -91,7 +95,7 @@ def format_report_data(filters, item_details, to_date, dim_fields):
 				"range1": flt(range1, precision),
 				"range2": flt(range2, precision),
 				"range3": flt(range3, precision),
-				"above_range3": flt(above_range3, precision),
+				"range4": flt(above_range3, precision),
 				"earliest": earliest_age,
 				"latest": latest_age,
 			}
@@ -101,13 +105,41 @@ def format_report_data(filters, item_details, to_date, dim_fields):
 	return data
 
 
+def get_item_metadata(item_details):
+	"""MRP shows the parent Item's name/group/UOM, rather than variant metadata."""
+	items = list(dict.fromkeys(key[0] if isinstance(key, tuple) else key for key in item_details))
+	if not items:
+		return {}
+	fields = ["name", "variant_of", "item_group", "stock_uom", "brand"]
+	variants = frappe.get_all("Item", filters={"name": ["in", items]}, fields=fields)
+	parent_names = list(dict.fromkeys(item.variant_of for item in variants if item.variant_of))
+	parents = (
+		{
+			item.name: item
+			for item in frappe.get_all("Item", filters={"name": ["in", parent_names]}, fields=fields)
+		}
+		if parent_names
+		else {}
+	)
+	metadata = {}
+	for variant in variants:
+		item = parents.get(variant.variant_of, variant)
+		metadata[variant.name] = {
+			"item_name": item.name,
+			"item_group": item.item_group,
+			"stock_uom": item.stock_uom,
+			"brand": item.brand,
+		}
+	return metadata
+
+
 def get_columns(filters, dims):
 	range_columns = []
 	setup_ageing_columns(filters, range_columns)
 
 	columns = [
-		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": "Item", "width": 150},
-		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
+		{"label": _("Item"), "fieldname": "item", "fieldtype": "Link", "options": "Item", "width": 100},
+		{"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 100},
 		{
 			"label": _("Item Group"),
 			"fieldname": "item_group",
@@ -115,6 +147,7 @@ def get_columns(filters, dims):
 			"options": "Item Group",
 			"width": 100,
 		},
+		{"label": _("Brand"), "fieldname": "brand", "fieldtype": "Link", "options": "Brand", "width": 100},
 	]
 
 	if filters.get("show_warehouse_wise_stock"):
@@ -172,7 +205,7 @@ def setup_ageing_columns(filters, range_columns):
 		_("{0} - Above").format(r3 + 1),
 	]
 	for i, label in enumerate(ranges):
-		fieldname = "range" + str(i + 1) if i < 3 else "above_range3"
+		fieldname = "range" + str(i + 1)
 		range_columns.append(
 			{
 				"label": _("Age ({0})").format(label),
@@ -185,24 +218,12 @@ def setup_ageing_columns(filters, range_columns):
 
 def get_chart_data(data, filters):
 	if not data:
+		return []
+	if filters.get("show_warehouse_wise_stock"):
 		return {}
-	# Aggregate by item for chart (even in warehouse-wise mode)
-	item_age = {}
-	for r in data:
-		item = r.get("item")
-		if item not in item_age:
-			item_age[item] = {"total_qty_age": 0.0, "total_qty": 0.0}
-		qty = r.get("qty", 0)
-		item_age[item]["total_qty_age"] += r.get("average_age", 0) * qty
-		item_age[item]["total_qty"] += qty
 
-	chart_items = []
-	for item, vals in item_age.items():
-		avg = vals["total_qty_age"] / vals["total_qty"] if vals["total_qty"] else 0
-		chart_items.append({"item": item, "average_age": flt(avg, 2)})
-
-	chart_items.sort(key=lambda r: r["average_age"], reverse=True)
-	top = chart_items[:10]
+	data.sort(key=lambda row: row["average_age"], reverse=True)
+	top = data[:10]
 	return {
 		"data": {
 			"labels": [r["item"] for r in top],
