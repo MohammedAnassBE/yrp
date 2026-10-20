@@ -42,7 +42,7 @@ const table_fields = ref([
 const qty_fields = ref(['rate', 'secondary_qty']);
 const args = ref({
     docstatus: cur_frm.doc.docstatus,
-    item_query: function () { return { filters: { is_stock_item: 1 } }; }
+    item_query: function () { return { filters: { is_stock_item: 1, variant_of: ["is", "not set"] } }; }
 });
 
 function update_status() {

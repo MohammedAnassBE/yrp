@@ -33,7 +33,7 @@ const qty_fields = ref([]);
 const args = ref({
     docstatus: cur_frm.doc.docstatus,
     can_create: function () { return can_create; },
-    item_query: function () { return { filters: { is_stock_item: 1 } }; }
+    item_query: function () { return { filters: { is_stock_item: 1, variant_of: ["is", "not set"] } }; }
 });
 
 // Store handler reference so we can clean it up on unmount
