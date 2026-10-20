@@ -102,7 +102,10 @@ class YRPStockReconciliation(Document):
 				filters[fn] = row.get(fn)
 			if frappe.db.exists("YRP Stock Ledger Entry", filters):
 				frappe.throw(
-					_("Row {0}: prior Stock Ledger Entry exists; cannot post Opening Stock").format(row.idx)
+					_(
+						"Row {0}: {1} already has Stock Ledger Entries at {2}; "
+						"Opening Stock can only be posted before any stock movement."
+					).format(row.idx, row.item, row.warehouse)
 				)
 
 	def _build_sl_entries(self, cancel=False):

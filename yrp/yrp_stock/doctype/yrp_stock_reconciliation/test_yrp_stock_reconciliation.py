@@ -53,3 +53,25 @@ class TestStockReconciliationDuplicateRows(TestCase):
 		rows[1].received_type = ""
 		with self.assertRaisesRegex(frappe.ValidationError, "already counted"):
 			self.validate(rows)
+
+
+class TestOpeningStockPriorMovement(TestCase):
+	def test_prior_movement_names_item_and_warehouse(self):
+		from unittest.mock import patch
+
+		from yrp.yrp_stock.doctype.yrp_stock_reconciliation.yrp_stock_reconciliation import (
+			YRPStockReconciliation,
+		)
+
+		row = frappe._dict(idx=1, item="CLOTH-RED", warehouse="WH-1", lot="LOT-1")
+		with patch.object(frappe.db, "exists", return_value="SLE-1") as exists:
+			with self.assertRaisesRegex(
+				frappe.ValidationError,
+				"Row 1: CLOTH-RED already has Stock Ledger Entries at WH-1; "
+				"Opening Stock can only be posted before any stock movement.",
+			):
+				YRPStockReconciliation.validate_no_prior_sle(SimpleNamespace(items=[row]), ["lot"])
+		exists.assert_called_once_with(
+			"YRP Stock Ledger Entry",
+			{"item": "CLOTH-RED", "warehouse": "WH-1", "is_cancelled": 0, "lot": "LOT-1"},
+		)
