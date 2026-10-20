@@ -283,6 +283,7 @@ class YRPDeliveryChallan(Document):
 						flt(available),
 						required,
 					)
+					+ _received_type_hint(bucket, self.from_warehouse, is_rework)
 				)
 
 	def update_work_order_deliverables(self, cancel=False):
@@ -541,6 +542,36 @@ def _sle_base(doc, row):
 	if "received_type" in base and not base.get("received_type"):
 		base["received_type"] = frappe.db.get_single_value("YRP Stock Settings", "default_received_type")
 	return base
+
+
+def get_other_received_type_stock(item, warehouse, dims):
+	"""Return {received_type: qty} the same item and dimensions hold at a warehouse under other received types."""
+	if not dims.get("received_type"):
+		return {}
+	filters = {
+		"item_code": item,
+		"warehouse": warehouse,
+		"actual_qty": [">", 0],
+		"received_type": ["!=", dims["received_type"]],
+	}
+	filters.update(
+		{fieldname: value for fieldname, value in dims.items() if fieldname != "received_type" and value}
+	)
+	rows = frappe.get_all("YRP Bin", filters=filters, fields=["received_type", "actual_qty"])
+	return {row.received_type: flt(row.actual_qty) for row in rows}
+
+
+def _received_type_hint(bucket, warehouse, is_rework):
+	other = get_other_received_type_stock(bucket["item"], warehouse, bucket["dims"])
+	if not other:
+		return ""
+	held = ", ".join(f"{received_type} {flt(qty)}" for received_type, qty in sorted(other.items()))
+	hint = _(" Received Type {0} is short; this stock is held as {1}.").format(
+		bucket["dims"]["received_type"], held
+	)
+	if not is_rework:
+		hint += _(" Send it through a Rework Work Order for that Received Type.")
+	return hint
 
 
 def _normal_json(value):
