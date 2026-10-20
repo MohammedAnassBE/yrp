@@ -275,11 +275,14 @@ class YRPDeliveryChallan(Document):
 			required = flt(bucket["qty"])
 			if flt(available) + 0.0001 < required:
 				frappe.throw(
-					_("Insufficient stock for {0} at {1} as of {2} {3}: available {4}, required {5}.").format(
+					_(
+						"Insufficient stock for {0} at {1}{2} as of {3} {4}: available {5}, required {6}."
+					).format(
 						bucket["item"],
 						self.from_warehouse,
+						get_dimension_text(bucket["dims"]),
 						self.posting_date,
-						self.posting_time,
+						str(self.posting_time).split(".")[0],
 						flt(available),
 						required,
 					)
@@ -561,6 +564,14 @@ def get_other_received_type_stock(item, warehouse, dims):
 	)
 	rows = frappe.get_all("YRP Bin", filters=filters, fields=["received_type", "actual_qty"])
 	return {row.received_type: flt(row.actual_qty) for row in rows}
+
+
+def get_dimension_text(dims):
+	from yrp.stock.dimensions import get_stock_dimensions
+
+	labels = {dimension["fieldname"]: dimension["label"] for dimension in get_stock_dimensions()}
+	parts = [f"{_(labels.get(fieldname) or fieldname)} {value}" for fieldname, value in dims.items() if value]
+	return f" ({', '.join(parts)})" if parts else ""
 
 
 def _received_type_hint(bucket, warehouse, is_rework):

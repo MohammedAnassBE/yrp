@@ -36,3 +36,16 @@ class TestReceivedTypeShortageHint(UnitTestCase):
 	def test_no_hint_without_other_received_type_stock(self):
 		with patch.object(dc, "get_other_received_type_stock", return_value={}):
 			self.assertEqual(dc._received_type_hint(BUCKET, "S-0170", is_rework=False), "")
+
+
+class TestShortageDimensionText(UnitTestCase):
+	def test_shortage_names_the_lot_and_received_type(self):
+		dimensions = [
+			{"fieldname": "lot", "label": "Lot"},
+			{"fieldname": "received_type", "label": "Received Type"},
+		]
+		with patch("yrp.stock.dimensions.get_stock_dimensions", return_value=dimensions):
+			text = dc.get_dimension_text(BUCKET["dims"])
+			empty = dc.get_dimension_text({"lot": None, "received_type": ""})
+		self.assertEqual(text, " (Lot LOT-1, Received Type Accepted)")
+		self.assertEqual(empty, "")
