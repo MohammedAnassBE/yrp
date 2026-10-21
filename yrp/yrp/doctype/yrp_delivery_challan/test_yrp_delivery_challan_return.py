@@ -243,6 +243,21 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 		self.assertIn(delivery_challan.name, message)
 		self.assertNotIn(delivery_challan.items[0].name, message)
 
+	def test_cancel_names_submitted_return_before_touching_stock(self):
+		_work_order, delivery_challan, *_rest = _make_return_cycle(delivered=10, consumed=0)
+		grn_name = create_return_grn(
+			delivery_challan.name,
+			[{"delivery_challan_item": delivery_challan.items[0].name, "return_quantity": 10}],
+			received_type=_default_received_type(),
+		)
+		frappe.get_doc("YRP Goods Received Note", grn_name).submit()
+
+		with self.assertRaises(frappe.ValidationError) as raised:
+			delivery_challan.reload()
+			delivery_challan.cancel()
+		self.assertIn(grn_name, str(raised.exception))
+		self.assertEqual(frappe.db.get_value("YRP Delivery Challan", delivery_challan.name, "docstatus"), 1)
+
 	def test_return_updates_reservation_delivery_without_touching_consumption(self):
 		(
 			work_order,

@@ -56,6 +56,7 @@ class YRPDeliveryChallan(Document):
 
 	def before_cancel(self):
 		_lock_work_order_deliverables(self.work_order)
+		self.validate_no_submitted_returns()
 		self.ignore_linked_doctypes = (
 			"YRP Stock Ledger Entry",
 			"YRP Repost Item Valuation",
@@ -75,6 +76,19 @@ class YRPDeliveryChallan(Document):
 			)
 			for name in ste_names:
 				frappe.get_doc("YRP Stock Entry", name).cancel()
+
+	def validate_no_submitted_returns(self):
+		return_grns = frappe.get_all(
+			"YRP Goods Received Note",
+			filters={"delivery_challan": self.name, "is_return": 1, "docstatus": 1},
+			pluck="name",
+		)
+		if return_grns:
+			frappe.throw(
+				_("Cancel the return Goods Received Note {0} before cancelling Delivery Challan {1}.").format(
+					", ".join(return_grns), self.name
+				)
+			)
 
 	def on_cancel(self):
 		self.make_stock_ledger_entries(cancel=True)
