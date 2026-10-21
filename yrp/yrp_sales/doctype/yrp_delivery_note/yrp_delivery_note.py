@@ -46,6 +46,12 @@ HEADER_FIELDS = (
 )
 
 
+def on_doctype_update():
+	# invoice_no is a partner app custom field: a site without it has nothing to index.
+	if frappe.db.has_column("YRP Delivery Note", "invoice_no"):
+		frappe.db.add_index("YRP Delivery Note", ["invoice_no"])
+
+
 class YRPDeliveryNote(Document):
 	"""Dispatch against submitted YRP Sales Orders; reserves YRP stock while draft."""
 
