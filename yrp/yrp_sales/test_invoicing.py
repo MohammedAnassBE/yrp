@@ -3,7 +3,7 @@ import unittest
 import unittest.mock
 
 import frappe
-from frappe.utils import getdate, nowdate
+from frappe.utils import get_datetime, getdate, nowdate
 
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_or_make_bin
@@ -25,6 +25,29 @@ def get_dimension_values():
 			frappe.get_doc({"doctype": doctype, name_field: value}).insert()
 		values[dimension["fieldname"]] = value
 	return values
+
+
+class TestCancelWindow(unittest.TestCase):
+	def check(self, invoice, created_on):
+		from yrp.yrp_sales.invoicing import validate_cancel_window
+
+		with (
+			unittest.mock.patch.object(frappe.db, "get_value", return_value=created_on),
+			unittest.mock.patch("yrp.yrp_sales.invoicing.now_datetime", return_value=get_datetime("2026-10-21 10:00:00")),
+		):
+			validate_cancel_window(frappe._dict(name="SI", posting_date="2026-10-20", posting_time="09:00:00", **invoice))
+
+	def test_e_waybill_older_than_24_hours_blocks_cancel(self):
+		note = {"yrp_delivery_note": "DN", "ewaybill": "EWB"}
+		self.check(note, "2026-10-20 10:00:00")
+		with self.assertRaisesRegex(frappe.ValidationError, "older than 24 hours"):
+			self.check(note, "2026-10-20 09:59:59")
+		with self.assertRaisesRegex(frappe.ValidationError, "older than 24 hours"):
+			self.check(note, None)
+
+	def test_invoices_without_e_waybill_or_note_cancel_freely(self):
+		self.check({"yrp_delivery_note": "DN", "ewaybill": None}, "2026-01-01")
+		self.check({"yrp_delivery_note": None, "ewaybill": "EWB"}, "2026-01-01")
 
 
 class DeliveryNoteFixtures(unittest.TestCase):

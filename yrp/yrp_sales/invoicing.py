@@ -1,8 +1,9 @@
 from collections import defaultdict
+from datetime import timedelta
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, get_datetime, now_datetime
 
 from yrp.stock.dimensions import get_dimension_fieldnames
 from yrp.stock.provider import handle
@@ -26,6 +27,7 @@ PREVIEW_FIELDS = (
 	"currency",
 )
 PREVIEW_TAX_FIELDS = ("description", "account_head", "rate", "tax_amount")
+E_WAYBILL_CANCEL_WINDOW = timedelta(hours=24)
 
 
 @frappe.whitelist()
@@ -282,6 +284,21 @@ def issue_delivery_note_stock(doc, method=None):
 	]
 	doc.db_set("yrp_stock_entries", "\n".join(entries), update_modified=False)
 	note.update_billing()
+
+
+def validate_cancel_window(doc, method=None):
+	"""An e-Waybill can be cancelled only within 24 hours; after that the goods come back as a return."""
+	if not doc.get("yrp_delivery_note") or not doc.get("ewaybill"):
+		return
+	created_on = frappe.db.get_value("e-Waybill Log", doc.ewaybill, "created_on") or get_datetime(
+		f"{doc.posting_date} {doc.posting_time or '00:00:00'}"
+	)
+	require(
+		get_datetime(created_on) + E_WAYBILL_CANCEL_WINDOW >= now_datetime(),
+		_("Sales Invoice {0} cannot be cancelled: e-Waybill {1} is older than 24 hours. Make a return instead.").format(
+			doc.name, doc.ewaybill
+		),
+	)
 
 
 def reverse_delivery_note_stock(doc, method=None):
