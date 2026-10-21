@@ -1134,8 +1134,8 @@ def _validate_return_quantities(grn):
 		remaining_for_dc = max(dispatched - already_returned, 0)
 		if return_qty > remaining_for_dc + QTY_TOLERANCE:
 			frappe.throw(
-				_("Return qty {0} exceeds the remaining DC qty {1} for row {2}.").format(
-					flt(return_qty), flt(remaining_for_dc), dc_item_name
+				_("Return qty {0} exceeds the remaining qty {1} of {2} on Delivery Challan {3}.").format(
+					flt(return_qty), flt(remaining_for_dc), dc_item.item_variant, delivery_challan.name
 				)
 			)
 

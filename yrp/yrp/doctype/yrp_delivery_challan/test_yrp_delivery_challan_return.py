@@ -229,6 +229,20 @@ class TestDeliveryChallanReturn(FrappeTestCase):
 		self.assertAlmostEqual(work_order.deliverables[0].pending_quantity, 0)
 		self.assertAlmostEqual(work_order.deliverables[0].stock_update, 6)
 
+	def test_stale_return_draft_names_item_and_delivery_challan(self):
+		_work_order, delivery_challan, *_rest = _make_return_cycle(delivered=10, consumed=0)
+		return_rows = [{"delivery_challan_item": delivery_challan.items[0].name, "return_quantity": 10}]
+		first = create_return_grn(delivery_challan.name, return_rows, received_type=_default_received_type())
+		stale = create_return_grn(delivery_challan.name, return_rows, received_type=_default_received_type())
+		frappe.get_doc("YRP Goods Received Note", first).submit()
+
+		with self.assertRaises(frappe.ValidationError) as raised:
+			frappe.get_doc("YRP Goods Received Note", stale).submit()
+		message = str(raised.exception)
+		self.assertIn(delivery_challan.items[0].item_variant, message)
+		self.assertIn(delivery_challan.name, message)
+		self.assertNotIn(delivery_challan.items[0].name, message)
+
 	def test_return_updates_reservation_delivery_without_touching_consumption(self):
 		(
 			work_order,
