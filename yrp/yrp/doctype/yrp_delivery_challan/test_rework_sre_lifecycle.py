@@ -18,6 +18,7 @@ from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_received_type,
 	_set_rejected_received_type,
 	_without_host_lot_process_validation,
+	_without_host_received_type_rule,
 )
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 	_stock_dimension_values,
@@ -42,6 +43,9 @@ def _get_rework_sre(rework_wo):
 
 
 class TestReworkSREDeliveryChallanLifecycle(FrappeTestCase):
+	def setUp(self):
+		self.enterContext(_without_host_received_type_rule())
+
 	def test_dc_submit_and_cancel_restore_sre_delivered_qty(self):
 		rework_rt = _received_type(f"_T_DCSRE_Source_{frappe.generate_hash(length=6)}")
 		rejected_rt = _received_type(f"_T_DCSRE_Rejected_{frappe.generate_hash(length=6)}")

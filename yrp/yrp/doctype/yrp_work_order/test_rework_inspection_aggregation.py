@@ -3,6 +3,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from yrp.yrp.doctype.yrp_work_order.test_rework_flow import _without_host_received_type_rule
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 	_enrich_dimension_metadata,
 	_inspection_rework_sources,
@@ -10,6 +11,9 @@ from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 
 
 class TestReworkInspectionAggregation(FrappeTestCase):
+	def setUp(self):
+		self.enterContext(_without_host_received_type_rule())
+
 	def test_configured_dimension_labels_are_returned_to_the_popup(self):
 		rows = [{"dimensions": {"production_group": "GROUP-1"}}]
 		with patch(

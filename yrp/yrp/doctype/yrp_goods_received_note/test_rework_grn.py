@@ -24,6 +24,7 @@ from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_received_type,
 	_set_rejected_received_type,
 	_without_host_lot_process_validation,
+	_without_host_received_type_rule,
 )
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 	create_rework_work_order,
@@ -176,6 +177,9 @@ def _make_rework_cycle(parent_process_rate):
 
 
 class TestReworkGRN(FrappeTestCase):
+	def setUp(self):
+		self.enterContext(_without_host_received_type_rule())
+
 	def test_rework_wo_is_auto_no_cost(self):
 		"""create_rework_work_order must stamp rework_type='No Cost' so the
 		downstream GRN does not add any process cost on top of material."""

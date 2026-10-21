@@ -22,6 +22,7 @@ from yrp.yrp.doctype.yrp_work_order.test_rework_flow import (
 	_received_type,
 	_set_rejected_received_type,
 	_without_host_lot_process_validation,
+	_without_host_received_type_rule,
 )
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import (
 	create_rework_work_order,
@@ -33,6 +34,9 @@ class TestReworkSourceFilter(FrappeTestCase):
 	"""The rework popup must show only non-default, non-rejected RT rows,
 	with qty scoped to this WO's GRN/inspection chain (not warehouse pool).
 	"""
+
+	def setUp(self):
+		self.enterContext(_without_host_received_type_rule())
 
 	def test_default_received_type_excluded(self):
 		accepted = _default_received_type()

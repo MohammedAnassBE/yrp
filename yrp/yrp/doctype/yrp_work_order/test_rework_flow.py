@@ -54,6 +54,13 @@ def _without_host_lot_process_validation():
 	return patch("essdee_yrp.work_order_hooks.validate_lot_process_selection")
 
 
+def _without_host_received_type_rule():
+	"""Let the base default/rejected setting rule decide rework eligibility."""
+	if "essdee_yrp" not in frappe.get_installed_apps():
+		return nullcontext()
+	return patch("essdee_yrp.rework_work_order.is_rework_received_type", return_value=None)
+
+
 def _make_parent_work_order(qty=10):
 	item_variant = _test_item_variant()
 	parent_item = get_parent_item(item_variant)
@@ -148,6 +155,9 @@ def _make_parent_grn(wo, supplier_wh, delivery_wh, item_variant, uom, received_t
 
 
 class TestReworkFlow(FrappeTestCase):
+	def setUp(self):
+		self.enterContext(_without_host_received_type_rule())
+
 	def test_supplier_rework_flow_reserves_dispatches_and_returns_split_outputs(self):
 		accepted_rt = _default_received_type()
 		rework_rt = _received_type(f"_T_Rework_Source_{frappe.generate_hash(length=6)}")

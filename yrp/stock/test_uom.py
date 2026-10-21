@@ -3,6 +3,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from yrp.attribute_links import value as attribute_value
 from yrp.stock.uom import apply_item_uom, resolve_item_uom
 from yrp.yrp.doctype.yrp_item.yrp_item import create_variant, ensure_global_attribute_values
 from yrp.yrp.doctype.yrp_work_order.yrp_work_order import WorkOrder
@@ -115,7 +116,7 @@ def _dependent_item_variant(stock_uom, alternate_uom):
 
 	mapping = frappe.get_doc("YRP Item Dependent Attribute Mapping", item.dependent_attribute_mapping)
 	for row in mapping.details:
-		if row.attribute_value == stage_value:
+		if attribute_value(row.attribute_value) == stage_value:
 			row.uom = alternate_uom
 	mapping.save(ignore_permissions=True)
 	frappe.clear_document_cache("Item", item.name)
