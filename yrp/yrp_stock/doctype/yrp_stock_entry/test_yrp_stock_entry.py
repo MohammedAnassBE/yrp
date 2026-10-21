@@ -319,6 +319,16 @@ class TestStockEntry(FrappeTestCase):
 		se = _make_se("Material Receipt")
 		self.assertRaises(frappe.ValidationError, se.insert, ignore_permissions=True)
 
+	def test_material_receipt_zero_rate_needs_allow_zero(self):
+		se = _make_se("Material Receipt", to_wh=WH_TO, rate=0)
+		self.assertRaises(frappe.ValidationError, se.insert, ignore_permissions=True)
+
+		se = _make_se("Material Receipt", to_wh=WH_TO, rate=0)
+		se.items[0].allow_zero_valuation_rate = 1
+		se.insert(ignore_permissions=True)
+		se.submit()
+		self.assertEqual(len(_get_sles(se.name)), 1)
+
 	# ---------------------------------------------------------------
 	# 9. Empty items
 	# ---------------------------------------------------------------

@@ -240,7 +240,7 @@ class YRPStockEntry(Document):
 		for row in self.items:
 			if not row.qty or row.qty <= 0:
 				frappe.throw(_("Row {0}: qty must be > 0").format(row.idx))
-			if self.purpose == "Material Receipt" and flt(row.rate) <= 0:
+			if self.purpose == "Material Receipt" and flt(row.rate) <= 0 and not row.allow_zero_valuation_rate:
 				frappe.throw(
 					_("Row {0}: Rate must be greater than zero for Material Receipt.").format(row.idx)
 				)
