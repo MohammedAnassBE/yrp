@@ -72,13 +72,8 @@ class TestPackingLifecycle(DeliveryNoteFixtures):
 		)
 		self.assertEqual((self.get_note(note).docstatus, [r.qty for r in amended.items]), (2, [4]))
 		self.assertEqual(self.get_bin(), (10, 4))
-		too_many = [{"so_detail": row.so_detail, "qty": 7}]
-		with self.assertRaisesRegex(frappe.ValidationError, "exceeds pending"):
-			amend_delivery_note(amended.name, self.customer, [row.sales_order], too_many)
-		self.assertEqual(
-			(frappe.db.get_value("YRP Delivery Note", amended.name, "docstatus"), self.get_bin()),
-			(1, (10, 4)),
-		)
+		over = amend_delivery_note(amended.name, self.customer, [row.sales_order], [{"so_detail": row.so_detail, "qty": 7}])
+		self.assertEqual(([r.qty for r in over.items], self.get_bin()), ([7], (10, 7)))
 
 	def test_amend_is_blocked_by_a_live_invoice(self):
 		note = self.make_note(6)

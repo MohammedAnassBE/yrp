@@ -97,21 +97,18 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "Nothing is pending"):
 			make_delivery_note(self.customer, [order.name])
 
-	def test_over_allocation_across_drafts_is_rejected(self):
+	def test_over_allocation_is_allowed_like_the_old_system(self):
 		order = self.make_order(qty=6)
 		first = self.make_note(order)
 		first.items[0].qty = 4
 		first.insert()
 		second = self.make_note(order)
 		second.items[0].qty = 3
-		with self.assertRaisesRegex(frappe.ValidationError, "only 6"):
-			second.insert()
-
-	def test_repeated_sales_order_row_is_aggregated(self):
-		note = self.make_note(self.make_order(qty=6))
-		note.append("items", note.items[0].as_dict(no_default_fields=True))
-		with self.assertRaisesRegex(frappe.ValidationError, "only 6"):
-			note.insert()
+		second.append("items", second.items[0].as_dict(no_default_fields=True))
+		second.insert()
+		self.assertEqual(get_pending_rows(sales_orders=[order.name]), [])
+		second.delete()
+		self.assertEqual([row.pending for row in get_pending_rows(sales_orders=[order.name])], [2])
 
 	def test_mixed_customers_are_rejected(self):
 		other = self.make_order(customer=self.make_customer())
@@ -206,8 +203,8 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		note = get_delivery_note(self.customer, [first.name, second.name],
 			items=[{"so_detail": first.items[0].name, "qty": 2}])
 		self.assertEqual([(row.so_detail, row.qty) for row in note.items], [(first.items[0].name, 2)])
-		with self.assertRaisesRegex(frappe.ValidationError, "exceeds pending 6"):
-			get_delivery_note(self.customer, [first.name], items=[{"so_detail": first.items[0].name, "qty": 7}])
+		over = get_delivery_note(self.customer, [first.name], items=[{"so_detail": first.items[0].name, "qty": 7}])
+		self.assertEqual([row.qty for row in over.items], [7])
 		with self.assertRaisesRegex(frappe.ValidationError, "not on the selected Sales Orders"):
 			get_delivery_note(self.customer, [first.name], items=[{"so_detail": second.items[0].name, "qty": 1}])
 
@@ -259,10 +256,10 @@ class TestYRPDeliveryNote(unittest.TestCase):
 		self.assertEqual(frappe.db.get_value("YRP Sales Order Item", order.items[0].name, "cancelled_qty"), 1.5)
 		self.assertEqual([row.pending for row in get_pending_rows(sales_orders=[order.name])], [0.5])
 		note.items[0].qty = 5
-		with self.assertRaisesRegex(frappe.ValidationError, "only 4.5 was ordered and not cancelled"):
-			note.save()
-		order.cancel_qty({order.items[0].name: 0.5})
+		note.save()
 		self.assertEqual(get_pending_rows(sales_orders=[order.name]), [])
+		with self.assertRaisesRegex(frappe.ValidationError, "exceeds pending 0"):
+			order.cancel_qty({order.items[0].name: 0.5})
 		with self.assertRaisesRegex(frappe.ValidationError, "Nothing is pending"):
 			get_delivery_note(self.customer, [order.name])
 

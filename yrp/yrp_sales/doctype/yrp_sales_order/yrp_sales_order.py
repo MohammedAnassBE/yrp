@@ -144,7 +144,7 @@ class YRPSalesOrder(PricingLockMixin, Document):
 			row = rows[name]
 			qty = finite_number(qty, "Cancelled quantity")
 			require(qty > 0, _("Row {0} of Sales Order {1}: Quantity must be greater than zero.").format(row.idx, self.name))
-			pending = get_open_stock_qty(row) - flt(allocated.get(name))
+			pending = max(get_open_stock_qty(row) - flt(allocated.get(name)), 0)
 			precision = row.precision("stock_qty")
 			require(flt(qty * flt(row.conversion_factor), precision) <= flt(pending, precision),
 				_("Row {0} of Sales Order {1}: {2} exceeds pending {3}.").format(

@@ -67,7 +67,6 @@ class YRPDeliveryNote(Document):
 				self.set_row_values(row, sources[row.so_detail])
 			else:
 				self.set_additional_row_values(row)
-		self.validate_allocation(sources)
 		self.validate_rates()
 		self.total_qty = sum(flt(row.qty) for row in self.items)
 		self.total = sum(flt(row.amount) for row in self.items)
@@ -171,27 +170,6 @@ class YRPDeliveryNote(Document):
 			frappe.get_cached_value("Warehouse", row.warehouse, "company") == self.company,
 			_("{0}: Warehouse {1} belongs to another Company.").format(label, row.warehouse),
 		)
-
-	def validate_allocation(self, sources):
-		"""Keep this and other non-cancelled Delivery Notes within each Sales Order row."""
-		requested = defaultdict(float)
-		for row in self.items:
-			if row.so_detail:
-				requested[row.so_detail] += flt(row.stock_qty)
-		if not requested:
-			return
-		others = get_allocated_qty(list(requested), exclude=self.name)
-		precision = self.items[0].precision("stock_qty")
-		for detail, qty in requested.items():
-			source = sources[detail]
-			allocated = flt(qty + others.get(detail, 0), precision)
-			open_qty = flt(get_open_stock_qty(source), precision)
-			require(
-				allocated <= open_qty,
-				_(
-					"Item {0} of Sales Order {1}: {2} would be allocated to Delivery Notes, but only {3} was ordered and not cancelled."
-				).format(source.item_code, source.parent, allocated, open_qty),
-			)
 
 	def validate_rates(self):
 		free = get_free_items(row.item_code for row in self.items)
@@ -835,10 +813,8 @@ def append_pending_rows(note, orders):
 
 
 def append_selected_rows(note, orders, rows):
-	"""Listed order rows within their pending quantity, plus rows with no Sales Order."""
+	"""Listed order rows, also beyond their pending quantity as in the old system, plus rows with no Sales Order."""
 	sources = {row.name: (order, row) for order in orders for row in order.items}
-	allocated = get_allocated_qty(list(sources))
-	requested = defaultdict(float)
 	item_meta = frappe.get_meta("YRP Delivery Note Item")
 	for values in rows:
 		extra = get_input_values(item_meta, values)
@@ -859,19 +835,10 @@ def append_selected_rows(note, orders, rows):
 		)
 		order, source = sources[values["so_detail"]]
 		qty = flt(values.get("qty"))
-		requested[source.name] += qty * flt(source.conversion_factor)
-		pending = get_open_stock_qty(source) - flt(allocated.get(source.name))
-		precision = source.precision("stock_qty")
 		require(
 			qty > 0,
 			_("Row {0} of Sales Order {1}: Quantity must be greater than zero.").format(
 				source.idx, order.name
-			),
-		)
-		require(
-			flt(requested[source.name], precision) <= flt(pending, precision),
-			_("Row {0} of Sales Order {1}: {2} exceeds pending {3}.").format(
-				source.idx, order.name, qty, flt(pending / flt(source.conversion_factor), precision)
 			),
 		)
 		append_pending_row(note, order, source, qty * flt(source.conversion_factor), extra)
