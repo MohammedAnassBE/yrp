@@ -157,7 +157,8 @@
    "fieldtype": "Select",
    "label": "Reference Doctype",
    "options": "\nYRP Work Order Receivables\nYRP Work Order Deliverables\nPurchase Order Item",
-   "read_only": 1
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "ref_docname",
@@ -223,7 +224,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-07 00:00:00.000000",
+ "modified": "2026-10-21 07:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Goods Received Note Item",
