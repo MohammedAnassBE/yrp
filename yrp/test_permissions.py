@@ -5,6 +5,7 @@ from frappe.tests import IntegrationTestCase
 
 from yrp.permissions import (
 	PERMISSIONS,
+	STAFF_ROLE,
 	ensure_partner_source_permission,
 	ensure_permission,
 	ensure_permissions,
@@ -121,3 +122,11 @@ class TestPermissions(IntegrationTestCase):
 		for doctype, role, rights in grants:
 			if role.startswith("YRP ") and rights.get("create"):
 				self.assertTrue(rights.get("write"), (doctype, role))
+
+	def test_yrp_staff_reads_partner_documents_and_never_writes(self):
+		ensure_permissions()
+		for doctype in ("Sales Invoice", "Customer", "YRP Sales Order", "YRP Delivery Note", "YRP Retailer"):
+			with self.subTest(doctype=doctype):
+				(row,) = get_docperm(doctype, STAFF_ROLE)
+				self.assertEqual((row.read, row.report, row.print, row.write, row.create), (1, 1, 1, 0, 0))
+

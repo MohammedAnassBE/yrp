@@ -117,6 +117,13 @@ class TestSalesPartnerRole(unittest.TestCase):
 					doc.discard()
 				self.assertEqual(frappe.db.get_value("YRP Sales Order", draft.name, "docstatus"), 0)
 
+	def test_yrp_staff_sees_every_row_despite_partner_roles(self):
+		order = self.order().insert()
+		staff = self.make_user("YRP Sales Partner", "YRP Customer", "Sales User", "YRP Staff")
+		frappe.set_user(staff.name)
+		self.assertIn(order.name, frappe.get_list("YRP Sales Order", pluck="name"))
+		self.assertTrue(frappe.has_permission("YRP Sales Order", "read", order))
+
 	def test_missing_or_revoked_membership_grants_no_rows_or_creation(self):
 		order = self.order().insert()
 		unlinked = self.make_user("YRP Sales Partner", "Sales User")

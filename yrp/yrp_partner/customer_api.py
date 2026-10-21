@@ -95,7 +95,8 @@ def _document_doctype(value):
 def is_processing_scoped_user():
 	"""Processing account metadata never confers financial RPC access."""
 	roles=set(frappe.get_roles())
-	return 'YRP Partner' in roles and bool(roles & {'Sales User','Sales Manager'}) and 'System Manager' not in roles
+	from yrp.yrp_partner.customer_access import is_unscoped
+	return 'YRP Partner' in roles and bool(roles & {'Sales User','Sales Manager'}) and not is_unscoped(roles)
 
 
 def _guard_controller(doctype, method, processing_only=False):

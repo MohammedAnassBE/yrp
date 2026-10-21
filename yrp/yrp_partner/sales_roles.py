@@ -72,7 +72,8 @@ def _sales_partner_scope(doc, user):
 def registered_processing_customer_query(user):
 	"""Live Partner membership for registered processing operations, never finance."""
 	roles=set(frappe.get_roles(user))
-	if 'YRP Partner' not in roles or not roles & {'Sales Manager','Sales User'} or roles & {'System Manager','YRP Customer','YRP Sales Person','YRP Sales Partner'}:
+	from yrp.yrp_partner.customer_access import UNSCOPED_ROLES
+	if 'YRP Partner' not in roles or not roles & {'Sales Manager','Sales User'} or roles & (UNSCOPED_ROLES | {'YRP Customer','YRP Sales Person','YRP Sales Partner'}):
 		return None
 	from yrp.yrp_partner.permissions import _condition
 	condition=_condition('Customer',user,'manager_customer',include_customer_scope=False)

@@ -1,7 +1,7 @@
 """Partner record scope with explicit, state-limited sales action roles.
 
 Management roles grant ordinary Frappe permissions. YRP Partner narrows supported
-records to explicit memberships; only System Manager bypasses this restriction.
+records to explicit memberships; only System Manager and YRP Staff bypass this restriction.
 No membership means no scoped rows. Explicit Frappe document sharing remains
 an administrator-controlled read exception; lifecycle guards still deny writes.
 """
@@ -37,8 +37,9 @@ def is_partner(user=None):
 	if user == "Administrator":
 		return False
 	roles = frappe.get_roles(user)
+	from yrp.yrp_partner.customer_access import is_unscoped
 	from yrp.yrp_partner.sales_roles import ACTION_ROLES
-	return bool(set(roles) & ({"YRP Partner", "YRP Customer"} | ACTION_ROLES)) and "System Manager" not in roles
+	return bool(set(roles) & ({"YRP Partner", "YRP Customer"} | ACTION_ROLES)) and not is_unscoped(roles)
 
 
 def source_types():

@@ -260,6 +260,7 @@ class TestCustomerReports(unittest.TestCase):
 			(["YRP Partner", "Sales User"], True),
 			(["YRP Customer"], True),
 			(["YRP Partner", "System Manager"], False),
+			(["YRP Partner", "YRP Sales Partner", "Sales User", "YRP Staff"], False),
 			(["Sales User"], False),
 		):
 			self.roles.return_value = roles

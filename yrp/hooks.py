@@ -10,7 +10,7 @@ yrp_web_reports = ["yrp.yrp_stock.web_reports.get_reports"]
 fixtures = [
 	{"dt": "Role", "prefix": "00", "filters": [["name", "in", [
 		"YRP Customer", "YRP Partner", "YRP Partner Manager", "YRP Retail User",
-		"YRP Sales Partner", "YRP Sales Person",
+		"YRP Sales Partner", "YRP Sales Person", "YRP Staff",
 	]]]},
 	{"dt": "Custom Field", "filters": [["module", "in", ["YRP", "YRP Partner", "YRP Retail"]]]},
 	{"dt": "Custom Role", "filters": [["name", "in", [

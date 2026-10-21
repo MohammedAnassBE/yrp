@@ -22,11 +22,19 @@ CUSTOMER_DOCTYPES = FINANCIAL_DOCTYPES | {
 }
 
 
+# Internal users that partner record scope never narrows, whatever partner roles they also hold.
+UNSCOPED_ROLES = frozenset({"System Manager", "YRP Staff"})
+
+
+def is_unscoped(roles) -> bool:
+	return bool(UNSCOPED_ROLES & set(roles))
+
+
 def _has_scoped_role(user, roles):
 	if user in ("Administrator", "Guest"):
 		return False
 	assigned = set(frappe.get_roles(user))
-	return "System Manager" not in assigned and bool(assigned & roles)
+	return not is_unscoped(assigned) and bool(assigned & roles)
 
 
 def is_customer_user(user=None):

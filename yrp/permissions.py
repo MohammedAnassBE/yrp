@@ -105,11 +105,27 @@ PERMISSIONS = [
 ]
 
 
+STAFF_ROLE = "YRP Staff"
+STAFF_RIGHTS = {"select": 1, "read": 1, "report": 1, "export": 1, "print": 1}
+SCOPED_ROLES = {"YRP Partner", "YRP Customer", "YRP Sales Partner", "YRP Sales Person"}
+STAFF_MODULES = ["YRP Sales", "YRP Retail", "YRP Partner"]
+
+
+def get_staff_doctypes() -> set[str]:
+	"""What YRP Staff reads in full: every partner-readable doctype, the YRP sales, retail and partner documents."""
+	return (
+		{doctype for doctype, role, _permlevel, rights in PERMISSIONS if role in SCOPED_ROLES and rights.get("read")}
+		| set(frappe.get_all("DocType", filters={"module": ["in", STAFF_MODULES], "istable": 0}, pluck="name"))
+		| set(frappe.get_all("YRP Partner Type", pluck="reference_doctype"))
+	) - {None, ""}
+
+
 def ensure_permissions() -> None:
 	"""Add missing yrp grants. Runs after migrate because a doctype sync rewrites its DocPerm rows."""
+	staff = [(doctype, STAFF_ROLE, 0, STAFF_RIGHTS) for doctype in sorted(get_staff_doctypes())]
 	changed = {
 		doctype
-		for doctype, role, permlevel, rights in PERMISSIONS
+		for doctype, role, permlevel, rights in PERMISSIONS + staff
 		if ensure_permission(doctype, role, permlevel, rights)
 	}
 	for doctype in changed:
