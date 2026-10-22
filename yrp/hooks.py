@@ -33,8 +33,6 @@ fixtures = [
 		"Sales Person-main-autoname",
 		"Sales Person-main-naming_rule",
 		"Sales Person-main-search_fields",
-		"Sales Person-main-show_title_field_in_link",
-		"Sales Person-main-title_field",
 	]]]},
 ]
 
