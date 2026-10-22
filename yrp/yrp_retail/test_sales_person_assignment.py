@@ -38,6 +38,15 @@ class TestSalesPersonAssignment(unittest.TestCase):
 		self.person.save()
 		self.assertEqual(self.person.reload().sales_person_name, display_name)
 
+	def test_dashboard_sums_sales_team_rows_by_id(self):
+		frappe.get_doc({
+			"doctype": "Sales Team", "parenttype": "Sales Invoice", "parentfield": "sales_team",
+			"parent": "_Test Invoice " + self.point, "sales_person": self.person.name,
+			"allocated_amount": 250, "docstatus": 1,
+		}).db_insert()
+		self.person.run_method("onload")
+		self.assertEqual(self.person.get_onload().dashboard_info["allocated_amount_against_invoice"], 250)
+
 	def test_customers_must_match_selected_partner(self):
 		self.person.append("yrp_customers", {"customer": self.other.name})
 		with self.assertRaisesRegex(frappe.ValidationError, "does not belong"):

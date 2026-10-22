@@ -32,6 +32,9 @@ fixtures = [
 		"Communication-communication_medium-options",
 		"Sales Person-main-autoname",
 		"Sales Person-main-naming_rule",
+		"Sales Person-main-search_fields",
+		"Sales Person-main-show_title_field_in_link",
+		"Sales Person-main-title_field",
 	]]]},
 ]
 
@@ -266,7 +269,10 @@ doc_events = {
 		"before_update_after_submit": "yrp.yrp_retail.sales_sources.protect_retail_source",
 		"on_trash": "yrp.yrp_retail.sales_sources.protect_retail_source",
 	},
-	"Sales Person": {"onload": "yrp.yrp_partner.contacts.load_contacts", "validate": "yrp.yrp_retail.setup.validate_sales_person"},
+	"Sales Person": {
+		"onload": ["yrp.yrp_partner.contacts.load_contacts", "yrp.yrp_retail.setup.load_dashboard_info"],
+		"validate": "yrp.yrp_retail.setup.validate_sales_person",
+	},
 	"Employee": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
 	"YRP Retailer": {"onload": "yrp.yrp_partner.contacts.load_contacts"},
 	"File": {"before_insert": "yrp.yrp_partner.customer_reports.own_prepared_result_file"},

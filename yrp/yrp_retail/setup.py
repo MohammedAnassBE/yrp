@@ -1,6 +1,7 @@
 """Sales Person assignments; static integration fields are installed as fixtures."""
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 
 def validate_sales_person(doc, method=None):
@@ -47,3 +48,18 @@ def assigned_customers(sales_person):
 		AND COALESCE(sp.yrp_sales_partner, '') != ''
 		AND c.default_sales_partner=sp.yrp_sales_partner
 	""", sales_person, pluck=True))
+
+
+def load_dashboard_info(doc, method=None):
+	"""ERPNext sums Sales Team rows by sales_person_name, but the rows link the Sales Person ID."""
+	info = doc.get_onload().get("dashboard_info") or {}
+	for parenttype, key in (
+		("Sales Order", "allocated_amount_against_order"),
+		("Sales Invoice", "allocated_amount_against_invoice"),
+	):
+		info[key] = flt(frappe.db.get_value(
+			"Sales Team",
+			{"docstatus": 1, "parenttype": parenttype, "sales_person": doc.name},
+			[{"SUM": "allocated_amount"}],
+		))
+	doc.set_onload("dashboard_info", info)
