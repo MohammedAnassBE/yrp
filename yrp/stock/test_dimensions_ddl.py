@@ -30,6 +30,8 @@ class TestStockDimensionDDL(TestCase):
 		for doctype in ("YRP Work Order", "YRP Delivery Challan", "YRP Process Cost"):
 			self.assertEqual(fields[doctype][0]["reqd"], 1)
 		self.assertEqual(fields["Purchase Order"][0]["reqd"], 0)
+		self.assertEqual(fields["YRP Work Order"][0]["in_standard_filter"], 1)
+		self.assertNotIn("in_standard_filter", fields["YRP Delivery Challan"][0])
 
 	def test_dimension_reads_are_scoped_to_the_namespaced_single(self):
 		cache = Mock()

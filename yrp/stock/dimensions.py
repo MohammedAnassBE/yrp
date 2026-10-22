@@ -54,6 +54,7 @@ OPERATIONAL_DOCTYPES = [
 ]
 
 OPERATIONAL_DIMENSION_FIELD_OVERRIDES = {
+	"YRP Work Order": {"in_standard_filter": 1},
 	"YRP Goods Received Note": {
 		"reqd": 0,
 		"mandatory_depends_on": "eval:doc.against!='Purchase Order'",
