@@ -170,3 +170,36 @@ class AttributeValueLinksTest(unittest.TestCase):
 		clear_name_cache()
 		self.assertEqual(get_attribute_value_names(pairs), expected)
 		self.assertEqual(get_attribute_value_names([]), {})
+
+	def test_mapping_with_only_blank_rows_allows_every_attribute_value(self):
+		from yrp.yrp.doctype.yrp_item.yrp_item import _mapping_values
+
+		doc = self.mapping()
+		frappe.db.set_value(
+			"YRP Item Item Attribute Mapping Value", doc.values[0].name, "attribute_value", None
+		)
+		frappe.clear_document_cache(doc.doctype, doc.name)
+		row = frappe._dict(attribute=self.attribute, mapping=doc.name)
+		self.assertEqual(_mapping_values(row), [self.value])
+
+	def test_value_search_needs_only_attribute_value_read(self):
+		from yrp.yrp.doctype.yrp_item.yrp_item import search_item_attribute_values
+
+		def has_permission(doctype, ptype="read", *args, **kwargs):
+			return doctype == MASTER
+
+		with patch("frappe.has_permission", side_effect=has_permission):
+			self.assertEqual(search_item_attribute_values(attribute=self.attribute), [self.value])
+
+	def test_value_search_ranks_exact_and_prefix_matches_before_paging(self):
+		from yrp.yrp.doctype.yrp_item.yrp_item import search_item_attribute_values
+
+		for value in ["Off white", "White Melange", "White"]:
+			self.native.append(
+				"item_attribute_values", {"attribute_value": value, "abbr": value.replace(" ", "")}
+			)
+		self.native.save()
+		self.assertEqual(
+			search_item_attribute_values("white", attribute=self.attribute, page_len=2),
+			["White", "White Melange"],
+		)

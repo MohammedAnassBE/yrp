@@ -523,7 +523,8 @@ def update_dependent_attribute_details(dependent_attribute_mapping, detail):
 def _mapping_values(attribute_row):
 	if attribute_row.get("mapping"):
 		mapping = get_mapping_document(attribute_row.mapping, cached=True)
-		values = [_attribute_value(row.attribute_value) for row in mapping.get("values") or []]
+		rows = mapping.get("values") or []
+		values = [_attribute_value(row.attribute_value) for row in rows if row.attribute_value]
 		if values:
 			return values
 	return get_global_attribute_values(attribute_row.attribute)
@@ -988,7 +989,10 @@ def search_item_attribute_values(txt="", attribute=None, item=None, page_len=99)
 	target of a Link control. This endpoint preserves the old searchable UX while
 	returning plain strings suitable for an Autocomplete control.
 	"""
-	if not frappe.has_permission("Item Attribute", ptype="read"):
+	if not (
+		frappe.has_permission("Item Attribute", ptype="read")
+		or frappe.has_permission("YRP Item Attribute Value", ptype="read")
+	):
 		frappe.throw(_("Not permitted to read Item Attribute values"), frappe.PermissionError)
 	if not attribute:
 		return []
@@ -1004,7 +1008,12 @@ def search_item_attribute_values(txt="", attribute=None, item=None, page_len=99)
 	if not values:
 		values = get_global_attribute_values(attribute)
 	needle = cstr(txt).lower()
-	return [value for value in values if needle in cstr(value).lower()][: int(page_len or 99)]
+	matches = [value for value in values if needle in cstr(value).lower()]
+	if needle:
+		matches.sort(
+			key=lambda value: (cstr(value).lower() != needle, not cstr(value).lower().startswith(needle))
+		)
+	return matches[: int(page_len or 99)]
 
 
 @frappe.whitelist()
