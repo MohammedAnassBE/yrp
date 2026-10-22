@@ -76,7 +76,7 @@
  "index_web_pages_for_search": 1,
  "is_tree": 1,
  "links": [],
- "modified": "2026-09-21 20:56:40.309184",
+ "modified": "2026-10-22 09:30:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Item Category",
@@ -119,6 +119,10 @@
    "read": 1,
    "report": 1,
    "role": "YRP Partner"
+  },
+  {
+   "read": 1,
+   "role": "All"
   }
  ],
  "quick_entry": 0,
