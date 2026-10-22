@@ -4,7 +4,7 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from yrp.stock.dimensions import get_stock_dimensions
+from yrp.stock.dimensions import create_dimension_fields, get_production_group, get_stock_dimensions
 
 
 class TestWorkOrderStockDimensions(FrappeTestCase):
@@ -31,6 +31,17 @@ class TestWorkOrderStockDimensions(FrappeTestCase):
 					f"{doctype}.{dimension['fieldname']} must be generated from YRP Stock Settings",
 				)
 				self.assertEqual(custom_field.module, "YRP Stock")
+
+	def test_existing_work_order_production_group_field_gets_standard_filter(self):
+		fieldname = get_production_group()["fieldname"]
+		custom_field = frappe.db.get_value("Custom Field", {"dt": "YRP Work Order", "fieldname": fieldname})
+		frappe.db.set_value("Custom Field", custom_field, "in_standard_filter", 0)
+		frappe.clear_cache(doctype="YRP Work Order")
+
+		create_dimension_fields()
+
+		field = frappe.get_meta("YRP Work Order", cached=False).get_field(fieldname)
+		self.assertEqual(field.in_standard_filter, 1)
 
 	def test_work_order_children_receive_values_through_the_dimension_model(self):
 		work_order = frappe.new_doc("YRP Work Order")
