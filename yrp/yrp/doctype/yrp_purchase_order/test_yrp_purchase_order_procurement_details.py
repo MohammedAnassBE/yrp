@@ -199,7 +199,7 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 			patch.object(
 				purchase_order,
 				"_resolve_party_address",
-				side_effect=[("ADDR-S", "Supplier Address"), ("ADDR-D", "Delivery Address")],
+				return_value=("ADDR-S", "Supplier Address"),
 			),
 			patch.object(purchase_order, "_is_party_link", return_value=True),
 			patch.object(frappe, "get_cached_doc", return_value=contact),
@@ -208,10 +208,63 @@ class TestPurchaseOrderProcurementDetails(FrappeTestCase):
 
 		self.assertEqual(doc.supplier_address, "ADDR-S")
 		self.assertEqual(doc.address_display, "Supplier Address")
-		self.assertEqual(doc.shipping_address, "ADDR-D")
-		self.assertEqual(doc.shipping_address_display, "Delivery Address")
 		self.assertEqual(doc.contact_display, "Anand")
 		self.assertEqual(doc.contact_mobile, "9000000000")
+
+	def make_address(self, link_doctype, link_name, is_primary=0):
+		address = frappe.get_doc(
+			{
+				"doctype": "Address",
+				"address_title": f"PO Address Test {link_name}",
+				"address_type": "Billing",
+				"address_line1": "1 Test Street",
+				"city": "Tiruppur",
+				"state": "Tamil Nadu",
+				"pincode": "641601",
+				"country": "India",
+				"is_primary_address": is_primary,
+				"links": [{"link_doctype": link_doctype, "link_name": link_name}],
+			}
+		)
+		return address.insert(ignore_permissions=True).name
+
+	def make_company_order(self):
+		frappe.db.savepoint("po_company_address")
+		self.addCleanup(frappe.db.rollback, save_point="po_company_address")
+		company = frappe.get_all("Company", pluck="name", limit=1)[0]
+		location = frappe.get_all("Supplier", pluck="name", limit=1)[0]
+		location_address = self.make_address("Supplier", location, is_primary=1)
+		company_address = self.make_address("Company", company, is_primary=1)
+		doc = frappe.get_doc(
+			{
+				"doctype": "Purchase Order",
+				"is_yrp_managed": 1,
+				"company": company,
+				"default_delivery_location": location,
+				"shipping_address": location_address,
+				"billing_address": location_address,
+			}
+		)
+		return doc, company_address
+
+	def test_erpnext_addresses_are_set_to_the_company_address(self):
+		doc, company_address = self.make_company_order()
+
+		doc.set_party_details()
+
+		self.assertEqual(doc.shipping_address, company_address)
+		self.assertEqual(doc.billing_address, company_address)
+		self.assertIn("1 Test Street", doc.shipping_address_display)
+		self.assertIn("1 Test Street", doc.billing_address_display)
+
+	def test_company_address_picked_on_desk_is_kept(self):
+		doc, _company_address = self.make_company_order()
+		picked = self.make_address("Company", doc.company)
+		doc.shipping_address = picked
+
+		doc.set_party_details()
+
+		self.assertEqual(doc.shipping_address, picked)
 
 	def test_delivery_destination_type_is_server_validated(self):
 		doc = frappe.get_doc(

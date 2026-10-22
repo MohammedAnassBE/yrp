@@ -209,10 +209,7 @@ class YRPPurchaseOrderMixin:
 			self.supplier,
 			self.supplier_address,
 		)
-		self.shipping_address, self.shipping_address_display = _resolve_party_address(
-			self.default_delivery_location,
-			self.shipping_address,
-		)
+		self.set_company_addresses()
 
 		if (
 			not self.supplier
@@ -231,6 +228,19 @@ class YRPPurchaseOrderMixin:
 		contact = frappe.get_cached_doc("Contact", self.contact_person)
 		self.contact_display = contact.full_name
 		self.contact_mobile = contact.mobile_no
+
+	def set_company_addresses(self):
+		"""ERPNext billing/shipping must be Company addresses; the delivery place is default_delivery_location."""
+		from frappe.contacts.doctype.address.address import get_address_display, get_company_address
+
+		company_address = get_company_address(self.company).company_address
+		for fieldname in ("billing_address", "shipping_address"):
+			if _is_company_address(self.get(fieldname), self.company):
+				continue
+			self.set(fieldname, company_address)
+			self.set(
+				f"{fieldname}_display", get_address_display(company_address) if company_address else None
+			)
 
 	def validate_delivery_destination(self):
 		if not self.default_delivery_location:
@@ -429,6 +439,17 @@ def _is_party_link(reference_doctype, reference_name, supplier):
 				"link_doctype": "Supplier",
 				"link_name": supplier,
 			},
+		)
+	)
+
+
+def _is_company_address(address, company):
+	if not address or not company:
+		return False
+	return bool(
+		frappe.db.exists(
+			"Dynamic Link",
+			{"parenttype": "Address", "parent": address, "link_doctype": "Company", "link_name": company},
 		)
 	)
 
