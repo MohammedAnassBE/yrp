@@ -168,6 +168,14 @@ class TestPurchaseInvoice(FrappeTestCase):
 		setting.start()
 		self.addCleanup(setting.stop)
 
+	def test_supplier_is_not_masked_for_invoice_users(self):
+		frappe.set_user("Guest")
+		self.addCleanup(frappe.set_user, "Administrator")
+
+		masked = {df.fieldname for df in frappe.get_meta("YRP Purchase Invoice").get_masked_fields()}
+
+		self.assertNotIn("supplier", masked)
+
 	def test_eligible_grns_exclude_other_invoices_but_keep_current_selection(self):
 		po = _purchase_order(
 			qty=2, warehouse=_warehouse(f"_Test_PI_Eligible_WH_{frappe.generate_hash(length=6)}")
