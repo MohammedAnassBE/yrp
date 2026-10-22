@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 
 import frappe
 from frappe import _
-from frappe.query_builder.functions import CombineDatetime
 from frappe.utils import cint, date_diff, flt, getdate
 
 from yrp.attribute_links import value as _attribute_value
@@ -81,18 +80,20 @@ def execute(filters=None):
 		# An explicit selection that resolves to nothing must never mean all items.
 		return columns, []
 	sle = get_stock_ledger_entries(filters, items, dim_fields)
+	iwb_map = get_item_warehouse_map(filters, sle, dim_fields)
 
-	if not sle:
+	if not iwb_map:
 		return columns, []
 
 	item_wise_fifo_queue = {}
 	if filters.get("show_stock_ageing_data") or filters.get("show_inward_date_split"):
 		filters["show_warehouse_wise_stock"] = True
-		item_wise_fifo_queue = FIFOSlots(filters, sle).generate()
+		item_wise_fifo_queue = FIFOSlots(
+			filters, get_stock_ledger_entries(filters, items, dim_fields)
+		).generate()
 
-	iwb_map = get_item_warehouse_map(filters, sle, dim_fields)
-	item_map = get_item_details(items, sle, filters)
-	warehouse_map = get_warehouse_names(sle)
+	item_map = get_item_details(items, iwb_map, filters)
+	warehouse_map = get_warehouse_names(iwb_map)
 
 	data = []
 	to_date = filters.get("to_date")
@@ -259,7 +260,7 @@ def get_columns(filters, dims):
 
 def get_stock_ledger_entries(filters, items, dim_fields):
 	if items == []:
-		return []
+		return
 	sle = frappe.qb.DocType("YRP Stock Ledger Entry")
 
 	select_fields = [
@@ -281,7 +282,7 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 		frappe.qb.from_(sle)
 		.select(*select_fields)
 		.where((sle.docstatus < 2) & (sle.is_cancelled == 0))
-		.orderby(CombineDatetime(sle.posting_date, sle.posting_time))
+		.orderby(sle.posting_datetime)
 		.orderby(sle.creation)
 	)
 
@@ -306,13 +307,20 @@ def get_stock_ledger_entries(filters, items, dim_fields):
 		if values := parse_list_filter(filters.get(fn)):
 			query = query.where(getattr(sle, fn).isin(values))
 
-	MAX_SLE_ROWS = 500_000
-	results = query.limit(MAX_SLE_ROWS + 1).run(as_dict=True)
-	if len(results) > MAX_SLE_ROWS:
-		frappe.throw(
-			_("Too many stock ledger entries ({0}+). Please narrow your filters.").format(MAX_SLE_ROWS)
-		)
-	return results
+	# Broad date ranges otherwise favour a table scan and filesort on MariaDB.
+	if frappe.db.db_type == "mariadb":
+		warehouses = filters.get("warehouse")
+		if not items and warehouses and (isinstance(warehouses, str) or len(warehouses) == 1):
+			query = query.force_index("warehouse_posting_datetime_creation_index")
+		elif not (items or warehouses or filters.get("supplier")) and not any(
+			parse_list_filter(filters.get(fn)) for fn in dim_fields
+		):
+			query = query.force_index("posting_datetime_creation_index")
+
+	# flt can read rounding settings; load them before opening the streaming cursor.
+	frappe.get_cached_doc("System Settings")
+	with frappe.db.unbuffered_cursor():
+		yield from query.run(as_dict=True, as_iterator=True)
 
 
 def get_item_warehouse_map(filters, sle, dim_fields):
@@ -407,7 +415,7 @@ def get_items(filters):
 	return [row[0] for row in query.run()]
 
 
-def get_warehouse_names(sle):
+def get_warehouse_names(iwb_map):
 	warehouse = frappe.qb.DocType("Warehouse")
 	supplier = frappe.qb.DocType("Supplier")
 	rows = (
@@ -415,16 +423,16 @@ def get_warehouse_names(sle):
 		.left_join(supplier)
 		.on(warehouse.supplier == supplier.name)
 		.select(warehouse.name, warehouse.warehouse_name, supplier.supplier_name)
-		.where(warehouse.name.isin(list({row.warehouse for row in sle})))
+		.where(warehouse.name.isin(list({key[1] for key in iwb_map})))
 		.run(as_dict=True)
 	)
 	return {row.name: row.supplier_name or row.warehouse_name or row.name for row in rows}
 
 
-def get_item_details(items, sle, filters):
+def get_item_details(items, iwb_map, filters):
 	item_details = {}
 	if not items:
-		items = list({d.item for d in sle})
+		items = list({key[0] for key in iwb_map})
 	if not items:
 		return item_details
 

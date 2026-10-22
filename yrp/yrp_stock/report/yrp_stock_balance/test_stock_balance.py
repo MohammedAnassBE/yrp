@@ -1,6 +1,6 @@
 import unittest
 from datetime import date
-from itertools import product
+from itertools import product, repeat
 from unittest.mock import patch
 
 import frappe
@@ -13,7 +13,9 @@ from yrp.yrp_stock.report.yrp_stock_balance.yrp_stock_balance import (
 	execute,
 	get_columns,
 	get_inward_date_breakdown,
+	get_item_warehouse_map,
 	get_items,
+	get_stock_ledger_entries,
 	parse_list_filter,
 )
 
@@ -53,6 +55,7 @@ class TestStockBalanceFilters(IntegrationTestCase):
 				"warehouse": warehouse,
 				"posting_date": today(),
 				"posting_time": "01:00:00",
+				"posting_datetime": f"{today()} 01:00:00",
 				"qty": qty,
 				"qty_after_transaction": qty,
 				"voucher_type": "YRP Stock Entry",
@@ -186,8 +189,10 @@ class TestStockBalanceFilters(IntegrationTestCase):
 		self.assertEqual(execute({**base, "remove_zero_balance_item": 0})[1][0]["bal_qty"], 0)
 		# Movements before the period leave only zero qty/value, even with a valuation rate.
 		frappe.db.sql(
-			"update `tabYRP Stock Ledger Entry` set posting_date = %s, valuation_rate = 10 where warehouse = %s",
-			(frappe.utils.add_days(today(), -1), warehouse),
+			"""update `tabYRP Stock Ledger Entry`
+			set posting_date = %s, posting_datetime = timestamp(%s, posting_time), valuation_rate = 10
+			where warehouse = %s""",
+			(frappe.utils.add_days(today(), -1), frappe.utils.add_days(today(), -1), warehouse),
 		)
 		self.assertEqual(execute({**base, "remove_zero_balance_item": 1})[1], [])
 
@@ -232,6 +237,7 @@ class TestStockBalanceFilters(IntegrationTestCase):
 					"warehouse": warehouse,
 					"posting_date": today(),
 					"posting_time": "01:00:00",
+					"posting_datetime": f"{today()} 01:00:00",
 					"creation": frappe.utils.now(),
 					"qty": index,
 					"qty_after_transaction": index,
@@ -252,6 +258,7 @@ class TestStockBalanceFilters(IntegrationTestCase):
 		consumed.update(
 			name=frappe.generate_hash(length=10),
 			posting_time="02:00:00",
+			posting_datetime=f"{today()} 02:00:00",
 			qty=-6,
 			qty_after_transaction=0,
 			stock_value_difference=-60,
@@ -345,6 +352,103 @@ class TestStockBalanceFilters(IntegrationTestCase):
 			self.assertEqual(len(rows), 1)
 			self.assertEqual(rows[0]["bal_qty"], 15)
 			self.assertFalse({"lot", "received_type"} & {column["fieldname"] for column in columns})
+
+	def test_ledger_query_streams_in_posting_datetime_order_without_a_limit(self):
+		filters = {"from_date": today(), "to_date": today(), "warehouse": "NO-SUCH-BALANCE-WAREHOUSE"}
+		with patch.object(frappe.db, "sql", wraps=frappe.db.sql) as sql:
+			entries = get_stock_ledger_entries(filters, None, [])
+			self.assertEqual(list(entries), [])
+		query_call = next(call for call in sql.call_args_list if "tabYRP Stock Ledger Entry" in str(call))
+		query = str(query_call.args[0])
+		self.assertIn("ORDER BY `posting_datetime`,`creation`", query)
+		self.assertNotIn("TIMESTAMP(", query)
+		self.assertNotIn("LIMIT", query)
+		self.assertTrue(query_call.kwargs["as_iterator"])
+
+	def test_stream_can_aggregate_more_than_the_former_row_limit(self):
+		row = frappe._dict(
+			item="BAL-STREAM-TEST",
+			warehouse="BAL-STREAM-TEST",
+			posting_date=frappe.utils.getdate(),
+			qty=1,
+			valuation_rate=10,
+			voucher_type="YRP Stock Entry",
+			voucher_no="BAL-STREAM-TEST",
+			stock_value_difference=10,
+		)
+		original_sql = frappe.db.sql
+
+		def stream_rows(query, *args, **kwargs):
+			if "tabYRP Stock Ledger Entry" in str(query):
+				return repeat(row, 500_001)
+			return original_sql(query, *args, **kwargs)
+
+		filters = {"from_date": today(), "to_date": today()}
+		with patch.object(frappe.db, "sql", side_effect=stream_rows):
+			balances = get_item_warehouse_map(filters, get_stock_ledger_entries(filters, None, []), [])
+		self.assertEqual(len(balances), 1)
+		balance = balances[(row.item, row.warehouse)]
+		self.assertEqual(balance.bal_qty, 500_001)
+		self.assertEqual(balance.bal_val, 5_000_010)
+
+	def test_mid_period_reconciliation_resets_balance_and_preserves_ageing(self):
+		warehouse = self.make_warehouse(f"Balance Reconciliation {frappe.generate_hash(length=8)}")
+		item = _physical_items()[0]
+		for offset, qty, balance, value, reconciliation in (
+			(-4, 10, 10, 100, False),
+			(-3, 3, 13, 30, False),
+			(-2, 999, 8, -50, True),
+			(-1, -2, 6, -20, False),
+		):
+			posting_date = frappe.utils.add_days(today(), offset)
+			frappe.get_doc(
+				{
+					"doctype": "YRP Stock Ledger Entry",
+					"item": item,
+					"warehouse": warehouse,
+					"posting_date": posting_date,
+					"posting_time": "01:00:00",
+					"posting_datetime": f"{posting_date} 01:00:00",
+					"qty": qty,
+					"qty_after_transaction": balance,
+					"stock_value_difference": value,
+					"stock_value": balance * 10,
+					"valuation_rate": 10,
+					"voucher_type": "YRP Stock Reconciliation" if reconciliation else "YRP Stock Entry",
+					"voucher_no": frappe.generate_hash(length=10),
+					"docstatus": 1,
+					**_dimension_values(),
+				}
+			).db_insert()
+		for ageing in (0, 1):
+			with self.subTest(ageing=ageing):
+				_, rows = execute(
+					{
+						"from_date": frappe.utils.add_days(today(), -3),
+						"to_date": today(),
+						"warehouse": warehouse,
+						"show_stock_ageing_data": ageing,
+						"show_inward_date_split": ageing,
+					}
+				)
+				self.assertEqual(len(rows), 1)
+				for field, expected in {
+					"opening_qty": 10,
+					"opening_val": 100,
+					"in_qty": 3,
+					"in_val": 30,
+					"out_qty": 7,
+					"out_val": 70,
+					"bal_qty": 6,
+					"bal_val": 60,
+					"val_rate": 10,
+				}.items():
+					self.assertEqual(rows[0][field], expected, field)
+				if ageing:
+					self.assertEqual(rows[0]["average_age"], 3.5)
+					self.assertEqual(rows[0]["earliest_age"], 4)
+					self.assertEqual(rows[0]["latest_age"], 3)
+					self.assertEqual([slot["qty"] for slot in rows[0]["inward_date_breakdown"]], [3, 3])
 
 
 class TestStockBalanceItemPermissions(IntegrationTestCase):

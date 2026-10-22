@@ -55,3 +55,9 @@ class YRPStockLedgerEntry(Document):
 
 
 StockLedgerEntry = YRPStockLedgerEntry
+
+
+def on_doctype_update():
+	frappe.db.add_index("YRP Stock Ledger Entry", ["posting_datetime", "creation"])
+	frappe.db.add_index("YRP Stock Ledger Entry", ["warehouse", "posting_datetime", "creation"])
+	frappe.db.add_index("YRP Stock Ledger Entry", ["item", "posting_datetime", "creation"])
