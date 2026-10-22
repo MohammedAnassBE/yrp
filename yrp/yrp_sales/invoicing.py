@@ -302,9 +302,13 @@ def validate_cancel_window(doc, method=None):
 
 
 def reverse_delivery_note_stock(doc, method=None):
-	"""Cancel the invoice's stock issues, then restore the reservations they consumed."""
-	if not doc.get("yrp_delivery_note"):
+	"""Cancel the invoice's stock issues, then restore the reservations they consumed.
+
+	Runs once per cancel: e-Invoice cancellation can cancel the invoice again inside its own cancel.
+	"""
+	if not doc.get("yrp_delivery_note") or doc.flags.yrp_stock_reversed:
 		return
+	doc.flags.yrp_stock_reversed = True
 	note = frappe.get_doc(DELIVERY_NOTE, doc.yrp_delivery_note, for_update=True)
 	if is_historical(note):
 		return

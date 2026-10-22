@@ -8,7 +8,7 @@ from frappe.utils import get_datetime, getdate, nowdate
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_or_make_bin
 from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import make_delivery_note
-from yrp.yrp_sales.invoicing import make_sales_invoice
+from yrp.yrp_sales.invoicing import make_sales_invoice, reverse_delivery_note_stock
 
 
 def get_dimension_values():
@@ -253,6 +253,15 @@ class TestDeliveryNoteInvoicing(DeliveryNoteFixtures):
 		self.assertEqual(frappe.db.get_value("YRP Stock Entry", invoice.yrp_stock_entries, "docstatus"), 2)
 		self.invoice(note)
 		self.assertEqual(self.get_bin(), (4, 0))
+
+	def test_stock_reversal_runs_once_per_cancel(self):
+		note = self.make_note(6)
+		invoice = frappe.get_doc("Sales Invoice", self.invoice(note).name)
+		invoice.cancel()
+		# e-Invoice cancellation cancels the invoice again inside its own cancel.
+		reverse_delivery_note_stock(invoice)
+		self.assertEqual(self.get_bin(), (10, 6))
+		self.assertEqual(self.get_reservation(note), (0, "Reserved"))
 
 	def test_amended_invoice_keeps_the_note_and_issues_again(self):
 		note = self.make_note(6)
