@@ -32,6 +32,12 @@ class TestSalesPersonAssignment(unittest.TestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "individual Sales Persons"):
 			validate_sales_person(group)
 
+	def test_series_id_keeps_the_display_name_on_save(self):
+		display_name = self.person.sales_person_name
+		self.assertTrue(self.person.name.startswith("SP-"))
+		self.person.save()
+		self.assertEqual(self.person.reload().sales_person_name, display_name)
+
 	def test_customers_must_match_selected_partner(self):
 		self.person.append("yrp_customers", {"customer": self.other.name})
 		with self.assertRaisesRegex(frappe.ValidationError, "does not belong"):

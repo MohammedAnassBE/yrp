@@ -28,7 +28,11 @@ fixtures = [
 		"filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired", "Revise"]]],
 		"prefix": "01",
 	},
-	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},
+	{"dt": "Property Setter", "filters": [["name", "in", [
+		"Communication-communication_medium-options",
+		"Sales Person-main-autoname",
+		"Sales Person-main-naming_rule",
+	]]]},
 ]
 
 # Apps
