@@ -109,6 +109,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Status",
+   "no_copy": 1,
    "options": "Draft\nApproval Initiated\nApproval Pending\nApproved\nSubmitted\nCancelled",
    "read_only": 1
   },
@@ -305,6 +306,7 @@
    "fieldname": "approved_by",
    "fieldtype": "Link",
    "label": "Approved By",
+   "no_copy": 1,
    "options": "User",
    "read_only": 1
   },
@@ -312,6 +314,7 @@
    "fieldname": "senior_merch_approved_by",
    "fieldtype": "Link",
    "label": "Senior Merch Approved By",
+   "no_copy": 1,
    "options": "User",
    "read_only": 1
   },
@@ -319,6 +322,7 @@
    "fieldname": "purchase_invoice_wo_approval_details",
    "fieldtype": "Table",
    "label": "Purchase Invoice WO Approval Details",
+   "no_copy": 1,
    "options": "YRP Purchase Invoice WO Approval Detail",
    "read_only": 1
   }
@@ -327,7 +331,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-24 10:52:53.197627",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Purchase Invoice",

@@ -75,6 +75,7 @@
    "fieldname": "received_date",
    "fieldtype": "Date",
    "label": "Received Date",
+   "no_copy": 1,
    "reqd": 1
   },
   {
@@ -121,6 +122,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Form Status",
+   "no_copy": 1,
    "options": "Open\nAssigned\nClosed\nReopen\nCancelled\nAmended"
   },
   {
@@ -205,7 +207,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-29 10:58:10.518220",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Bill Tracking",

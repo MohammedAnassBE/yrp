@@ -132,6 +132,7 @@
    "fieldname": "submitted_by",
    "fieldtype": "Link",
    "label": "Submitted By",
+   "no_copy": 1,
    "options": "User",
    "read_only": 1
   },
@@ -165,7 +166,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-26 19:00:00.000000",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Production Order",

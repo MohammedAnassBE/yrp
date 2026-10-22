@@ -21,7 +21,7 @@
  "fields": [
   {"fieldname": "work_order", "fieldtype": "Link", "in_list_view": 1, "label": "Work Order", "options": "YRP Work Order", "reqd": 1},
   {"allow_on_submit": 1, "default": "Debit Requested", "fieldname": "status", "fieldtype": "Select", "in_list_view": 1, "label": "Status", "no_copy": 1, "options": "Debit Requested\nApproved", "read_only": 1},
-  {"allow_on_submit": 1, "fieldname": "approved_by", "fieldtype": "Link", "label": "Approved By", "options": "User", "read_only": 1},
+  {"allow_on_submit": 1, "fieldname": "approved_by", "fieldtype": "Link", "label": "Approved By", "no_copy": 1, "options": "User", "read_only": 1},
   {"default": "Permanent", "fieldname": "debit_type", "fieldtype": "Select", "in_list_view": 1, "label": "Debit Type", "options": "Permanent", "reqd": 1},
   {"fieldname": "debit_no", "fieldtype": "Data", "in_list_view": 1, "label": "Debit No"},
   {"fieldname": "debit_value", "fieldtype": "Currency", "in_list_view": 1, "label": "Debit Value", "reqd": 1},
@@ -35,7 +35,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-15 00:00:00.000000",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Debit",

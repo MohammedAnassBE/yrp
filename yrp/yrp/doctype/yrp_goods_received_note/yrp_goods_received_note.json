@@ -292,6 +292,7 @@
    "fieldname": "total_received_quantity",
    "fieldtype": "Float",
    "label": "Total Received Quantity",
+   "no_copy": 1,
    "precision": "3",
    "read_only": 1
   },
@@ -313,6 +314,7 @@
    "fieldname": "purchase_invoice_name",
    "fieldtype": "Link",
    "label": "Purchase Invoice",
+   "no_copy": 1,
    "options": "YRP Purchase Invoice",
    "read_only": 1
   },
@@ -336,6 +338,7 @@
    "fieldname": "transfer_complete",
    "fieldtype": "Check",
    "label": "Transfer Complete",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -348,6 +351,7 @@
    "fieldname": "ste_transferred",
    "fieldtype": "Float",
    "label": "STE Transferred",
+   "no_copy": 1,
    "precision": "3",
    "read_only": 1
   },
@@ -357,6 +361,7 @@
    "fieldname": "ste_transferred_percent",
    "fieldtype": "Percent",
    "label": "STE Transferred (%)",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -374,7 +379,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-10 19:04:22.364595",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Goods Received Note",

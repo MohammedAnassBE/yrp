@@ -102,6 +102,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
+   "no_copy": 1,
    "options": "Draft\nSubmitted\nPartially Delivered\nFully Delivered\nPartially Received\nFully Received\nPartially Billed\nFully Billed\nClose Request\nClosed\nCancelled",
    "read_only": 1
   },
@@ -110,6 +111,7 @@
    "fieldname": "start_date",
    "fieldtype": "Date",
    "label": "Start Date",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -117,6 +119,7 @@
    "fieldname": "end_date",
    "fieldtype": "Date",
    "label": "End Date",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -172,12 +175,14 @@
    "fieldname": "deliverables",
    "fieldtype": "Table",
    "label": "Deliverables",
+   "no_copy": 1,
    "options": "YRP Work Order Deliverables"
   },
   {
    "fieldname": "receivables",
    "fieldtype": "Table",
    "label": "Receivables",
+   "no_copy": 1,
    "options": "YRP Work Order Receivables"
   },
   {
@@ -284,6 +289,7 @@
    "fieldname": "is_delivered",
    "fieldtype": "Check",
    "label": "Is Delivered",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -324,6 +330,7 @@
    "fieldname": "open_status",
    "fieldtype": "Select",
    "label": "Open Status",
+   "no_copy": 1,
    "options": "Open\nClose Request\nClose",
    "read_only": 1
   },
@@ -333,6 +340,7 @@
    "fieldname": "close_reason",
    "fieldtype": "Data",
    "label": "Close Reason",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -341,6 +349,7 @@
    "fieldname": "close_remarks",
    "fieldtype": "Small Text",
    "label": "Close Remarks",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -349,6 +358,7 @@
    "fieldname": "closed_by",
    "fieldtype": "Link",
    "label": "Closed By",
+   "no_copy": 1,
    "options": "User",
    "read_only": 1
   },
@@ -389,6 +399,7 @@
    "fieldtype": "Table",
    "hidden": 1,
    "label": "Work Order Calculated Items",
+   "no_copy": 1,
    "options": "YRP Work Order Calculated Item"
   },
   {
@@ -421,49 +432,56 @@
    "fieldname": "first_dc_date",
    "fieldtype": "Date",
    "hidden": 1,
-   "label": "First DC Date"
+   "label": "First DC Date",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "first_grn_date",
    "fieldtype": "Date",
    "hidden": 1,
-   "label": "First GRN Date"
+   "label": "First GRN Date",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "last_dc_date",
    "fieldtype": "Date",
    "hidden": 1,
-   "label": "Last DC Date"
+   "label": "Last DC Date",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "last_grn_date",
    "fieldtype": "Date",
    "hidden": 1,
-   "label": "Last GRN Date"
+   "label": "Last GRN Date",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "total_no_of_pieces_delivered",
    "fieldtype": "Int",
    "hidden": 1,
-   "label": "Total No of Pieces Delivered"
+   "label": "Total No of Pieces Delivered",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "total_no_of_pieces_received",
    "fieldtype": "Int",
    "hidden": 1,
-   "label": "Total No of Pieces Received"
+   "label": "Total No of Pieces Received",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "received_types_json",
    "fieldtype": "JSON",
    "hidden": 1,
-   "label": "Received Types JSON"
+   "label": "Received Types JSON",
+   "no_copy": 1
   },
   {
    "fieldname": "section_break_lgsu",
@@ -502,14 +520,16 @@
    "fieldname": "completed_items_json",
    "fieldtype": "JSON",
    "hidden": 1,
-   "label": "Completed Items JSON"
+   "label": "Completed Items JSON",
+   "no_copy": 1
   },
   {
    "allow_on_submit": 1,
    "fieldname": "incompleted_items_json",
    "fieldtype": "JSON",
    "hidden": 1,
-   "label": "Incompleted Items JSON"
+   "label": "Incompleted Items JSON",
+   "no_copy": 1
   },
   {
    "fieldname": "summary_tab",
@@ -535,6 +555,7 @@
    "fieldtype": "JSON",
    "hidden": 1,
    "label": "WO Delivered Completed JSON",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -543,6 +564,7 @@
    "fieldtype": "JSON",
    "hidden": 1,
    "label": "WO Delivered Incompleted JSON",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -561,6 +583,7 @@
    "fieldname": "work_order_tracking_logs",
    "fieldtype": "Table",
    "label": "Work Order Tracking Logs",
+   "no_copy": 1,
    "options": "YRP Work Order Tracking Log"
   },
   {
@@ -569,6 +592,7 @@
    "fieldtype": "Table",
    "hidden": 1,
    "label": "Work Order Excess Usage Items",
+   "no_copy": 1,
    "options": "YRP Work Order Excess Usage Item"
   },
   {
@@ -576,6 +600,7 @@
    "fieldname": "work_order_track_pieces",
    "fieldtype": "Table",
    "label": "Work Order Track Pieces",
+   "no_copy": 1,
    "options": "YRP Work Order Track Piece"
   },
   {
@@ -596,6 +621,7 @@
    "fieldname": "reduce_stock_entry",
    "fieldtype": "Link",
    "label": "Reduce Stock Entry",
+   "no_copy": 1,
    "options": "YRP Stock Entry",
    "read_only": 1
   },
@@ -604,6 +630,7 @@
    "fieldname": "update_stock_entry",
    "fieldtype": "Link",
    "label": "Update Stock Entry",
+   "no_copy": 1,
    "options": "YRP Stock Entry",
    "read_only": 1
   },
@@ -619,6 +646,7 @@
    "fieldname": "rejection_reason",
    "fieldtype": "Small Text",
    "label": "Rejection Reason",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -635,7 +663,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-24 18:52:33.214716",
+ "modified": "2026-10-22 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Work Order",
