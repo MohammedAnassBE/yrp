@@ -88,13 +88,23 @@ def _strip_zero_entries(item_details):
 
 class YRPGoodsReceivedNote(Document):
 	def onload(self):
-		from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
+		from yrp.stock.save_stock_items import group_correction_items_for_ui
 
-		rows = self.get("items") or []
 		if self.against == "Purchase Order" and self.against_id:
 			po = frappe.get_doc("Purchase Order", self.against_id)
 			self.set_onload("lot_options", get_purchase_order_lot_options(po))
 			self.set_onload("lot_fieldname", get_purchase_order_lot_fieldname())
+		self.set_onload("item_details", self.get_item_details_for_ui())
+		self.set_onload(
+			"correction_item_details",
+			group_correction_items_for_ui(self.get("correction_items") or [], "YRP Goods Received Note"),
+		)
+
+	def get_item_details_for_ui(self):
+		"""Grouped editor matrix of the items, with pending quantities for drafts."""
+		from yrp.stock.save_stock_items import group_items_for_ui
+
+		rows = self.get("items") or []
 		if (
 			self.docstatus == 0
 			and self.against == "YRP Work Order"
@@ -120,15 +130,7 @@ class YRPGoodsReceivedNote(Document):
 			rows = _pending_purchase_order_rows(po, existing_rows=rows)
 			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(po))
 			apply_dimension_defaults(rows)
-
-		self.set_onload(
-			"item_details",
-			group_items_for_ui(rows, "YRP Goods Received Note"),
-		)
-		self.set_onload(
-			"correction_item_details",
-			group_correction_items_for_ui(self.get("correction_items") or [], "YRP Goods Received Note"),
-		)
+		return group_items_for_ui(rows, "YRP Goods Received Note")
 
 	def before_validate(self):
 		self.sync_vue_item_details()

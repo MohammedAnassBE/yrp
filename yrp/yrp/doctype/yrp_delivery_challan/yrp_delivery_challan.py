@@ -6,16 +6,19 @@ from frappe.utils import flt, formatdate, nowdate, nowtime
 
 class YRPDeliveryChallan(Document):
 	def onload(self):
-		from yrp.stock.save_stock_items import group_correction_items_for_ui, group_items_for_ui
+		from yrp.stock.save_stock_items import group_correction_items_for_ui
 
-		self.set_onload(
-			"item_details",
-			group_items_for_ui(self.get("items") or [], "YRP Delivery Challan"),
-		)
+		self.set_onload("item_details", self.get_item_details_for_ui())
 		self.set_onload(
 			"correction_item_details",
 			group_correction_items_for_ui(self.get("correction_items") or [], "YRP Delivery Challan"),
 		)
+
+	def get_item_details_for_ui(self):
+		"""Grouped editor matrix of the items."""
+		from yrp.stock.save_stock_items import group_items_for_ui
+
+		return group_items_for_ui(self.get("items") or [], "YRP Delivery Challan")
 
 	def before_validate(self):
 		self.sync_vue_item_details()
