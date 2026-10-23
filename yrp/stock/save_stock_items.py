@@ -305,6 +305,21 @@ def _stock_variant_reader(variants):
 	return read
 
 
+def _get_parent_items(item_codes):
+	"""Map codes Item returns under their exact name to the parent Item, in one query per 500 codes."""
+	codes = list(dict.fromkeys(code for code in item_codes if code))
+	parents = {}
+	for start in range(0, len(codes), 500):
+		for item in frappe.get_all(
+			"Item",
+			filters={"name": ["in", codes[start : start + 500]]},
+			fields=["name", "variant_of"],
+			limit_page_length=0,
+		):
+			parents[item.name] = item.variant_of or item.name
+	return parents
+
+
 def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	"""Convert flat child rows into the nested grouped structure the Vue editor expects.
 
@@ -425,7 +440,8 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 				out[row.attribute] = _attribute_value(row.attribute_value)
 		return out
 
-	_parent_cache = {}
+	# Codes missing here (case or padding variants, absent Items) use get_parent_item below.
+	_parent_cache = _get_parent_items(row.get(item_field) for row in rows)
 
 	def _logical_entries(variants):
 		"""Split one saved index bucket so distinct items never share an editor entry.

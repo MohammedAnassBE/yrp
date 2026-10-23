@@ -8,9 +8,11 @@ from yrp.stock.save_stock_items import (
 	PARENT_CHILD_MAP,
 	_empty_value_fields,
 	_get_entry_fields,
+	_get_parent_items,
 	group_items_for_ui,
 	ungroup_items_from_ui,
 )
+from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 NEEDLE_VARIANTS = {
 	"NEEDLE-OVER-LOCK": {"Name": "Over Lock", "Type": "DC X 27"},
@@ -67,6 +69,7 @@ def _patched_item_master():
 			"yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details",
 			side_effect=lambda parent: NEEDLE_DETAILS if parent == "NEEDLE" else SHIRT_DETAILS,
 		),
+		patch("yrp.stock.save_stock_items._get_parent_items", return_value={}),
 		patch("yrp.stock.save_stock_items._stock_variant_reader", side_effect=_variant_reader),
 		patch("yrp.stock.save_stock_items._resolve_or_create_variant", side_effect=_variant_name),
 		patch("yrp.stock.save_stock_items.get_dimension_fieldnames", return_value=["lot"]),
@@ -176,6 +179,7 @@ class TestStockItemEntryFieldExtensions(UnitTestCase):
 
 		with (
 			patch("yrp.yrp.doctype.yrp_item.yrp_item.get_parent_item", return_value="Test Garment"),
+			patch("yrp.stock.save_stock_items._get_parent_items", return_value={}),
 			patch.object(frappe, "get_doc", return_value=variant),
 			patch(
 				"yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details",
@@ -296,3 +300,112 @@ class TestStockItemRowIndexes(UnitTestCase):
 		values = grouped[0]["items"][0]["values"]
 		self.assertEqual((values["S"]["qty"], values["M"]["qty"], values["XXL"]["qty"]), (1, 0, 4))
 		self.assertEqual(SHIRT_DETAILS["primary_attribute_values"], ["S", "M"])
+
+
+class TestParentItemPrefill(UnitTestCase):
+	def test_prefill_keys_only_exact_names_and_skips_blank_codes(self):
+		items = [
+			frappe._dict(name="SHIRT-RED-S", variant_of="SHIRT"),
+			frappe._dict(name="NEEDLE", variant_of=None),
+			frappe._dict(name="CASE", variant_of=""),
+		]
+		with patch.object(frappe, "get_all", return_value=items) as get_all:
+			parents = _get_parent_items(["SHIRT-RED-S", "", None, "NEEDLE", "case", "SHIRT-RED-S", "MISSING"])
+
+		get_all.assert_called_once()
+		self.assertEqual(
+			get_all.call_args.kwargs["filters"],
+			{"name": ["in", ["SHIRT-RED-S", "NEEDLE", "case", "MISSING"]]},
+		)
+		self.assertEqual(parents, {"SHIRT-RED-S": "SHIRT", "NEEDLE": "NEEDLE", "CASE": "CASE"})
+		self.assertNotIn("case", parents)
+		self.assertNotIn("MISSING", parents)
+
+	def test_prefill_reads_in_chunks_of_500(self):
+		codes = [f"ITEM-{number}" for number in range(501)]
+		with patch.object(frappe, "get_all", return_value=[]) as get_all:
+			self.assertEqual(_get_parent_items(codes), {})
+
+		self.assertEqual(
+			[len(call.kwargs["filters"]["name"][1]) for call in get_all.call_args_list], [500, 1]
+		)
+
+	def test_grouping_uses_prefill_and_falls_back_for_codes_it_lacks(self):
+		rows = [
+			{"item_code": "SHIRT-RED-S", "qty": 1, "lot": "Open Lot", "table_index": 0, "row_index": "0"},
+			{"item_code": "shirt-red-m", "qty": 2, "lot": "Open Lot", "table_index": 0, "row_index": "0"},
+			{"item_code": "NEEDLE-KAJA", "qty": 5, "lot": "Open Lot", "table_index": 1, "row_index": "1"},
+			{"item_code": "GONE-ITEM", "qty": 9, "lot": "Open Lot", "table_index": 1, "row_index": "2"},
+		]
+		variants = {"shirt-red-m": {"Colour": "Red", "Size": "M"}, "GONE-ITEM": {}}
+		scalar = {"shirt-red-m": "SHIRT", "NEEDLE-KAJA": "NEEDLE", "GONE-ITEM": None}
+
+		def group(prefill):
+			with ExitStack() as stack:
+				for patcher in _patched_item_master():
+					stack.enter_context(patcher)
+				stack.enter_context(patch.dict(NEEDLE_VARIANTS, variants))
+				stack.enter_context(
+					patch("yrp.stock.save_stock_items._get_parent_items", return_value=prefill)
+				)
+				get_parent_item = stack.enter_context(
+					patch("yrp.yrp.doctype.yrp_item.yrp_item.get_parent_item", side_effect=scalar.get)
+				)
+				return group_items_for_ui(rows, "Purchase Order"), [
+					call.args[0] for call in get_parent_item.call_args_list
+				]
+
+		prefilled, fallback_codes = group({"SHIRT-RED-S": "SHIRT", "SHIRT-RED-M": "SHIRT"})
+		self.assertEqual(fallback_codes, ["shirt-red-m", "NEEDLE-KAJA", "GONE-ITEM"])
+		scalar["SHIRT-RED-S"] = "SHIRT"
+		unbatched, _ = group({})
+		self.assertEqual(prefilled, unbatched)
+		self.assertEqual(
+			[(item["name"], item["values"]) for group in prefilled for item in group["items"]],
+			[
+				("SHIRT", {"S": {"qty": 1}, "M": {"qty": 2}}),
+				("NEEDLE", {"default": {"qty": 5}}),
+			],
+		)
+
+	def test_case_and_padding_variants_of_a_standalone_item_keep_the_saved_code(self):
+		items = {"NEEDLE": frappe._dict(name="NEEDLE", variant_of=None)}
+
+		def collated(code):
+			return items.get(str(code).rstrip().upper())
+
+		real_get_all = frappe.get_all
+
+		def get_all(doctype, *args, **kwargs):
+			if doctype != "Item":
+				return real_get_all(doctype, *args, **kwargs)
+			return [item for item in map(collated, kwargs["filters"]["name"][1]) if item]
+
+		real_get_value = frappe.db.get_value
+
+		def get_value(doctype, *args, **kwargs):
+			if doctype == "Item":
+				return collated(args[0])
+			return real_get_value(doctype, *args, **kwargs)
+
+		rows = [
+			{"item_code": code, "qty": qty, "lot": "Open Lot", "table_index": 0, "row_index": str(qty)}
+			for qty, code in enumerate(["NEEDLE", "needle", "NEEDLE "], start=1)
+		]
+		with ExitStack() as stack:
+			for patcher in _patched_item_master():
+				stack.enter_context(patcher)
+			stack.enter_context(patch.dict(NEEDLE_VARIANTS, {"needle": {}, "NEEDLE ": {}, "NEEDLE": {}}))
+			stack.enter_context(patch.object(frappe, "get_all", side_effect=get_all))
+			stack.enter_context(patch.object(frappe.db, "get_value", side_effect=get_value))
+			stack.enter_context(
+				patch("yrp.yrp.doctype.yrp_item.yrp_item.get_parent_item", side_effect=get_parent_item)
+			)
+			stack.enter_context(
+				patch("yrp.stock.save_stock_items._get_parent_items", side_effect=_get_parent_items)
+			)
+			grouped = group_items_for_ui(rows, "Purchase Order")
+
+		self.assertEqual(
+			[item["name"] for group in grouped for item in group["items"]], ["NEEDLE", "needle", "NEEDLE "]
+		)

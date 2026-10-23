@@ -69,6 +69,7 @@ class TestVariantRead(UnitTestCase):
 		with (
 			patch.object(frappe, "get_all", side_effect=read_rows),
 			patch("yrp.yrp.doctype.yrp_item.yrp_item.get_parent_item", return_value="T"),
+			patch("yrp.stock.save_stock_items._get_parent_items", return_value={}),
 			patch("yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details", return_value={
 				"attributes": ["Colour"], "primary_attribute": "Size", "primary_attribute_values": ["S", "M"],
 			}),
