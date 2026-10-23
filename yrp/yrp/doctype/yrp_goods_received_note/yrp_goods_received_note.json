@@ -337,6 +337,7 @@
    "default": "0",
    "fieldname": "transfer_complete",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Transfer Complete",
    "no_copy": 1,
    "read_only": 1
@@ -379,7 +380,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-22 12:00:00.000000",
+ "modified": "2026-10-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Goods Received Note",
