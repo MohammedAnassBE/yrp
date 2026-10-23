@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, nowdate, nowtime
+from frappe.utils import flt, formatdate, nowdate, nowtime
 
 
 class YRPDeliveryChallan(Document):
@@ -295,7 +295,7 @@ class YRPDeliveryChallan(Document):
 						bucket["item"],
 						self.from_warehouse,
 						get_dimension_text(bucket["dims"]),
-						self.posting_date,
+						formatdate(self.posting_date, "dd-mm-yyyy"),
 						str(self.posting_time).split(".")[0],
 						flt(available),
 						required,

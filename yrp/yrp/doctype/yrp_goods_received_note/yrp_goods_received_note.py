@@ -649,7 +649,7 @@ class YRPGoodsReceivedNote(Document):
 			)
 
 	def validate_age_limit(self):
-		from frappe.utils import getdate, today
+		from frappe.utils import formatdate, getdate, today
 
 		window = frappe.db.get_single_value("YRP Stock Settings", "grn_cancel_window_days")
 		if not window or int(window) <= 0:
@@ -658,7 +658,7 @@ class YRPGoodsReceivedNote(Document):
 		if age_days > int(window):
 			frappe.throw(
 				_("Cannot cancel Goods Received Note {0} — posted {1} ({2} days ago, limit is {3}).").format(
-					self.name, self.posting_date, age_days, int(window)
+					self.name, formatdate(self.posting_date, "dd-mm-yyyy"), age_days, int(window)
 				)
 			)
 
