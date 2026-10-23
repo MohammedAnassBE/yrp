@@ -2,7 +2,7 @@
 
 import json
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import frappe
 
-from yrp.stock.ageing import FIFOSlots
+from yrp.stock.ageing import FIFOSlots, order_within_second
 from yrp.yrp_stock.report.yrp_stock_ageing import stock_ageing_parity as parity
 from yrp.yrp_stock.report.yrp_stock_ageing import yrp_stock_ageing as report
 from yrp.yrp_stock.report.yrp_stock_balance import yrp_stock_balance as balance
@@ -96,36 +96,47 @@ class TestStockAgeingFIFO(TestCase):
 
 
 class TestStockAgeingMetadata(TestCase):
-	def test_standalone_item_metadata_and_empty_input(self):
-		item = frappe._dict(name="Fabric", variant_of=None, item_group="Cloth", stock_uom="Kg", brand="")
-		with patch.object(frappe, "get_all", return_value=[item]):
-			self.assertEqual(
-				report.get_item_metadata({"Fabric": {}}),
-				{"Fabric": {"item_name": "Fabric", "item_group": "Cloth", "stock_uom": "Kg", "brand": ""}},
-			)
+	def test_variant_uses_parent_metadata_and_standalone_uses_its_own(self):
+		variant = frappe.db.get_value(
+			"Item", {"variant_of": ["is", "set"]}, ["name", "variant_of"], as_dict=True
+		)
+		standalone = frappe.db.get_value("Item", {"variant_of": ["is", "not set"]}, "name")
+		if not (variant and standalone):
+			self.skipTest("Needs a variant Item and a standalone Item")
+		fields = ["item_group", "stock_uom", "brand"]
+		parent = frappe.db.get_value("Item", variant.variant_of, fields, as_dict=True)
+		own = frappe.db.get_value("Item", standalone, fields, as_dict=True)
+		metadata = report.get_item_metadata({(variant.name, "Store"): {}, standalone: {}, "Missing Item": {}})
+		self.assertEqual(metadata[variant.name], {"item_name": variant.variant_of, **parent})
+		self.assertEqual(metadata[standalone], {"item_name": standalone, **own})
+		self.assertNotIn("Missing Item", metadata)
 		self.assertEqual(report.get_item_metadata({}), {})
 
 	def test_parent_item_metadata_and_mrp_column_order(self):
-		variant = frappe._dict(
-			name="Fabric-Black", variant_of="Fabric", item_group="M_Cloth", stock_uom="Kg", brand=""
-		)
-		parent = frappe._dict(
-			name="Fabric", variant_of=None, item_group="Cloth", stock_uom="Kg", brand="Essdee"
-		)
-		entries = [ledger(1.001, "2026-10-01")]
-		queries = []
-
-		def read_items(doctype, **kwargs):
-			self.assertEqual(doctype, "Item")
-			queries.append(kwargs["filters"]["name"])
-			return [variant] if len(queries) == 1 else [parent]
+		entries = [
+			ledger(
+				1.001,
+				"2026-10-01",
+				posting_time=timedelta(hours=10),
+				posting_datetime=datetime(2026, 10, 1, 10),
+				creation=datetime(2026, 10, 1, 10),
+			)
+		]
+		metadata = {
+			"Fabric-Black": {
+				"item_name": "Fabric",
+				"item_group": "Cloth",
+				"stock_uom": "Kg",
+				"brand": "Essdee",
+			}
+		}
 
 		with (
 			patch("yrp.stock.ageing.get_dimension_fieldnames", return_value=[]),
 			patch("yrp.stock.ageing.FIFOSlots._FIFOSlots__get_stock_ledger_entries", return_value=entries),
 			patch.object(report, "get_stock_dimensions", return_value=[]),
 			patch.object(report, "get_dimension_fieldnames", return_value=[]),
-			patch.object(frappe, "get_all", side_effect=read_items),
+			patch.object(report, "get_item_metadata", return_value=metadata),
 			patch.object(frappe, "get_system_settings", return_value="Banker's Rounding (legacy)"),
 		):
 			columns, rows, *_ = report.execute({"to_date": "2026-10-17"})
@@ -152,7 +163,60 @@ class TestStockAgeingMetadata(TestCase):
 		self.assertEqual(rows[0]["stock_uom"], "Kg")
 		self.assertEqual(rows[0]["brand"], "Essdee")
 		self.assertEqual(rows[0]["qty"], 1.001)
-		self.assertEqual(queries, [["in", ["Fabric-Black"]], ["in", ["Fabric"]]])
+
+
+class TestStockAgeingLedgerOrder(TestCase):
+	def test_order_within_second_mixes_exact_and_truncated_datetimes(self):
+		def row(name, micro, created, stored_micro):
+			return frappe._dict(
+				name=name,
+				posting_time=timedelta(hours=10, microseconds=micro),
+				posting_datetime=datetime(2026, 1, 1, 10, 0, 0, stored_micro),
+				creation=datetime(2026, 1, 1, 10, 0, created),
+			)
+
+		rows = [
+			row("truncated-late", 700, 0, 0),
+			row("exact-early", 200, 5, 200),
+			row("same-time-earlier-creation", 200, 1, 0),
+			frappe._dict(
+				name="next-second",
+				posting_time=timedelta(hours=10, seconds=1),
+				posting_datetime=datetime(2026, 1, 1, 10, 0, 1),
+				creation=datetime(2026, 1, 1, 9),
+			),
+		]
+		self.assertEqual(
+			[r.name for r in order_within_second(iter(rows))],
+			["same-time-earlier-creation", "exact-early", "truncated-late", "next-second"],
+		)
+
+	def test_streamed_ledger_matches_posting_date_order(self):
+		item = frappe.db.sql(
+			"""SELECT item FROM `tabYRP Stock Ledger Entry` WHERE is_cancelled = 0
+			GROUP BY item ORDER BY COUNT(*) DESC LIMIT 1"""
+		)
+		if not item:
+			self.skipTest("No stock ledger entries")
+		filters = {"item": item[0][0], "to_date": "2099-12-31"}
+		with frappe.db.unbuffered_cursor():
+			streamed = [
+				row.name
+				for row in order_within_second(
+					frappe._dict(name=row.voucher_no + str(row.creation), **row)
+					for row in FIFOSlots(filters)._FIFOSlots__get_stock_ledger_entries()
+				)
+			]
+		expected = [
+			row.voucher_no + str(row.creation)
+			for row in frappe.get_all(
+				"YRP Stock Ledger Entry",
+				filters={"is_cancelled": 0, "item": filters["item"]},
+				fields=["voucher_no", "creation"],
+				order_by="posting_date asc, posting_time asc, creation asc",
+			)
+		]
+		self.assertEqual(streamed, expected)
 
 	def test_chart_orders_report_rows_by_descending_average_age_as_mrp(self):
 		rows = [{"item": "New", "qty": 1, "average_age": 2}, {"item": "Old", "qty": 1, "average_age": 100}]

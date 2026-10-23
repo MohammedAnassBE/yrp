@@ -110,27 +110,22 @@ def get_item_metadata(item_details):
 	items = list(dict.fromkeys(key[0] if isinstance(key, tuple) else key for key in item_details))
 	if not items:
 		return {}
-	fields = ["name", "variant_of", "item_group", "stock_uom", "brand"]
-	variants = frappe.get_all("Item", filters={"name": ["in", items]}, fields=fields)
-	parent_names = list(dict.fromkeys(item.variant_of for item in variants if item.variant_of))
-	parents = (
-		{
-			item.name: item
-			for item in frappe.get_all("Item", filters={"name": ["in", parent_names]}, fields=fields)
-		}
-		if parent_names
-		else {}
+	rows = frappe.db.sql(
+		"""
+		SELECT variant.name AS variant, COALESCE(parent.name, variant.name) AS item_name,
+			COALESCE(parent.item_group, variant.item_group) AS item_group,
+			COALESCE(parent.stock_uom, variant.stock_uom) AS stock_uom,
+			IF(parent.name IS NULL, variant.brand, parent.brand) AS brand
+		FROM `tabItem` variant
+		LEFT JOIN `tabItem` parent ON parent.name = variant.variant_of
+			-- Exact case, as before: a variant_of that differs only in case keeps variant metadata.
+			AND BINARY parent.name = BINARY variant.variant_of
+		WHERE variant.name IN %(items)s
+		""",
+		{"items": items},
+		as_dict=True,
 	)
-	metadata = {}
-	for variant in variants:
-		item = parents.get(variant.variant_of, variant)
-		metadata[variant.name] = {
-			"item_name": item.name,
-			"item_group": item.item_group,
-			"stock_uom": item.stock_uom,
-			"brand": item.brand,
-		}
-	return metadata
+	return {row.pop("variant"): row for row in rows}
 
 
 def get_columns(filters, dims):

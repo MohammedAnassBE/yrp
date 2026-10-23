@@ -61,21 +61,12 @@ class FIFOSlots:
 	# Public ----------------------------------------------------------
 	def generate(self) -> dict:
 		if self.sle is None:
-			self.sle = self.__get_stock_ledger_entries()
-
-		for d in self.sle:
-			key, fifo_queue, transfer_key = self.__init_key_stores(d)
-
-			if d.voucher_type == "YRP Stock Reconciliation":
-				prev = self.item_details[key].get("qty_after_transaction", 0)
-				d.qty = flt(d.qty_after_transaction) - flt(prev)
-
-			if d.qty > 0:
-				self.__compute_incoming_stock(d, fifo_queue, transfer_key)
-			else:
-				self.__compute_outgoing_stock(d, fifo_queue, transfer_key)
-
-			self.__update_balances(d, key)
+			# Stream the ledger: buffering every row costs more time and memory than the FIFO walk.
+			frappe.get_cached_doc("System Settings")
+			with frappe.db.unbuffered_cursor():
+				self.__consume(order_within_second(self.__get_stock_ledger_entries()))
+		else:
+			self.__consume(self.sle)
 
 		# Normalize completed dimension queues, not transactions: transfer tracking,
 		# reconciliation and stock balances must retain their existing semantics.
@@ -93,6 +84,21 @@ class FIFOSlots:
 		return self.item_details
 
 	# Internals -------------------------------------------------------
+	def __consume(self, entries):
+		for d in entries:
+			key, fifo_queue, transfer_key = self.__init_key_stores(d)
+
+			if d.voucher_type == "YRP Stock Reconciliation":
+				prev = self.item_details[key].get("qty_after_transaction", 0)
+				d.qty = flt(d.qty_after_transaction) - flt(prev)
+
+			if d.qty > 0:
+				self.__compute_incoming_stock(d, fifo_queue, transfer_key)
+			else:
+				self.__compute_outgoing_stock(d, fifo_queue, transfer_key)
+
+			self.__update_balances(d, key)
+
 	def __init_key_stores(self, row: dict) -> tuple:
 		dim_key = tuple(row.get(fn) for fn in self.dim_fields)
 		key = (row.item, row.warehouse, *dim_key)
@@ -180,28 +186,55 @@ class FIFOSlots:
 			agg[item]["total_qty"] += flt(row["total_qty"])
 		return agg
 
-	def __get_stock_ledger_entries(self) -> list[dict]:
-		fields = [
-			"item",
-			"warehouse",
-			"qty",
-			"qty_after_transaction",
-			"posting_date",
-			"posting_time",
-			"voucher_type",
-			"voucher_no",
-			*self.dim_fields,
-		]
-		filters: dict = {"is_cancelled": 0}
-		if self.filters.get("to_date"):
-			filters["posting_date"] = ["<=", self.filters["to_date"]]
-		if self.filters.get("warehouse"):
-			filters["warehouse"] = self.filters["warehouse"]
-		if self.filters.get("item"):
-			filters["item"] = self.filters["item"]
-		return frappe.get_all(
-			"YRP Stock Ledger Entry",
-			filters=filters,
-			fields=fields,
-			order_by="posting_date asc, posting_time asc, creation asc",
+	def __get_stock_ledger_entries(self):
+		sle = frappe.qb.DocType("YRP Stock Ledger Entry")
+		query = (
+			frappe.qb.from_(sle)
+			.select(
+				sle.item,
+				sle.warehouse,
+				sle.qty,
+				sle.qty_after_transaction,
+				sle.posting_date,
+				sle.posting_time,
+				sle.posting_datetime,
+				sle.creation,
+				sle.voucher_type,
+				sle.voucher_no,
+				*(sle[fieldname] for fieldname in self.dim_fields),
+			)
+			.where(sle.is_cancelled == 0)
+			.orderby(sle.posting_datetime)
+			.orderby(sle.creation)
 		)
+		if self.filters.get("to_date"):
+			query = query.where(sle.posting_date <= self.filters["to_date"])
+		warehouse = self.filters.get("warehouse")
+		if isinstance(warehouse, (list, tuple)) and warehouse[0] == "in":
+			query = query.where(sle.warehouse.isin(warehouse[1]))
+		elif warehouse:
+			query = query.where(sle.warehouse == warehouse)
+		if self.filters.get("item"):
+			query = query.where(sle.item == self.filters["item"])
+		elif not warehouse and frappe.db.db_type == "mariadb":
+			# Walking the ordered index beats a filesort of the whole ledger.
+			query = query.force_index("posting_datetime_creation_index")
+		return query.run(as_dict=True, as_iterator=True)
+
+
+def order_within_second(rows):
+	"""Restore posting_date, posting_time, creation order inside each posting second."""
+	group, group_second = [], None
+	for row in rows:
+		# posting_datetime is stored either exact or truncated to the second.
+		second = row.posting_datetime.replace(microsecond=0)
+		if group and second != group_second:
+			yield from sorted(group, key=ledger_sort_key)
+			group = []
+		group_second = second
+		group.append(row)
+	yield from sorted(group, key=ledger_sort_key)
+
+
+def ledger_sort_key(row):
+	return (row.posting_time, row.creation)
