@@ -362,6 +362,8 @@ class YRPGoodsReceivedNote(Document):
 				row.rate = get_work_order_grn_rate(wo, delivery_challan, row)
 				row.amount = flt(row.stock_qty or row.quantity) * flt(row.rate)
 			else:
+				if self.against == "Purchase Order" and row.ref_docname:
+					row.tax = frappe.db.get_value("Purchase Order Item", row.ref_docname, "tax")
 				row.amount = flt(row.quantity) * flt(row.rate)
 
 	def validate_against(self):
@@ -2208,6 +2210,7 @@ def _pending_purchase_order_rows(po, existing_rows=None):
 			"row_index": row.row_index,
 			"set_combination": row.set_combination,
 			"rate": _purchase_order_item_net_rate(row),
+			"tax": row.tax,
 		}
 		for fieldname in get_dimension_fieldnames():
 			if row.get(fieldname):

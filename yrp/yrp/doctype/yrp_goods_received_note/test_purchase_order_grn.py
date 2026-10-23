@@ -241,6 +241,7 @@ def _purchase_order(
 	rate=25,
 	discount_percentage=0,
 	item_variant=None,
+	tax=None,
 ):
 	item_variant = item_variant or _test_item_variant()
 	uom = _item_uom(item_variant)
@@ -260,6 +261,7 @@ def _purchase_order(
 					"conversion_factor": 1,
 					"rate": rate,
 					"discount_percentage": discount_percentage,
+					"tax": tax,
 					"table_index": 0,
 					"row_index": 0,
 				}
@@ -508,6 +510,24 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 			get_stock_balance(item_variant, warehouse, received_type=received_type),
 			baseline,
 		)
+
+	def test_po_grn_copies_purchase_order_item_tax(self):
+		from yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note import (
+			get_purchase_order_defaults,
+		)
+
+		if not frappe.db.exists("YRP Tax Slab", "18"):
+			frappe.get_doc({"doctype": "YRP Tax Slab", "percentage": "18", "enabled": 1}).insert(
+				ignore_permissions=True
+			)
+		warehouse = _warehouse(f"_Test_PO_GRN_TAX_{frappe.generate_hash(length=6)}")
+		po = _purchase_order(qty=5, warehouse=warehouse, tax="18")
+
+		defaults = get_purchase_order_defaults(po.name)
+		self.assertEqual(defaults["items"][0]["tax"], "18")
+
+		grn = _purchase_order_grn(po, qty=5)
+		self.assertEqual(grn.items[0].tax, "18")
 
 	def test_po_discount_reduces_grn_stock_value(self):
 		warehouse = _warehouse(f"_Test_PO_GRN_DISCOUNT_{frappe.generate_hash(length=6)}")
