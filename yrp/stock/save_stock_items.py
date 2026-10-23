@@ -170,8 +170,6 @@ PARENT_CHILD_MAP = {
 			"additional_parameters",
 			"tax",
 			"discount_percentage",
-			"table_index",
-			"row_index",
 			"set_combination",
 			"comments",
 		],
@@ -382,6 +380,10 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		# same; the Vue GRN editor will then recombine them as labelled splits.
 		return tuple(str(row.get(fieldname) or "") for fieldname in dimension_fields)
 
+	def _table_group_key(row):
+		value = row.get("table_index")
+		return "" if value is None else str(value)
+
 	def _row_group_sort_key(row):
 		value = _row_group_key(row)
 		if value.isdigit():
@@ -396,6 +398,7 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	rows.sort(
 		key=lambda r: (
 			_row_group_sort_key(r),
+			_table_group_key(r),
 			_dimension_group_key(r),
 			r.get("_original_order") or 0,
 		)
@@ -422,84 +425,123 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 				out[row.attribute] = _attribute_value(row.attribute_value)
 		return out
 
-	# Group consecutive rows by row_index.
-	# groupby returns (key, iterator). The iterator MUST be consumed immediately
-	# (with list()) because it becomes invalid on the next iteration.
-	for (_row_idx, _dimensions), variants_iter in groupby(
-		rows,
-		lambda row: (_row_group_key(row), _dimension_group_key(row)),
-	):
-		variants = list(variants_iter)  # consume iterator immediately
-		first = variants[0]
+	_parent_cache = {}
 
-		# Resolve variant → parent item
+	def _logical_entries(variants):
+		"""Split one saved index bucket so distinct items never share an editor entry.
+
+		Saved documents can carry the same row_index on unrelated rows. Only
+		primary-attribute variants of one item with identical other attributes
+		belong together; every other row keeps its own entry.
+		"""
 		from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
-		parent_item = get_parent_item(first[item_field])
-		if not parent_item:
-			continue
-		attr_details = _get_attr_details(parent_item)
-
-		# Non-primary attributes for this item entry
-		all_attrs = list(attr_details.get("attributes") or [])
-		if attr_details.get("primary_attribute"):
-			all_attrs_with_primary = [*all_attrs, attr_details["primary_attribute"]]
-		else:
-			all_attrs_with_primary = all_attrs
-
-		first_variant_attrs = _variant_attrs(first[item_field], all_attrs_with_primary)
-
-		# Collect dimension values from the first row
-		dimensions = {fn: first.get(fn) for fn in dim_fields if _child_has_field(child_doctype, fn)}
-
-		# Build the item entry
-		item_entry = {
-			"name": parent_item,
-			"dimensions": dimensions,
-			"attributes": {a: first_variant_attrs.get(a, "") for a in all_attrs},
-			"primary_attribute": attr_details.get("primary_attribute") or "",
-			"values": {},
-			"default_uom": first.get("uom") or attr_details.get("default_uom") or "",
-		}
-		item_entry.update(_copy_supported_fields(first, entry_fields, child_doctype))
-
-		# Populate values
-		if attr_details.get("primary_attribute") and attr_details.get("primary_attribute_values"):
-			primary = attr_details["primary_attribute"]
-			# Pad missing primary values with fieldtype-correct empties. Link/Data
-			# fields such as Secondary UOM must stay blank, never the numeric 0.
-			for pv in attr_details["primary_attribute_values"]:
-				item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
-			# Fill actual values from variants (multiple rows share same row_index)
-			for variant_row in variants:
-				v_attrs = _variant_attrs(variant_row[item_field], [primary])
-				pv = v_attrs.get(primary, "")
-				if pv and pv in item_entry["values"]:
-					value_detail = {"qty": variant_row.get(qty_field) or 0}
-					value_detail.update(
-						_copy_value_fields(variant_row, value_fields, child_doctype, parent_doctype)
-					)
-					item_entry["values"][pv] = value_detail
-		else:
-			value_detail = {"qty": first.get(qty_field) or 0}
-			value_detail.update(_copy_value_fields(first, value_fields, child_doctype, parent_doctype))
-			item_entry["values"]["default"] = value_detail
-
-		# Find or create a matching attribute-group
-		grp_index = _get_item_group_index(item_details, attr_details)
-		if grp_index == -1:
-			item_details.append(
-				{
-					"attributes": attr_details.get("attributes") or [],
-					"primary_attribute": attr_details.get("primary_attribute") or "",
-					"dependent_attribute": attr_details.get("dependent_attribute") or "",
-					"dependent_attribute_details": attr_details.get("dependent_attribute_details") or {},
-					"primary_attribute_values": attr_details.get("primary_attribute_values") or [],
-					"items": [item_entry],
-				}
+		entries = []
+		for row in variants:
+			if row[item_field] not in _parent_cache:
+				_parent_cache[row[item_field]] = get_parent_item(row[item_field])
+			parent_item = _parent_cache[row[item_field]]
+			if not parent_item:
+				continue
+			attr_details = _get_attr_details(parent_item)
+			primary = (
+				attr_details.get("primary_attribute") if attr_details.get("primary_attribute_values") else ""
 			)
-		else:
-			item_details[grp_index]["items"].append(item_entry)
+			attrs = _variant_attrs(row[item_field], [*(attr_details.get("attributes") or []), primary])
+			primary_value = attrs.pop(primary, "")
+			identity = (parent_item, tuple(sorted(attrs.items())))
+			target = next(
+				(
+					entry
+					for entry in entries
+					if primary
+					and entry["identity"] == identity
+					and primary_value not in entry["primary_values"]
+				),
+				None,
+			)
+			if target is None:
+				target = {
+					"identity": identity,
+					"attr_details": attr_details,
+					"rows": [],
+					"primary_values": set(),
+				}
+				entries.append(target)
+			target["rows"].append(row)
+			target["primary_values"].add(primary_value)
+		return [(entry["identity"][0], entry["attr_details"], entry["rows"]) for entry in entries]
+
+	# Group consecutive rows by row_index, table_index and stock dimensions.
+	# groupby returns (key, iterator). The iterator MUST be consumed immediately
+	# (with list()) because it becomes invalid on the next iteration.
+	for _bucket, bucket_rows in groupby(
+		rows,
+		lambda row: (_row_group_key(row), _table_group_key(row), _dimension_group_key(row)),
+	):
+		for parent_item, attr_details, variants in _logical_entries(list(bucket_rows)):
+			first = variants[0]
+
+			# Non-primary attributes for this item entry
+			all_attrs = list(attr_details.get("attributes") or [])
+			if attr_details.get("primary_attribute"):
+				all_attrs_with_primary = [*all_attrs, attr_details["primary_attribute"]]
+			else:
+				all_attrs_with_primary = all_attrs
+
+			first_variant_attrs = _variant_attrs(first[item_field], all_attrs_with_primary)
+
+			# Collect dimension values from the first row
+			dimensions = {fn: first.get(fn) for fn in dim_fields if _child_has_field(child_doctype, fn)}
+
+			# Build the item entry
+			item_entry = {
+				"name": parent_item,
+				"dimensions": dimensions,
+				"attributes": {a: first_variant_attrs.get(a, "") for a in all_attrs},
+				"primary_attribute": attr_details.get("primary_attribute") or "",
+				"values": {},
+				"default_uom": first.get("uom") or attr_details.get("default_uom") or "",
+			}
+			item_entry.update(_copy_supported_fields(first, entry_fields, child_doctype))
+
+			# Populate values
+			if attr_details.get("primary_attribute") and attr_details.get("primary_attribute_values"):
+				primary = attr_details["primary_attribute"]
+				# Pad missing primary values with fieldtype-correct empties. Link/Data
+				# fields such as Secondary UOM must stay blank, never the numeric 0.
+				for pv in attr_details["primary_attribute_values"]:
+					item_entry["values"][pv] = {"qty": 0, **empty_value_fields}
+				# Fill actual values from variants (multiple rows share same row_index)
+				for variant_row in variants:
+					v_attrs = _variant_attrs(variant_row[item_field], [primary])
+					pv = v_attrs.get(primary, "")
+					if pv and pv in item_entry["values"]:
+						value_detail = {"qty": variant_row.get(qty_field) or 0}
+						value_detail.update(
+							_copy_value_fields(variant_row, value_fields, child_doctype, parent_doctype)
+						)
+						item_entry["values"][pv] = value_detail
+			else:
+				value_detail = {"qty": first.get(qty_field) or 0}
+				value_detail.update(_copy_value_fields(first, value_fields, child_doctype, parent_doctype))
+				item_entry["values"]["default"] = value_detail
+
+			# Find or create a matching attribute-group
+			grp_index = _get_item_group_index(item_details, attr_details)
+			if grp_index == -1:
+				item_details.append(
+					{
+						"attributes": attr_details.get("attributes") or [],
+						"primary_attribute": attr_details.get("primary_attribute") or "",
+						"dependent_attribute": attr_details.get("dependent_attribute") or "",
+						"dependent_attribute_details": attr_details.get("dependent_attribute_details") or {},
+						"primary_attribute_values": attr_details.get("primary_attribute_values") or [],
+						"items": [item_entry],
+					}
+				)
+			else:
+				item_details[grp_index]["items"].append(item_entry)
 
 	return item_details
 
@@ -623,9 +665,7 @@ def ungroup_items_from_ui(item_details, parent_doctype, keep_zero=False, *, conf
 						"row_index": row_index,  # SAME for all variants of this item
 						**extra_fields,
 					}
-					row.update(
-						_copy_value_fields(vals or {}, value_fields, child_doctype, parent_doctype)
-					)
+					row.update(_copy_value_fields(vals or {}, value_fields, child_doctype, parent_doctype))
 					for fn in dim_fields:
 						if dimensions.get(fn) and _child_has_field(child_doctype, fn):
 							row[fn] = dimensions[fn]

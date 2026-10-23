@@ -46,7 +46,7 @@ class TestVariantRead(UnitTestCase):
 		):
 			self.assertEqual([row.attribute_value for row in _stock_variant_reader(["V"])("V")], ["L", "S"])
 
-	def test_grouping_keeps_natural_order_zero_auto_rows_and_last_size_assignment(self):
+	def test_grouping_keeps_natural_order_zero_auto_rows_and_duplicate_size_rows(self):
 		from yrp.stock.save_stock_items import group_items_for_ui
 
 		rows = [
@@ -78,7 +78,8 @@ class TestVariantRead(UnitTestCase):
 			result = group_items_for_ui(rows, "YRP Stock Entry")
 		self.assertEqual(len(result), 1)
 		items = result[0]["items"]
-		self.assertEqual([item["values"]["S"]["qty"] for item in items], [0, 99, 10, 102, 110, 7, 8])
+		# Two saved rows for the same size must not overwrite each other.
+		self.assertEqual([item["values"]["S"]["qty"] for item in items], [0, 2, 99, 10, 102, 110, 7, 8])
 		self.assertEqual(items[0]["attributes"], {"Colour": "Red"})
 		self.assertEqual(items[0]["values"]["M"]["qty"], 0)
 
