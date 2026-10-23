@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -424,6 +425,54 @@ class TestPurchaseOrderGRN(FrappeTestCase):
 
 		self.assertEqual(rows[0]["lot"], "LOT-ROW")
 		self.assertEqual(rows[0]["received_type"], "Accepted")
+
+	def test_draft_rows_left_at_zero_stay_zero_on_reload(self):
+		po_rows = [
+			frappe._dict(
+				name=f"POI-{index}",
+				item_code=f"ITEM-{index}",
+				qty=10,
+				pending_quantity=10,
+				uom="Nos",
+				stock_uom="Nos",
+				conversion_factor=1,
+				table_index=0,
+				row_index=index,
+				set_combination="{}",
+				rate=10,
+				discount_percentage=0,
+				lot="Open Lot",
+				received_type="Accepted",
+			)
+			for index in range(3)
+		]
+		saved = [
+			{
+				"item_variant": "ITEM-0",
+				"quantity": 4,
+				"ref_doctype": "Purchase Order Item",
+				"ref_docname": "POI-0",
+				"lot": "Open Lot",
+				"received_type": "Accepted",
+			}
+		]
+		with (
+			patch(
+				"yrp.stock.dimensions.get_dimension_fieldnames",
+				return_value=["lot", "received_type"],
+			),
+			patch(
+				"yrp.yrp.doctype.yrp_goods_received_note.yrp_goods_received_note._po_excess_percentage",
+				return_value=0,
+			),
+		):
+			po = SimpleNamespace(items=po_rows, get=lambda key, default=None: po_rows)
+			fresh = _pending_purchase_order_rows(po)
+			reloaded = _pending_purchase_order_rows(po, existing_rows=saved)
+
+		self.assertEqual([row["quantity"] for row in fresh], [10, 10, 10])
+		self.assertEqual([row["quantity"] for row in reloaded], [4, 0, 0])
+		self.assertEqual([row["max_receivable_quantity"] for row in reloaded], [10, 10, 10])
 
 	def test_source_defaults_require_submitted_open_document(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "must be submitted"):
