@@ -282,3 +282,17 @@ class TestStockItemRowIndexes(UnitTestCase):
 			],
 			[("Red", 1, 2), ("Blue", 3, 0)],
 		)
+
+	def test_saved_size_missing_from_item_values_still_loads(self):
+		rows = [
+			{"item_code": "SHIRT-RED-S", "qty": 1, "lot": "Open Lot", "table_index": 0, "row_index": "0"},
+			{"item_code": "SHIRT-RED-XXL", "qty": 4, "lot": "Open Lot", "table_index": 0, "row_index": "0"},
+		]
+
+		with patch.dict(NEEDLE_VARIANTS, {"SHIRT-RED-XXL": {"Colour": "Red", "Size": "XXL"}}):
+			grouped = _group_purchase_order_rows(rows)
+
+		self.assertEqual(grouped[0]["primary_attribute_values"], ["S", "M", "XXL"])
+		values = grouped[0]["items"][0]["values"]
+		self.assertEqual((values["S"]["qty"], values["M"]["qty"], values["XXL"]["qty"]), (1, 0, 4))
+		self.assertEqual(SHIRT_DETAILS["primary_attribute_values"], ["S", "M"])

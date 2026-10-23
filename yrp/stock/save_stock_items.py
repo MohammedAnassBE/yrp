@@ -472,6 +472,18 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 			target["primary_values"].add(primary_value)
 		return [(entry["identity"][0], entry["attr_details"], entry["rows"]) for entry in entries]
 
+	def _with_saved_primary_values(attr_details, variants):
+		"""Add primary values a saved variant uses but the Item no longer lists, so no row is hidden."""
+		primary = attr_details.get("primary_attribute")
+		listed = list(attr_details.get("primary_attribute_values") or [])
+		if not primary or not listed:
+			return attr_details
+		saved = [_variant_attrs(row[item_field], [primary]).get(primary, "") for row in variants]
+		extra = list(dict.fromkeys(value for value in saved if value and value not in listed))
+		if not extra:
+			return attr_details
+		return {**attr_details, "primary_attribute_values": [*listed, *extra]}
+
 	# Group consecutive rows by row_index, table_index and stock dimensions.
 	# groupby returns (key, iterator). The iterator MUST be consumed immediately
 	# (with list()) because it becomes invalid on the next iteration.
@@ -481,6 +493,7 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	):
 		for parent_item, attr_details, variants in _logical_entries(list(bucket_rows)):
 			first = variants[0]
+			attr_details = _with_saved_primary_values(attr_details, variants)
 
 			# Non-primary attributes for this item entry
 			all_attrs = list(attr_details.get("attributes") or [])
