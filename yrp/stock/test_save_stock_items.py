@@ -287,6 +287,20 @@ class TestStockItemRowIndexes(UnitTestCase):
 			[("Red", 1, 2), ("Blue", 3, 0)],
 		)
 
+	def test_sizes_sharing_row_index_stay_one_row_across_table_indexes(self):
+		# Migrated rows keep one table_index per variant (DC-2026-00052, STE-2026-16885).
+		rows = [
+			{"item_code": "SHIRT-RED-S", "qty": 1, "lot": "Open Lot", "table_index": 5, "row_index": "0"},
+			{"item_code": "SHIRT-RED-M", "qty": 2, "lot": "Open Lot", "table_index": 6, "row_index": "0"},
+		]
+
+		items = _group_purchase_order_rows(rows)[0]["items"]
+
+		self.assertEqual(
+			[(item["values"]["S"]["qty"], item["values"]["M"]["qty"]) for item in items],
+			[(1, 2)],
+		)
+
 	def test_saved_size_missing_from_item_values_still_loads(self):
 		rows = [
 			{"item_code": "SHIRT-RED-S", "qty": 1, "lot": "Open Lot", "table_index": 0, "row_index": "0"},

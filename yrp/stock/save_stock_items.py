@@ -395,10 +395,6 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 		# same; the Vue GRN editor will then recombine them as labelled splits.
 		return tuple(str(row.get(fieldname) or "") for fieldname in dimension_fields)
 
-	def _table_group_key(row):
-		value = row.get("table_index")
-		return "" if value is None else str(value)
-
 	def _row_group_sort_key(row):
 		value = _row_group_key(row)
 		if value.isdigit():
@@ -413,7 +409,6 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 	rows.sort(
 		key=lambda r: (
 			_row_group_sort_key(r),
-			_table_group_key(r),
 			_dimension_group_key(r),
 			r.get("_original_order") or 0,
 		)
@@ -500,12 +495,14 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 			return attr_details
 		return {**attr_details, "primary_attribute_values": [*listed, *extra]}
 
-	# Group consecutive rows by row_index, table_index and stock dimensions.
+	# Group consecutive rows by row_index and stock dimensions. table_index is
+	# not a row boundary: migrated and matrix-normalised rows keep one
+	# table_index per size, and _logical_entries already splits distinct items.
 	# groupby returns (key, iterator). The iterator MUST be consumed immediately
 	# (with list()) because it becomes invalid on the next iteration.
 	for _bucket, bucket_rows in groupby(
 		rows,
-		lambda row: (_row_group_key(row), _table_group_key(row), _dimension_group_key(row)),
+		lambda row: (_row_group_key(row), _dimension_group_key(row)),
 	):
 		for parent_item, attr_details, variants in _logical_entries(list(bucket_rows)):
 			first = variants[0]
