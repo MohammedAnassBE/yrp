@@ -26,8 +26,7 @@ const can_create = ref(true);
 const otherInputs = ref([]);
 const table_fields = ref([
     { name: 'rate', label: 'Rate', uses_primary_attribute: 1, reqd: 1, min: 0.000001 },
-    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
-    { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
+    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1, uom_field: 'secondary_uom' },
 ]);
 const qty_fields = ref([]);
 const args = ref({

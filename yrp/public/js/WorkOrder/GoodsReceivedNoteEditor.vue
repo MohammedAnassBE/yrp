@@ -65,12 +65,12 @@
                                    :value="qty(split.entry, col.key)"
                                    @input="onQtyInput(row, split, col.key, $event)">
                             <span v-else>{{ formatQty(qty(split.entry, col.key)) }}</span>
-							<div v-if="lotFieldname && valueDetail(split.entry, col.key).secondary_uom">
+							<div v-if="secondaryUom(split.entry, col.key)">
 								<input v-if="edit" v-model.number="valueDetail(split.entry, col.key).secondary_qty"
 									type="number" min="0" step="0.001" aria-label="Secondary quantity"
 									class="form-control form-control-sm grn-qty-input" @input="emit('itemupdated', true)">
 								<span v-else>{{ valueDetail(split.entry, col.key).secondary_qty }}</span>
-								<small>{{ valueDetail(split.entry, col.key).secondary_uom }}</small>
+								<small>{{ secondaryUom(split.entry, col.key) }}</small>
 							</div>
                         </td>
                         <td>{{ formatQty(splitTotal(split, row.columns)) }}</td>
@@ -249,6 +249,13 @@ function rowMeta(row) {
         parts.push(`Set: ${[setColour, setPart].filter(Boolean).join(' / ')}`);
     }
     return parts.join(' | ');
+}
+
+// Offered where the server sent a Secondary UOM; read-only cells show it only when entered.
+function secondaryUom(entry, key) {
+    const detail = valueDetail(entry, key);
+    if (!props.edit && !toNumber(detail.secondary_qty)) return '';
+    return detail.secondary_uom || entry.secondary_uom || '';
 }
 
 function valueDetail(entry, key) {

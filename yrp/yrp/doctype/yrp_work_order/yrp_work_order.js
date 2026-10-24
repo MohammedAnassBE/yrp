@@ -20,6 +20,7 @@ frappe.ui.form.on("YRP Work Order", {
 			options: {
 				title: "Deliverables",
 				editorType: "work_order_deliverables",
+				showSecondary: true,
 				showDimensions: !!frm.doc.is_rework,
 				allowCreate: true,
 				allowEdit: true,
@@ -35,6 +36,7 @@ frappe.ui.form.on("YRP Work Order", {
 			options: {
 				title: "Receivables",
 				editorType: "work_order_receivables",
+				showSecondary: true,
 				showDimensions: false,
 				allowCreate: true,
 				allowEdit: true,

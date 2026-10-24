@@ -423,3 +423,85 @@ class TestParentItemPrefill(UnitTestCase):
 		self.assertEqual(
 			[item["name"] for group in grouped for item in group["items"]], ["NEEDLE", "needle", "NEEDLE "]
 		)
+
+
+def _group_rows(rows, parent_doctype, secondary_uom):
+	details = {**SHIRT_DETAILS, "secondary_uom": secondary_uom}
+	with ExitStack() as stack:
+		for patcher in _patched_item_master():
+			stack.enter_context(patcher)
+		stack.enter_context(
+			patch("yrp.yrp.doctype.yrp_item.yrp_item.get_attribute_details", return_value=details)
+		)
+		return group_items_for_ui(rows, parent_doctype)[0]["items"][0]
+
+
+def _shirt_row(item_field="item_variant", **values):
+	return {item_field: "SHIRT-RED-S", "qty": 1, "quantity": 1, "lot": "Open Lot", "row_index": "0", **values}
+
+
+class TestSecondaryUomRule(UnitTestCase):
+	"""Secondary qty is offered where production_api offers it: the doctype allows it and the Item has a Secondary UOM."""
+
+	def test_work_order_grn_offers_item_master_secondary_uom(self):
+		entry = _group_rows(
+			[_shirt_row(ref_doctype="YRP Work Order Receivables", secondary_uom="")],
+			"YRP Goods Received Note",
+			"Kg",
+		)
+
+		self.assertEqual(entry["secondary_uom"], "Kg")
+		self.assertEqual(entry["values"]["S"]["secondary_uom"], "Kg")
+
+	def test_purchase_order_grn_never_offers_secondary_qty(self):
+		entry = _group_rows(
+			[_shirt_row(ref_doctype="Purchase Order Item", secondary_uom="Kg")],
+			"YRP Goods Received Note",
+			"Kg",
+		)
+
+		self.assertEqual(entry["secondary_uom"], "")
+		self.assertEqual(entry["values"]["S"].get("secondary_uom", ""), "")
+
+	def test_stale_saved_secondary_uom_is_hidden_without_item_master_uom(self):
+		entry = _group_rows([_shirt_row(secondary_uom="Kg", secondary_qty=0)], "YRP Delivery Challan", None)
+
+		self.assertEqual(entry["secondary_uom"], "")
+		self.assertEqual(entry["values"]["S"].get("secondary_uom", ""), "")
+
+	def test_entered_secondary_qty_keeps_its_saved_uom(self):
+		entry = _group_rows([_shirt_row(secondary_uom="Roll", secondary_qty=2)], "YRP Delivery Challan", None)
+
+		self.assertEqual(entry["values"]["S"]["secondary_uom"], "Roll")
+		self.assertEqual(entry["values"]["S"]["secondary_qty"], 2)
+
+	def test_stock_reconciliation_never_offers_secondary_qty(self):
+		entry = _group_rows(
+			[_shirt_row(item_field="item", secondary_uom="Kg")], "YRP Stock Reconciliation", "Kg"
+		)
+
+		self.assertEqual(entry["secondary_uom"], "")
+		self.assertEqual(entry["values"]["S"].get("secondary_uom", ""), "")
+
+	def test_work_order_rows_offer_item_master_secondary_uom(self):
+		entry = _group_rows([_shirt_row(secondary_uom="")], "YRP Work Order Deliverables", "Kg")
+
+		self.assertEqual(entry["secondary_uom"], "Kg")
+
+	def test_work_order_secondary_qty_is_kept_per_size(self):
+		rows = [
+			_shirt_row(secondary_qty=2, secondary_uom="Kg"),
+			{**_shirt_row(secondary_qty=3, secondary_uom="Kg"), "item_variant": "SHIRT-RED-M"},
+		]
+		entry = _group_rows(rows, "YRP Work Order Deliverables", "Kg")
+
+		self.assertEqual(
+			(entry["values"]["S"]["secondary_qty"], entry["values"]["M"]["secondary_qty"]), (2, 3)
+		)
+		with ExitStack() as stack:
+			for patcher in _patched_item_master():
+				stack.enter_context(patcher)
+			saved = ungroup_items_from_ui(
+				[{**SHIRT_DETAILS, "items": [entry]}], "YRP Work Order Deliverables"
+			)
+		self.assertEqual(sorted(row["secondary_qty"] for row in saved), [2, 3])

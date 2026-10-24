@@ -26,8 +26,7 @@ const items = ref([]);
 const otherInputs = ref([]);
 const table_fields = ref([
     { name: 'rate', label: 'Valuation Rate', uses_primary_attribute: 1 },
-    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
-    { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
+    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1, uom_field: 'secondary_uom' },
 ]);
 const qty_fields = ref(['secondary_qty']);
 const args = ref({

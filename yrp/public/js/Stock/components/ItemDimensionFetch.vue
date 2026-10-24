@@ -33,7 +33,8 @@
                                             {{ attr.qty }}<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span>
                                         </span>
                                         <span v-else>0<span v-if="j.default_uom">{{ ' ' + j.default_uom }}</span></span>
-                                        <span v-for="a in table_qty_fields" :key="a.name">
+                                        <template v-for="a in table_qty_fields" :key="a.name">
+                                        <span v-if="shows_table_field(a, j, attr)">
                                             <br>
                                             <span v-if="a.inline_edit && edit" class="d-inline-flex align-items-center" style="gap: 0.35rem; min-width: 9rem;">
                                                 <span class="text-muted text-nowrap">{{ a.label }}:</span>
@@ -46,15 +47,16 @@
                                                     v-model.number="attr[a.name]"
                                                     @input="on_inline_table_field_change(attr, a)"
                                                 >
-                                                <span v-if="a.uom_field && attr[a.uom_field]" class="text-muted text-nowrap">
-                                                    {{ attr[a.uom_field] }}
+                                                <span v-if="a.uom_field && (attr[a.uom_field] || j[a.uom_field])" class="text-muted text-nowrap">
+                                                    {{ attr[a.uom_field] || j[a.uom_field] }}
                                                 </span>
                                             </span>
                                             <span v-else>
                                                 {{ a.label }}: {{ a.format ? a.format(attr[a.name]) : attr[a.name] }}
-                                                <span v-if="a.uom_field && attr[a.uom_field]"> {{ attr[a.uom_field] }}</span>
+                                                <span v-if="a.uom_field && (attr[a.uom_field] || j[a.uom_field])"> {{ attr[a.uom_field] || j[a.uom_field] }}</span>
                                             </span>
                                         </span>
+                                        </template>
                                     </div>
                                     <div v-else class="text-center">---</div>
                                 </td>
@@ -97,8 +99,9 @@
                                     </span>
                                 </td>
                                 <td v-for="a in table_qty_fields" :key="a.name">
+                                    <template v-if="!shows_table_field(a, j, j.values && j.values['default'])"></template>
                                     <input
-                                        v-if="a.inline_edit && edit && j.values && j.values['default']"
+                                        v-else-if="a.inline_edit && edit && j.values && j.values['default']"
                                         class="form-control form-control-sm"
                                         type="number"
                                         :min="a.min ?? 0"
@@ -109,8 +112,8 @@
                                     >
                                     <span v-else>
                                         {{ (j.values && j.values['default']) ? (a.format ? a.format(j.values['default'][a.name]) : j.values['default'][a.name]) : '' }}
-                                        <span v-if="a.uom_field && j.values && j.values['default'] && j.values['default'][a.uom_field]">
-                                            {{ j.values['default'][a.uom_field] }}
+                                        <span v-if="a.uom_field && ((j.values && j.values['default'] && j.values['default'][a.uom_field]) || j[a.uom_field])">
+                                            {{ (j.values && j.values['default'] && j.values['default'][a.uom_field]) || j[a.uom_field] }}
                                         </span>
                                     </span>
                                 </td>
@@ -154,7 +157,7 @@
                             <input class="form-control" :id="'qty_control_'+index" :ref="'qty_control_'+index" type="number" min="0" v-model.number="item.values[attr]['qty']">
                         </div>
                         <div v-for="field in editable_qty_fields" :key="field.name">
-                            <label class="small text-muted">{{ field.label }}</label>
+                            <label class="small text-muted">{{ field.label }}<span v-if="field.uom_field"> · {{ cur_item[field.uom_field] }}</span></label>
                             <input class="form-control"
                                    type="number"
                                    :min="field.min ?? 0"
@@ -170,7 +173,7 @@
                         <input class="form-control" id="qty_control" ref="qty_control" type="number" min="0.000" step="0.001" v-model.number="item.values['default']['qty']" required>
                     </div>
                     <div v-for="field in editable_qty_fields" :key="field.name" class="col">
-                        <label class="small text-muted">{{ field.label }}</label>
+                        <label class="small text-muted">{{ field.label }}<span v-if="field.uom_field"> · {{ cur_item[field.uom_field] }}</span></label>
                         <input class="form-control"
                                type="number"
                                :min="field.min ?? 0"
@@ -389,6 +392,14 @@ const other_fields_class = computed(() => {
     return "col-md-3";
 });
 
+// Inline editors show a UOM-bound field where the UOM is offered; read-only views only when a value exists.
+function shows_table_field(field, row, cell) {
+    if (!field.uom_field) return true;
+    const value = Number((cell && cell[field.name]) || 0);
+    if (!(field.inline_edit && props.edit)) return value !== 0;
+    return Boolean(value || (cell && cell[field.uom_field]) || row[field.uom_field]);
+}
+
 function has_qty_field(field) {
     return props.qtyFields && props.qtyFields.includes(field);
 }
@@ -397,9 +408,10 @@ const editable_qty_fields = computed(() => {
     const fields = [];
     if (!props.qtyFields || !props.tableFields) return fields;
     for (const tf of props.tableFields) {
-        if (tf.uses_primary_attribute && props.qtyFields.includes(tf.name)) {
-            fields.push(tf);
-        }
+        if (!tf.uses_primary_attribute || !props.qtyFields.includes(tf.name)) continue;
+        // A UOM-bound field (Secondary Qty) is offered only when the Item has that UOM.
+        if (tf.uom_field && !cur_item.value[tf.uom_field]) continue;
+        fields.push(tf);
     }
     return fields;
 });
@@ -527,6 +539,7 @@ function set_item_details(item_details, item1) {
             dependent_attribute: item_details.dependent_attribute,
             values: {},
             default_uom: item_details.default_uom,
+            secondary_uom: item_details.secondary_uom || "",
             additional_parameters: item_details.additional_parameters,
         };
         for (let i = 0; i < item_details.attributes.length; i++) {
@@ -949,6 +962,7 @@ function edit_item(index, index1) {
         dependent_attribute_details: grp.dependent_attribute_details,
         primary_attribute_values: grp.primary_attribute_values,
         default_uom: row.default_uom,
+        secondary_uom: row.secondary_uom || "",
     };
 
     set_item_details(cur_item.value, row);

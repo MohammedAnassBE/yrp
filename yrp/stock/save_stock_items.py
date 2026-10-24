@@ -14,6 +14,7 @@ from itertools import groupby
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 from yrp.attribute_links import value as _attribute_value
 from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
@@ -26,9 +27,14 @@ from yrp.stock.dimensions import get_dimension_fieldnames, get_stock_dimensions
 #   qty_field: quantity fieldname on child row
 #   value_fields: fields stored per primary-attribute value in the Vue editor
 #   entry_fields: fields stored once per logical item row in the Vue editor
+#   allow_secondary_qty: the editor offers Secondary Qty for Items with a
+#     Secondary UOM (production_api's per-doctype allowSecondaryQty)
+#   no_secondary_qty_ref_doctypes: source rows that never offer it
+#     (production_api's Purchase Order GRN has no secondary input)
 # ---------------------------------------------------------------------------
 PARENT_CHILD_MAP = {
 	"YRP Stock Entry": {
+		"allow_secondary_qty": True,
 		"child_table_field": "items",
 		"child_doctype": "YRP Stock Entry Detail",
 		"item_field": "item",
@@ -37,6 +43,7 @@ PARENT_CHILD_MAP = {
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
 	"YRP Stock Update": {
+		"allow_secondary_qty": True,
 		"child_table_field": "stock_update_details",
 		"child_doctype": "YRP Stock Update Detail",
 		"item_field": "item_variant",
@@ -45,6 +52,7 @@ PARENT_CHILD_MAP = {
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
 	"YRP Stock Reconciliation": {
+		"allow_secondary_qty": False,
 		"child_table_field": "items",
 		"child_doctype": "YRP Stock Reconciliation Item",
 		"item_field": "item",
@@ -53,15 +61,20 @@ PARENT_CHILD_MAP = {
 		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
 	},
 	"YRP Work Order Deliverables": {
+		"allow_secondary_qty": True,
 		"child_table_field": "deliverables",
 		"child_doctype": "YRP Work Order Deliverables",
 		"item_field": "item_variant",
 		"qty_field": "qty",
-		"value_fields": ["pending_quantity", "stock_update", "valuation_rate"],
-		"entry_fields": [
-			"comments",
+		"value_fields": [
+			"pending_quantity",
+			"stock_update",
+			"valuation_rate",
 			"secondary_qty",
 			"secondary_uom",
+		],
+		"entry_fields": [
+			"comments",
 			"cancelled_quantity",
 			"additional_parameters",
 			"set_combination",
@@ -72,21 +85,21 @@ PARENT_CHILD_MAP = {
 		],
 	},
 	"YRP Work Order Receivables": {
+		"allow_secondary_qty": True,
 		"child_table_field": "receivables",
 		"child_doctype": "YRP Work Order Receivables",
 		"item_field": "item_variant",
 		"qty_field": "qty",
-		"value_fields": ["cost", "pending_quantity", "total_cost"],
+		"value_fields": ["cost", "pending_quantity", "total_cost", "secondary_qty", "secondary_uom"],
 		"entry_fields": [
 			"comments",
-			"secondary_qty",
-			"secondary_uom",
 			"process_cost",
 			"additional_parameters",
 			"set_combination",
 		],
 	},
 	"YRP Delivery Challan": {
+		"allow_secondary_qty": True,
 		"child_table_field": "items",
 		"child_doctype": "YRP Delivery Challan Item",
 		"item_field": "item_variant",
@@ -114,6 +127,8 @@ PARENT_CHILD_MAP = {
 		],
 	},
 	"YRP Goods Received Note": {
+		"allow_secondary_qty": True,
+		"no_secondary_qty_ref_doctypes": ["Purchase Order Item"],
 		"child_table_field": "items",
 		"child_doctype": "YRP Goods Received Note Item",
 		"item_field": "item_variant",
@@ -143,6 +158,7 @@ PARENT_CHILD_MAP = {
 		],
 	},
 	"Purchase Order": {
+		"allow_secondary_qty": True,
 		"child_table_field": "items",
 		"child_doctype": "Purchase Order Item",
 		"item_field": "item_code",
@@ -264,6 +280,30 @@ def _copy_value_fields(source, fieldnames, child_doctype, parent_doctype):
 	if parent_doctype == "Purchase Order" and "tax" in source:
 		out["tax"] = source.get("tax") or ""
 	return out
+
+
+def get_offered_secondary_uom(config, row, item_secondary_uom):
+	"""Return the Secondary UOM the editor offers for a row, or "" when it offers none."""
+	if not config.get("allow_secondary_qty"):
+		return ""
+	if row.get("ref_doctype") in (config.get("no_secondary_qty_ref_doctypes") or ()):
+		return ""
+	return item_secondary_uom or ""
+
+
+def get_shown_secondary_uom(source, offered_uom):
+	"""Keep the saved UOM of an entered secondary qty; otherwise show the offered one."""
+	if flt(source.get("secondary_qty")) and source.get("secondary_uom"):
+		return source.get("secondary_uom")
+	return offered_uom
+
+
+def _set_cell_secondary_uom(cell, source, offered_uom):
+	shown_uom = get_shown_secondary_uom(source, offered_uom)
+	if shown_uom:
+		cell["secondary_uom"] = shown_uom
+	else:
+		cell.pop("secondary_uom", None)
 
 
 # ====================================================================
@@ -530,6 +570,9 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 				"default_uom": first.get("uom") or attr_details.get("default_uom") or "",
 			}
 			item_entry.update(_copy_supported_fields(first, entry_fields, child_doctype))
+			offered_uom = get_offered_secondary_uom(config, first, attr_details.get("secondary_uom"))
+			item_entry["secondary_uom"] = get_shown_secondary_uom(first, offered_uom)
+			has_cell_secondary_uom = "secondary_uom" in value_fields
 
 			# Populate values
 			if attr_details.get("primary_attribute") and attr_details.get("primary_attribute_values"):
@@ -547,10 +590,14 @@ def group_items_for_ui(child_rows, parent_doctype, *, config=None):
 						value_detail.update(
 							_copy_value_fields(variant_row, value_fields, child_doctype, parent_doctype)
 						)
+						if has_cell_secondary_uom:
+							_set_cell_secondary_uom(value_detail, variant_row, offered_uom)
 						item_entry["values"][pv] = value_detail
 			else:
 				value_detail = {"qty": first.get(qty_field) or 0}
 				value_detail.update(_copy_value_fields(first, value_fields, child_doctype, parent_doctype))
+				if has_cell_secondary_uom:
+					_set_cell_secondary_uom(value_detail, first, offered_uom)
 				item_entry["values"]["default"] = value_detail
 
 			# Find or create a matching attribute-group

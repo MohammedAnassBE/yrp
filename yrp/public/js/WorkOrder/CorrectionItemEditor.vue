@@ -39,8 +39,7 @@ const props = defineProps({
 });
 
 const SECONDARY_COLUMNS = [
-    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1 },
-    { name: 'secondary_uom', label: 'Sec UOM', uses_primary_attribute: 1 },
+    { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1, uom_field: 'secondary_uom' },
 ];
 
 const docstatus = ref(cur_frm.doc.docstatus || 0);
