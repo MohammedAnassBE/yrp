@@ -93,11 +93,11 @@ function add_close_button(frm) {
 }
 
 function add_create_debit_button(frm) {
-	if (frm.doc.docstatus !== 1 || frm.doc.open_status !== "Open") return;
+	if (frm.doc.docstatus !== 1) return;
 	frappe.call({
 		method: "yrp.yrp.doctype.yrp_debit.yrp_debit.has_debit_request_permission",
 		callback(r) {
-			if (!r.message || frm.doc.docstatus !== 1 || frm.doc.open_status !== "Open") return;
+			if (!r.message || frm.doc.docstatus !== 1) return;
 			frm.add_custom_button(__("Create Debit"), () => {
 				const d = new frappe.ui.Dialog({
 					title: __("Create Debit"),

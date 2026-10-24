@@ -152,18 +152,24 @@
    "fieldname": "debit_type",
    "fieldtype": "Select",
    "label": "Debit Type",
-   "options": "\nPermanent\nTemporary"
+   "options": "\nPermanent\nTemporary",
+   "hidden": 1,
+   "read_only": 1
   },
   {
    "fieldname": "debit_no",
    "fieldtype": "Data",
-   "label": "Debit No"
+   "label": "Debit No",
+   "hidden": 1,
+   "read_only": 1
   },
   {
    "fieldname": "debit_value",
    "fieldtype": "Currency",
    "label": "Debit Value",
-   "precision": "9"
+   "precision": "9",
+   "hidden": 1,
+   "read_only": 1
   },
   {
    "fieldname": "grn_section",
@@ -330,7 +336,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-22 13:00:00.000000",
+ "modified": "2026-10-24 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "YRP",
  "name": "YRP Purchase Invoice",

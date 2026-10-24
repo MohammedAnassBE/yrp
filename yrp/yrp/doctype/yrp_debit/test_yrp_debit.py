@@ -13,11 +13,7 @@ class TestYRPDebit(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
 		frappe.set_user("Administrator")
-		self.roles = {
-			"debit_request_role": "System Manager",
-			"debit_approval_role": "System Manager",
-			"work_order_closing_approver_role": "System Manager",
-		}
+		self.roles = {"debit_approval_role": "System Manager"}
 		get_single_value = frappe.db.get_single_value
 
 		def settings_value(doctype, fieldname, *args, **kwargs):
@@ -97,11 +93,16 @@ class TestYRPDebit(FrappeTestCase):
 				self.assertEqual(attachment.attached_to_name, debit.name)
 				self.assertEqual(attachment.attached_to_field, "debit_document")
 
-	def test_permission_denied_when_request_role_is_blank(self):
-		self.roles["debit_request_role"] = None
-		self.assertFalse(yrp_debit.has_debit_request_permission())
+	def test_request_permission_follows_yrp_debit_create_and_submit_permission(self):
+		with patch.object(frappe, "has_permission", return_value=True):
+			self.assertTrue(yrp_debit.has_debit_request_permission())
 
-	def test_permission_denied_when_user_lacks_request_role(self):
+	def test_approval_permission_follows_debit_approval_role(self):
+		self.assertTrue(yrp_debit.has_debit_approval_permission())
+		self.roles["debit_approval_role"] = None
+		self.assertFalse(yrp_debit.has_debit_approval_permission())
+
+	def test_permission_denied_when_user_lacks_yrp_debit_permission(self):
 		self.set_unprivileged_user()
 		self.assertFalse(yrp_debit.has_debit_request_permission())
 
@@ -118,17 +119,22 @@ class TestYRPDebit(FrappeTestCase):
 		with self.assertRaises(frappe.PermissionError):
 			self.create_debit(wo.name)
 
-	def test_create_rejects_missing_or_non_open_submitted_work_order(self):
+	def test_create_rejects_missing_or_unsubmitted_work_order(self):
 		wo = _work_order_for_invoice(qty=1)
-		for docstatus, open_status in ((0, "Open"), (2, "Open"), (1, "Close"), (1, "Close Request")):
-			with self.subTest(docstatus=docstatus, open_status=open_status):
-				frappe.db.set_value(
-					"YRP Work Order", wo.name, {"docstatus": docstatus, "open_status": open_status}
-				)
-				with self.assertRaisesRegex(frappe.ValidationError, "open submitted Work Order"):
+		for docstatus in (0, 2):
+			with self.subTest(docstatus=docstatus):
+				frappe.db.set_value("YRP Work Order", wo.name, "docstatus", docstatus)
+				with self.assertRaisesRegex(frappe.ValidationError, "submitted Work Order"):
 					self.create_debit(wo.name)
-		with self.assertRaisesRegex(frappe.ValidationError, "open submitted Work Order"):
+		with self.assertRaisesRegex(frappe.ValidationError, "submitted Work Order"):
 			self.create_debit("MISSING-WORK-ORDER")
+
+	def test_standalone_debit_is_allowed_on_any_submitted_work_order(self):
+		wo = _work_order_for_invoice(qty=1)
+		for open_status in ("Open", "Close Request", "Close"):
+			with self.subTest(open_status=open_status):
+				frappe.db.set_value("YRP Work Order", wo.name, "open_status", open_status)
+				self.assertEqual(self.create_debit(wo.name).docstatus, 1)
 
 	def test_create_rejects_non_positive_value_on_both_paths(self):
 		wo = _work_order_for_invoice(qty=1)
@@ -152,16 +158,23 @@ class TestYRPDebit(FrappeTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "Debit No is required"):
 			self.create_debit(wo.name, debit_no="")
 
-	def test_close_path_keeps_closing_role_permission_and_allows_close_request(self):
+	def test_close_path_uses_debit_permission_for_open_and_close_request(self):
 		wo = _work_order_for_invoice(qty=1)
-		frappe.db.set_value("YRP Work Order", wo.name, "open_status", "Close Request")
-		self.roles["debit_request_role"] = None
-		with patch.object(frappe, "has_permission", return_value=False):
-			result = self.create_debit(wo.name, on_close=1)
-		self.assertEqual(result.docstatus, 1)
-		self.assertEqual(result.on_close, 1)
-
-	def test_close_path_rejects_user_without_closing_role(self):
 		self.roles["work_order_closing_approver_role"] = None
-		with self.assertRaises(frappe.ValidationError):
-			self.create_debit("WO-1", on_close=1)
+		for open_status in ("Open", "Close Request"):
+			with self.subTest(open_status=open_status):
+				frappe.db.set_value("YRP Work Order", wo.name, "open_status", open_status)
+				result = self.create_debit(wo.name, on_close=1)
+				self.assertEqual((result.docstatus, result.on_close), (1, 1))
+
+	def test_close_path_rejects_closed_work_order(self):
+		wo = _work_order_for_invoice(qty=1)
+		frappe.db.set_value("YRP Work Order", wo.name, "open_status", "Close")
+		with self.assertRaisesRegex(frappe.ValidationError, "open or close requested"):
+			self.create_debit(wo.name, on_close=1)
+
+	def test_close_path_rejects_user_without_debit_permission(self):
+		wo = _work_order_for_invoice(qty=1)
+		self.set_unprivileged_user()
+		with self.assertRaises(frappe.PermissionError):
+			self.create_debit(wo.name, on_close=1)

@@ -22,7 +22,6 @@ class TestWorkOrderClose(FrappeTestCase):
 		role_fields = {
 			"work_order_closing_approver_role",
 			"debit_approval_role",
-			"debit_request_role",
 		}
 
 		def get_single_value(doctype, fieldname, *args, **kwargs):
