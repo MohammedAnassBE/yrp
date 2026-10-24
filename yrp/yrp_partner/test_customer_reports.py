@@ -388,6 +388,8 @@ class TestCustomerReports(unittest.TestCase):
 		self.roles.return_value = ["YRP Sales Partner"]
 		self.assertEqual(_Report("Itemwise Pending").is_permitted(), "native permission")
 		self.assertFalse(_Report("Order Survey", ref_doctype="YRP Sales Order").is_permitted())
+		self.assertEqual(_Report("Accounts Survey", ref_doctype="GL Entry").is_permitted(), "native permission")
+		self.assertEqual(_Report("Sales Comparison", ref_doctype="Sales Invoice").is_permitted(), "native permission")
 
 	def test_sales_rep_reports_follow_the_reports_own_roles(self):
 		"""Agents and sales persons run the visit reports; rows come from permission-checked YRP Visit lists."""

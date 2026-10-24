@@ -50,6 +50,8 @@ PORTAL_REPORTS = {
 	"Essdee Party Outstanding": "Sales Invoice",
 	"Agent Customer Points": "EYP Points Entry",
 	"Agent Retailer Points": "EYP Points Entry",
+	"Accounts Survey": "GL Entry",
+	"Sales Comparison": "Sales Invoice",
 }
 PORTAL_REPORT_ROLES = {"YRP Sales Partner"}
 # Visit reports read permission-checked YRP Visit lists; the Report's own roles
