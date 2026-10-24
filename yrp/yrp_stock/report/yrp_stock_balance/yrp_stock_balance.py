@@ -331,9 +331,11 @@ def get_item_warehouse_map(filters, sle, dim_fields):
 	float_precision = cint(frappe.db.get_default("float_precision")) or 3
 
 	for d in sle:
-		group_key = _make_group_key(d, dim_fields)
-		if group_key not in iwb_map:
-			iwb_map[group_key] = frappe._dict(
+		get = d.get
+		group_key = (get("item"), get("warehouse"), *[get(fn) or "" for fn in dim_fields])
+		qty_dict = iwb_map.get(group_key)
+		if qty_dict is None:
+			qty_dict = iwb_map[group_key] = frappe._dict(
 				opening_qty=0.0,
 				opening_val=0.0,
 				in_qty=0.0,
@@ -344,29 +346,30 @@ def get_item_warehouse_map(filters, sle, dim_fields):
 				bal_val=0.0,
 				val_rate=0.0,
 			)
-		qty_dict = iwb_map[group_key]
 
-		if d.voucher_type == "YRP Stock Reconciliation":
-			qty_diff = flt(d.qty_after_transaction) - flt(qty_dict.bal_qty)
+		voucher_type = get("voucher_type")
+		if voucher_type == "YRP Stock Reconciliation":
+			qty_diff = flt(get("qty_after_transaction")) - flt(qty_dict["bal_qty"])
 		else:
-			qty_diff = flt(d.qty)
+			qty_diff = flt(get("qty"))
 
-		value_diff = flt(d.stock_value_difference)
+		value_diff = flt(get("stock_value_difference"))
+		posting_date = get("posting_date")
 
-		if d.posting_date < from_date or d.voucher_no in opening_vouchers.get(d.voucher_type, []):
-			qty_dict.opening_qty += qty_diff
-			qty_dict.opening_val += value_diff
-		elif from_date <= d.posting_date <= to_date:
+		if posting_date < from_date or get("voucher_no") in opening_vouchers.get(voucher_type, ()):
+			qty_dict["opening_qty"] += qty_diff
+			qty_dict["opening_val"] += value_diff
+		elif from_date <= posting_date <= to_date:
 			if flt(qty_diff, float_precision) >= 0:
-				qty_dict.in_qty += qty_diff
-				qty_dict.in_val += value_diff
+				qty_dict["in_qty"] += qty_diff
+				qty_dict["in_val"] += value_diff
 			else:
-				qty_dict.out_qty += abs(qty_diff)
-				qty_dict.out_val += abs(value_diff)
+				qty_dict["out_qty"] += abs(qty_diff)
+				qty_dict["out_val"] += abs(value_diff)
 
-		qty_dict.val_rate = d.valuation_rate
-		qty_dict.bal_qty += qty_diff
-		qty_dict.bal_val += value_diff
+		qty_dict["val_rate"] = get("valuation_rate")
+		qty_dict["bal_qty"] += qty_diff
+		qty_dict["bal_val"] += value_diff
 
 	# Remove keys with no transactions
 	pop_keys = []
@@ -386,7 +389,7 @@ def get_item_warehouse_map(filters, sle, dim_fields):
 
 
 def get_opening_vouchers(to_date):
-	opening_vouchers = {"YRP Stock Reconciliation": []}
+	opening_vouchers = {"YRP Stock Reconciliation": set()}
 	sr = frappe.qb.DocType("YRP Stock Reconciliation")
 	result = (
 		frappe.qb.from_(sr)
@@ -394,7 +397,7 @@ def get_opening_vouchers(to_date):
 		.where((sr.docstatus == 1) & (sr.posting_date <= to_date) & (sr.purpose == "Opening Stock"))
 	).run(as_dict=True)
 	for d in result:
-		opening_vouchers["YRP Stock Reconciliation"].append(d.name)
+		opening_vouchers["YRP Stock Reconciliation"].add(d.name)
 	return opening_vouchers
 
 
@@ -469,19 +472,6 @@ def get_item_details(items, iwb_map, filters):
 			item_details[a.parent][a.attribute] = _attribute_value(a.attribute_value)
 
 	return item_details
-
-
-def _make_group_key(row, dim_fields):
-	"""Build a tuple key: (item, warehouse, dim1_val, dim2_val, ...).
-
-	Single source of truth for key construction — used by both
-	get_item_warehouse_map (to group) and the main loop (to unpack).
-	"""
-	return (
-		row.get("item") or row.item,
-		row.get("warehouse") or row.warehouse,
-		*tuple(row.get(fn) or "" for fn in dim_fields),
-	)
 
 
 def _unpack_group_key(group_key, dim_fields):
