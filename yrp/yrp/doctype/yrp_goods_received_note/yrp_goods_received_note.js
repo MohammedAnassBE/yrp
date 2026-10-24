@@ -72,9 +72,6 @@ frappe.ui.form.on("YRP Goods Received Note", {
 		}
 		const items = frm.itemEditor.get_items();
 		const correction_items = frm.correctionEditor ? frm.correctionEditor.get_items() : [];
-		if (!has_received_qty(items) && !has_correction_received_qty(correction_items)) {
-			frappe.throw(__("Enter Received Qty to continue"));
-		}
 		frm.doc.item_details = JSON.stringify(items);
 		if (frm.correctionEditor) {
 			frm.doc.correction_item_details = JSON.stringify(correction_items);
@@ -344,26 +341,4 @@ function configure_return_form(frm) {
 			frm.set_df_property(fieldname, "hidden", 1);
 		}
 	}
-}
-
-function has_received_qty(item_details) {
-	for (const group of item_details || []) {
-		for (const item of group.items || []) {
-			for (const value of Object.values(item.values || {})) {
-				if (flt(value.qty) > 0) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
-}
-
-function has_correction_received_qty(correction_blocks) {
-	for (const block of correction_blocks || []) {
-		if (has_received_qty(block.item_details)) {
-			return true;
-		}
-	}
-	return false;
 }

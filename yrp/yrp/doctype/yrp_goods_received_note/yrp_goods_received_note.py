@@ -109,7 +109,6 @@ class YRPGoodsReceivedNote(Document):
 			self.docstatus == 0
 			and self.against == "YRP Work Order"
 			and self.against_id
-			and rows
 			and not self.get("is_return")
 		):
 			from yrp.stock.dimensions import apply_dimension_defaults
@@ -123,7 +122,7 @@ class YRPGoodsReceivedNote(Document):
 			rows = _pending_receivable_rows(wo, existing_rows=rows, delivery_challan=delivery_challan)
 			_apply_dimension_values_to_rows(rows, _get_production_group_dimensions(wo))
 			apply_dimension_defaults(rows)
-		elif self.docstatus == 0 and self.against == "Purchase Order" and self.against_id and rows:
+		elif self.docstatus == 0 and self.against == "Purchase Order" and self.against_id:
 			from yrp.stock.dimensions import apply_dimension_defaults
 
 			po = frappe.get_doc("Purchase Order", self.against_id)
@@ -413,10 +412,7 @@ class YRPGoodsReceivedNote(Document):
 				frappe.throw(_("Correction Items are not supported on a Delivery Challan return."))
 
 	def validate_items(self):
-		# Correction-only GRNs are valid: a fully-received WO can still owe its
-		# Work Order Correction quantities (user, 2026-07-09).
-		if not (self.get("items") or self.get("correction_items")):
-			frappe.throw(_("At least one receivable or correction item is required."))
+		self.validate_has_received_quantity()
 		if self.against == "YRP Work Order" and not self.from_warehouse:
 			frappe.throw(_("From Warehouse is required."))
 		if not self.to_warehouse:
@@ -426,6 +422,15 @@ class YRPGoodsReceivedNote(Document):
 				frappe.throw(_("Row {0}: Item Variant is required.").format(row.idx))
 			if flt(row.quantity) <= 0:
 				frappe.throw(_("Row {0}: Quantity must be greater than zero.").format(row.idx))
+
+	def validate_has_received_quantity(self):
+		"""A draft may hold no quantity; submit needs a receivable or correction row."""
+		# Correction-only GRNs are valid: a fully-received WO can still owe its
+		# Work Order Correction quantities (user, 2026-07-09).
+		if self.docstatus == 1 and not (self.get("items") or self.get("correction_items")):
+			frappe.throw(
+				_("Enter a received quantity greater than zero for at least one row before submitting.")
+			)
 
 	def calculate_totals(self):
 		all_rows = (self.get("items") or []) + (self.get("correction_items") or [])
