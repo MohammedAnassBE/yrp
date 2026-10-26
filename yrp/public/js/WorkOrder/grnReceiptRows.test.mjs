@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { allowedLotsForEntry, lotChoicesForEntry, canEditLotForEntry, itemsNeedLotEditor, unusedLotsForEntry } from './grnReceiptRows.mjs';
+import { setSplitComment, buildLogicalReceiptRows, allowedLotsForEntry, lotChoicesForEntry, canEditLotForEntry, itemsNeedLotEditor, unusedLotsForEntry } from './grnReceiptRows.mjs';
 
 const lots = { 'PO-1': ['OWN-1', 'LINKED', 'SECOND'], 'PO-2': ['OWN-2', 'LINKED', 'SECOND'], 'PO-3': ['ONLY'], 'PO-4': [] }
 const entry = { dimensions: { lot: 'OWN-1' }, values: { S: { ref_docname: 'PO-1' } } }
@@ -50,4 +50,13 @@ assert.deepEqual(unusedLotsForEntry(entry, lots, new Set(['OWN-1'])), ['LINKED',
 assert.deepEqual(unusedLotsForEntry(entry, lots, new Set(['OWN-1', 'LINKED', 'SECOND'])), [], 'Add lot hides when the row set is exhausted')
 assert.deepEqual(unusedLotsForEntry(entry, lots, new Set(['OTHER-ROW', 'BAD'])), ['OWN-1', 'LINKED', 'SECOND'], 'unrelated and invalid used lots do not consume allowed lots')
 assert.deepEqual(unusedLotsForEntry({ ref_docname: 'MISSING' }, lots, new Set()), [], 'Add lot fails closed for unknown references')
-console.log('Desk GRN lot options: 44 assertions passed')
+const commentItems = [{ primary_attribute: 'Size', items: [
+ { name: 'Vest', dimensions: { received_type: 'Accepted' }, attributes: {}, values: { S: { qty: 1 } } },
+ { name: 'Vest', dimensions: { received_type: 'Accepted' }, attributes: {}, values: { S: { qty: 2 } } },
+ { name: 'Vest', dimensions: { received_type: 'Adas' }, attributes: {}, values: { S: { qty: 1 } }, comments: 'Keep' },
+] }]
+const [commentRow] = buildLogicalReceiptRows(commentItems, { aggregatePhysicalRows: true })
+setSplitComment(commentRow.splits[0], 'Pressed')
+assert.deepEqual(commentItems[0].items.map((item) => item.comments), ['Pressed', 'Pressed', 'Keep'], 'a split comment reaches every saved row of that Received Type only')
+assert.equal(commentRow.splits[0].entry.comments, 'Pressed', 'the shown split keeps the typed comment')
+console.log('Desk GRN lot options and comments: 46 assertions passed')

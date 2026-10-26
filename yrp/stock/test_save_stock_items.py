@@ -505,3 +505,23 @@ class TestSecondaryUomRule(UnitTestCase):
 				[{**SHIRT_DETAILS, "items": [entry]}], "YRP Work Order Deliverables"
 			)
 		self.assertEqual(sorted(row["secondary_qty"] for row in saved), [2, 3])
+
+
+class TestStockEntryRowRemarks(UnitTestCase):
+	def test_stock_entry_row_remarks_survive_save_and_reload(self):
+		entry = {
+			"name": "SHIRT",
+			"dimensions": {"lot": "Open Lot"},
+			"attributes": {"Colour": "Red"},
+			"primary_attribute": "Size",
+			"values": {"S": {"qty": 2}, "M": {"qty": 3}},
+			"remarks": "Handle with care",
+		}
+		with ExitStack() as stack:
+			for patcher in _patched_item_master():
+				stack.enter_context(patcher)
+			rows = ungroup_items_from_ui([{"items": [entry]}], "YRP Stock Entry")
+			grouped = group_items_for_ui(rows, "YRP Stock Entry")
+
+		self.assertEqual([row["remarks"] for row in rows], ["Handle with care"] * 2)
+		self.assertEqual(grouped[0]["items"][0]["remarks"], "Handle with care")

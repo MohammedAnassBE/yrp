@@ -15,6 +15,7 @@
                             {{ col.label }}
                         </th>
                         <th class="grn-total">Total</th>
+						<th class="grn-comments">Comments</th>
 						<template v-if="returnMode">
 							<th class="grn-total">Returnable</th>
 							<th class="grn-total">Remaining</th>
@@ -74,6 +75,11 @@
 							</div>
                         </td>
                         <td>{{ formatQty(splitTotal(split, row.columns)) }}</td>
+						<td class="grn-comments">
+							<input v-if="edit" class="form-control form-control-sm" type="text" aria-label="Row comments"
+								:value="split.entry.comments || ''" @input="onCommentInput(split, $event)">
+							<span v-else>{{ split.entry.comments }}</span>
+						</td>
 						<td v-if="returnMode && splitIndex === 0" :rowspan="row.splits.length">
 							{{ formatQty(rowAllowed(row)) }}
 						</td>
@@ -97,7 +103,7 @@
 					<tr v-if="edit && !returnMode && unusedRTs(row).length" class="grn-rt-add-row">
                         <td></td>
                         <td></td>
-                        <td :colspan="row.columns.length + 5 + (lotFieldname ? 1 : 0)">
+                        <td :colspan="row.columns.length + 6 + (lotFieldname ? 1 : 0)">
                             <span class="text-muted small mr-2">Add Received Type:</span>
                             <button v-for="rt in unusedRTs(row)"
                                     :key="rt"
@@ -121,6 +127,7 @@ import {
 	buildLogicalReceiptRows,
 	buildReceiptRowKey,
 	removeSplitSources,
+	setSplitComment,
 	setSplitQuantity,
 } from './grnReceiptRows.mjs';
 
@@ -329,6 +336,11 @@ function onQtyInput(row, split, key, event) {
     emit('itemupdated', true);
 }
 
+function onCommentInput(split, event) {
+	setSplitComment(split, event.target.value);
+	emit('itemupdated', true);
+}
+
 function splitTotal(split, columns) {
     return columns.reduce((total, col) => total + qty(split.entry, col.key), 0);
 }
@@ -450,6 +462,10 @@ function formatQty(value) {
 
 .grn-total {
     min-width: 56px;
+}
+
+.grn-comments {
+    min-width: 140px;
 }
 
 .grn-qty-input {

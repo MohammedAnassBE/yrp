@@ -151,6 +151,10 @@ export function setSplitQuantity(split, key, value, { allowExcess = false, maxVa
 	return quantity;
 }
 
+export function setSplitComment(split, value) {
+	for (const entry of new Set([split.entry, ...(split.sourceEntries || [])])) entry.comments = value;
+}
+
 export function removeSplitSources(items, split) {
 	const sources = new Set(split.sourceEntries || [split.entry]);
 	for (const group of items || []) {

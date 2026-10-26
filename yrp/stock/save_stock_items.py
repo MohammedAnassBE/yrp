@@ -40,7 +40,7 @@ PARENT_CHILD_MAP = {
 		"item_field": "item",
 		"qty_field": "qty",
 		"value_fields": ["rate", "secondary_qty", "secondary_uom"],
-		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero"],
+		"entry_fields": ["allow_zero_valuation_rate", "make_qty_zero", "remarks"],
 	},
 	"YRP Stock Update": {
 		"allow_secondary_qty": True,

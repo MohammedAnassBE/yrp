@@ -1986,10 +1986,10 @@ def _pending_receivable_rows(wo, existing_rows=None, delivery_challan=None):
 		return _pending_rework_receivable_rows(wo, delivery_challan, existing_rows)
 
 	received_types, default_received_type = _get_received_type_options(existing_rows)
-	existing_quantities = (
-		_existing_receipt_quantities(wo, existing_rows, default_received_type)
+	existing_quantities, existing_comments = (
+		_existing_receipts(wo, existing_rows, default_received_type)
 		if existing_rows is not None
-		else {}
+		else ({}, {})
 	)
 	excess_pct = _wo_excess_percentage(wo.name)
 	rows = []
@@ -2024,6 +2024,7 @@ def _pending_receivable_rows(wo, existing_rows=None, delivery_challan=None):
 				"row_index": (f"{base_row_index}::{received_type}" if received_type else base_row_index),
 				"set_combination": row.set_combination,
 				"rate": row.cost,
+				"comments": existing_comments.get(key, ""),
 			}
 			if received_type:
 				out["received_type"] = received_type
@@ -2073,10 +2074,10 @@ def _pending_correction_receivable_rows(wo):
 
 def _pending_rework_receivable_rows(wo, delivery_challan, existing_rows=None):
 	received_types, default_received_type = _get_rework_output_received_type_options(existing_rows)
-	existing_quantities = (
-		_existing_rework_receipt_quantities(existing_rows, default_received_type)
+	existing_quantities, existing_comments = (
+		_existing_rework_receipts(existing_rows, default_received_type)
 		if existing_rows is not None
-		else {}
+		else ({}, {})
 	)
 	# Per-DC-item RT visibility: fresh GRN (existing_rows is None or empty)
 	# starts with only the default RT — user adds more via the editor "+" control.
@@ -2140,6 +2141,7 @@ def _pending_rework_receivable_rows(wo, delivery_challan, existing_rows=None):
 				"row_index": f"{base_row_index}::{dc_item.name}::{received_type or ''}",
 				"set_combination": dc_item.set_combination,
 				"rate": flt(dc_item.valuation_rate or dc_item.rate),
+				"comments": existing_comments.get(key, ""),
 			}
 			out["row_index"] = f"{base_row_index}::{received_type or ''}"
 			for fn, value in _delivery_challan_item_dimension_values(dc_item).items():
@@ -2233,7 +2235,7 @@ def _purchase_receipt_splits(source, existing_rows):
 
 	if not existing_rows:
 		return [source]
-	fieldnames = [*get_dimension_fieldnames(), "secondary_qty", "secondary_uom", "freight_amount"]
+	fieldnames = [*get_dimension_fieldnames(), "secondary_qty", "secondary_uom", "freight_amount", "comments"]
 	rows = []
 	for existing in existing_rows:
 		row = {**source, "quantity": flt(existing.get("quantity"))}
@@ -2359,8 +2361,10 @@ def _get_rework_output_received_type_options(existing_rows=None):
 	return received_types, default_received_type
 
 
-def _existing_receipt_quantities(wo, existing_rows, default_received_type):
+def _existing_receipts(wo, existing_rows, default_received_type):
+	"""Saved quantity and first row comment per Work Order receivable split."""
 	quantities = defaultdict(float)
+	comments = {}
 	for row in existing_rows or []:
 		target = _find_matching_receivable(wo.receivables, row)
 		if not target:
@@ -2368,15 +2372,19 @@ def _existing_receipt_quantities(wo, existing_rows, default_received_type):
 		received_type = row.get("received_type") or default_received_type
 		key = _receipt_split_key(target.name, row.get("item_variant"), received_type)
 		quantities[key] += flt(row.get("quantity"))
-	return quantities
+		if row.get("comments") and not comments.get(key):
+			comments[key] = row.get("comments")
+	return quantities, comments
 
 
 def _receipt_split_key(receivable_name, item_variant, received_type):
 	return (receivable_name, item_variant, received_type or "")
 
 
-def _existing_rework_receipt_quantities(existing_rows, default_received_type):
+def _existing_rework_receipts(existing_rows, default_received_type):
+	"""Saved quantity and first row comment per rework receipt split."""
 	quantities = defaultdict(float)
+	comments = {}
 	for row in existing_rows or []:
 		received_type = row.get("received_type") or default_received_type
 		key = _rework_receipt_split_key(
@@ -2386,7 +2394,9 @@ def _existing_rework_receipt_quantities(existing_rows, default_received_type):
 			received_type,
 		)
 		quantities[key] += flt(row.get("quantity"))
-	return quantities
+		if row.get("comments") and not comments.get(key):
+			comments[key] = row.get("comments")
+	return quantities, comments
 
 
 def _rework_receipt_split_key(receivable_name, delivery_challan_item, item_variant, received_type):

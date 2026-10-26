@@ -23,10 +23,17 @@ import { ref, onMounted, onUnmounted } from 'vue';
 const docstatus = ref(cur_frm.doc.docstatus);
 const items = ref([]);
 const can_create = ref(true);
-const otherInputs = ref([]);
+const otherInputs = ref([
+    {
+        name: 'remarks',
+        parent: 'remarks-control',
+        df: { fieldtype: 'Small Text', fieldname: 'remarks', label: 'Remarks' },
+    },
+]);
 const table_fields = ref([
     { name: 'rate', label: 'Rate', uses_primary_attribute: 1, reqd: 1, min: 0.000001 },
     { name: 'secondary_qty', label: 'Sec Qty', uses_primary_attribute: 1, uom_field: 'secondary_uom' },
+    { name: 'remarks', label: 'Remarks' },
 ]);
 const qty_fields = ref([]);
 const args = ref({
