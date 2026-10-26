@@ -3,8 +3,9 @@
 from unittest.mock import patch
 
 import frappe
+from erpnext.accounts.utils import get_fiscal_year
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, nowdate
+from frappe.utils import add_days, add_years, nowdate
 
 from yrp.yrp.doctype.yrp_goods_received_note.test_purchase_order_grn import (
 	_default_received_type,
@@ -47,6 +48,18 @@ def _bill(supplier=None, bill_no=None, bill_date=None, invoice_value=1000, recei
 	)
 	doc.insert(ignore_permissions=True)
 	return doc
+
+
+def _unique_bill_setting(enabled):
+	"""Patch YRP Settings.unique_vendor_bill_per_year without touching the site value."""
+	original_get_single_value = frappe.db.get_single_value
+
+	def get_single_value(doctype, fieldname, *args, **kwargs):
+		if (doctype, fieldname) == ("YRP Settings", "unique_vendor_bill_per_year"):
+			return enabled
+		return original_get_single_value(doctype, fieldname, *args, **kwargs)
+
+	return patch.object(frappe.db, "get_single_value", side_effect=get_single_value)
 
 
 def _build_pi_against_po(bill, link=True):
@@ -184,27 +197,62 @@ class TestBillTracking(FrappeTestCase):
 		self.assertEqual(bill.docstatus, 2)
 		self.assertEqual(bill.cancel_reason, "duplicate bill")
 
-	# ---------- Unique-bill toggle ----------
+	# ---------- Unique bill no per supplier per fiscal year ----------
 
-	def test_08_unique_bill_toggle_enforces_per_supplier(self):
-		original_get_single_value = frappe.db.get_single_value
-		settings = {
-			"unique_vendor_bill_per_year": 1,
-			"fiscal_year_start_date": add_days(nowdate(), -30),
-			"fiscal_year_end_date": add_days(nowdate(), 30),
-		}
-
-		def get_single_value(doctype, fieldname, *args, **kwargs):
-			if doctype == "YRP Settings" and fieldname in settings:
-				return settings[fieldname]
-			return original_get_single_value(doctype, fieldname, *args, **kwargs)
-
-		with patch.object(frappe.db, "get_single_value", side_effect=get_single_value):
-			sup = _supplier(f"_T_BT_Uniq_{frappe.generate_hash(length=6)}")
+	def test_08_duplicate_bill_no_blocks_submit_in_same_fiscal_year(self):
+		with _unique_bill_setting(1):
+			supplier = _supplier(f"_T_BT_Uniq_{frappe.generate_hash(length=6)}")
 			bill_no = f"DUP-{frappe.generate_hash(length=6)}"
-			_bill(supplier=sup, bill_no=bill_no)
-			with self.assertRaisesRegex(frappe.ValidationError, "already exist"):
-				_bill(supplier=sup, bill_no=bill_no)
+			first = _bill(supplier=supplier, bill_no=bill_no)
+			first.submit()
+			second = _bill(supplier=supplier, bill_no=f"  {bill_no.lower()} ")
+			fiscal_year = get_fiscal_year(second.bill_date)[0]
+			expected = f"Bill No {second.bill_no.strip()} already exists for supplier {supplier} in fiscal year {fiscal_year}"
+			with self.assertRaisesRegex(frappe.ValidationError, expected) as raised:
+				second.submit()
+			self.assertIn(first.name, str(raised.exception))
+
+	def test_08a_duplicate_draft_warns_without_blocking_save(self):
+		with _unique_bill_setting(1):
+			supplier = _supplier(f"_T_BT_Warn_{frappe.generate_hash(length=6)}")
+			bill_no = f"DUP-{frappe.generate_hash(length=6)}"
+			_bill(supplier=supplier, bill_no=bill_no).submit()
+			frappe.clear_messages()
+			draft = _bill(supplier=supplier, bill_no=bill_no)
+			self.assertEqual(draft.docstatus, 0)
+			messages = " ".join(message.get("message", "") for message in frappe.get_message_log())
+			self.assertIn(f"Bill No {bill_no} already exists", messages)
+
+	def test_08b_drafts_cancelled_and_other_suppliers_do_not_block(self):
+		with _unique_bill_setting(1):
+			supplier = _supplier(f"_T_BT_Free_{frappe.generate_hash(length=6)}")
+			bill_no = f"DUP-{frappe.generate_hash(length=6)}"
+			_bill(supplier=supplier, bill_no=bill_no)
+			cancelled = _bill(supplier=supplier, bill_no=bill_no)
+			cancelled.submit()
+			frappe.db.set_value("YRP Bill Tracking", cancelled.name, "docstatus", 2)
+			_bill(bill_no=bill_no).submit()
+			_bill(supplier=supplier, bill_no=bill_no).submit()
+
+	def test_08c_same_bill_no_allowed_in_another_fiscal_year(self):
+		with _unique_bill_setting(1):
+			supplier = _supplier(f"_T_BT_Year_{frappe.generate_hash(length=6)}")
+			bill_no = f"DUP-{frappe.generate_hash(length=6)}"
+			bill_date = add_years(nowdate(), -2)
+			_bill(supplier=supplier, bill_no=bill_no, bill_date=bill_date).submit()
+			previous_year_date = add_days(get_fiscal_year(bill_date)[1], -1)
+			_bill(supplier=supplier, bill_no=bill_no, bill_date=previous_year_date).submit()
+
+	def test_08d_duplicate_allowed_when_setting_disabled(self):
+		with _unique_bill_setting(0):
+			supplier = _supplier(f"_T_BT_Off_{frappe.generate_hash(length=6)}")
+			bill_no = f"DUP-{frappe.generate_hash(length=6)}"
+			_bill(supplier=supplier, bill_no=bill_no).submit()
+			frappe.clear_messages()
+			second = _bill(supplier=supplier, bill_no=bill_no)
+			self.assertFalse(frappe.get_message_log())
+			second.submit()
+			self.assertEqual(second.docstatus, 1)
 
 	# ---------- Purchase Invoice link round-trip ----------
 

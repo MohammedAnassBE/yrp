@@ -1,53 +1,68 @@
 import frappe
 import frappe.utils
+from erpnext.accounts.utils import get_fiscal_year
+from frappe import _
 from frappe.model.document import Document
+from frappe.utils import get_link_to_form
 
-from yrp import attribute_links as attribute_db
 from yrp.yrp.doctype.yrp_department.yrp_department import get_user_departments
 
 
 class YRPBillTracking(Document):
 	def before_insert(self):
-		self.check_for_unique_condition()
 		if self.amended_from:
 			self.set_amended_log()
 
+	def validate(self):
+		if self.docstatus == 0:
+			self.warn_duplicate_bill_no()
+
 	def before_submit(self):
+		self.validate_unique_bill_no()
 		if not self.amended_from:
 			self.set_first_history()
 
 	def before_cancel(self):
 		self.set_cancelled_log()
 
-	def check_for_unique_condition(self):
-		"""Reject duplicate (supplier, bill_no) within the configured fiscal year.
+	def get_duplicate_bill_message(self):
+		"""Message naming a submitted bill with the same supplier and bill no in this bill's fiscal year.
 
-		Toggled via YRP Settings.unique_vendor_bill_per_year (0 disables).
+		Enabled by YRP Settings.unique_vendor_bill_per_year.
 		"""
-		flag = attribute_db.get_single_value("YRP Settings", "unique_vendor_bill_per_year")
-		if not flag:
-			return
-		start_date = attribute_db.get_single_value("YRP Settings", "fiscal_year_start_date")
-		end_date = attribute_db.get_single_value("YRP Settings", "fiscal_year_end_date")
-		if not start_date or not end_date:
-			return
-		exist_bills = frappe.get_all(
+		if not frappe.db.get_single_value("YRP Settings", "unique_vendor_bill_per_year"):
+			return None
+		bill_no = (self.bill_no or "").strip()
+		if not (self.supplier and bill_no and self.bill_date):
+			return None
+		fiscal_year, start_date, end_date = get_fiscal_year(self.bill_date, label="Bill Date", verbose=0)
+		candidates = frappe.get_all(
 			"YRP Bill Tracking",
-			filters=[
-				["bill_date", "between", [start_date, end_date]],
-				["supplier", "=", self.supplier],
-				["bill_no", "=", self.bill_no],
-				["docstatus", "!=", 2],
-			],
+			filters={
+				"supplier": self.supplier,
+				"bill_date": ["between", [start_date, end_date]],
+				"docstatus": 1,
+				"name": ["!=", self.name or ""],
+			},
+			fields=["name", "bill_no"],
+			order_by="creation asc",
 		)
-		if exist_bills:
-			frappe.throw(
-				"The following bills already exist:<br>"
-				+ "<br>".join(
-					f"<a href='/app/yrp-bill-tracking/{b['name']}' target='_blank'>{b['name']}</a>"
-					for b in exist_bills
-				)
-			)
+		existing = next(
+			(row.name for row in candidates if (row.bill_no or "").strip().lower() == bill_no.lower()), None
+		)
+		if not existing:
+			return None
+		return _("Bill No {0} already exists for supplier {1} in fiscal year {2}: {3}.").format(
+			bill_no, self.supplier, fiscal_year, get_link_to_form("YRP Bill Tracking", existing)
+		)
+
+	def validate_unique_bill_no(self):
+		if message := self.get_duplicate_bill_message():
+			frappe.throw(message, title=_("Duplicate Bill No"))
+
+	def warn_duplicate_bill_no(self):
+		if message := self.get_duplicate_bill_message():
+			frappe.msgprint(message, title=_("Duplicate Bill No"), indicator="orange")
 
 	def set_amended_log(self):
 		self.append(
