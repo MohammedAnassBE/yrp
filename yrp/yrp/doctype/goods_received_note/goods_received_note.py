@@ -329,7 +329,13 @@ class GoodsReceivedNote(Document):
 			frappe.throw(_("From Warehouse is required."))
 		if not self.to_warehouse:
 			frappe.throw(_("To Warehouse is required."))
-		if self.from_warehouse and self.from_warehouse == self.to_warehouse:
+		# Work Order processing may use one shared warehouse for both parties;
+		# retain the restriction for Purchase Order and other receipt modes.
+		if (
+			self.against != "Work Order"
+			and self.from_warehouse
+			and self.from_warehouse == self.to_warehouse
+		):
 			frappe.throw(_("From Warehouse and To Warehouse must be different."))
 		for row in (self.get("items") or []) + (self.get("correction_items") or []):
 			if not row.item_variant:
@@ -1485,6 +1491,59 @@ def _grn_receipt_stock_entries(grn, destination, with_result_keys=False):
 	return entries
 
 
+def _group_production_grn_receipts(grn, destination, with_result_keys=False):
+	"""Post one receipt SLE for one physical Item/Dimension combination.
+
+	Calculated production contracts can retain several hidden route rows for
+	valuation and Work Order pending updates.  Those routes are not separate
+	physical receipts, so merge their stock movement while preserving every row
+	in ``item_rows`` for lineage mapping.
+	"""
+	from yrp.stock.dimensions import get_dimension_fieldnames
+
+	dimension_fieldnames = get_dimension_fieldnames()
+	groups = {}
+	for row in grn.get("items") or []:
+		qty = flt(row.stock_qty) or flt(row.quantity)
+		if qty <= 0:
+			continue
+		entry = {
+			**_sle_base(grn, row),
+			"warehouse": destination,
+			"qty": qty,
+			"rate": flt(row.rate),
+		}
+		key = (
+			entry["item"],
+			entry["warehouse"],
+			entry["uom"],
+			*(entry.get(fieldname) for fieldname in dimension_fieldnames),
+		)
+		group = groups.setdefault(key, {
+			"entry": entry,
+			"item_rows": [],
+			"stock_qty": 0.0,
+			"stock_value": 0.0,
+		})
+		group["item_rows"].append(row.name)
+		group["stock_qty"] += qty
+		group["stock_value"] += qty * flt(row.rate)
+
+	for group in groups.values():
+		qty = flt(group["stock_qty"])
+		group["entry"]["qty"] = qty
+		group["entry"]["rate"] = group["stock_value"] / qty if qty else 0
+		first_row = group["item_rows"][0]
+		group["result_key"] = (
+			f"grn-output:{first_row}"
+			if len(group["item_rows"]) == 1
+			else f"grn-output-group:{first_row}"
+		)
+		if with_result_keys:
+			group["entry"]["_result_key"] = group["result_key"]
+	return list(groups.values())
+
+
 def _group_grn_deliverable_consumption(grn):
 	"""Group physical issues by Item + Warehouse + every Stock Dimension."""
 	from yrp.stock.dimensions import get_dimension_fieldnames
@@ -1547,8 +1606,9 @@ def make_production_grn_stock_ledger_entries(grn, destination, cancel=False):
 	groups = _group_grn_deliverable_consumption(grn)
 	consumption_entries = [group["entry"] for group in groups]
 	if cancel:
+		receipt_groups = _group_production_grn_receipts(grn, destination)
 		make_sl_entries(
-			consumption_entries + _grn_receipt_stock_entries(grn, destination),
+			consumption_entries + [group["entry"] for group in receipt_groups],
 			cancel=True,
 			force_inline=True,
 		)
@@ -1618,15 +1678,21 @@ def make_production_grn_stock_ledger_entries(grn, destination, cancel=False):
 		{"total_received_quantity": grn.total_received_quantity, "total": grn.total},
 		update_modified=False,
 	)
+	receipt_groups = _group_production_grn_receipts(
+		grn, destination, with_result_keys=True
+	)
 	receipt_result = make_sl_entries(
-		_grn_receipt_stock_entries(grn, destination, with_result_keys=True),
+		[group["entry"] for group in receipt_groups],
 		return_details=True,
 		force_inline=True,
 	)
-	output_sles = {
-		row.name: (receipt_result["entries"].get(f"grn-output:{row.name}") or {}).get("sle")
-		for row in grn.get("items") or []
-	}
+	output_sles = {}
+	for group in receipt_groups:
+		sle = (
+			receipt_result["entries"].get(group["result_key"]) or {}
+		).get("sle")
+		for row_name in group["item_rows"]:
+			output_sles[row_name] = sle
 	production_links = []
 	for row in grn.get("grn_deliverables") or []:
 		output_sle = output_sles.get(row.goods_received_note_item)

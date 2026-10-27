@@ -1242,6 +1242,12 @@ class UpdateEntriesAfter:
 		Reservation is enforced centrally after the new bucket balance is known.
 		"""
 		new_qty = current_dim_qty + flt(sle.qty)  # sle.qty is negative
+		# Decimal stock quantities can leave an IEEE-754 residue when an exact
+		# balance is consumed (for example 1.1909999999999996 - 1.191). This is
+		# arithmetic noise, not negative stock; normalize only a sub-nanounit
+		# residual before enforcing the real negative-stock boundary.
+		if abs(new_qty) < 1e-9:
+			new_qty = 0.0
 
 		if not self.allow_negative_stock and new_qty < 0:
 			frappe.throw(

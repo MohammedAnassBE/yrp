@@ -49,7 +49,7 @@
                                    type="number"
                                    min="0"
                                    step="0.001"
-                                   :max="maxQty(row, split, col.key)"
+								   :max="allowExcess ? undefined : maxQty(row, split, col.key)"
                                    :value="qty(split.entry, col.key)"
                                    @input="onQtyInput(row, split, col.key, $event)">
                             <span v-else>{{ formatQty(qty(split.entry, col.key)) }}</span>
@@ -100,6 +100,8 @@ const props = defineProps({
     items: { type: Array, default: () => [] },
     edit: { type: Boolean, default: true },
 	returnMode: { type: Boolean, default: false },
+	allowExcess: { type: Boolean, default: false },
+	aggregatePhysicalRows: { type: Boolean, default: false },
 });
 const emit = defineEmits(['itemupdated']);
 
@@ -169,12 +171,34 @@ const logicalRows = computed(() => {
                 byKey.set(key, row);
                 rows.push(row);
             }
-            const row = byKey.get(key);
-            row.splits.push({
-                key: `${key}::${receivedType(entry)}`,
-                receivedType: receivedType(entry),
-                entry,
-            });
+			const row = byKey.get(key);
+			const type = receivedType(entry);
+			let split = props.aggregatePhysicalRows
+				? row.splits.find((candidate) => candidate.receivedType === type)
+				: null;
+			if (!split) {
+				split = {
+					key: `${key}::${type}`,
+					receivedType: type,
+					entry: props.aggregatePhysicalRows
+						? JSON.parse(JSON.stringify(entry))
+						: entry,
+					sourceEntries: [entry],
+				};
+				row.splits.push(split);
+			} else {
+				split.sourceEntries.push(entry);
+				for (const col of columns) {
+					const target = valueDetail(split.entry, col.key);
+					const source = valueDetail(entry, col.key);
+					target.qty = toNumber(target.qty) + toNumber(source.qty);
+					for (const fieldname of ['pending_quantity', 'max_receivable_quantity']) {
+						if (source[fieldname] !== undefined && source[fieldname] !== null) {
+							target[fieldname] = toNumber(target[fieldname]) + toNumber(source[fieldname]);
+						}
+					}
+				}
+			}
         }
     }
     for (const row of rows) {
@@ -329,16 +353,18 @@ function maxQty(row, split, key) {
 }
 
 function onQtyInput(row, split, key, event) {
-    const detail = valueDetail(split.entry, key);
     let nextQty = toNumber(event.target.value);
     if (nextQty < 0) {
         nextQty = 0;
     }
-    const maxValue = maxQty(row, split, key);
-    if (maxValue !== null && nextQty > maxValue) {
-        nextQty = maxValue;
-    }
-    detail.qty = nextQty;
+	if (!props.allowExcess) {
+		const maxValue = maxQty(row, split, key);
+		if (maxValue !== null && nextQty > maxValue) nextQty = maxValue;
+	}
+	const sources = split.sourceEntries || [split.entry];
+	valueDetail(sources[0], key).qty = nextQty;
+	for (const source of sources.slice(1)) valueDetail(source, key).qty = 0;
+	valueDetail(split.entry, key).qty = nextQty;
     event.target.value = nextQty;
     emit('itemupdated', true);
 }
@@ -388,7 +414,8 @@ function addSplit(row, rt) {
                 columns: getColumns(group, entry).map((col) => col.key),
             });
             if (dimsWithoutTypeKey !== row.key) continue;
-            const clone = JSON.parse(JSON.stringify(entry));
+			const template = row.splits?.[0]?.sourceEntries?.[0] || entry;
+			const clone = JSON.parse(JSON.stringify(template));
             clone.dimensions = { ...stripped, received_type: rt };
             clone.values = {};
             const cols = getColumns(group, entry);
@@ -404,12 +431,13 @@ function addSplit(row, rt) {
 }
 
 function removeSplit(row, split) {
+	const sources = new Set(split.sourceEntries || [split.entry]);
     for (const group of props.items || []) {
-        const idx = (group.items || []).indexOf(split.entry);
-        if (idx !== -1) {
-            group.items.splice(idx, 1);
-            emit('itemupdated', true);
-            return;
+		const before = (group.items || []).length;
+		group.items = (group.items || []).filter((entry) => !sources.has(entry));
+		if (group.items.length !== before) {
+			emit('itemupdated', true);
+			return;
         }
     }
 }
