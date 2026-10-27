@@ -7,6 +7,16 @@ app_license = "mit"
 
 fixtures = [
 	{"dt": "Workflow", "filters": [["name", "in", ["Item Price Workflow", "Process Cost Workflow"]]]},
+	{
+		"dt": "Workflow State",
+		"filters": [["name", "in", ["Draft", "Approval Pending", "Approved", "Rejected", "Expired"]]],
+		"prefix": "00",
+	},
+	{
+		"dt": "Workflow Action Master",
+		"filters": [["name", "in", ["Submit", "Approve", "Reject", "Expired"]]],
+		"prefix": "01",
+	},
 	{"dt": "Property Setter", "filters": [["name", "in", ["Communication-communication_medium-options"]]]},
 ]
 
