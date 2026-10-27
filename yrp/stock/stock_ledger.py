@@ -872,6 +872,17 @@ def get_previous_sle(args, dim_fields=None, strictly_before=False):
 	return frappe._dict(rows[0]) if rows else None
 
 
+def _row_allows_zero_rate(sle) -> bool:
+	"""Whether the Stock Entry row behind this SLE is marked Allow Zero Valuation Rate."""
+	if sle.voucher_type != "YRP Stock Entry" or not sle.voucher_detail_no:
+		return False
+	if not frappe.get_meta("YRP Stock Entry Detail").has_field("allow_zero_valuation_rate"):
+		return False
+	return bool(
+		frappe.db.get_value("YRP Stock Entry Detail", sle.voucher_detail_no, "allow_zero_valuation_rate")
+	)
+
+
 # ======================================================================
 # UpdateEntriesAfter — the core valuation engine
 # ======================================================================
@@ -1200,7 +1211,7 @@ class UpdateEntriesAfter:
 
 		I.8: zero-rate is surfaced as a form warning, not a hard block.
 		"""
-		if not self.allow_zero_rate and not flt(sle.rate):
+		if not self.allow_zero_rate and not flt(sle.rate) and not _row_allows_zero_rate(sle):
 			frappe.msgprint(
 				_("Warning: incoming stock of {0} at {1} has zero valuation rate.").format(
 					sle.item, sle.warehouse
