@@ -334,18 +334,18 @@ class TestYRPDeliveryNote(unittest.TestCase):
 
 
 class TestAllocateDimensions(unittest.TestCase):
-	"""allocate_dimensions with mocked bins: rows whose filters overlap share each bin's free stock."""
+	"""allocate_dimensions with mocked bins: each row takes one whole bin; overlapping filters share free stock."""
 
-	def test_overlapping_filters_share_a_bin(self):
-		from unittest.mock import patch
-
-		from yrp.yrp_sales.doctype.yrp_delivery_note import yrp_delivery_note as module
-
+	def setUp(self):
 		fieldnames = get_dimension_fieldnames()
 		if len(fieldnames) < 2:
 			self.skipTest("needs two stock dimensions")
-		first, second = fieldnames[:2]
-		bins = [{first: "L1", second: "P", "free_qty": 4}, {first: "L2", second: "P", "free_qty": 4}]
+		self.first, self.second = fieldnames[:2]
+
+	def allocate(self, bins, rows):
+		from unittest.mock import patch
+
+		from yrp.yrp_sales.doctype.yrp_delivery_note import yrp_delivery_note as module
 
 		def free_bins(_query, values, as_dict):
 			fixed = values[2:]
@@ -353,13 +353,40 @@ class TestAllocateDimensions(unittest.TestCase):
 
 		note = frappe.new_doc("YRP Delivery Note")
 		note.set_warehouse = "Stores"
-		for values in ({second: "P"}, {}):
-			note.append("items", {"item_code": "ZZ Item", "qty": 4, "conversion_factor": 1, "uom": "Nos", **values})
+		for qty, values in rows:
+			note.append(
+				"items", {"item_code": "ZZ Item", "qty": qty, "conversion_factor": 1, "uom": "Nos", **values}
+			)
+		fields = [self.first, self.second]
 		with (
-			patch.object(module, "get_mandatory_dimensions", return_value=[{"fieldname": first}, {"fieldname": second}]),
-			patch.object(module, "get_dimension_fieldnames", return_value=[first, second]),
+			patch.object(
+				module, "get_mandatory_dimensions", return_value=[{"fieldname": name} for name in fields]
+			),
+			patch.object(module, "get_dimension_fieldnames", return_value=fields),
 			patch.object(module.frappe.db, "sql", side_effect=free_bins),
 			patch.object(module.frappe.db, "get_value", return_value=0),
 		):
 			module.allocate_dimensions(note)
-		self.assertEqual(sorted((row.get(first), row.qty) for row in note.items), [("L1", 4), ("L2", 4)])
+		return sorted((row.get(self.first), row.qty) for row in note.items)
+
+	def bins(self, *free):
+		return [
+			{self.first: f"L{index}", self.second: "P", "free_qty": qty} for index, qty in enumerate(free, 1)
+		]
+
+	def test_overlapping_filters_share_a_bin(self):
+		rows = self.allocate(self.bins(4, 4), [(4, {self.second: "P"}), (4, {})])
+		self.assertEqual(rows, [("L1", 4), ("L2", 4)])
+
+	def test_row_takes_the_oldest_bin_that_holds_all_of_it(self):
+		self.assertEqual(self.allocate(self.bins(3, 15, 20), [(15, {})]), [("L2", 15)])
+
+	def test_row_with_all_dimensions_is_checked_against_its_bin(self):
+		values = {self.first: "L1", self.second: "P"}
+		self.assertEqual(self.allocate(self.bins(4, 11), [(4, values)]), [("L1", 4)])
+		with self.assertRaisesRegex(frappe.ValidationError, "but only 4.0 is free in any one lot"):
+			self.allocate(self.bins(4, 11), [(5, values)])
+
+	def test_row_is_never_split_over_bins(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "but only 11.0 is free in any one lot"):
+			self.allocate(self.bins(4, 11), [(15, {})])

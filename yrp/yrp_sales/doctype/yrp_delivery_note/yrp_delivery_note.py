@@ -867,23 +867,21 @@ def append_pending_row(note, order, row, pending, extra=None):
 
 
 def allocate_dimensions(note):
-	"""Give rows without stock dimensions the warehouse buckets that hold free stock, oldest first.
+	"""Give each row the oldest warehouse bucket, matching the dimensions it already has, that holds all of it.
 
-	A row larger than one bucket is split; a shortage fails before any reservation is made."""
+	A row is never split over buckets; a shortage fails before any reservation is made."""
 	if handle(note, "allocate"):
 		return
-	fieldnames = [dimension["fieldname"] for dimension in get_mandatory_dimensions()]
-	if not fieldnames:
+	if not get_mandatory_dimensions():
 		return
 	dimension_fieldnames = get_dimension_fieldnames()
 	buckets = {}
 	bins = {}
 	rows = []
 	for row in note.items:
-		if all(row.get(fieldname) for fieldname in fieldnames):
-			rows.append(row)
-			continue
-		fixed = tuple((fieldname, row.get(fieldname)) for fieldname in fieldnames if row.get(fieldname))
+		fixed = tuple(
+			(fieldname, row.get(fieldname)) for fieldname in dimension_fieldnames if row.get(fieldname)
+		)
 		key = (row.item_code, row.warehouse or note.set_warehouse, fixed)
 		if key not in buckets:
 			# Overlapping filters return the same bin; one shared object keeps one free_qty per bin.
@@ -891,7 +889,7 @@ def allocate_dimensions(note):
 				bins.setdefault((*key[:2], *(bucket[name] for name in dimension_fieldnames)), bucket)
 				for bucket in get_free_buckets(*key)
 			]
-		rows.extend(split_row(row, buckets[key], key[1]))
+		rows.append(take_one_bucket(row, buckets[key], key[1]))
 	note.set("items", rows)
 
 
@@ -908,28 +906,29 @@ def get_free_buckets(item_code, warehouse, fixed=()):
 	)
 
 
-def split_row(row, buckets, warehouse):
-	"""Row copies, one per bucket used; the UOM's whole-number rule decides how much a bucket can give."""
+def take_one_bucket(row, buckets, warehouse):
+	"""The row with the dimensions of the oldest bucket that holds its whole quantity."""
 	factor = flt(row.conversion_factor) or get_conversion_factor(
 		frappe.get_cached_doc("Item", row.item_code), row.uom
 	)
 	whole = frappe.db.get_value("UOM", row.uom, "must_be_whole_number")
-	remaining = flt(row.qty)
-	values = row.as_dict(no_default_fields=True)
-	rows = []
+	qty = flt(row.qty)
+	largest = 0
 	for bucket in buckets:
 		available = flt(bucket.free_qty) / factor
-		take = min(remaining, math.floor(available + 1e-9) if whole else available)
-		if take <= 0:
-			continue
-		bucket.free_qty = flt(bucket.free_qty) - take * factor
-		remaining -= take
-		dimensions = {fieldname: bucket[fieldname] for fieldname in get_dimension_fieldnames()}
-		rows.append({**values, **dimensions, "qty": take, "stock_qty": take * factor, "warehouse": warehouse})
-		if remaining <= 1e-9:
-			return rows
+		available = math.floor(available + 1e-9) if whole else available
+		if available + 1e-9 >= qty:
+			bucket.free_qty = flt(bucket.free_qty) - qty * factor
+			dimensions = {fieldname: bucket[fieldname] for fieldname in get_dimension_fieldnames()}
+			return {
+				**row.as_dict(no_default_fields=True),
+				**dimensions,
+				"stock_qty": qty * factor,
+				"warehouse": warehouse,
+			}
+		largest = max(largest, available)
 	frappe.throw(
-		_("Row {0}: {1} needs {2} {3} in {4}, but only {5} is free.").format(
-			row.idx, row.item_code, flt(row.qty), row.uom, warehouse, flt(row.qty) - remaining
+		_("Row {0}: {1} needs {2} {3} from one lot in {4}, but only {5} is free in any one lot.").format(
+			row.idx, row.item_code, qty, row.uom, warehouse, flt(largest)
 		)
 	)
