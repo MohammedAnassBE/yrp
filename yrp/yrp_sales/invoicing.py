@@ -151,13 +151,16 @@ def get_requested_qty(note, items):
 
 
 def get_invoiced_qty(delivery_note, exclude=None, submitted_only=False):
-	"""Quantity per Delivery Note row on non-cancelled (or only submitted) Sales Invoices, read under lock
-	so a request that waited on the note lock sees invoices committed meanwhile. Credit Note rows count
-	by size: a return note's invoices all carry negative quantities."""
+	"""Quantity per Delivery Note row, in the row's UOM, on non-cancelled (or only submitted) Sales Invoices,
+	read under lock so a request that waited on the note lock sees invoices committed meanwhile. Credit Note
+	rows count by size: a return note's invoices all carry negative quantities."""
 	return dict(
 		frappe.db.sql(
-			"""select sii.yrp_delivery_note_item, sum(abs(sii.qty)) from `tabSales Invoice Item` sii
+			"""select sii.yrp_delivery_note_item, sum(case when sii.uom = dni.uom then abs(sii.qty)
+			else abs(sii.qty * sii.conversion_factor) / dni.conversion_factor end)
+		from `tabSales Invoice Item` sii
 		join `tabSales Invoice` si on si.name = sii.parent and sii.parenttype = 'Sales Invoice'
+		join `tabYRP Delivery Note Item` dni on dni.name = sii.yrp_delivery_note_item
 		where si.yrp_delivery_note = %(note)s and si.docstatus in %(docstatuses)s and si.name != %(exclude)s
 		group by sii.yrp_delivery_note_item for update""",
 			{
@@ -198,7 +201,7 @@ def validate_sales_invoice(doc, method=None):
 	for row in doc.items:
 		source = sources.get(row.yrp_delivery_note_item)
 		validate_invoice_row(row, source, note.name, get_sign(note))
-		requested[source.name] += abs(flt(row.qty))
+		requested[source.name] += abs(get_note_qty(row, source))
 	validate_billing_capacity(doc.name, note.name, sources, requested)
 
 
@@ -206,19 +209,33 @@ def validate_invoice_row(row, source, delivery_note, sign=1):
 	label = _("Row {0}").format(row.idx)
 	require(source, _("{0}: must reference a row of Delivery Note {1}.").format(label, delivery_note))
 	require(row.item_code == source.item_code, _("{0}: Item must match its Delivery Note row.").format(label))
-	require(row.uom == source.uom, _("{0}: UOM must match its Delivery Note row.").format(label))
 	require(
-		flt(row.conversion_factor) == flt(source.conversion_factor),
+		row.uom != source.uom or flt(row.conversion_factor) == flt(source.conversion_factor),
 		_("{0}: Conversion Factor must match its Delivery Note row.").format(label),
 	)
 	require(
-		flt(row.rate, row.precision("rate")) == flt(source.rate, row.precision("rate")),
+		flt(row.conversion_factor) > 0, _("{0}: Conversion Factor must be greater than zero.").format(label)
+	)
+	# Another UOM bills the same rate per stock unit, rounded to the rate precision.
+	rate = flt(source.rate)
+	if row.uom != source.uom:
+		rate = rate * flt(row.conversion_factor) / flt(source.conversion_factor)
+	precision = row.precision("rate")
+	require(
+		flt(row.rate, precision) == flt(rate, precision),
 		_("{0}: Rate must match its Delivery Note row.").format(label),
 	)
 	if sign > 0:
 		require(flt(row.qty) > 0, _("{0}: Quantity must be greater than zero.").format(label))
 	else:
 		require(flt(row.qty) < 0, _("{0}: A Credit Note quantity must be negative.").format(label))
+
+
+def get_note_qty(row, source):
+	"""An invoice row's quantity in its Delivery Note row's UOM."""
+	if row.uom == source.uom:
+		return flt(row.qty)
+	return flt(row.qty) * flt(row.conversion_factor) / flt(source.conversion_factor)
 
 
 def validate_billing_capacity(invoice, delivery_note, sources, requested):
@@ -333,9 +350,10 @@ def reverse_delivery_note_stock(doc, method=None):
 
 def get_stock_issues(invoice, note):
 	"""Return (Delivery Note row, stock quantity) for each row this invoice bills."""
+	sources = {row.name: row for row in note.items}
 	qty = defaultdict(float)
 	for row in invoice.items:
-		qty[row.yrp_delivery_note_item] += flt(row.qty)
+		qty[row.yrp_delivery_note_item] += get_note_qty(row, sources[row.yrp_delivery_note_item])
 	return [
 		(row, flt(qty[row.name] * flt(row.conversion_factor), row.precision("stock_qty")))
 		for row in note.items

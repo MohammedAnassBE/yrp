@@ -8,7 +8,7 @@ from frappe.utils import get_datetime, getdate, nowdate
 from yrp.stock.dimensions import get_stock_dimensions
 from yrp.stock.utils import get_or_make_bin
 from yrp.yrp_sales.doctype.yrp_delivery_note.yrp_delivery_note import make_delivery_note
-from yrp.yrp_sales.invoicing import make_sales_invoice, reverse_delivery_note_stock
+from yrp.yrp_sales.invoicing import get_sales_invoice, make_sales_invoice, reverse_delivery_note_stock
 
 
 def get_dimension_values():
@@ -341,6 +341,79 @@ class TestDeliveryNoteInvoicing(DeliveryNoteFixtures):
 		frappe.set_user(user)
 		frappe.get_doc("Sales Invoice", invoice.name).submit()
 		self.assertEqual(self.get_bin(), (4, 0))
+
+
+class TestBillingUom(DeliveryNoteFixtures):
+	"""An invoice may bill a Delivery Note row in another UOM of its Item at the same rate per stock unit."""
+
+	def setUp(self):
+		super().setUp()
+		self.box = frappe.get_doc({"doctype": "UOM", "uom_name": self.label("Box")}).insert().name
+		item = frappe.get_doc("Item", self.item)
+		item.append("uoms", {"uom": self.box, "conversion_factor": 5})
+		item.save()
+
+	def make_box_note(self, **flags):
+		"""Submit a 2 Box note at 415 per Box: 10 stock units at 83."""
+		if flags:
+			note = frappe.get_doc({"doctype": "YRP Delivery Note", "customer": self.customer, "company": self.company,
+				"selling_price_list": self.price_list, "currency": "USD", "set_warehouse": self.warehouse, **flags,
+				"items": [{"item_code": self.item, "uom": self.box, "conversion_factor": 5, "qty": 2, "rate": 415,
+					**self.dimensions}]})
+		else:
+			order = frappe.get_doc({"doctype": "YRP Sales Order", "customer": self.customer, "company": self.company,
+				"selling_price_list": self.price_list, "currency": "USD", "set_warehouse": self.warehouse,
+				"items": [{"item_code": self.item, "uom": self.box, "qty": 2, "rate": 415}]}).insert()
+			order.submit()
+			note = make_delivery_note(self.customer, [order.name])
+			for row in note.items:
+				row.update(self.dimensions)
+		note.insert()
+		note.submit()
+		self.assertEqual((note.items[0].uom, note.items[0].conversion_factor), (self.box, 5))
+		return note
+
+	def bill_in_stock_units(self, note, qty, rate=83):
+		invoice = get_sales_invoice(note.name)
+		invoice.items[0].update({"uom": self.uom, "conversion_factor": 1, "qty": qty, "rate": rate})
+		return invoice
+
+	def test_invoice_in_stock_units_issues_stock_and_counts_note_units(self):
+		note = self.make_box_note()
+		invoice = self.bill_in_stock_units(note, 10)
+		invoice.insert()
+		self.assertEqual(invoice.grand_total, 830)
+		invoice.submit()
+		self.assertEqual(self.get_bin(), (0, 0))
+		self.assertEqual(self.get_billing(note), (100, "Invoiced", [2]))
+		self.assertEqual(frappe.db.get_value("YRP Stock Entry", invoice.yrp_stock_entries, "docstatus"), 1)
+		invoice.cancel()
+		self.assertEqual((self.get_bin(), self.get_billing(note)), ((10, 10), (0, "Submitted", [0])))
+
+	def test_mixed_units_cannot_over_bill(self):
+		note = self.make_box_note()
+		self.bill_in_stock_units(note, 6).submit()
+		self.assertEqual(self.get_billing(note)[2], [1.2])
+		with self.assertRaisesRegex(frappe.ValidationError, "would be invoiced"):
+			self.bill_in_stock_units(note, 5).insert()
+		self.assertEqual(get_sales_invoice(note.name).items[0].qty, 0.8)
+
+	def test_converted_rate_must_match(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "Rate must match"):
+			self.bill_in_stock_units(self.make_box_note(), 10, rate=84).insert()
+
+	def test_same_uom_keeps_the_note_conversion(self):
+		invoice = get_sales_invoice(self.make_box_note().name)
+		invoice.items[0].conversion_factor = 4
+		with self.assertRaisesRegex(frappe.ValidationError, "Conversion Factor must match"):
+			invoice.insert()
+
+	def test_credit_note_in_stock_units(self):
+		note = self.make_box_note(is_return=1)
+		credit_note = self.bill_in_stock_units(note, -10)
+		credit_note.insert()
+		credit_note.submit()
+		self.assertEqual(self.get_billing(note), (100, "Invoiced", [2]))
 
 
 class TestStocklessNotes(DeliveryNoteFixtures):
