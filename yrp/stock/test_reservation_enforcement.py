@@ -15,6 +15,7 @@ from yrp.stock.stock_ledger import (
 	UpdateEntriesAfter,
 	_valuation_bucket_has_active_reservation,
 )
+from yrp.stock.utils import get_combine_datetime
 from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import YRPDeliveryChallan
 
 
@@ -31,6 +32,8 @@ def _engine(*, reserved_stock=0, is_cancelled=0, validate_reserved_stock=1):
 			"warehouse": "WH-1",
 			"lot": "LOT-1",
 			"received_type": "Accepted",
+			"posting_date": "2026-10-27",
+			"posting_time": "09:00:00",
 			"reserved_stock": reserved_stock,
 			"validate_reserved_stock": validate_reserved_stock,
 			"is_cancelled": is_cancelled,
@@ -67,17 +70,19 @@ class TestReservationEnforcement(TestCase):
 
 	def test_current_bucket_uses_preloaded_reservation_and_blocks_below_floor(self):
 		engine = _engine(reserved_stock=6)
+		engine.qty_by_dims[engine._dim_key(engine.args)] = 6
 
 		with patch("yrp.stock.utils.get_sre_reserved_qty") as get_reserved:
-			engine._validate_reservation_floor(engine.args, 6)
+			engine._validate_current_bucket_reservation_floor()
 			get_reserved.assert_not_called()
 
+		engine.qty_by_dims[engine._dim_key(engine.args)] = 5
 		with (
 			patch("yrp.stock.stock_ledger._", side_effect=lambda message: message),
 			patch("yrp.stock.stock_ledger.frappe.throw", side_effect=_raise_frappe_error),
 			self.assertRaisesRegex(NegativeStockError, "reserved quantity 6"),
 		):
-			engine._validate_reservation_floor(engine.args, 5)
+			engine._validate_current_bucket_reservation_floor()
 
 	def test_sibling_tracking_bucket_reservation_is_loaded_once(self):
 		engine = _engine(reserved_stock=2)
@@ -98,6 +103,7 @@ class TestReservationEnforcement(TestCase):
 			item_code="ITEM-1",
 			warehouse="WH-1",
 			for_update=True,
+			created_before=get_combine_datetime("2026-10-27", "09:00:00"),
 			lot="LOT-1",
 			received_type="Rejected",
 		)
@@ -145,7 +151,7 @@ class TestReservationEnforcement(TestCase):
 
 		validate.assert_not_called()
 
-	def test_outgoing_replay_cannot_consume_current_reservation(self):
+	def test_outgoing_replay_cannot_consume_a_reservation_made_by_its_posting_time(self):
 		engine = _engine(reserved_stock=9)
 		outgoing = frappe._dict(
 			{
@@ -158,11 +164,61 @@ class TestReservationEnforcement(TestCase):
 		)
 
 		with (
+			patch("yrp.stock.utils.get_sre_reserved_qty", return_value=9),
 			patch("yrp.stock.stock_ledger._", side_effect=lambda message: message),
 			patch("yrp.stock.stock_ledger.frappe.throw", side_effect=_raise_frappe_error),
 			self.assertRaises(NegativeStockError),
 		):
 			engine._process_sle(outgoing)
+
+	def test_backdated_replay_ignores_reservations_made_after_its_posting_time(self):
+		"""Later receipts covered today's reservations; history is checked only against older ones."""
+		engine = _engine(reserved_stock=9)
+		outgoing = frappe._dict(
+			{
+				**engine.args,
+				"name": "SLE-OLD",
+				"voucher_type": "YRP Stock Entry",
+				"qty": -5,
+				"outgoing_rate": 0,
+			}
+		)
+
+		with (
+			patch("yrp.stock.utils.get_sre_reserved_qty", return_value=0) as get_reserved,
+			patch.object(engine, "_update_valuation_and_write"),
+		):
+			engine._process_sle(outgoing)
+
+		self.assertEqual(engine.qty_by_dims[engine._dim_key(engine.args)], 5)
+		self.assertEqual(
+			get_reserved.call_args.kwargs["created_before"], get_combine_datetime("2026-10-27", "09:00:00")
+		)
+
+	def test_backdated_stock_out_still_needs_todays_balance_to_cover_todays_reservations(self):
+		engine = _engine(reserved_stock=9)
+		engine.args.qty = -5
+		engine.qty_by_dims[engine._dim_key(engine.args)] = 8
+		engine._init_previous = Mock()
+		engine._get_entries_to_process = Mock(return_value=[])
+
+		with (
+			patch("yrp.stock.stock_ledger._", side_effect=lambda message: message),
+			patch("yrp.stock.stock_ledger.frappe.throw", side_effect=_raise_frappe_error),
+			self.assertRaisesRegex(NegativeStockError, "reserved quantity 9"),
+		):
+			engine.run()
+
+		engine.qty_by_dims[engine._dim_key(engine.args)] = 9
+		engine.run()
+
+	def test_incoming_posting_is_not_blocked_by_an_over_reserved_bucket(self):
+		engine = _engine(reserved_stock=12)
+		engine.args.qty = 5
+		engine._init_previous = Mock()
+		engine._get_entries_to_process = Mock(return_value=[])
+
+		engine.run()
 
 	def test_future_sibling_outgoing_is_checked_during_backdated_replay(self):
 		engine = _engine(reserved_stock=0)
@@ -204,6 +260,7 @@ class TestReservationEnforcement(TestCase):
 		)
 
 		with (
+			patch("yrp.stock.utils.get_sre_reserved_qty", return_value=6),
 			patch("yrp.stock.stock_ledger._", side_effect=lambda message: message),
 			patch("yrp.stock.stock_ledger.frappe.throw", side_effect=_raise_frappe_error),
 			self.assertRaises(NegativeStockError),

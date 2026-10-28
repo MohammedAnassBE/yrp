@@ -340,9 +340,13 @@ def get_sre_reserved_qty(
 	exclude_voucher_name=None,
 	filters=None,
 	for_update=False,
+	created_before=None,
 	**dimension_filters,
 ):
 	"""Sum of reserved_qty - delivered_qty - closed_qty across active SRE rows.
+
+	``created_before`` counts only reservations created at or before that datetime, as ERPNext does
+	when it replays ledger entries after a backdated posting.
 
 	Two calling styles are supported for back-compat:
 	  - Modern:  get_sre_reserved_qty(item_code=..., warehouse=..., **dim_filters,
@@ -398,6 +402,10 @@ def get_sre_reserved_qty(
 		else:
 			conds.append(f"`{fn}` = %s")
 			values.append(val)
+
+	if created_before:
+		conds.append("creation <= %s")
+		values.append(created_before)
 
 	if exclude_voucher_type and exclude_voucher_name:
 		conds.append("NOT (voucher_type = %s AND voucher_no = %s)")

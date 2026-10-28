@@ -807,6 +807,7 @@ def repost_current_voucher(args, allow_negative_stock=False):
 		"voucher_no": args.get("voucher_no"),
 		"sle_id": args.get("name"),
 		"creation": args.get("creation"),
+		"qty": args.get("qty"),
 		"reserved_stock": args.get("reserved_stock"),
 		"validate_reserved_stock": args.get("reserved_stock") is not None,
 		"is_cancelled": args.get("is_cancelled"),
@@ -944,10 +945,13 @@ class UpdateEntriesAfter:
 		entries = self._get_entries_to_process()
 		for sle in entries:
 			self._process_sle(sle)
-		# Cancelling an incoming SLE can leave no later outgoing row for
-		# _process_sle to validate. Check the affected current bucket explicitly
-		# after replay so cancelling stock cannot strand an active reservation.
-		if self.args.get("validate_reserved_stock") and self.args.get("is_cancelled"):
+		# Like ERPNext's validate_reserved_stock: today's reservations are checked once, against the
+		# balance after the replay. Cancelling an incoming SLE is checked the same way.
+		if self.args.get("validate_reserved_stock") and (
+			self.args.get("is_cancelled")
+			or flt(self.args.get("qty")) < 0
+			or self.args.get("voucher_type") == "YRP Stock Reconciliation"
+		):
 			self._validate_current_bucket_reservation_floor()
 
 	# ------------------------------------------------------------------
@@ -969,32 +973,31 @@ class UpdateEntriesAfter:
 		return {fieldname: row.get(fieldname) for fieldname in self.dim_fields}
 
 	def _get_reserved_stock(self, row):
-		"""Return the live active reservation for one full stock bucket."""
+		"""Reservations a replayed SLE must leave: those created by the replayed voucher's posting time.
+
+		ERPNext counts the same set; reservations made later are checked once against today's balance."""
 		key = self._dim_key(row)
 		if key in self.reserved_qty_by_dims:
 			return self.reserved_qty_by_dims[key]
 
-		# make_sl_entries already resolves the current row's reservation while
-		# holding the bucket lock. Reuse it for that exact dimension key.
-		if key == self._dim_key(self.args) and self.args.get("reserved_stock") is not None:
-			reserved = flt(self.args.get("reserved_stock"))
-		else:
-			from yrp.stock.utils import get_sre_reserved_qty
+		from yrp.stock.utils import get_sre_reserved_qty
 
-			reserved = flt(
-				get_sre_reserved_qty(
-					item_code=self.args.get("item"),
-					warehouse=self.args.get("warehouse"),
-					for_update=True,
-					**self._dimension_values(row),
-				)
+		reserved = flt(
+			get_sre_reserved_qty(
+				item_code=self.args.get("item"),
+				warehouse=self.args.get("warehouse"),
+				for_update=True,
+				created_before=get_combine_datetime(self.args.posting_date, self.args.posting_time),
+				**self._dimension_values(row),
 			)
+		)
 		self.reserved_qty_by_dims[key] = reserved
 		return reserved
 
-	def _validate_reservation_floor(self, row, balance):
+	def _validate_reservation_floor(self, row, balance, reserved=None):
 		"""Prevent any stock-out/reconciliation from consuming reserved stock."""
-		reserved = self._get_reserved_stock(row)
+		if reserved is None:
+			reserved = self._get_reserved_stock(row)
 		if reserved <= 0 or flt(balance) + 0.0001 >= reserved:
 			return
 		frappe.throw(
@@ -1012,9 +1015,10 @@ class UpdateEntriesAfter:
 		)
 
 	def _validate_current_bucket_reservation_floor(self):
+		"""Today's balance of the voucher's bucket against every live reservation (make_sl_entries preloads it)."""
 		key = self._dim_key(self.args)
 		balance = self.qty_by_dims.get(key, 0.0)
-		self._validate_reservation_floor(self.args, balance)
+		self._validate_reservation_floor(self.args, balance, flt(self.args.get("reserved_stock")))
 
 	# ------------------------------------------------------------------
 	# Load previous state
