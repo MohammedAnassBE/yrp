@@ -691,7 +691,6 @@ def _copy_template_fields(template, variant):
 		"weight_per_unit",
 		"weight_uom",
 		"secondary_unit_of_measure",
-		"hsn_code",
 		"gst_hsn_code",
 		"tax_code",
 		"is_exempt",
