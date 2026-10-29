@@ -31,6 +31,7 @@ class AttributeValueLinksTest(unittest.TestCase):
 		self.link = attribute_value_name(self.attribute, self.value)
 
 	def tearDown(self):
+		frappe.set_user("Administrator")
 		frappe.db.rollback(save_point=self.point)
 		for dt in ["Item Attribute", MASTER, "YRP Item Item Attribute Mapping"]:
 			frappe.clear_document_cache(dt)
@@ -104,6 +105,41 @@ class AttributeValueLinksTest(unittest.TestCase):
 		self.assertTrue(
 			frappe.db.exists("Item Attribute Value", {"parent": self.attribute, "attribute_value": "XXL"})
 		)
+
+	def user_with_roles(self, *roles):
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": f"value-create-{frappe.generate_hash(length=8)}@example.test",
+					"first_name": "Value Create",
+					"send_welcome_email": 0,
+					"roles": [{"role": role} for role in roles],
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+
+	def test_value_create_permission_adds_native_value_without_item_attribute_write(self):
+		frappe.set_user(self.user_with_roles("Item Master Manager"))
+		self.assertFalse(frappe.has_permission("Item Attribute", "write"))
+		doc = frappe.get_doc(
+			{"doctype": MASTER, "attribute_name": self.attribute, "attribute_value": "XXL"}
+		).insert()
+		frappe.set_user("Administrator")
+		self.assertEqual(doc.name, attribute_value_name(self.attribute, "XXL"))
+		self.assertTrue(
+			frappe.db.exists("Item Attribute Value", {"parent": self.attribute, "attribute_value": "XXL"})
+		)
+
+	def test_value_create_needs_attribute_value_create_permission(self):
+		frappe.set_user(self.user_with_roles("Purchase User"))
+		self.assertFalse(frappe.has_permission(MASTER, "create"))
+		with self.assertRaises(frappe.PermissionError):
+			frappe.get_doc(
+				{"doctype": MASTER, "attribute_name": self.attribute, "attribute_value": "XXL"}
+			).insert()
 
 	def test_value_identity_cannot_be_edited(self):
 		doc = frappe.get_doc(MASTER, self.link)

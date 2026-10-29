@@ -23,7 +23,6 @@ class YRPItemAttributeValue(Document):
 		if not self.flags.from_item_attribute:
 			if self.attribute_value != self.attribute_value.strip():
 				frappe.throw(_("Attribute values cannot start or end with whitespace."))
-			frappe.get_doc("Item Attribute", self.attribute_name).check_permission("write")
 
 	def after_insert(self):
 		if not self.flags.from_item_attribute:
@@ -39,7 +38,10 @@ class YRPItemAttributeValue(Document):
 					self.name,
 				)
 			else:
-				ensure_global_attribute_values(self.attribute_name, [self.attribute_value])
+				# Creating this master is the permission to add the value.
+				ensure_global_attribute_values(
+					self.attribute_name, [self.attribute_value], check_permission=False
+				)
 
 	def on_trash(self):
 		# ERPNext remains the domain authority. Removing its child value triggers
