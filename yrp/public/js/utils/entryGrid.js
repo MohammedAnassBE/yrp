@@ -4,6 +4,7 @@ const CONTROL_SELECTOR = [
 	"input:not([type=hidden]):not(:disabled):not([readonly]):not([data-row-select])",
 	"textarea:not(:disabled):not([readonly])",
 	"[role=combobox]:not(input):not([aria-disabled=true])",
+	"input[role=combobox][data-pc-section=hiddeninput]:not(:disabled)",
 ].join(",")
 const state = new WeakMap()
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
