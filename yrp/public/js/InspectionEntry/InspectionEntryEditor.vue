@@ -96,6 +96,7 @@
                 <table class="ie-pivot-table">
                     <thead>
                         <tr>
+                            <th v-if="canEditRows" class="ie-col-select"><input type="checkbox" data-row-select :checked="splitSelection(group.key).isAllSelected" :indeterminate="splitSelection(group.key).isPartlySelected" @change="splitSelection(group.key).toggleAll($event.target.checked)"></th>
                             <th class="ie-col-sno">S.No.</th>
                             <th class="ie-col-rt">Source → Target</th>
                             <th
@@ -105,7 +106,6 @@
                             >{{ pv }}</th>
                             <th class="ie-col-num">Total</th>
                             <th class="ie-col-comments">Comments</th>
-                            <th class="ie-col-actions"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,6 +113,7 @@
                             v-for="(row, rIdx) in group.rows"
                             :key="`btm-${gIdx}-${rIdx}`"
                         >
+                            <td v-if="canEditRows" class="ie-col-select"><input type="checkbox" data-row-select tabindex="-1" :checked="splitSelection(group.key).isSelected(splitRowKey(row))" @change="splitSelection(group.key).toggle(splitRowKey(row), $event.target.checked)"></td>
                             <td class="ie-col-sno">{{ rIdx + 1 }}</td>
                             <td class="ie-rt-pair">
                                 <span class="ie-pill ie-pill-src">{{ row.source_received_type }}</span>
@@ -131,18 +132,10 @@
                             </td>
                             <td class="ie-col-num"><b>{{ fmt(bottomRowTotal(row)) }}</b></td>
                             <td class="ie-col-comments">{{ bottomRowComments(row) || '—' }}</td>
-                            <td class="ie-col-actions">
-                                <button
-                                    class="ie-btn-remove"
-                                    type="button"
-                                    :disabled="locked"
-                                    title="Move qty back to top"
-                                    @click="deleteBottomRow(group, row)"
-                                >✕</button>
-                            </td>
                         </tr>
                     </tbody>
                 </table>
+                <SelectionFooter :count="splitSelection(group.key).selected.length" @delete="deleteSelectedSplits(group.key)" />
             </div>
 
             <div v-if="!hasBottomRows && !locked" class="ie-bottom-empty">
@@ -205,9 +198,10 @@
 
                         <!-- Drafts: one row per (target RT + per-size qty + date + comments) -->
                         <div class="ie-modal-sub-header">Add splits</div>
-                        <table class="ie-modal-drafts">
+                        <table class="ie-modal-drafts" v-entry-table="{ add: addDraft, isRowBlank: (dIdx) => draftTotal(drafts[dIdx]) <= 0, fixed: false }">
                             <thead>
                                 <tr>
+                                    <th class="ie-col-select"><input type="checkbox" data-row-select :checked="draftSelection.isAllSelected" :indeterminate="draftSelection.isPartlySelected" :disabled="drafts.length === 1" @change="draftSelection.toggleAll($event.target.checked)"></th>
                                     <th class="ie-col-rt">Target RT</th>
                                     <th
                                         v-for="pv in modalCtx.primary_attribute_values"
@@ -216,11 +210,11 @@
                                     >{{ pv }}</th>
                                     <th class="ie-col-num">Total</th>
                                     <th>Comments</th>
-                                    <th class="ie-col-actions"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-for="(d, dIdx) in drafts" :key="`d-${dIdx}`">
+                                    <td class="ie-col-select"><input type="checkbox" data-row-select tabindex="-1" :checked="draftSelection.isSelected(dIdx)" :disabled="drafts.length === 1" @change="draftSelection.toggle(dIdx, $event.target.checked)"></td>
                                     <td>
                                         <select v-model="d.target_received_type">
                                             <option value="" disabled>Select target…</option>
@@ -254,18 +248,11 @@
                                     <td>
                                         <input type="text" v-model="d.comments">
                                     </td>
-                                    <td class="ie-col-actions">
-                                        <button
-                                            class="ie-btn-remove"
-                                            type="button"
-                                            :disabled="drafts.length === 1"
-                                            @click="removeDraft(dIdx)"
-                                        >✕</button>
-                                    </td>
                                 </tr>
                             </tbody>
                             <tfoot>
                                 <tr class="ie-totals-row">
+                                    <td></td>
                                     <td><b>Sum being added</b></td>
                                     <td
                                         v-for="pv in modalCtx.primary_attribute_values"
@@ -277,10 +264,11 @@
                                         <span class="ie-of-avail">/{{ fmt(availableBySize(pv)) }}</span>
                                     </td>
                                     <td class="ie-col-num"><b>{{ fmt(draftsGrandTotal) }}</b></td>
-                                    <td colspan="2"></td>
+                                    <td></td>
                                 </tr>
                             </tfoot>
                         </table>
+                        <SelectionFooter :count="draftSelection.selected.length" @delete="draftSelection.removeSelected(removeDraft, () => drafts.length > 1)" />
 
                         <button
                             class="btn btn-xs btn-default ie-modal-add"
@@ -310,7 +298,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, reactive } from 'vue';
+import { SelectionFooter, useRowSelection, vEntryTable } from '../utils/entryGrid.js';
 
 const sources = ref([]);
 const docstatus = ref(
@@ -323,6 +312,9 @@ const modalCtx = ref(null);
 const drafts = ref([]);
 
 const locked = computed(() => docstatus.value !== 0);
+const canEditRows = computed(() => !locked.value && (typeof cur_frm === 'undefined' || Boolean(cur_frm.perm?.[0]?.write)));
+const draftSelection = reactive(useRowSelection(() => drafts.value.length === 1 ? [] : drafts.value.map((_, dIdx) => dIdx)));
+const splitSelections = new Map();
 
 // =====================================================================
 // Helpers
@@ -458,6 +450,25 @@ function bottomRowComments(row) {
     }
     return out.join(', ');
 }
+function splitRowKey(row) {
+    return `${row.source_received_type || '—'}|${row.target_received_type}`;
+}
+function splitSelection(groupKey) {
+    if (!splitSelections.has(groupKey)) {
+        splitSelections.set(groupKey, reactive(useRowSelection(() => {
+            const group = canEditRows.value && groupsForBottom.value.find(g => g.key === groupKey);
+            return group ? group.rows.map(splitRowKey) : [];
+        })));
+    }
+    return splitSelections.get(groupKey);
+}
+function deleteSelectedSplits(groupKey) {
+    return splitSelection(groupKey).removeSelected((rowKey) => {
+        const group = groupsForBottom.value.find(g => g.key === groupKey);
+        const row = group && group.rows.find(r => splitRowKey(r) === rowKey);
+        if (row) deleteBottomRow(group, row);
+    }, () => canEditRows.value);
+}
 function deleteBottomRow(_group, row) {
     if (locked.value) return;
     // Collect refs by sourceIdx and splice descending so indices stay valid.
@@ -533,6 +544,7 @@ function openEdit(gIdx, rIdx) {
         sourceCells: row.cells, // pv -> source bin
     };
     drafts.value = [_makeBlankDraft()];
+    draftSelection.toggleAll(false);
 }
 function cancelEdit() {
     modalCtx.value = null;
@@ -808,6 +820,13 @@ defineExpose({ load_data, get_items, update_status });
 .ie-col-actions {
     width: 80px;
     text-align: center;
+}
+.ie-col-select {
+    width: 32px;
+    text-align: center;
+}
+.ie-modal-drafts .ie-col-select input {
+    width: auto;
 }
 .ie-col-warehouse { width: 180px; }
 .ie-col-date { width: 130px; }

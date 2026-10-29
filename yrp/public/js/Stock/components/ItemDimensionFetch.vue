@@ -2,10 +2,14 @@
     <div ref="root">
         <div class="table-responsive">
             <table class="table table-sm table-bordered">
+                <tbody>
                 <tr v-for="(i, item_index) in items" :key="item_index">
                     <td v-if="i.primary_attribute && i.primary_attribute_values && i.primary_attribute_values.length">
-                        <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0">
-                            <tr>
+                        <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0" v-entry-table="{ fixed: false }">
+                            <thead><tr>
+                                <th v-if="can_select_rows" class="idf-select"><input type="checkbox" data-row-select aria-label="Select all rows"
+                                    :checked="is_group_selected(item_index)" :indeterminate="is_group_partly_selected(item_index)"
+                                    @change="toggle_group(item_index, $event.target.checked)"></th>
                                 <th>S.No.</th>
                                 <th>Item</th>
                                 <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
@@ -13,8 +17,12 @@
                                 <th v-for="attr in i.primary_attribute_values" :key="attr">{{ attr }}</th>
                                 <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
                                 <th v-if="show_row_actions"></th>
-                            </tr>
+                            </tr></thead>
+                            <tbody>
                             <tr v-for="(j, item1_index) in i.items" :key="item1_index">
+                                <td v-if="can_select_rows" class="idf-select"><input type="checkbox" data-row-select tabindex="-1" aria-label="Select row"
+                                    :checked="selection.isSelected(row_key(item_index, item1_index))"
+                                    @change="selection.toggle(row_key(item_index, item1_index), $event.target.checked)"></td>
                                 <td>{{ item1_index + 1 }}</td>
                                 <td>{{ j.name }}</td>
                                 <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
@@ -62,15 +70,18 @@
                                 </td>
                                 <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
                                 <td v-if="show_row_actions">
-                                    <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
-                                    <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
+                                    <div class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
                                 </td>
                             </tr>
+                            </tbody>
                         </table>
                     </td>
                     <td v-else>
-                        <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0">
-                            <tr>
+                        <table class="table table-sm table-bordered" v-if="i.items && i.items.length > 0" v-entry-table="{ fixed: false }">
+                            <thead><tr>
+                                <th v-if="can_select_rows" class="idf-select"><input type="checkbox" data-row-select aria-label="Select all rows"
+                                    :checked="is_group_selected(item_index)" :indeterminate="is_group_partly_selected(item_index)"
+                                    @change="toggle_group(item_index, $event.target.checked)"></th>
                                 <th>S.No.</th>
                                 <th>Item</th>
                                 <th v-for="dim in visible_dimensions" :key="dim.fieldname">{{ dim.label }}</th>
@@ -79,8 +90,12 @@
                                 <th v-for="a in table_qty_fields" :key="a.name">{{ a.label }}</th>
                                 <th v-for="a in other_table_fields" :key="a.name">{{ a.label }}</th>
                                 <th v-if="show_row_actions"></th>
-                            </tr>
+                            </tr></thead>
+                            <tbody>
                             <tr v-for="(j, item1_index) in i.items" :key="item1_index">
+                                <td v-if="can_select_rows" class="idf-select"><input type="checkbox" data-row-select tabindex="-1" aria-label="Select row"
+                                    :checked="selection.isSelected(row_key(item_index, item1_index))"
+                                    @change="selection.toggle(row_key(item_index, item1_index), $event.target.checked)"></td>
                                 <td>{{ item1_index + 1 }}</td>
                                 <td>{{ j.name }}</td>
                                 <td v-for="dim in visible_dimensions" :key="dim.fieldname">{{ (j.dimensions || {})[dim.fieldname] }}</td>
@@ -119,14 +134,16 @@
                                 </td>
                                 <td v-for="a in other_table_fields" :key="a.name">{{ a.format ? a.format(j[a.name]) : j[a.name] }}</td>
                                 <td v-if="show_row_actions">
-                                    <div v-if="can_remove" class="pull-right cursor-pointer" @click="remove_item(item_index, item1_index)" v-html="frappe.utils.icon('delete', 'md')"></div>
-                                    <div v-if="can_edit" class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
+                                    <div class="pull-right cursor-pointer" @click="edit_item(item_index, item1_index)" v-html="frappe.utils.icon('edit', 'md', 'mr-1')"></div>
                                 </td>
                             </tr>
+                            </tbody>
                         </table>
                     </td>
                 </tr>
+                </tbody>
             </table>
+            <SelectionFooter :count="selection.selected.value.length" @delete="delete_selected" />
         </div>
 
         <form v-show="can_create && edit && dimensions_loaded" name="formp" class="form-horizontal" autocomplete="off" @submit.prevent="get_item_details()">
@@ -140,7 +157,7 @@
             </div>
         </form>
 
-        <form name="formp" class="form-horizontal new-item-form" autocomplete="off" @submit.prevent="add_item()" v-show="edit && !cur_item_changed && cur_item.item && cur_item.item != ''">
+        <form ref="new_item_form" name="formp" class="form-horizontal new-item-form" autocomplete="off" @submit.prevent="add_item()" v-enter-submits="() => new_item_form.requestSubmit()" v-show="edit && !cur_item_changed && cur_item.item && cur_item.item != ''">
             <div v-show="cur_item.dependent_attribute" class="row">
                 <div class="dependent-attribute-controls col-md-6"></div>
             </div>
@@ -198,9 +215,11 @@
 
 <script setup>
 import { protectAttributeAutocomplete } from "../../utils/attributeAutocomplete.js";
+import { SelectionFooter, useRowSelection, vEnterSubmits, vEntryTable } from "../../utils/entryGrid.js";
 import { ref, onMounted, computed, nextTick } from 'vue';
 
 const root = ref(null);
+const new_item_form = ref(null);
 
 const props = defineProps([
     'items', 'edit', 'otherInputs', 'tableFields', 'qtyFields',
@@ -293,7 +312,29 @@ const visible_dimensions = computed(() => {
 });
 const inline_qty_edit = computed(() => Boolean(props.inlineQtyEdit));
 const inline_qty_max_field = computed(() => props.inlineQtyMaxField || '');
-const show_row_actions = computed(() => props.edit && (can_edit.value || can_remove.value));
+const show_row_actions = computed(() => props.edit && can_edit.value);
+const can_select_rows = computed(() => Boolean(props.edit) && can_remove.value);
+const row_key = (group_index, row_index) => `${group_index}:${row_index}`;
+const group_row_keys = (group_index) => (props.items?.[group_index]?.items || []).map((_, row_index) => row_key(group_index, row_index));
+const selection = useRowSelection(() => can_select_rows.value
+    ? (props.items || []).flatMap((_, group_index) => group_row_keys(group_index)) : []);
+
+function is_group_selected(group_index) {
+    const keys = group_row_keys(group_index);
+    return keys.length > 0 && keys.every(selection.isSelected);
+}
+
+function is_group_partly_selected(group_index) {
+    return !is_group_selected(group_index) && group_row_keys(group_index).some(selection.isSelected);
+}
+
+function toggle_group(group_index, on) {
+    for (const key of group_row_keys(group_index)) selection.toggle(key, on);
+}
+
+function delete_selected() {
+    selection.removeSelected((key) => remove_item(...key.split(':').map(Number)), () => can_select_rows.value);
+}
 
 function _resolve_arg(key, def) {
     if (props.args && Object.prototype.hasOwnProperty.call(props.args, key)) {
@@ -992,3 +1033,11 @@ function cancel_edit() {
     }
 }
 </script>
+
+<style scoped>
+.idf-select {
+    width: 28px;
+    text-align: center;
+    vertical-align: middle;
+}
+</style>

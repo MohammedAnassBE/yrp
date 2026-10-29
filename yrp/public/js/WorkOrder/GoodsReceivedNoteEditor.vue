@@ -4,9 +4,12 @@
 			{{ returnMode ? 'No return items' : 'No pending receivables' }}
 		</div>
         <div v-for="(row, rowIndex) in logicalRows" :key="row.key" class="grn-receive-block">
-            <table class="table table-sm table-bordered grn-receive-table">
+            <table class="table table-sm table-bordered grn-receive-table" v-entry-table="{ fixed: false }">
                 <thead>
                     <tr>
+                        <th v-if="edit" class="grn-select"><input type="checkbox" data-row-select aria-label="Select all rows"
+                            :disabled="!removableKeys(row).length" :checked="isRowAllSelected(row)" :indeterminate="isRowPartlySelected(row)"
+                            @change="toggleRow(row, $event.target.checked)"></th>
                         <th class="grn-sno">S.No.</th>
                         <th class="grn-item">Item</th>
                         <th class="grn-type">Received Type</th>
@@ -29,6 +32,9 @@
                 </thead>
                 <tbody>
                     <tr v-for="(split, splitIndex) in row.splits" :key="split.key">
+                        <td v-if="edit" class="grn-select"><input type="checkbox" data-row-select tabindex="-1"
+                            aria-label="Select row" :disabled="!canRemoveSplit(row, split)" :checked="selection.isSelected(split.key)"
+                            @change="selection.toggle(split.key, $event.target.checked)"></td>
                         <td v-if="splitIndex === 0" :rowspan="row.splits.length">{{ rowIndex + 1 }}</td>
                         <td v-if="splitIndex === 0" :rowspan="row.splits.length">
                             <div class="grn-item-title">{{ row.name }}</div>
@@ -39,11 +45,6 @@
                         </td>
                         <td>
                             <span>{{ split.receivedType || 'Received' }}</span>
-                            <button v-if="edit && canRemoveSplit(row, split)"
-                                    type="button"
-                                    class="grn-rt-remove"
-                                    :title="lotFieldname ? 'Remove this empty split' : 'Remove this Received Type row'"
-                                    @click="removeSplit(row, split)">×</button>
                         </td>
 						<td v-if="lotFieldname">
 							<select v-if="edit && !returnMode && canEditLotForEntry(split.entry, lotOptions, lotFieldname)" class="form-control form-control-sm"
@@ -103,6 +104,7 @@
 					<tr v-if="edit && !returnMode && unusedRTs(row).length" class="grn-rt-add-row">
                         <td></td>
                         <td></td>
+                        <td></td>
                         <td :colspan="row.columns.length + 6 + (lotFieldname ? 1 : 0)">
                             <span class="text-muted small mr-2">Add Received Type:</span>
                             <button v-for="rt in unusedRTs(row)"
@@ -115,6 +117,7 @@
                 </tbody>
             </table>
         </div>
+        <SelectionFooter :count="selection.selected.value.length" @delete="deleteSelected" />
     </div>
 </template>
 
@@ -130,6 +133,7 @@ import {
 	setSplitComment,
 	setSplitQuantity,
 } from './grnReceiptRows.mjs';
+import { SelectionFooter, useRowSelection, vEntryTable } from '../utils/entryGrid.js';
 
 const props = defineProps({
     items: { type: Array, default: () => [] },
@@ -404,6 +408,31 @@ function removeSplit(row, split) {
 	if (removeSplitSources(props.items, split)) emit('itemupdated', true);
 }
 
+const removableKeys = (row) => row.splits.filter((split) => canRemoveSplit(row, split)).map((split) => split.key);
+const selection = useRowSelection(() => props.edit ? logicalRows.value.flatMap(removableKeys) : []);
+
+function isRowAllSelected(row) {
+	const keys = removableKeys(row);
+	return keys.length > 0 && keys.every(selection.isSelected);
+}
+
+function isRowPartlySelected(row) {
+	return !isRowAllSelected(row) && removableKeys(row).some(selection.isSelected);
+}
+
+function toggleRow(row, on) {
+	for (const key of removableKeys(row)) selection.toggle(key, on);
+}
+
+// Re-checks canRemoveSplit per split, so a row never loses its last split.
+function deleteSelected() {
+	selection.removeSelected((key) => {
+		const row = logicalRows.value.find((candidate) => candidate.splits.some((split) => split.key === key));
+		const split = row?.splits.find((candidate) => candidate.key === key);
+		if (split && canRemoveSplit(row, split)) removeSplit(row, split);
+	}, () => props.edit);
+}
+
 function formatQty(value) {
     if (value === Infinity) return '—';
     const numberValue = toNumber(value);
@@ -473,18 +502,9 @@ function formatQty(value) {
     min-width: 48px;
 }
 
-.grn-rt-remove {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 14px;
-    line-height: 1;
-    margin-left: 4px;
-    padding: 0 4px;
-    cursor: pointer;
-}
-.grn-rt-remove:hover {
-    color: #c00;
+.grn-select {
+    width: 28px;
+    text-align: center;
 }
 
 .grn-rt-add-row {

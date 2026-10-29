@@ -22,17 +22,18 @@
                 <!-- Grid with row attributes + grid attribute columns -->
                 <template v-if="block.item && block.grid_attribute && has_row_attributes(block)">
                     <div class="table-container">
-                        <table class="grid-table">
+                        <table class="grid-table" v-entry-table="{ fixed: false }">
                             <thead>
                                 <tr>
+                                    <th v-if="can_edit_rows()" class="th-select"><input type="checkbox" data-row-select :checked="selection_for(block).isAllSelected" :indeterminate="selection_for(block).isPartlySelected" @change="selection_for(block).toggleAll($event.target.checked)" /></th>
                                     <th v-for="ra in row_attr_names(block)" :key="'rh-'+ra" class="th-attr">{{ ra }}</th>
                                     <th v-for="gv in block.grid_attribute_values" :key="'gh-'+gv" class="th-size">{{ gv }}</th>
                                     <th class="th-total">Total</th>
-                                    <th v-if="edit" class="th-action"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-for="(row, rowIdx) in block.rows" :key="'row-'+blockIdx+'-'+rowIdx">
+                                    <td v-if="can_edit_rows()" class="td-select"><input type="checkbox" data-row-select tabindex="-1" :checked="selection_for(block).isSelected(rowIdx)" @change="selection_for(block).toggle(rowIdx, $event.target.checked)" /></td>
                                     <td v-for="ra in row_attr_names(block)" :key="'rv-'+ra" class="td-attr">
                                         <div class="attr-pill">{{ row.attrs[ra] || '' }}</div>
                                     </td>
@@ -40,28 +41,24 @@
                                         <div :class="get_qty_class(blockIdx, rowIdx, colIdx)" class="qty-field-container"></div>
                                     </td>
                                     <td class="td-total">{{ get_row_total(block, rowIdx) }}</td>
-                                    <td v-if="edit" class="td-action">
-                                        <button class="btn-delete-row" @click="remove_row(blockIdx, rowIdx)" title="Remove Row">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                                        </button>
-                                    </td>
                                 </tr>
                             </tbody>
                             <tfoot v-if="block.rows.length > 1">
                                 <tr class="footer-row">
+                                    <td v-if="can_edit_rows()" class="td-select"></td>
                                     <td :colspan="row_attr_names(block).length" class="td-footer-label">Grand Total</td>
                                     <td v-for="gv in block.grid_attribute_values" :key="'ct-'+gv" class="td-footer-val">
                                         {{ get_col_total(block, gv) }}
                                     </td>
                                     <td class="td-footer-grand">{{ get_block_total(block) }}</td>
-                                    <td v-if="edit" class="td-action"></td>
                                 </tr>
                             </tfoot>
                         </table>
+                        <SelectionFooter :count="selection_for(block).selected.length" @delete="delete_selected_rows(blockIdx)" />
                     </div>
 
                     <!-- Add Row -->
-                    <div v-if="edit" class="add-row-section">
+                    <div v-if="edit" class="add-row-section" v-enter-submits="() => add_attribute_row(blockIdx)">
                         <div class="add-row-inputs">
                             <div v-for="ra in row_attr_names(block)" :key="'add-ra-'+blockIdx+'-'+ra"
                                  :class="get_add_row_attr_class(blockIdx, ra)" class="add-attr-control"></div>
@@ -124,13 +121,15 @@
 
 <script setup>
 import { protectAttributeAutocomplete } from "../utils/attributeAutocomplete.js";
-import { ref, nextTick } from 'vue';
+import { SelectionFooter, useRowSelection, vEnterSubmits, vEntryTable } from "../utils/entryGrid.js";
+import { ref, nextTick, reactive } from 'vue';
 
 const root = ref(null);
 const settings = ref({ attributes: [], grid_attribute: null });
 const items = ref([]);
 const block_inputs = ref([]);
 const edit = ref(true);
+const selections = new WeakMap();
 let loading = false;
 
 function set_settings(s) {
@@ -325,6 +324,22 @@ function remove_row(blockIdx, rowIdx) {
     nextTick(() => {
         rebuild_block_qty_inputs(blockIdx);
     });
+}
+
+function can_edit_rows() {
+    return edit.value && (!window.cur_frm || Boolean(cur_frm.perm?.[0]?.write));
+}
+
+function selection_for(block) {
+    if (!selections.has(block)) {
+        selections.set(block, reactive(useRowSelection(() => can_edit_rows() ? block.rows.map((_, rowIdx) => rowIdx) : [])));
+    }
+    return selections.get(block);
+}
+
+function delete_selected_rows(blockIdx) {
+    let block = items.value[blockIdx];
+    return selection_for(block).removeSelected((rowIdx) => remove_row(blockIdx, rowIdx), () => can_edit_rows() && items.value[blockIdx] === block);
 }
 
 function ensure_block_inputs(blockIdx) {
@@ -774,10 +789,10 @@ defineExpose({
     background: #f1f5f9;
 }
 
-.grid-table .th-action {
-    background: transparent;
-    border-bottom: none;
-    width: 44px;
+.grid-table .th-select,
+.grid-table .td-select {
+    width: 32px;
+    text-align: center;
 }
 
 .grid-table td {
@@ -832,26 +847,6 @@ defineExpose({
     color: var(--primary-color);
     background: #f0f7ff;
     font-size: 14px;
-}
-
-.td-action {
-    text-align: center;
-    border-bottom: none !important;
-}
-
-.btn-delete-row {
-    color: #cbd5e1;
-    background: transparent;
-    border: none;
-    padding: 6px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn-delete-row:hover {
-    background: #fff1f2;
-    color: #e11d48;
 }
 
 /* ── Footer Row ── */

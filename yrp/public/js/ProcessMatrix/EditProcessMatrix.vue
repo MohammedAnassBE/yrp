@@ -17,18 +17,19 @@
                     <span>Inputs</span>
                     <button v-if="!readonly" class="btn btn-xs btn-default" @click="addRow(group, 'Input')">+ Add Input</button>
                 </div>
-                <table class="table table-sm table-bordered combo-table">
+                <table class="table table-sm table-bordered combo-table" v-entry-table="{ add: canEditRows ? () => addRow(group, 'Input') : null, isRowBlank: (ri) => isRowBlank(group.inputs[ri]), fixed: false }">
                     <thead>
                         <tr>
+                            <th v-if="canEditRows" class="select-col"><input type="checkbox" data-row-select :checked="selectionFor(group, 'inputs').isAllSelected" :indeterminate="selectionFor(group, 'inputs').isPartlySelected" @change="selectionFor(group, 'inputs').toggleAll($event.target.checked)" /></th>
                             <th class="item-col">Item</th>
                             <th v-for="a in input_attributes" :key="'i-h-' + a">{{ a }}</th>
                             <th class="qty-col">Qty</th>
                             <th class="uom-col">UOM</th>
-                            <th class="row-actions"></th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="(row, ri) in group.inputs" :key="'i-' + ri">
+                            <td v-if="canEditRows" class="select-col"><input type="checkbox" data-row-select tabindex="-1" :checked="selectionFor(group, 'inputs').isSelected(ri)" @change="selectionFor(group, 'inputs').toggle(ri, $event.target.checked)" /></td>
                             <td><input class="form-control compact-input" type="text" :disabled="readonly" v-model="row.item" @input="scheduleSync" placeholder="Item" /></td>
                             <td v-for="a in input_attributes" :key="'i-c-' + ri + '-' + a">
                                 <select v-model="row.attrs[a]" :disabled="readonly" @change="scheduleSync">
@@ -38,13 +39,13 @@
                             </td>
                             <td><input class="form-control compact-input" type="number" step="any" :disabled="readonly" v-model.number="row.qty" @input="scheduleSync" /></td>
                             <td><input class="form-control compact-input" type="text" :disabled="readonly" v-model="row.uom" @input="scheduleSync" placeholder="UOM" /></td>
-                            <td><button v-if="!readonly" class="btn btn-xs btn-danger" @click="deleteRow(group, 'inputs', ri)">×</button></td>
                         </tr>
                         <tr v-if="group.inputs.length === 0">
-                            <td :colspan="input_attributes.length + 4" class="empty-row">No input rows. Click "+ Add Input" above.</td>
+                            <td :colspan="input_attributes.length + (canEditRows ? 4 : 3)" class="empty-row">No input rows. Click "+ Add Input" above.</td>
                         </tr>
                     </tbody>
                 </table>
+                <SelectionFooter :count="selectionFor(group, 'inputs').selected.length" @delete="deleteSelectedRows(group, 'inputs')" />
             </div>
 
             <div class="side-block output-side">
@@ -52,18 +53,19 @@
                     <span>Outputs</span>
                     <button v-if="!readonly" class="btn btn-xs btn-default" @click="addRow(group, 'Output')">+ Add Output</button>
                 </div>
-                <table class="table table-sm table-bordered combo-table">
+                <table class="table table-sm table-bordered combo-table" v-entry-table="{ add: canEditRows ? () => addRow(group, 'Output') : null, isRowBlank: (ri) => isRowBlank(group.outputs[ri]), fixed: false }">
                     <thead>
                         <tr>
+                            <th v-if="canEditRows" class="select-col"><input type="checkbox" data-row-select :checked="selectionFor(group, 'outputs').isAllSelected" :indeterminate="selectionFor(group, 'outputs').isPartlySelected" @change="selectionFor(group, 'outputs').toggleAll($event.target.checked)" /></th>
                             <th class="item-col">Item</th>
                             <th v-for="a in output_attributes" :key="'o-h-' + a">{{ a }}</th>
                             <th class="qty-col">Qty</th>
                             <th class="uom-col">UOM</th>
-                            <th class="row-actions"></th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="(row, ri) in group.outputs" :key="'o-' + ri">
+                            <td v-if="canEditRows" class="select-col"><input type="checkbox" data-row-select tabindex="-1" :checked="selectionFor(group, 'outputs').isSelected(ri)" @change="selectionFor(group, 'outputs').toggle(ri, $event.target.checked)" /></td>
                             <td><input class="form-control compact-input" type="text" :disabled="readonly" v-model="row.item" @input="scheduleSync" placeholder="Item" /></td>
                             <td v-for="a in output_attributes" :key="'o-c-' + ri + '-' + a">
                                 <select v-model="row.attrs[a]" :disabled="readonly" @change="scheduleSync">
@@ -73,13 +75,13 @@
                             </td>
                             <td><input class="form-control compact-input" type="number" step="any" :disabled="readonly" v-model.number="row.qty" @input="scheduleSync" /></td>
                             <td><input class="form-control compact-input" type="text" :disabled="readonly" v-model="row.uom" @input="scheduleSync" placeholder="UOM" /></td>
-                            <td><button v-if="!readonly" class="btn btn-xs btn-danger" @click="deleteRow(group, 'outputs', ri)">×</button></td>
                         </tr>
                         <tr v-if="group.outputs.length === 0">
-                            <td :colspan="output_attributes.length + 4" class="empty-row">No output rows. Click "+ Add Output" above.</td>
+                            <td :colspan="output_attributes.length + (canEditRows ? 4 : 3)" class="empty-row">No output rows. Click "+ Add Output" above.</td>
                         </tr>
                     </tbody>
                 </table>
+                <SelectionFooter :count="selectionFor(group, 'outputs').selected.length" @delete="deleteSelectedRows(group, 'outputs')" />
             </div>
         </div>
 
@@ -90,10 +92,15 @@
 </template>
 
 <script>
+import { reactive } from 'vue';
+import { SelectionFooter, useRowSelection, vEntryTable } from '../utils/entryGrid.js';
+
 const SYNC_DELAY_MS = 200;
 
 export default {
     name: 'EditProcessMatrix',
+    components: { SelectionFooter },
+    directives: { entryTable: vEntryTable },
     data() {
         return {
             groups: [],
@@ -105,7 +112,13 @@ export default {
             _syncTimer: null,
         };
     },
+    created() {
+        this.selections = new WeakMap();
+    },
     computed: {
+        canEditRows() {
+            return !this.readonly && (!window.cur_frm || Boolean(cur_frm.perm?.[0]?.write));
+        },
         totalCombos() {
             let n = 0;
             for (const g of this.groups) n += g.inputs.length + g.outputs.length;
@@ -186,6 +199,21 @@ export default {
             this.scheduleSync();
         },
 
+        selectionFor(group, key) {
+            if (!this.selections.has(group)) this.selections.set(group, {});
+            const bySide = this.selections.get(group);
+            bySide[key] ||= reactive(useRowSelection(() => this.canEditRows ? group[key].map((_, ri) => ri) : []));
+            return bySide[key];
+        },
+
+        deleteSelectedRows(group, key) {
+            return this.selectionFor(group, key).removeSelected((ri) => this.deleteRow(group, key, ri), () => this.canEditRows);
+        },
+
+        isRowBlank(row) {
+            return !row || (!row.item && !row.uom && !row.qty && !Object.values(row.attrs || {}).some(Boolean));
+        },
+
         scheduleSync() {
             if (this.readonly) return;
             if (this._syncTimer) clearTimeout(this._syncTimer);
@@ -252,7 +280,7 @@ export default {
 }
 .qty-col { width: 90px; }
 .uom-col { width: 120px; }
-.row-actions { width: 36px; }
+.select-col { width: 28px; text-align: center; }
 .empty-row { text-align: center; color: #999; font-style: italic; }
 .empty-state { padding: 24px; text-align: center; color: #888; border: 1px dashed #ccc; border-radius: 4px; }
 .input-side { border-left: 3px solid #5e64ff; padding-left: 8px; }
