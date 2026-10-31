@@ -7,6 +7,7 @@ from frappe.model.document import Document
 from frappe.utils import flt, get_datetime
 
 from yrp.stock.job_worker_variant import get_job_worker_stock_variant
+from yrp.stock.shortage import StockShortageReport
 from yrp.yrp.doctype.yrp_delivery_challan.yrp_delivery_challan import (
 	_apply_dimension_values_to_rows,
 	_copy_header_dimensions_to_items,
@@ -779,6 +780,7 @@ class YRPGoodsReceivedNote(Document):
 				)
 			totals_by_dc_item[dc_item.name] += flt(row.quantity)
 
+		report = StockShortageReport()
 		for dc_item_name, qty in totals_by_dc_item.items():
 			dc_item = dc_items[dc_item_name]
 			pending = flt(dc_item.delivered_quantity or dc_item.qty) - flt(dc_item.received_quantity)
@@ -796,12 +798,10 @@ class YRPGoodsReceivedNote(Document):
 				posting_time=self.posting_time,
 				**dims,
 			)
-			if flt(balance) + 0.0001 < qty:
-				frappe.throw(
-					_("Insufficient supplier-side rework stock for {0}: available {1}, required {2}.").format(
-						dc_item.item_variant, flt(balance), flt(qty)
-					)
-				)
+			report.add(
+				dc_item.item_variant, self.from_warehouse, balance, qty, _(" (supplier-side rework stock)")
+			)
+		report.throw()
 
 	def validate_against_purchase_order_pending(self):
 		po = frappe.get_doc("Purchase Order", self.against_id)
@@ -1159,6 +1159,7 @@ def _validate_return_quantities(grn):
 				)
 			)
 
+	report = StockShortageReport()
 	for bucket in stock_buckets.values():
 		available = get_stock_balance(
 			bucket["item"],
@@ -1167,12 +1168,8 @@ def _validate_return_quantities(grn):
 			posting_time=grn.posting_time,
 			**bucket["dimensions"],
 		)
-		if flt(available) + QTY_TOLERANCE < flt(bucket["stock_qty"]):
-			frappe.throw(
-				_("Insufficient return stock for {0}: available {1}, required {2}.").format(
-					bucket["item"], flt(available), flt(bucket["stock_qty"])
-				)
-			)
+		report.add(bucket["item"], grn.from_warehouse, available, bucket["stock_qty"], _(" (return stock)"))
+	report.throw()
 
 
 def _update_returned_deliverables(grn, *, cancel):

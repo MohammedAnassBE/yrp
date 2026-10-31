@@ -3,6 +3,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt, formatdate, nowdate, nowtime
 
+from yrp.stock.shortage import StockShortageReport, get_dimension_text, get_stock_shortage
+
 
 class YRPDeliveryChallan(Document):
 	def onload(self):
@@ -272,6 +274,10 @@ class YRPDeliveryChallan(Document):
 			)
 			required_by_bucket[key]["qty"] += qty
 
+		report = StockShortageReport()
+		as_of = _(" as of {0} {1}").format(
+			formatdate(self.posting_date, "dd-mm-yyyy"), str(self.posting_time).split(".")[0]
+		)
 		for bucket in required_by_bucket.values():
 			if is_rework:
 				available = get_available_stock(
@@ -289,22 +295,16 @@ class YRPDeliveryChallan(Document):
 					posting_time=self.posting_time,
 					**bucket["dims"],
 				)
-			required = flt(bucket["qty"])
-			if flt(available) + 0.0001 < required:
-				frappe.throw(
-					_(
-						"Insufficient stock for {0} at {1}{2} as of {3} {4}: available {5}, required {6}."
-					).format(
-						bucket["item"],
-						self.from_warehouse,
-						get_dimension_text(bucket["dims"]),
-						formatdate(self.posting_date, "dd-mm-yyyy"),
-						str(self.posting_time).split(".")[0],
-						flt(available),
-						required,
-					)
-					+ _received_type_hint(bucket, self.from_warehouse, is_rework)
+			if get_stock_shortage(available, bucket["qty"], report.precision):
+				report.add(
+					bucket["item"],
+					self.from_warehouse,
+					available,
+					bucket["qty"],
+					get_dimension_text(bucket["dims"]) + as_of,
+					_received_type_hint(bucket, self.from_warehouse, is_rework),
 				)
+		report.throw()
 
 	def update_work_order_deliverables(self, cancel=False):
 		wo = frappe.get_doc("YRP Work Order", self.work_order)
@@ -581,14 +581,6 @@ def get_other_received_type_stock(item, warehouse, dims):
 	)
 	rows = frappe.get_all("YRP Bin", filters=filters, fields=["received_type", "actual_qty"])
 	return {row.received_type: flt(row.actual_qty) for row in rows}
-
-
-def get_dimension_text(dims):
-	from yrp.stock.dimensions import get_stock_dimensions
-
-	labels = {dimension["fieldname"]: dimension["label"] for dimension in get_stock_dimensions()}
-	parts = [f"{_(labels.get(fieldname) or fieldname)} {value}" for fieldname, value in dims.items() if value]
-	return f" ({', '.join(parts)})" if parts else ""
 
 
 def _received_type_hint(bucket, warehouse, is_rework):

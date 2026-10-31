@@ -66,7 +66,8 @@ class TestReservationEnforcement(TestCase):
 		result = engine._handle_outgoing(sle, valuator, 1.1909999999999996)
 
 		self.assertEqual(result, 0)
-		valuator.remove_stock.assert_called_once_with(1.191, 5)
+		valuator.remove_stock.assert_called_once_with(1.1909999999999996, 5)
+		self.assertEqual(sle.qty, -1.1909999999999996)
 
 	def test_current_bucket_uses_preloaded_reservation_and_blocks_below_floor(self):
 		engine = _engine(reserved_stock=6)

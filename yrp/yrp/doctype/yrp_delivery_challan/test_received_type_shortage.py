@@ -49,3 +49,45 @@ class TestShortageDimensionText(UnitTestCase):
 			empty = dc.get_dimension_text({"lot": None, "received_type": ""})
 		self.assertEqual(text, " (Lot LOT-1, Received Type Accepted)")
 		self.assertEqual(empty, "")
+
+
+class TestDeliveryChallanShortageList(UnitTestCase):
+	def _challan(self):
+		rows = [
+			{"item_variant": "FAB-NAVY", "qty": 16.95, "lot": "F0426-86", "received_type": "Accepted"},
+			{"item_variant": "FAB-RED", "qty": 5, "lot": "F0426-86", "received_type": "Accepted"},
+			{"item_variant": "FAB-BLUE", "qty": 3, "lot": "F0426-86", "received_type": "Accepted"},
+		]
+		return frappe.get_doc(
+			{
+				"doctype": "YRP Delivery Challan",
+				"from_warehouse": "S-0163",
+				"work_order": "WO-1",
+				"posting_date": "2026-10-31",
+				"posting_time": "10:00:00",
+				"items": rows,
+			}
+		)
+
+	def _validate(self, balances):
+		balance = lambda item, *args, **kwargs: balances[item]  # noqa: E731
+		with (
+			patch.object(dc, "_is_rework_work_order", return_value=False),
+			patch.object(dc, "get_other_received_type_stock", return_value={}),
+			patch("yrp.stock.utils.get_stock_balance", side_effect=balance),
+		):
+			self._challan().validate_stock_available()
+
+	def test_float_drift_in_the_balance_is_not_a_shortage(self):
+		self._validate({"FAB-NAVY": 16.949999, "FAB-RED": 5, "FAB-BLUE": 3})
+
+	def test_every_short_item_is_listed_together(self):
+		with self.assertRaises(frappe.ValidationError) as raised:
+			self._validate({"FAB-NAVY": 16.9, "FAB-RED": 2, "FAB-BLUE": 3})
+		message = str(raised.exception)
+		self.assertIn("Insufficient stock for 2 items", message)
+		self.assertIn("FAB-NAVY", message)
+		self.assertIn("balance 16.9, requested 16.95, short 0.05", message)
+		self.assertIn("FAB-RED", message)
+		self.assertIn("balance 2.0, requested 5.0, short 3.0", message)
+		self.assertNotIn("FAB-BLUE", message)

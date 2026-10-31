@@ -15,6 +15,7 @@ from frappe.model.document import Document
 from frappe.utils import flt
 
 from yrp.stock.dimensions import get_stock_dimensions, get_valuation_dimensions
+from yrp.stock.shortage import get_reservation_shortage
 from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
 
 
@@ -42,7 +43,7 @@ class YRPBin(Document):
 		)
 		if reserved_qty < 0:
 			frappe.throw(_("Reserved Qty cannot be negative."))
-		if reserved_qty > flt(self.actual_qty) + 1e-9:
+		if get_reservation_shortage(self.actual_qty, reserved_qty):
 			frappe.throw(_("Reserved Qty cannot be greater than Actual Qty."))
 		self.db_set("reserved_qty", reserved_qty, update_modified=False)
 		return reserved_qty

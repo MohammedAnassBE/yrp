@@ -148,6 +148,7 @@ class YRPInspectionEntry(Document):
 		the query aggregate across all types and over-permit transfers.
 		"""
 		from yrp.stock.dimensions import get_dimension_fieldnames
+		from yrp.stock.shortage import StockShortageReport
 		from yrp.stock.utils import get_stock_balance
 
 		dim_fields = get_dimension_fieldnames()
@@ -155,6 +156,7 @@ class YRPInspectionEntry(Document):
 		groups = defaultdict(list)
 		for row in self.items:
 			groups[self._bin_key(row)].append(row)
+		report = StockShortageReport()
 		for _key, rows in groups.items():
 			source_rt = rows[0].get("received_type") or default_rt
 			out_qty = sum(flt(r.qty) for r in rows if r.target_received_type != source_rt)
@@ -174,16 +176,14 @@ class YRPInspectionEntry(Document):
 			)
 			if isinstance(balance, tuple):
 				balance = balance[0]
-			if out_qty > flt(balance) + 0.0001:
-				frappe.throw(
-					_("Item {0} at {1} ({2}): cannot reclassify {3} (only {4} available).").format(
-						rows[0].item_variant,
-						rows[0].warehouse,
-						source_rt,
-						out_qty,
-						flt(balance),
-					)
-				)
+			report.add(
+				rows[0].item_variant,
+				rows[0].warehouse,
+				balance,
+				out_qty,
+				_(" ({0}, to reclassify)").format(source_rt),
+			)
+		report.throw()
 
 	# ------------------------------------------------------------------
 	# SLE construction — IE writes its own SLEs.

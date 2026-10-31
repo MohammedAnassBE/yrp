@@ -9,8 +9,6 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
-from yrp.yrp.doctype.yrp_item.yrp_item import get_parent_item
-
 MAX_RATE_LOOKUP_VALUES = 200
 MAX_RATE_LOOKUP_ATTRIBUTES = 50
 
@@ -49,56 +47,67 @@ class YRPStockUpdate(Document):
 	def validate(self):
 		if not self.stock_update_details:
 			frappe.throw(_("At least one item is required"))
-		from yrp.stock.dimensions import get_stock_dimensions
 		from yrp.stock.uom import apply_item_uom
-		from yrp.stock.utils import get_stock_balance
 
-		dim_fields = [d["fieldname"] for d in get_stock_dimensions()]
 		for row in self.stock_update_details:
 			if not row.update_diff_qty or row.update_diff_qty <= 0:
 				frappe.throw(_("Row {0}: qty must be > 0").format(row.idx))
 
 			apply_item_uom(row)
 			row.stock_qty = row.update_diff_qty * row.conversion_factor
+		if self.update_type == "Reduce":
+			self.validate_reduce_stock()
 
-			# For Reduce: enforce reservation-aware available stock (H.2).
-			# Reservation is honored regardless of Item.allow_negative_stock;
-			# the negative-stock flag only bypasses the actual_qty>=0 check.
-			if self.update_type == "Reduce":
-				from yrp.stock.utils import get_available_stock
+	def validate_reduce_stock(self):
+		"""Check each item/warehouse/dimension bucket once and report every short bucket together.
 
-				dim_filters = {fn: row.get(fn) for fn in dim_fields}
-				actual = get_stock_balance(row.item_variant, self.warehouse, **dim_filters)
-				available = get_available_stock(
-					row.item_variant,
-					self.warehouse,
-					exclude_voucher_type="YRP Stock Update",
-					exclude_voucher_name=self.name,
-					**dim_filters,
-				)
+		Reservation (H.2) is honored even when Item.allow_negative_stock bypasses the actual balance check.
+		"""
+		from yrp.stock.dimensions import get_dimension_fieldnames
+		from yrp.stock.shortage import StockShortageReport, get_dimension_text, get_reservation_shortage
+		from yrp.stock.stock_ledger import _item_allows_negative_stock
+		from yrp.stock.utils import get_available_stock, get_stock_balance
+
+		dim_fields = get_dimension_fieldnames()
+		buckets = {}
+		for row in self.stock_update_details:
+			dimensions = {fieldname: row.get(fieldname) for fieldname in dim_fields}
+			key = (row.item_variant, tuple(dimensions.values()))
+			bucket = buckets.setdefault(
+				key, frappe._dict(item=row.item_variant, dimensions=dimensions, qty=0.0, rows=[])
+			)
+			bucket.qty += flt(row.stock_qty)
+			bucket.rows.append(row)
+
+		report = StockShortageReport()
+		for bucket in buckets.values():
+			actual = get_stock_balance(bucket.item, self.warehouse, **bucket.dimensions)
+			available = get_available_stock(
+				bucket.item,
+				self.warehouse,
+				exclude_voucher_type="YRP Stock Update",
+				exclude_voucher_name=self.name,
+				**bucket.dimensions,
+			)
+			for row in bucket.rows:
 				row.available_stock = actual
-
-				parent_item = get_parent_item(row.item_variant)
-				item_allows_neg = bool(
-					parent_item and frappe.get_cached_value("Item", parent_item, "allow_negative_stock")
+			details = get_dimension_text(bucket.dimensions)
+			allows_negative = _item_allows_negative_stock(bucket.item)
+			if not allows_negative and report.add(bucket.item, self.warehouse, actual, bucket.qty, details):
+				continue
+			reserved = flt(actual) - flt(available)
+			shortage = get_reservation_shortage(flt(actual) - bucket.qty, reserved, report.precision)
+			if shortage:
+				report.add(
+					bucket.item,
+					self.warehouse,
+					available,
+					bucket.qty,
+					details + _(" after reservation {0}").format(flt(reserved, report.precision)),
+					_("Negative stock cannot bypass an active reservation."),
+					shortage,
 				)
-				reserved = actual - available
-				if not item_allows_neg and row.stock_qty > actual:
-					frappe.throw(
-						_("Row {0}: cannot reduce {1}, only {2} available").format(
-							row.idx, row.stock_qty, actual
-						)
-					)
-				# H.2: reservation is honored regardless of allow_negative_stock.
-				# Only fire when there's an actual reservation to bypass; with
-				# reserved=0, the negative-stock flag alone governs.
-				if reserved > 0 and row.stock_qty > available:
-					frappe.throw(
-						_(
-							"Row {0}: requested {1} exceeds available-after-reservation {2}. "
-							"Negative-stock cannot bypass an active reservation."
-						).format(row.idx, row.stock_qty, available)
-					)
+		report.throw()
 
 	# ------------------------------------------------------------------
 	# Submit and Cancel — both use _build_sl_entries to avoid duplication

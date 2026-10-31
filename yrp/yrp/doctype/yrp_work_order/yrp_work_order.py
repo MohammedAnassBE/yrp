@@ -1297,6 +1297,7 @@ def _consolidate_rework_rows(rows):
 
 def _validate_rework_bucket_availability(rows):
 	from yrp.stock.dimensions import get_dimension_fieldnames
+	from yrp.stock.shortage import StockShortageReport, get_dimension_text
 	from yrp.stock.utils import get_available_stock
 
 	dim_fields = get_dimension_fieldnames()
@@ -1311,19 +1312,13 @@ def _validate_rework_bucket_availability(rows):
 		buckets.setdefault(key, {"row": row, "qty": 0})
 		buckets[key]["qty"] += flt(row.get("qty"))
 
+	report = StockShortageReport()
 	for bucket in buckets.values():
 		row = bucket["row"]
 		dims = row.get("dimensions") or {}
 		available = get_available_stock(row["item_variant"], row["warehouse"], **dims)
-		if flt(bucket["qty"]) > flt(available) + 0.0001:
-			frappe.throw(
-				_("Selected rework qty {0} exceeds available stock {1} for {2} at {3}.").format(
-					flt(bucket["qty"]),
-					flt(available),
-					row["item_variant"],
-					row["warehouse"],
-				)
-			)
+		report.add(row["item_variant"], row["warehouse"], available, bucket["qty"], get_dimension_text(dims))
+	report.throw()
 
 
 def _copy_rework_header_dimensions(target, parent, rows):

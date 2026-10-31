@@ -29,6 +29,12 @@ from yrp.stock.dimensions import (
 	get_dimension_fieldnames,
 	get_valuation_dimensions,
 )
+from yrp.stock.shortage import (
+	get_reservation_shortage,
+	get_stock_qty_precision,
+	get_stock_shortage,
+	validate_voucher_stock,
+)
 from yrp.stock.utils import (
 	future_sle_exists,
 	get_combine_datetime,
@@ -614,6 +620,8 @@ def make_sl_entries(
 	# deadlock one another while each holds half of the voucher's buckets.
 	effective_entries = [row for row in sl_entries if _is_effective_sl_entry(row)]
 	_lock_entry_buckets(effective_entries, dim_fields)
+	if not cancel:
+		validate_voucher_stock(effective_entries, allow_negative_stock)
 
 	# When cancelling, first mark all existing SLEs for this voucher as cancelled
 	if cancel:
@@ -627,6 +635,7 @@ def make_sl_entries(
 
 	transfer_rates = {}
 	transfer_sles = {}
+	transfer_quantities = {}
 	result_details = {}
 
 	for raw_sle in sl_entries:
@@ -637,6 +646,10 @@ def make_sl_entries(
 		result_key = sle.pop("_result_key", None)
 		if not cancel and transfer_role == "incoming" and transfer_key in transfer_rates:
 			sle["rate"] = transfer_rates[transfer_key]
+		if not cancel and transfer_role == "incoming" and transfer_key in transfer_quantities:
+			document_qty, posted_qty = transfer_quantities[transfer_key]
+			if flt(sle.get("qty")) == document_qty:
+				sle["qty"] = posted_qty
 
 		# Skip non-stock items
 		item_variant = sle.get("item")
@@ -717,6 +730,12 @@ def make_sl_entries(
 			_enqueue_backdated_repost(args)
 		else:
 			repost_current_voucher(args, allow_negative_stock=allow_negative_stock)
+			if not cancel and flt(sle.get("qty")) < 0:
+				# The engine may clamp a within-precision overdraw; downstream legs use the posted qty.
+				document_qty = abs(flt(sle["qty"]))
+				sle["qty"] = flt(frappe.db.get_value("YRP Stock Ledger Entry", sle_doc.name, "qty"))
+				if transfer_role == "outgoing" and transfer_key:
+					transfer_quantities[transfer_key] = (document_qty, abs(sle["qty"]))
 
 		if not cancel and transfer_role == "outgoing" and transfer_key:
 			if queued_repost:
@@ -998,7 +1017,7 @@ class UpdateEntriesAfter:
 		"""Prevent any stock-out/reconciliation from consuming reserved stock."""
 		if reserved is None:
 			reserved = self._get_reserved_stock(row)
-		if reserved <= 0 or flt(balance) + 0.0001 >= reserved:
+		if not get_reservation_shortage(balance, reserved):
 			return
 		frappe.throw(
 			_(
@@ -1241,20 +1260,23 @@ class UpdateEntriesAfter:
 		I.6: negative stock is allowed only when the per-Item flag is set.
 		Reservation is enforced centrally after the new bucket balance is known.
 		"""
-		new_qty = current_dim_qty + flt(sle.qty)  # sle.qty is negative
-		if abs(new_qty) < 1e-9:
-			new_qty = 0
-
-		if not self.allow_negative_stock and new_qty < 0:
+		precision = get_stock_qty_precision()
+		requested = abs(flt(sle.qty))
+		if not self.allow_negative_stock and get_stock_shortage(current_dim_qty, requested, precision):
 			frappe.throw(
 				_("Insufficient stock for {0} at {1}: balance {2}, requested {3}").format(
-					sle.item, sle.warehouse, current_dim_qty, abs(sle.qty)
+					sle.item, sle.warehouse, flt(current_dim_qty, precision), flt(requested, precision)
 				),
 				exc=NegativeStockError,
 			)
+		if not self.allow_negative_stock and requested > current_dim_qty:
+			# Shortfall within precision (16.95 against 16.949999): the row consumes exactly what is
+			# left, so qty, queue and value all reach zero and no residual negative balance exists.
+			requested = max(current_dim_qty, 0.0)
+			sle.qty = -requested
 
-		valuator.remove_stock(abs(flt(sle.qty)), flt(sle.outgoing_rate))
-		return new_qty
+		valuator.remove_stock(requested, flt(sle.outgoing_rate))
+		return round_off_if_near_zero(current_dim_qty - requested)
 
 	def _update_valuation_and_write(self, sle, valuator, dim_key):
 		"""Update shared valuation state and write computed values to the SLE.
@@ -1282,6 +1304,7 @@ class UpdateEntriesAfter:
 			"YRP Stock Ledger Entry",
 			sle.name,
 			{
+				"qty": sle.qty,
 				"qty_after_transaction": self.qty_by_dims[dim_key],
 				"stock_queue": json.dumps(self.stock_queue),
 				"stock_value": self.stock_value,
